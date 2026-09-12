@@ -1,5 +1,3 @@
-mod common;
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -18,6 +16,7 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Authenticator, Credential};
+use keel_testkit::TestDatabase;
 use keel_types::{ErrorCode, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -204,7 +203,7 @@ impl Answer {
 }
 
 struct Bench {
-    database: common::TestDatabase,
+    database: TestDatabase,
     storage: Storage,
     kernel: Kernel,
     dispatcher: Arc<Dispatcher>,
@@ -217,7 +216,7 @@ async fn bench() -> Bench {
 }
 
 async fn bench_with(composition: Composition, options: HttpOptions) -> Bench {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(composition, &storage)
         .await
@@ -347,7 +346,7 @@ impl Bench {
         drop(self.router);
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 
@@ -374,7 +373,7 @@ fn names(descriptors: &Value) -> Vec<&str> {
 
 #[tokio::test]
 async fn healthz_answers_at_once_and_readyz_follows_migrations_and_draining() {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let readiness = Readiness::new();
     let http = Http::new(
@@ -465,7 +464,7 @@ async fn healthz_answers_at_once_and_readyz_follows_migrations_and_draining() {
     served.stop().await.expect("the server stops");
     kernel.stop().await.expect("the kernel stops");
     storage.close().await.expect("the pool closes");
-    database.drop().await;
+    database.finish().await;
 }
 
 #[tokio::test]

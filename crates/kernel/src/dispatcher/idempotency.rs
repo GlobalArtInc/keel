@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use keel_sdk::KeelError;
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
@@ -75,8 +75,8 @@ pub async fn record<C: ConnectionTrait>(
     func: &str,
     request_hash: &str,
     response: &Value,
+    now: DateTime<Utc>,
 ) -> Result<Recorded, KeelError> {
-    let now = Utc::now();
     let affected = db
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,

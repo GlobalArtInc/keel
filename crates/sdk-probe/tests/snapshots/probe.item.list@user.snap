@@ -1,0 +1,87 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: probe.item.list
+  level: user
+---
+{
+  "keel": 1,
+  "name": "probe.item.list",
+  "module": "probe",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "probe.item.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Model",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Model"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "title"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "probe.item.list.title",
+    "search": [
+      "title"
+    ],
+    "columns": [
+      {
+        "key": "title",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      }
+    ],
+    "empty": {
+      "title": "probe.item.empty"
+    }
+  }
+}

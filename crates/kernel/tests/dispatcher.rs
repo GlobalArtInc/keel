@@ -1,5 +1,3 @@
-mod common;
-
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -8,6 +6,7 @@ use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
 use keel_sdk::{Registrar, migrator};
+use keel_testkit::TestDatabase;
 use keel_types::{Check, ErrorCode, Scope, Via};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 
@@ -405,14 +404,14 @@ fn peek() -> FunctionDef {
 }
 
 struct Bench {
-    database: common::TestDatabase,
+    database: TestDatabase,
     storage: Storage,
     kernel: Kernel,
     dispatcher: Dispatcher,
 }
 
 async fn bench() -> Bench {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(Composition::new().module(&SHELF), &storage)
         .await
@@ -493,7 +492,7 @@ impl Bench {
     async fn finish(self) {
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 

@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::Arc;
 
 use keel_sdk::{ModuleDef, ProductBundle};
 
+use crate::clock::{Clock, SystemClock};
 use crate::keel;
 use crate::keel::SYSTEM_KIND;
 
@@ -13,6 +15,7 @@ pub struct Composition {
     modules: Vec<&'static ModuleDef>,
     products: Vec<&'static ProductBundle>,
     version: String,
+    clock: Arc<dyn Clock>,
 }
 
 #[derive(Clone)]
@@ -20,6 +23,7 @@ pub struct Graph {
     modules: Vec<&'static ModuleDef>,
     products: Vec<&'static ProductBundle>,
     version: String,
+    clock: Arc<dyn Clock>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -82,6 +86,7 @@ impl Default for Composition {
             modules: Vec::new(),
             products: Vec::new(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
+            clock: Arc::new(SystemClock),
         }
     }
 }
@@ -103,6 +108,11 @@ impl Composition {
 
     pub fn version(mut self, version: impl Into<String>) -> Self {
         self.version = version.into();
+        self
+    }
+
+    pub fn clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
         self
     }
 
@@ -207,6 +217,7 @@ impl Composition {
                 modules: ordered,
                 products,
                 version: self.version,
+                clock: self.clock,
             })
         } else {
             Err(CompositionError { problems })
@@ -354,6 +365,10 @@ impl Graph {
 
     pub fn version(&self) -> &str {
         &self.version
+    }
+
+    pub fn clock(&self) -> &Arc<dyn Clock> {
+        &self.clock
     }
 }
 

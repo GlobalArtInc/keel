@@ -60,6 +60,13 @@ if [ "$direct" != "keel-sdk " ]; then
 fi
 echo "keel-sdk-probe graph checked"
 
+testkit=$(cargo tree -p keel-testkit -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$testkit" != "keel-kernel keel-sdk keel-types " ]; then
+  echo "keel-testkit depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $testkit" >&2
+  fail=1
+fi
+echo "keel-testkit graph checked"
+
 facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
 if [ "$facade" != "keel-kernel keel-sdk keel-types " ]; then
   echo "the facade keel depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $facade" >&2

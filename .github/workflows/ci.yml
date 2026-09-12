@@ -82,6 +82,11 @@ jobs:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: cargo test --workspace
 
+      - name: No test database remains
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: hack/check-test-databases.sh
+
       - name: Dependency boundaries
         run: hack/check-deps.sh
 

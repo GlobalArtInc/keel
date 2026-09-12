@@ -1,11 +1,10 @@
-mod common;
-
 use std::collections::BTreeSet;
 use std::time::Duration;
 
 use keel_kernel::Storage;
 use keel_kernel::config::SCHEMA;
 use keel_kernel::migrations::{LEDGER, TABLES};
+use keel_testkit::TestDatabase;
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
@@ -34,7 +33,7 @@ fn expected_tables() -> BTreeSet<String> {
 
 #[tokio::test]
 async fn a_fresh_database_gets_the_eight_kernel_tables_and_the_ledger() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     assert!(tables(&storage).await.is_empty());
 
@@ -44,12 +43,12 @@ async fn a_fresh_database_gets_the_eight_kernel_tables_and_the_ledger() {
     assert_eq!(TABLES.len(), 8);
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_second_migration_run_changes_nothing_and_keeps_the_ledger_row_count() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let rows = test
@@ -74,12 +73,12 @@ async fn a_second_migration_run_changes_nothing_and_keeps_the_ledger_row_count()
     assert!(status.entries.iter().all(|entry| entry.applied));
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn the_root_account_is_the_only_account_with_kind_system_and_path_root() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
 
@@ -106,12 +105,12 @@ async fn the_root_account_is_the_only_account_with_kind_system_and_path_root() {
     assert_eq!(root.try_get::<String>("", "state").unwrap(), "active");
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn the_pool_works_inside_the_installation_schema() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     assert_eq!(storage.schema(), SCHEMA);
     let search_path = storage
@@ -145,12 +144,12 @@ async fn the_pool_works_inside_the_installation_schema() {
     assert_eq!(again.schema(), SCHEMA);
     again.close().await.unwrap();
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn two_concurrent_migrations_serialise_on_the_advisory_lock_and_leave_one_ledger() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let first = test.storage().await;
     let second = test.storage().await;
 
@@ -173,12 +172,12 @@ async fn two_concurrent_migrations_serialise_on_the_advisory_lock_and_leave_one_
 
     first.close().await.unwrap();
     second.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_migration_waits_while_another_process_holds_the_lock() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let holder = test.storage().await;
     let waiter = test.storage().await;
 
@@ -204,5 +203,5 @@ async fn a_migration_waits_while_another_process_holds_the_lock() {
 
     waiter.close().await.unwrap();
     holder.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }

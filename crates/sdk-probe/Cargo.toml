@@ -8,3 +8,6 @@ repository.workspace = true
 
 [dependencies]
 keel-sdk = { workspace = true }
+
+[dev-dependencies]
+keel-testkit = { workspace = true }

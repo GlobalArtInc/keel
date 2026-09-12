@@ -1,0 +1,23 @@
+[package]
+name = "keel-testkit"
+description = "The test harness of a module: a database per test, the composition booted in process, fixture principals, descriptor snapshots and the standard invariants"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true }
+insta = { workspace = true }
+keel-kernel = { workspace = true }
+keel-sdk = { workspace = true }
+keel-types = { workspace = true }
+sea-orm = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

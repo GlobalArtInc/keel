@@ -17,13 +17,13 @@ use crate::loader::REQUIRED_LANGUAGE;
 use crate::registry::Registry;
 
 pub const SESSION_COOKIE: &str = "__Host-keel_session";
-pub(super) const GUEST_LOGIN: &str = "guest";
+pub const GUEST_LOGIN: &str = "guest";
 
 const SEC_FETCH_SITE: &str = "sec-fetch-site";
 const CROSS_SITE: &str = "cross-site";
 const BEARER: &str = "bearer ";
 
-pub(super) fn guest(lang: &str) -> Principal {
+pub fn guest(lang: &str) -> Principal {
     Principal {
         id: Id::ROOT_ACCOUNT,
         login: GUEST_LOGIN.to_owned(),

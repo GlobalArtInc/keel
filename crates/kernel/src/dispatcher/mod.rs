@@ -11,7 +11,6 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
@@ -20,6 +19,7 @@ use keel_types::{CallError, Envelope, ErrorCode, Id, Level, Meta, MetaPrincipal,
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde_json::{Map, Value};
 
+use crate::clock::{Clock, SystemClock};
 use crate::registry::{Function, Registry};
 
 pub use strip::MASK;
@@ -37,6 +37,7 @@ struct Inner {
     db: DatabaseConnection,
     prepared: BTreeMap<String, Prepared>,
     audit: Option<Arc<dyn AuditSink>>,
+    clock: Arc<dyn Clock>,
     hook_timeout: Duration,
 }
 
@@ -129,12 +130,17 @@ impl Dispatcher {
             );
         }
         let audit = registry.services().get::<dyn AuditSink>();
+        let clock = registry
+            .services()
+            .get::<dyn Clock>()
+            .unwrap_or_else(|| Arc::new(SystemClock));
         Ok(Self {
             inner: Arc::new(Inner {
                 registry,
                 db,
                 prepared,
                 audit,
+                clock,
                 hook_timeout: HOOK_TIMEOUT,
             }),
         })
@@ -204,7 +210,7 @@ impl Dispatcher {
                         error: error.to_call_error(),
                     },
                 },
-                at: Utc::now(),
+                at: self.inner.clock.now(),
                 elapsed: started.elapsed(),
             });
         }
@@ -370,6 +376,7 @@ impl Inner {
                     target.function.name(),
                     &hash,
                     &data,
+                    self.clock.now(),
                 )
                 .await?
             {
@@ -498,7 +505,7 @@ impl Inner {
             }
             let events = handle.take_events();
             if !events.is_empty() {
-                outbox::write(handle.db(), handle.principal(), events).await?;
+                outbox::write(handle.db(), handle.principal(), events, self.clock.now()).await?;
             }
         }
         self.project(target, handle.principal().level, &mut data);

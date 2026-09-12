@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use keel_sdk::KeelError;
 use keel_sdk::runtime::Emitted;
 use keel_types::{EventActor, EventActorKind, Id, Level, Principal};
@@ -8,6 +8,7 @@ pub async fn write<C: ConnectionTrait>(
     db: &C,
     principal: &Principal,
     events: Vec<Emitted>,
+    now: DateTime<Utc>,
 ) -> Result<usize, KeelError> {
     let actor = (principal.level != Level::Guest).then_some(EventActor {
         kind: EventActorKind::Principal,
@@ -16,7 +17,6 @@ pub async fn write<C: ConnectionTrait>(
     let actor_json = actor.map(serde_json::to_value).transpose()?;
     let count = events.len();
     for event in events {
-        let now = Utc::now();
         db.execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO keel_outbox (id, type, at, actor_json, subject_json, data_json, created_at) VALUES ($1, $2, $3, $4, NULL, $5, $6)",

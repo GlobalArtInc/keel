@@ -1,5 +1,3 @@
-mod common;
-
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
@@ -10,6 +8,7 @@ use keel::{Change, Config, Error, ExitCode, Runtime};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::dispatcher::CallOptions;
 use keel_kernel::socket::{Client, OWNER_LOGIN};
+use keel_testkit::TestDatabase;
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -82,14 +81,14 @@ static PROBE: ProductBundle = ProductBundle {
 };
 
 struct Site {
-    database: common::TestDatabase,
+    database: TestDatabase,
     dir: TempDir,
     config: Config,
     config_path: PathBuf,
 }
 
 async fn site() -> Site {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let dir = tempfile::tempdir().expect("a temporary directory");
     let mut config = database.config();
     config.listen = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
@@ -140,7 +139,7 @@ impl Site {
 
     async fn finish(self) {
         drop(self.dir);
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 

@@ -1,5 +1,3 @@
-mod common;
-
 use std::collections::BTreeMap;
 
 use keel_kernel::config::SCHEMA;
@@ -7,6 +5,7 @@ use keel_kernel::loader::{ACTIVE, MigrateError, Migrated, ORPHANED};
 use keel_kernel::{BootError, Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_sdk::{Registrar, migrator};
+use keel_testkit::TestDatabase;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -119,7 +118,7 @@ fn row(version: &str, state: &str) -> (String, String) {
 
 #[tokio::test]
 async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own_ledgers() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
 
     let migrated = migrate(&storage, &[&GAMMA, &ALPHA, &BETA]).await;
@@ -183,12 +182,12 @@ async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own
     );
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_second_start_applies_nothing_and_keeps_every_ledger_as_it_was() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     migrate(&storage, &[&ALPHA, &BETA]).await;
     let before = modules(&storage).await;
@@ -228,12 +227,12 @@ async fn a_second_start_applies_nothing_and_keeps_every_ledger_as_it_was() {
     assert_eq!(untouched, 3);
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn removing_a_module_leaves_its_tables_and_flips_its_row_to_orphaned_on_the_next_start() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     migrate(&storage, &[&ALPHA, &BETA]).await;
 
@@ -268,12 +267,12 @@ async fn removing_a_module_leaves_its_tables_and_flips_its_row_to_orphaned_on_th
     assert_eq!(modules(&storage).await["alpha"], row("1.2.0", ACTIVE));
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_failing_module_migration_names_the_module_and_records_nothing_for_it() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
 
     let error = Composition::new()
@@ -303,12 +302,12 @@ async fn a_failing_module_migration_names_the_module_and_records_nothing_for_it(
     );
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn the_kernel_boots_a_composition_against_the_database_and_stops_in_reverse() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
 
     let composition = Composition::new()
@@ -344,5 +343,5 @@ async fn the_kernel_boots_a_composition_against_the_database_and_stops_in_revers
     );
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }

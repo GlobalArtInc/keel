@@ -1,0 +1,89 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: probe.item.edit
+  level: user
+---
+{
+  "keel": 1,
+  "name": "probe.item.edit",
+  "module": "probe",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "probe.item.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "ItemEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "title"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Saved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "probe.item.edit.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "title"
+        ]
+      }
+    ],
+    "fields": {
+      "title": {
+        "readonly_if": {
+          "eq": [
+            "$mode",
+            "edit"
+          ]
+        }
+      }
+    }
+  }
+}

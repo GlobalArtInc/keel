@@ -1,5 +1,3 @@
-mod common;
-
 use std::sync::Arc;
 
 use axum::Router;
@@ -15,6 +13,7 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Authenticator, Credential};
+use keel_testkit::TestDatabase;
 use keel_types::{Boot, Envelope, ErrorCode, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tempfile::TempDir;
@@ -186,7 +185,7 @@ static PROBE_BUNDLE: ProductBundle = ProductBundle {
 };
 
 struct Bench {
-    database: common::TestDatabase,
+    database: TestDatabase,
     storage: Storage,
     kernel: Kernel,
     dispatcher: Arc<Dispatcher>,
@@ -195,7 +194,7 @@ struct Bench {
 }
 
 async fn start(composition: Composition) -> Bench {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(composition, &storage)
         .await
@@ -334,7 +333,7 @@ impl Bench {
         drop(self.router);
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 
@@ -667,7 +666,7 @@ static UNTITLED: ModuleDef = ModuleDef {
 
 #[tokio::test]
 async fn a_function_without_an_en_title_key_fails_start_naming_every_missing_key() {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let error = Kernel::boot(Composition::new().module(&UNTITLED), &storage)
         .await
@@ -693,5 +692,5 @@ async fn a_function_without_an_en_title_key_fails_start_naming_every_missing_key
         "the registries cannot be frozen:\n  - function untitled.item.list: the en dictionary has no entry for untitled.item.list.title\n  - function untitled.item.list column weight: the en dictionary has no entry for untitled.item.column.weight nor for the shared keel.column.weight"
     );
     storage.close().await.expect("the pool closes");
-    database.drop().await;
+    database.finish().await;
 }

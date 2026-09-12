@@ -1,12 +1,11 @@
-mod common;
-
 use keel_kernel::dispatcher::{CallOptions, Dispatcher, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
+use keel_testkit::TestDatabase;
 use keel_types::{ErrorCode, Scope, Via};
 
 struct Bench {
-    database: common::TestDatabase,
+    database: TestDatabase,
     storage: Storage,
     kernel: Kernel,
     dispatcher: Dispatcher,
@@ -85,7 +84,7 @@ fn column<'a>(page: &'a Value, key: &str) -> Vec<&'a str> {
 }
 
 async fn bench() -> Bench {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(Composition::new(), &storage)
         .await
@@ -196,7 +195,7 @@ impl Bench {
     async fn finish(self) {
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 

@@ -16,6 +16,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+keel-testkit = { workspace = true }
 schemars = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }

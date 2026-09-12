@@ -7,7 +7,8 @@ mod products;
 use keel_sdk::prelude::*;
 use keel_sdk::{ModuleDef, Registrar};
 
-pub(crate) use accounts::SYSTEM_KIND;
+pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
+pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
 
 pub static MODULE: ModuleDef = ModuleDef {
     id: "keel",

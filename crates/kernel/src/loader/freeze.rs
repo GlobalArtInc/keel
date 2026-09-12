@@ -17,6 +17,7 @@ use super::composition::{API, Graph};
 use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
 use super::init::Initialised;
 use super::{keys, patch};
+use crate::clock::Clock;
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
@@ -704,6 +705,7 @@ impl Freezer {
             .collect();
         let mut services = self.services;
         services.provide(Arc::new(Composed::new(graph.products())));
+        services.provide::<dyn Clock>(graph.clock().clone());
         let registry = Registry {
             platform: Platform {
                 version: graph.version().to_owned(),

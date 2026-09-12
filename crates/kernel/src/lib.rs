@@ -1,4 +1,5 @@
 pub mod boot;
+pub mod clock;
 pub mod config;
 pub mod ctl;
 pub mod dispatcher;
@@ -18,6 +19,7 @@ pub mod storage;
 mod kv;
 mod meta;
 
+pub use clock::{Clock, SystemClock};
 pub use config::{Config, ConfigError, DatabaseUrl, Log, LogFormat, Tls};
 pub use dispatcher::{CallOptions, Dispatcher, Reply};
 pub use http::{Http, HttpError, HttpOptions, Readiness, Served};

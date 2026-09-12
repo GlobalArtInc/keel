@@ -30,11 +30,11 @@ use crate::registry::Registry;
 
 use live::Live;
 
-pub use auth::SESSION_COOKIE;
+pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
+pub use descriptors::Projection;
 pub use i18n::{Catalogue, catalogue};
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
 
-pub(crate) use descriptors::Projection;
 pub(crate) use reply::acceptable_request_id;
 
 pub const API_PREFIX: &str = "/api/v1";

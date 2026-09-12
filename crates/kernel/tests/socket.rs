@@ -1,5 +1,3 @@
-mod common;
-
 use std::sync::Arc;
 
 use axum::body::{Body, to_bytes};
@@ -13,6 +11,7 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Authenticator, Credential};
+use keel_testkit::TestDatabase;
 use keel_types::{Envelope, ErrorCode, Via};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -91,7 +90,7 @@ fn init(r: &mut Registrar) -> Result<()> {
 }
 
 struct Bench {
-    database: common::TestDatabase,
+    database: TestDatabase,
     storage: Storage,
     kernel: Kernel,
     dispatcher: Arc<Dispatcher>,
@@ -99,7 +98,7 @@ struct Bench {
 }
 
 async fn bench(composition: Composition) -> Bench {
-    let database = common::create().await;
+    let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(composition, &storage)
         .await
@@ -156,7 +155,7 @@ impl Bench {
     async fn finish(self) {
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
-        self.database.drop().await;
+        self.database.finish().await;
     }
 }
 

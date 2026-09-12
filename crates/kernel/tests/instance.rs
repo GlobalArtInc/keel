@@ -1,11 +1,10 @@
-mod common;
-
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
 use keel_kernel::instance::{INSTANCE_ID_FILE, KV_INSTANCE_ID, KV_SECRET_KEY, SECRET_KEY_FILE};
 use keel_kernel::secret::{Key, Sealed};
 use keel_kernel::{Instance, InstanceError};
+use keel_testkit::TestDatabase;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 async fn kv(storage: &keel_kernel::Storage, key: &str) -> Option<serde_json::Value> {
@@ -23,7 +22,7 @@ async fn kv(storage: &keel_kernel::Storage, key: &str) -> Option<serde_json::Val
 
 #[tokio::test]
 async fn the_first_start_creates_the_data_dir_the_secret_key_with_mode_0600_and_the_instance_id() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let root = tempfile::tempdir().unwrap();
@@ -56,12 +55,12 @@ async fn the_first_start_creates_the_data_dir_the_secret_key_with_mode_0600_and_
     assert_ne!(instance.key(), &file_key);
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn the_secret_key_is_reused_and_the_instance_id_is_stable_across_restarts() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let data_dir = tempfile::tempdir().unwrap();
@@ -93,12 +92,12 @@ async fn the_secret_key_is_reused_and_the_instance_id_is_stable_across_restarts(
     );
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_secret_key_that_does_not_match_the_wrapped_key_fails_start() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let data_dir = tempfile::tempdir().unwrap();
@@ -118,12 +117,12 @@ async fn a_secret_key_that_does_not_match_the_wrapped_key_fails_start() {
     assert!(error.to_string().contains("secret.key"), "{error}");
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_secret_key_readable_by_others_is_refused() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let data_dir = tempfile::tempdir().unwrap();
@@ -148,12 +147,12 @@ async fn a_secret_key_readable_by_others_is_refused() {
         .unwrap();
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }
 
 #[tokio::test]
 async fn a_lost_instance_id_file_is_restored_from_the_database_and_a_foreign_one_is_refused() {
-    let test = common::create().await;
+    let test = TestDatabase::create().await;
     let storage = test.storage().await;
     storage.migrate().await.unwrap();
     let data_dir = tempfile::tempdir().unwrap();
@@ -188,5 +187,5 @@ async fn a_lost_instance_id_file_is_restored_from_the_database_and_a_foreign_one
     );
 
     storage.close().await.unwrap();
-    test.drop().await;
+    test.finish().await;
 }

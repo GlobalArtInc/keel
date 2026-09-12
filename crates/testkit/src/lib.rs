@@ -1,0 +1,23 @@
+pub mod auth;
+pub mod clock;
+pub mod database;
+pub mod fixtures;
+pub mod harness;
+pub mod http;
+pub mod invariants;
+pub mod snapshots;
+
+pub use keel_kernel as kernel;
+pub use keel_kernel::{CallOptions, Clock, Dispatcher, Registry, Reply};
+pub use keel_types::{CallError, ErrorCode};
+pub use tokio;
+
+pub use auth::PRINCIPAL_HEADER;
+pub use clock::FixedClock;
+pub use database::{DatabaseError, TestDatabase};
+pub use fixtures::{Accounts, Fixtures, Principals, Who};
+pub use harness::{Builder, Error, Harness};
+pub use http::{Answer, TestHttp};
+pub use invariants::Fixture;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

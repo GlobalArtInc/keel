@@ -1,4 +1,3 @@
-use chrono::Utc;
 use keel_sdk::escape_like;
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::extension::postgres::PgExpr;
@@ -11,6 +10,7 @@ use keel_sdk::types::AccountState;
 use super::acl;
 use super::entity::account;
 use super::{Pick, Saved};
+use crate::clock::Clock;
 
 pub const SYSTEM_KIND: &str = "system";
 pub const RESELLER_KIND: &str = "reseller";
@@ -105,7 +105,7 @@ pub fn create() -> FunctionDef {
                 .await
                 .map_err(|error| on_field(error, "parent"))?;
             let id = Id::generate();
-            let now = Utc::now();
+            let now = call.require::<dyn Clock>()?.now();
             account::ActiveModel {
                 id: Set(id.to_string()),
                 kind: Set(params.kind.clone()),
@@ -170,7 +170,7 @@ pub fn update() -> FunctionDef {
             let mut row = account::ActiveModel {
                 id: Set(current.id.clone()),
                 kind: Set(kind),
-                updated_at: Set(Utc::now()),
+                updated_at: Set(call.require::<dyn Clock>()?.now()),
                 ..Default::default()
             };
             if let Some(parent) = &new_parent {

@@ -1,4 +1,3 @@
-use chrono::Utc;
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{
@@ -8,6 +7,7 @@ use keel_sdk::sea_orm::{
 use super::accounts::{self, RESELLER_KIND, SYSTEM_KIND};
 use super::entity::{account, principal};
 use super::{Pick, Saved};
+use crate::clock::Clock;
 
 pub const DEFAULT_ROLE: &str = "owner";
 pub const DEFAULT_LANG: &str = "en";
@@ -108,7 +108,7 @@ pub fn create() -> FunctionDef {
             let account = accounts::load(tx, &account_id.to_string()).await?;
             check_level(call.principal(), params.level, &account)?;
             let id = Id::generate();
-            let now = Utc::now();
+            let now = call.require::<dyn Clock>()?.now();
             principal::ActiveModel {
                 id: Set(id.to_string()),
                 account: Set(account.id),
@@ -172,7 +172,10 @@ pub fn update() -> FunctionDef {
                 .col_expr(principal::Column::Level, Expr::value(level.as_str()))
                 .col_expr(principal::Column::Role, Expr::value(role))
                 .col_expr(principal::Column::Account, Expr::value(account_id))
-                .col_expr(principal::Column::UpdatedAt, Expr::value(Utc::now()))
+                .col_expr(
+                    principal::Column::UpdatedAt,
+                    Expr::value(call.require::<dyn Clock>()?.now()),
+                )
                 .filter(principal::Column::Id.eq(id.to_string()));
             if let Some(login) = &params.login {
                 update = update.col_expr(principal::Column::Login, Expr::value(login.as_str()));

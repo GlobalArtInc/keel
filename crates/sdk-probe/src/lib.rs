@@ -69,8 +69,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .order(10),
         )
         .i18n("en", include_str!("../i18n/en.json"))
-        .permission("probe.item.read", &[Level::User])
-        .permission("probe.item.manage", &[Level::User]);
+        .permission("probe.item.read", &[Level::User, Level::Reseller])
+        .permission("probe.item.manage", &[Level::User, Level::Reseller]);
     Ok(())
 }
 
