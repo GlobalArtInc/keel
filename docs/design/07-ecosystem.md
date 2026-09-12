@@ -6,8 +6,9 @@ every caller so that one product can drive another, how two instances establish 
 customer and hands that customer over with a one-click login, how customer identity and its
 events flow from an identity peer, how events are delivered (signed webhooks and a pull feed with
 inbox deduplication), how a product exposes services to a future billing product (`ServiceKind`
-and `svc.*`), and how a hosting panel reaches a DNS panel through `DnsProvider`. Everything
-described here is implemented by system modules and libraries on the public SDK
+and `svc.*`), and how a hosting product reaches DNS through `DnsProvider`: in-process when both
+products are enabled on one installation, through a peer when DNS lives on another host.
+Everything described here is implemented by system modules and libraries on the public SDK
 ([05-modules.md](05-modules.md)); the kernel itself knows nothing about peers, services or tariffs.
 
 ## What the kernel guarantees
@@ -37,16 +38,18 @@ expires_at)`; a repeat with the same key and the same body is replayed with the 
 types, retries only requests that carry an `Idempotency-Key`. For other languages the client is
 generated from the OpenAPI document that the kernel derives from the function registry.
 
-Two products installed on the same host are related the same way as products on different hosts.
-They run under different unix users with their own sockets, ports and cookies, and share one
-Postgres server but never one database ([09-operations.md](09-operations.md),
-[04-storage.md](04-storage.md)); there is no shared account table between them, only pairing.
+Products enabled on one installation are not peers. They share the process, the database, the
+account tree, the principal set, the session and the outbox ([03-access.md](03-access.md),
+[09-operations.md](09-operations.md)) and reach each other in-process through services and
+`call.invoke`, never through pairing. Everything in this document is for installations on
+different hosts: a billing installation elsewhere, a DNS installation on its own server. A peer
+may carry one product or several; its handshake says which.
 
 The endpoints and headers that appear in this document:
 
 | Endpoint or header | Owner | Purpose |
 |---|---|---|
-| `GET /api/v1/instance` | kernel; contents extended through `InstanceInfoSource` | handshake: `instanceId`, `product`, `keel`, `protocol`, `publicKey`, `features`, `serviceKinds` |
+| `GET /api/v1/instance` | kernel; contents extended through `InstanceInfoSource` | handshake: `instanceId`, `keel`, `protocol`, `products`, `publicKey`, `features`, `serviceKinds` |
 | `POST /api/v1/call/{func}` | kernel | every call, including `peer.*`, `svc.*`, `auth.key.issue`, `keel.account.upsert` |
 | `Authorization: Bearer kpt_…` | auth | the peer token of a paired instance |
 | `X-Keel-On-Behalf-Of: origin=…; external_id=…` | peers | act as a customer principal that belongs to the calling peer |
@@ -60,19 +63,22 @@ The endpoints and headers that appear in this document:
 ## Instance identity and the handshake
 
 Every instance has an `instanceId` (kept in `keel_kv`, [04-storage.md](04-storage.md), and written
-to `/var/lib/keel/<product>/instance.id`, [09-operations.md](09-operations.md)) and an Ed25519 key
-pair. The public half is published in the handshake, which is the first thing a neighbour reads:
+to `/var/lib/keel/instance.id`, [09-operations.md](09-operations.md)) and an Ed25519 key pair. The
+public half is published in the handshake, which is the first thing a neighbour reads:
 
 ```
 GET /api/v1/instance
-{ "instanceId": "01J9B…", "product": { "id": "dns", "version": "1.2.0" }, "keel": "0.8.0", "protocol": 1,
-  "publicKey": "ed25519:MCowBQYDK2Vw…", "features": ["tasks", "events", "peers", "services"], "serviceKinds": ["dns.zones"] }
+{ "instanceId": "01J9B…", "keel": "1.2.0", "protocol": 1, "products": ["dns", "panel"],
+  "publicKey": "ed25519:MCowBQYDK2Vw…", "features": ["tasks", "events", "peers", "services"],
+  "serviceKinds": ["dns.zones"] }
 ```
 
 `protocol` is the wire version (`PROTOCOL` in `keel-types`); an instance supports versions N and N-1
-([05-modules.md](05-modules.md)). The kernel serves the route, but `features` and `serviceKinds` are
-assembled from `InstanceInfoSource` contributions: the `svc` module contributes the service kinds
-its product offers, so the kernel never learns what a service is.
+([05-modules.md](05-modules.md)). `keel` is the version of the installation and of every product on
+it; `products` lists the enabled product ids, so a neighbour that needs DNS looks for `dns` in the
+list. Editions are not published in the handshake. The kernel serves the route, but `features` and
+`serviceKinds` are assembled from `InstanceInfoSource` contributions: the `svc` module contributes
+the service kinds the enabled products offer, so the kernel never learns what a service is.
 
 ## Pairing
 
@@ -91,8 +97,8 @@ presents the code in a single request that exchanges everything both sides need.
    scopes and the secret with which deliveries to the initiator's hook will be signed.
 
 ```
-On B (dns):
-keel-dns ctl peer.pair_code scopes='svc.*,auth.key.issue,keel.principal.upsert' level=admin on_behalf=true ttl=10m
+On B (an installation with `dns` enabled):
+keel ctl peer.pair_code scopes='svc.*,auth.key.issue,keel.principal.upsert' level=admin on_behalf=true ttl=10m
 → PAIR-7K2Q-91XD
 
 On A (KeelBill):
@@ -111,12 +117,12 @@ B → A: 200
 ```
 
 After the exchange each side keeps one row per link. The row is sketched as
-`peer_product(id, instance_id, product, version, protocol, url, public_key, inbound_token_hash,
-inbound_scopes_json, outbound_token_enc, webhook_secret_enc, status, last_seen_at)`: the token
-the other side uses to call us is stored as a sha256 hash, like every other token; the token we
-use to call them and the webhook secret are stored through the SDK `Secret` type, encrypted with
-the key from `secret.key` ([04-storage.md](04-storage.md)). The one-time codes live in
-`peer_pair_code` until they are used or expire.
+`peer_product(id, instance_id, products_json, keel_version, protocol, url, public_key,
+inbound_token_hash, inbound_scopes_json, outbound_token_enc, webhook_secret_enc, status,
+last_seen_at)`: the token the other side uses to call us is stored as a sha256 hash, like every
+other token; the token we use to call them and the webhook secret are stored through the SDK
+`Secret` type, encrypted with the key from `secret.key` ([04-storage.md](04-storage.md)). The
+one-time codes live in `peer_pair_code` until they are used or expire.
 
 **Trust on first use.** The identity of a peer is its Ed25519 instance key, learned from the
 handshake during pairing and pinned in the link. Later contact must present the same key. TLS is
@@ -157,9 +163,9 @@ synchronisation.
 
 ## Acting on behalf of a customer
 
-A peer that manages customers (a billing instance) calls the panel as the customer, not as an
-administrator who then reaches into the customer's data. It sends its own `kpt_` token plus the
-header
+A peer that manages customers (a billing instance) calls the installation as the customer, not as
+an administrator who then reaches into the customer's data. It sends its own `kpt_` token plus
+the header
 
 ```
 X-Keel-On-Behalf-Of: origin=bill:01J9A; external_id=client-42
@@ -179,15 +185,15 @@ X-Keel-On-Behalf-Of: origin=bill:01J9A; external_id=client-42
 ```
 
 On-behalf is restricted by origin: it resolves only principals and accounts whose `origin` is the
-calling peer. Principals created by hand in the panel, or synchronised from a different peer, are
-out of reach. The consequence is the point of the rule: a leaked billing token opens no session
-under a manually created user, and two identity peers cannot act for each other's customers. The
-token must also have been granted `onBehalf` at pairing.
+calling peer. Principals created by hand on the installation, or synchronised from a different
+peer, are out of reach. The consequence is the point of the rule: a leaked billing token opens no
+session under a manually created user, and two identity peers cannot act for each other's
+customers. The token must also have been granted `onBehalf` at pairing.
 
 ## One-click login
 
 A customer who is already signed in to a peer (the billing account page, for example) should open
-the panel without a second password. The peer, usually on behalf of the customer, calls
+the installation without a second password. The peer, usually on behalf of the customer, calls
 `auth.key.issue` with the customer's `external_id`, a `ttl` of at most 300 seconds and the path
 to land on; it receives a one-time `kok_` key and the URL to send the browser to:
 
@@ -198,13 +204,14 @@ POST /api/v1/call/auth.key.issue
 ```
 
 The browser navigates to `/login?key=…`. That request is a `GET` and does not redeem the key: it
-returns a page which, from the panel's own origin, performs `POST auth.key.redeem`. The detour is
-required by the CSRF policy: cookie-bearing requests are checked by `Sec-Fetch-Site` and `Origin`
-([10-contracts.md](10-contracts.md)), and a navigation arriving from the peer's site would fail that
-check if the navigation itself created the session. The key is consumed at first use and is bound
-to the `redirect` given at issue time. The session that results is an ordinary `ks_` session; the
-audit entry of the first login records the peer as the actor, so opening the DNS panel from the
-hosting panel is traceable to the hosting instance.
+returns a page which, from the installation's own origin, performs `POST auth.key.redeem`. The
+detour is required by the CSRF policy: cookie-bearing requests are checked by `Sec-Fetch-Site`
+and `Origin` ([10-contracts.md](10-contracts.md)), and a navigation arriving from the peer's site
+would fail that check if the navigation itself created the session. The key is consumed at first
+use and is bound to the `redirect` given at issue time. The session that results is an ordinary
+`ks_` session; the audit entry of the first login records the peer as the actor, so opening a DNS
+installation from a hosting installation on another host is traceable to that installation.
+Between products of one installation there is nothing to redeem: they share the session.
 
 The `auth` module keeps issued keys as `auth_login_key(key_hash, principal_id, issued_by,
 redirect, expires_at, used_at)`. The same mechanism serves the first administrator: the installer
@@ -217,14 +224,16 @@ The unit of ownership is the account and the person is a principal in it
 by whoever created the record. `keel.account.upsert` and `keel.principal.upsert` are idempotent by
 that pair, which is the basis of synchronisation from a billing system: the same customer pushed
 twice yields one account, and a service opened for a customer already known yields no duplicate.
+Products of one installation share these rows directly; the pair matters only between
+installations.
 
 A peer link can carry the role `identity`. The identity peer, the billing instance, is the source
 of truth for its accounts and principals. Changes on its side are emitted as standard events,
 `keel.account.*` and `keel.principal.*` with the verbs `created`, `suspended`, `resumed`,
-`deleted` and `renamed`, and go out through the outbox. On a receiving panel the `peers` module
-applies them with its event handler, so an account suspended in billing is suspended in every
-paired panel, with each product's `AccountLifecycle` hooks running as they would for a local
-change ([03-access.md](03-access.md)).
+`deleted` and `renamed`, and go out through the outbox. On a receiving installation the `peers`
+module applies them with its event handler, so an account suspended in billing is suspended on
+every paired installation, with each enabled product's `AccountLifecycle` hooks running as they
+would for a local change ([03-access.md](03-access.md)).
 
 Single sign-on between products is the `oidc` login method of the `auth` module, the same method
 that serves corporate installations. The identity provider may later be the billing product
@@ -245,11 +254,15 @@ the pull feed:
 
 ```
 { "id": "01J9EV5K…", "seq": 8812, "type": "dns.zone.created", "at": "2026-09-12T10:00:00.000Z",
-  "instanceId": "01J9B", "product": "dns",
+  "instanceId": "01J9B", "module": "dns",
   "actor": { "kind": "peer", "id": "01J9A" },
   "subject": { "kind": "dns.zone", "id": "01J9Q3…", "accountId": "01J8A…" },
   "data": { "name": "a.org" } }
 ```
+
+`module` names the module that emitted the event; together with the prefix of `type` and
+`instanceId` it identifies the source. An installation carries several products, so an event names
+no product.
 
 There are two ways for an event to reach a peer.
 
@@ -294,9 +307,9 @@ that.
 
 ## Services for a billing product
 
-Billing is not in this project; it will be built on the same kernel later. The panel side of the
-contract is designed now, so that a service can be sold, opened, suspended and measured through
-one API regardless of which product provides it.
+Billing is not in this project; it will be built on the same kernel later. The providing side of
+the contract is designed now, so that a service can be sold, opened, suspended and measured
+through one API regardless of which product provides it.
 
 The `svc` module, a system module rather than a kernel component, collects `ServiceKind`
 contributions from product modules and registers for each kind the functions
@@ -371,54 +384,61 @@ neighbour's form possible. The sketch adds that the consumer caches the schemas 
 that compatible changes to a schema are additive; the sketch implies, without stating it, that
 anything else needs a new `schemaVersion`.
 
-## Panel to panel: `DnsProvider`
+## Hosting to DNS: `DnsProvider`
 
-The hosting panel needs DNS for the sites it creates, and it must work whether the DNS panel is a
-separate instance or compiled into the same binary. The `hosting-web` module therefore declares
-the trait it needs, `DnsProvider`, and requires an implementation; the product composition
-chooses which one:
+The hosting product needs DNS for the sites it creates, and it must work whether DNS is enabled
+on the same installation or runs on another host. The `hosting-web` module therefore declares
+the trait it needs, `DnsProvider`, and requires an implementation; the panel bundle's bridge
+`Bridge { to: "dns", local: "dns_local", remote: "dns_peer" }` chooses which one at start
+([05-modules.md](05-modules.md)):
 
 | Implementation | Where DNS lives | How it reaches it |
 |---|---|---|
-| `dns-peer` | a paired dns instance | `keel-client` calls to the neighbour with `X-Keel-On-Behalf-Of`, so the zone is owned by the same customer on both sides |
-| `dns-local` | the DNS modules (`dns-zones`, `dns-records`, `dns-templates`) in the same binary | served in-process |
+| `dns-local` | the `dns` product enabled on the same installation | `call.invoke` of `dns.zone.*` inside the hosting call's transaction, under the same principal and account, so the site and its zone commit together and a DNS validation error is a field error of the nested call |
+| `dns-peer` | a paired installation with `dns` on another host | `keel-client` calls to the neighbour with `X-Keel-On-Behalf-Of`, after commit, so the zone is owned by the same customer on both sides |
 
-The choice is made in the product's `main.rs` builder like any other module; a hosting build with
-neither implementation fails at registry freeze, where required services are checked
-([05-modules.md](05-modules.md)). Inside dns the same abstraction fronts the name server: the
-`dns-zones` module provides a `DnsProvider` that applies zones to bind
-([10-contracts.md](10-contracts.md)), and `dns.zone.edit` calls it from `after_commit`
-([02-functions.md](02-functions.md)).
+A hosting installation always has one of the two, because the bridge falls to `remote` when
+`dns` is not enabled; an installation whose `dns-peer` side has no paired neighbour answers the
+hosting functions that need DNS with `unavailable` until one is paired. `keel product disable
+dns` on an installation whose `panel` bridges to it locally is refused unless the operator passes
+`--switch-remote`, which accepts that hosting DNS operations answer `unavailable` until a peer is
+paired.
+
+Inside dns the same abstraction fronts the name server: the `dns-zones` module provides a
+`DnsProvider` that applies zones to bind ([10-contracts.md](10-contracts.md)), and `dns.zone.edit`
+calls it from `after_commit` ([02-functions.md](02-functions.md)).
 
 Calls to a neighbour, like operations on the host, run only after commit or inside a task; the
 transaction of a call never waits on the network ([02-functions.md](02-functions.md)). A failure
-reported by the neighbour maps to the error code `peer` (`502`) in the caller's envelope. Because
-errors travel as i18n keys with field paths, a validation error from the DNS side can be shown on
-the matching field of the hosting form; M6 is accepted only when a DNS error reaches the hosting
-form as a key on a field. How `dns-peer` reports a failure that happens after the hosting row has
-been committed, in the response or through a task, is not fixed by the design.
+reported by the neighbour through `dns-peer` maps to the error code `peer` (`502`) in the caller's
+envelope. Because errors travel as i18n keys with field paths, a validation error from the DNS
+side can be shown on the matching field of the hosting form; M6 is accepted only when a DNS error
+reaches the hosting form as a key on a field. How `dns-peer` reports a failure that happens after
+the hosting row has been committed, in the response or through a task, is not fixed by the design.
 
 ## Boundaries and sequence
 
-Nodes of one product are not peers. A second server managed by the same dns is a cluster
-node reached through the host agent over mTLS ([06-host.md](06-host.md)); pairing and `kpt_` tokens
-are for distinct products or distinct installations.
+Nodes of one installation are not peers, and neither are products of one installation. A second
+server managed by the same installation is a cluster node reached through the host agent over mTLS
+([06-host.md](06-host.md)); pairing and `kpt_` tokens are for installations on different hosts.
 
 The ecosystem is deliberately late in the plan: no peers before there is a product to pair
 ([../plan.md](../plan.md)). M6 delivers the `peers` module (handshake, pairing by code, mutual
 `kpt_`, scopes, on-behalf by origin, TOFU, rotation), outbox delivery with signatures and retries,
 the pull feed and inbox, `Idempotency-Key` end to end, the `svc` module, `keel-client`, the full
 conformance suite, `keel.principal.upsert` by origin and external id with the `keel.account.*`
-events, and panel reaching dns through `dns-peer`. Its acceptance: two instances paired by
-code; panel creating a zone in dns on behalf of the customer with the DNS error shown on the
-hosting form field; the DNS panel opened from hosting by a one-time key with the actor in the audit;
+events, and `panel` reaching `dns` on another host through `dns-peer`. Its acceptance: two
+installations on two hosts paired by code; `panel` on one host creating a zone in `dns` on the
+other on behalf of the customer with the DNS error shown on the hosting form field; the `dns`
+installation opened from the hosting installation by a one-time key with the actor in the audit;
 `svc.dns.zones.open` twice with one key giving one service; an event arriving signed and a repeat
-creating no duplicate; conformance green against both products; a revoked token failing calls with
-`401`.
+creating no duplicate; conformance green against an installation with `dns` alone, with `panel`
+alone and with both enabled; a revoked token failing calls with `401`. The same-host case, one
+installation with both products enabled and `dns-local`, is accepted at M5.
 
-`keel-conformance` runs against a started binary of any product and covers, among other areas,
-idempotency, webhooks and `svc.*`; it is a mandatory CI job of every product
-([05-modules.md](05-modules.md)).
+`keel-conformance` runs against the started `keel` binary with any set of products enabled and
+covers, among other areas, idempotency, webhooks and `svc.*`; it is a mandatory CI job of every
+product ([05-modules.md](05-modules.md)).
 
 ## Left open
 
@@ -432,4 +452,4 @@ These points are within the scope of this document and not decided by the design
   the dispatcher, or `/api/v1/call/{func}` with the generated OpenAPI is enough
   ([11-decisions.md](11-decisions.md)).
 - One-to-many versus many-to-many account membership, which decides how a billing customer with
-  several employees is represented in a panel ([11-decisions.md](11-decisions.md)).
+  several employees is represented on an installation ([11-decisions.md](11-decisions.md)).

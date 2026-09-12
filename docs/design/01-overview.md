@@ -13,13 +13,31 @@ knows how to execute a function, who is calling it, how to describe the function
 how several products live together.
 
 A product has a brand, used in the interface and in documents, and an id, used by everything
-machine-readable: the binary, the unix user, the systemd units, the directories, the database.
+machine-readable: the grouping of modules, the menu groups, the license features, the prefix
+`keel-<product>-` of the files it owns in shared include directories, the prefix of the
+operating-system users it creates, and the `--product` flag of `install.sh` and
+`keel product enable`. Every product on a host runs on one installation of Keel: one binary
+`keel`, one process, one database `keel`, one privileged agent, one set of directories and units,
+one update. Installing a product means enabling its bundle on that installation
+([05-modules.md](05-modules.md), [09-operations.md](09-operations.md)).
 
-| Brand     | Product id | Binary, unit, user | Directories                                   | Database     |
-|-----------|------------|--------------------|-----------------------------------------------|--------------|
-| KeelDNS   | `dns`      | `keel-dns`         | `/opt/keel/dns`, `/etc/keel/dns`, `/var/lib/keel/dns`, `/run/keel/dns` | `keel_dns`   |
-| KeelPanel | `panel`    | `keel-panel`       | `/opt/keel/panel`, ...                        | `keel_panel` |
-| KeelBill  | `bill`     | `keel-bill`        | `/opt/keel/bill`, ...                         | `keel_bill`  |
+| Brand     | Product id | Module crates                               | Files in shared include directories |
+|-----------|------------|---------------------------------------------|-------------------------------------|
+| KeelDNS   | `dns`      | `dns-zones`, `dns-records`, `dns-templates` | `keel-dns-*`                        |
+| KeelPanel | `panel`    | `hosting-*`, `dns-local`, `dns-peer`        | `keel-panel-*`                      |
+| KeelBill  | `bill`     | later                                       | none: no host access                |
+
+What belongs to the installation is the same on every host, whatever products are enabled:
+
+| Item                | Name                                                                  |
+|---------------------|-----------------------------------------------------------------------|
+| binary and CLI      | `keel`                                                                |
+| unix user and group | `keel`                                                                |
+| units               | `keel.service`, `keel-privileged.service`, `keel-update.path`         |
+| directories         | `/opt/keel`, `/etc/keel`, `/var/lib/keel`, `/run/keel`                |
+| database            | `keel`, one schema `keel`; tables keep their module prefix            |
+| session cookie      | `__Host-keel_session`                                                 |
+| listen port         | one per installation; the default is open ([11-decisions.md](11-decisions.md)) |
 
 The hosting product's id is `panel`, not `host`: `host` is the id of the module that `keel-host`
 registers (functions `host.*`, the `host` section of the configuration). Module ids are
@@ -27,12 +45,12 @@ independent of product brands: the module crates of KeelDNS are `dns-zones`, `dn
 `dns-templates`, those of KeelPanel are `hosting-*`. Files a product owns in shared include
 directories start with `keel-<product>-`.
 
-| Aspect   | Choice                                                |
-|----------|-------------------------------------------------------|
-| Backend  | Rust, axum, sea-orm, sqlmig                            |
-| Storage  | Postgres on the host, one database per product         |
-| Frontend | Angular 19, `@globalart/keel` on top of phoenix-ui     |
-| Delivery | one static binary per product                          |
+| Aspect   | Choice                                                                                             |
+|----------|----------------------------------------------------------------------------------------------------|
+| Backend  | Rust, axum, sea-orm, sqlmig                                                                        |
+| Storage  | Postgres on the host, one database `keel` per installation                                        |
+| Frontend | Angular 19, `@globalart/keel` on top of phoenix-ui                                                 |
+| Delivery | one static binary `keel` carrying every first-party product; products are enabled per installation |
 
 ## What the kernel is and what it is not
 
@@ -46,9 +64,8 @@ features.
 
 A subsystem belongs to the kernel only if both conditions hold:
 
-- without it the product does not start and does not answer on its local socket;
-- it cannot be replaced by changing the product's module composition without editing its
-  neighbours.
+- without it the installation does not start and does not answer on its local socket;
+- it cannot be replaced by changing the module composition without editing its neighbours.
 
 By this test the kernel keeps the function dispatcher, descriptors, principal and account, storage
 with migrations, the outbox, the message catalogue, the manifest and the transports. Everything
@@ -60,37 +77,62 @@ storage in [04-storage.md](04-storage.md).
 
 ### What a product is
 
-A product is a bin crate: a manifest, an explicit list of modules, a brand, editions. It builds
-into one static binary (musl, rustls, frontend embedded) with the subcommands `serve`, `ctl`,
-`privileged`, `migrate`, `backup`, `restore`, `doctor` and `support-bundle`. Module composition is
-an explicit builder in `main.rs`, so the composition is visible and checked by the compiler:
+A product is a bundle: a lib crate exporting `pub static MANIFEST: ProductManifest` — the
+product's id and brand, the ids of the modules it enables, the bridges through which it reaches
+other products, its menu groups, its level labels, its editions with their feature sets, the
+account kinds it creates and its own dictionaries ([05-modules.md](05-modules.md)) — together
+with the module crates it names. A bundle builds nothing on its own. Every first-party bundle and
+every module it names are compiled into the one binary `keel`; nothing is loaded dynamically. The
+composition is an explicit builder in `bin/keel/src/main.rs`, so it is visible and checked by the
+compiler:
 
 ```rust
-// products/dns/src/main.rs
+// bin/keel/src/main.rs
 fn main() -> keel::ExitCode {
-    keel::Product::new(&keel_dns::MANIFEST)
-        .module(&keel_system::auth::MODULE).module(&keel_system::settings::MODULE).module(&keel_system::audit::MODULE)
-        .module(&keel_system::tasks::MODULE).module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
-        .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE).module(&keel_system::backup::MODULE)
+    keel::Composition::new()
+        .module(&keel_system::auth::MODULE).module(&keel_system::settings::MODULE)
+        .module(&keel_system::audit::MODULE).module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
+        .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE)
+        .module(&keel_system::backup::MODULE)
         .module(&keel_host::MODULE)
         .module(&dns_zones::MODULE).module(&dns_records::MODULE).module(&dns_templates::MODULE)
-        .frontend(keel::embed_frontend!("../../frontend/dist/dns"))
+        .module(&hosting_web::MODULE).module(&dns_local::MODULE).module(&dns_peer::MODULE)
+        .product(&keel_dns::MANIFEST).product(&keel_panel::MANIFEST)
+        .frontend(keel::embed_frontend!("../../frontend/dist/shell"))
         .run()
 }
 ```
 
-The first products are `demo` (dogfood, no host access), KeelDNS (`dns`) and KeelPanel
-(`panel`); KeelBill (`bill`), KeelVM (`vm`) and KeelIP (`ip`) come later on the same kernel. Delivery, directories and units per product
-are in [09-operations.md](09-operations.md); the milestone order is in [../plan.md](../plan.md).
+The `demo` bundle and its `note` module join the composition behind the cargo feature `demo` of
+`bin/keel`, which is on in the workspace and off in release builds.
+
+On a host the binary is one installation with the subcommands `serve`, `ctl`, `product`,
+`privileged`, `migrate`, `backup`, `restore`, `doctor` and `support-bundle`. Which bundles are
+enabled is recorded in the installation's database: `install.sh --product panel` enables one on a
+clean host, `keel product enable panel` on an existing installation, and `keel product disable`
+stops loading the product's modules and leaves their tables in place as orphaned. A module that
+no bundle names belongs to the platform and is always loaded; a module named by a bundle is
+loaded only while that bundle is enabled, and once when two enabled bundles name it. The enabled
+set is gated by the license lease, which lists products and their editions.
+
+The first bundles are `demo` (dogfood, no host access, compiled in only in development and CI),
+KeelDNS (`dns`) and KeelPanel (`panel`); KeelBill (`bill`), KeelVM (`vm`) and KeelIP (`ip`) come
+later on the same binary. Delivery, directories and units of the installation are in
+[09-operations.md](09-operations.md); the milestone order is in [../plan.md](../plan.md).
 
 ### What a shared library is
 
-Server operations are a shared library, `keel-host`, linked only by products that manage a host.
-The kernel does not depend on it, and CI verifies that over the cargo dependency graph. A billing
-or IP-management product gets a binary without a host agent, which is what proves the kernel is
-clean. The root boundary and the agent are described in [06-host.md](06-host.md). The other
-shared libraries, `keel-host-agent`, `keel-storage` and `keel-client`, follow the same rule: the
-kernel never imports them.
+Server operations are a shared library, `keel-host`, linked by the `keel` binary because the
+first-party bundles that manage a host name its `host` module; a third-party composition built
+from the facade may omit it. The kernel does not depend on it, and CI verifies that over the cargo
+dependency graph. On an installation where no enabled bundle names `host` the module is not
+loaded, the kernel never connects to the agent and the privileged unit serves the `update` policy
+alone. What proves the kernel clean is the cargo graph (`hack/check-deps.sh`) and the CI
+composition of the kernel without `keel-host`, not the absence of the agent from a shipped binary.
+The root boundary and the agent are described in [06-host.md](06-host.md). The other shared
+libraries, `keel-host-agent`, `keel-storage` and `keel-client`, follow the same rule: the kernel
+never imports them.
 
 ### How products relate to each other
 
@@ -129,19 +171,20 @@ The kernel imports neither `keel-system` nor `keel-host`.
 | L2 SDK | `keel-sdk` (plus the hidden `keel_sdk::system` for system modules), `keel-testkit` | implementations: the SDK knows nothing about axum, the Postgres pool or cookies |
 | L3 System modules | `keel-system`: one crate, one cargo feature per module; depends only on `keel-sdk` | OS operations (`update` talks to the root unit, not to `keel-host`) |
 | L4 Libraries | `keel-host`, `keel-host-agent`, `keel-storage`, `keel-client` | knowledge of nginx or bind as such; templates are brought by the product |
-| L5 Products | `products/demo`, `products/dns`, `products/panel` | own transports, own auth, own error format, own updates; users outside `keel_principal` |
-| L6 Frontend | `@globalart/keel` (entry points), `@globalart/keel-shell-app` | the design system (external phoenix-ui); runtime loading of UI plugins |
-| L7 Tools | `keel-dev`, `keel-conformance`, `hack/` | not part of the product binary |
+| L5 Products | `products/demo`, `products/dns`, `products/panel` (bundles and their module crates); `bin/keel` (the composition) | own transports, own auth, own error format, own updates; users outside `keel_principal`; a process, a database, a session or an account tree of their own |
+| L6 Frontend | `@globalart/keel` (entry points), `frontend/apps/shell` (the one shell application) | the design system (external phoenix-ui); runtime loading of UI plugins |
+| L7 Tools | `keel-dev`, `keel-conformance`, `hack/` | not part of the `keel` binary |
 
 The facade crate `keel` sits between products and the layers below it: it re-exports the SDK and
-the kernel's product builder (`keel::Product`, `keel::function`, `keel::embed_frontend!`).
-Products depend only on the facade `keel` and on `@globalart/keel`.
+the kernel's composition builder (`keel::Composition`, `keel::function`, `keel::embed_frontend!`).
+Bundles and module crates depend only on the facade `keel` and on `@globalart/keel`; `bin/keel` is
+the only crate that depends on them.
 
 The dependency rule at module level: a module depends on `keel-sdk` and, optionally, on the `api`
 of modules listed in its own `requires`; importing anything else is an error reported by
 `keel-dev check`. `keel-system` depends only on `keel-sdk`, which cargo verifies, and CI runs the
-matrix "each system module alone, and the product without each module in turn" plus the test
-"a product built from the kernel alone starts and answers on the socket". Hooks needed only by
+matrix "each system module alone, and the composition without each module in turn" plus the test
+"a composition of the kernel alone starts and answers on the socket". Hooks needed only by
 system modules (`Authenticator`, `TransportRegistry`, `StorageSnapshot`, `OutboxSubscriber`) live
 in `keel_sdk::system`, which is `#[doc(hidden)]` and exempt from semver until 1.0. Details are in
 [05-modules.md](05-modules.md).
@@ -158,18 +201,19 @@ and products) lives in one monorepo. The reason is the working conditions: one e
 contract that is still moving, and most changes touching the Rust kernel, the host library, the
 TypeScript packages and a product at once. In a monorepo that is one commit and one CI run.
 
-Products depend only on the facade `keel` and on `@globalart/keel`, so extracting a product into
-its own repository later is cheap (a git dependency on a published tag), while merging separate
-repositories back would be expensive. The boundaries "kernel does not depend on host" and
-"modules see only the SDK" are held by the cargo dependency graph and `keel-dev check`, not by
-repository boundaries. No private cargo registry is needed before products are extracted.
-phoenix-ui and sqlmig stay in their own repositories and are consumed as dependencies.
+Bundles and module crates depend only on the facade `keel` and on `@globalart/keel`, so a
+product's crates can move to their own repository later and be pulled into the `keel` build as
+git dependencies on a published tag, while merging separate repositories back would be
+expensive. The boundaries "kernel does not depend on host" and "modules see only the SDK" are
+held by the cargo dependency graph and `keel-dev check`, not by repository boundaries. No
+private cargo registry is needed for that. phoenix-ui and sqlmig stay in their own repositories
+and are consumed as dependencies.
 
-The cargo workspace has `members = ["crates/*", "products/*"]`; the frontend is a pnpm workspace.
-The source leaves open whether product module crates sit under `crates/` (`crates/dns-zones`) or
-nested inside the product directory (`products/dns/crates/dns-zones`); in the latter case the
-workspace glob must be extended to `products/*/crates/*`. The table below lists them with the
-product they belong to, not as a fixed path.
+The cargo workspace has `members = ["crates/*", "bin/*", "products/*"]`; the frontend is a pnpm
+workspace. The source leaves open whether product module crates sit under `crates/`
+(`crates/dns-zones`) or nested inside the product directory (`products/dns/crates/dns-zones`); in
+the latter case the workspace glob must be extended to `products/*/crates/*`. The table below
+lists them with the product they belong to, not as a fixed path.
 
 | Path | Contents |
 |------|----------|
@@ -180,32 +224,35 @@ product they belong to, not as a fixed path.
 | `crates/host` | `keel-host`: `HostExecutor` client and the `host` module |
 | `crates/host-agent` | `keel-host-agent`: the agent side, run as the `privileged` subcommand |
 | `crates/storage` | `keel-storage`: local and S3 backup targets, encryption |
-| `crates/client` | `keel-client`: Rust client for a peer product |
+| `crates/client` | `keel-client`: Rust client for a peer installation |
 | `crates/testkit` | `keel-testkit` |
 | `crates/conformance` | `keel-conformance` (bin) |
 | `crates/dev` | `keel-dev` (bin) |
-| `crates/keel` | `keel`: the facade: product builder, `embed_frontend!`, re-exports |
-| `products/demo` | dogfood product without host access: manifest and the `note` module |
-| `products/dns` | product crate; `brand/`, `agent.yaml`, `i18n/`, release keys; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
-| `products/panel` | product crate; custom views; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services` |
-| `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing`), `apps/shell-app`, one app per product that has custom views, Storybook |
+| `crates/keel` | `keel`: the facade (lib): `Composition`, `embed_frontend!`, re-exports |
+| `bin/keel` | `keel-bin`: the binary `keel`; the explicit composition of every module and every bundle; the only crate that depends on product crates; cargo feature `demo` |
+| `products/demo` | dogfood bundle without host access, a lib crate: `MANIFEST` and the `note` module; compiled in only with the `demo` feature |
+| `products/dns` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`, the product's section of `agent.yaml`; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
+| `products/panel` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
+| `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing`), `apps/shell` (the one shell application), `products/<id>` (an Angular library per product with custom views), Storybook |
 | `contracts/` | `protocol.md`, `fixtures/*.json`, generated `openapi.json` committed for diffs |
 | `plugins/` | Python plugin SDK and example plugins |
-| `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` |
+| `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` with a section per product, the public release keys |
 | `hack/` | `prove-binary.sh`, `vm-test.sh`, `release.py`, `check-deps.sh` |
 | `docs/` | operator, module developer, plugin protocol, descriptor and migration documentation |
 | `.github/workflows/` | `ci.yml`, `release.yml`, `publish-npm.yml` |
 
-Crates are created lazily: about thirteen in total, five to six at M0, which needs `keel-types`,
-`keel-sdk`, `keel-kernel`, `keel-testkit` and `products/demo`. A product without custom screens
-does not keep an Angular workspace at all; it embeds the prebuilt `@globalart/keel-shell-app`.
+Crates are created lazily: about fourteen in total, seven at M0, which needs `keel-types`,
+`keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`. A
+product without custom screens keeps no frontend code at all; the one shell application renders
+its screens from descriptors.
 
 The monorepo carries one known risk: the temptation to bypass the SDK "just for a minute". The
-countermeasures are `keel-dev check` linting imports, products depending only on the facade,
-`keel-conformance` running against the built binary, and an "extraction rehearsal" (a dry run of
-extracting a product from the facade) from M4 onwards. At M7 `dns` and `panel` are
-extracted into their own repositories by published tag and build against the published
-`keel-v1.0.0`. The alternatives considered for this decision are recorded in
+countermeasures are `keel-dev check` linting imports, bundles and module crates depending only on
+the facade, `keel-conformance` running against the built binary, and a "dependency rehearsal"
+(building `bin/keel` with one product's crates pulled from a git tag instead of the workspace)
+from M4 onwards. After M7 a product's crates may live in their own repository and are pulled into
+the `keel` build as dependencies pinned by this repository against the published `keel-v1.0.0`;
+the binary is always built here. The alternatives considered for this decision are recorded in
 [11-decisions.md](11-decisions.md).
 
 ## Versioning
@@ -218,7 +265,11 @@ There are three versioning planes, each with its own rule.
 | Wire | `PROTOCOL` | reported in `GET /api/v1/instance` and in the plugin manifest; versions N and N-1 are supported |
 | Data | descriptor `"keel": 1`, `/api/v1` | a breaking change ships as `/api/v2` alongside `/api/v1`; the major version of `@globalart/keel` equals the descriptor version |
 
-Tags follow `keel-vX.Y.Z` for the kernel, SDK and npm package and `<product>-vX.Y.Z` for
-products (`dns-v1.0.0`, `panel-v1.0.0`). A product's version is independent of the platform
-version. The wire contract itself (envelope, descriptor, list contract, golden fixtures) is
-specified in [10-contracts.md](10-contracts.md).
+There is one release train. Tags follow `keel-vX.Y.Z` for the binary, the kernel, the SDK and the
+npm package; the `keel` binary has one version, and that version is the version of every product
+it carries. Product ids carry no semver of their own and there are no `<product>-vX.Y.Z` tags.
+Every first-party crate takes the workspace version, so `ModuleDef.version` and the module
+ranges a plugin manifest names ([10-contracts.md](10-contracts.md)) are expressed against the
+same number; a module crate that lives in its own repository keeps a cargo version for dependency
+pinning, which is not a product version. The wire contract itself (envelope, descriptor, list
+contract, golden fixtures) is specified in [10-contracts.md](10-contracts.md).

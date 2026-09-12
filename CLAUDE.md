@@ -31,6 +31,8 @@ the order of work. When code and design disagree, fix one of them in the same ch
 
 Platform `keel`; crates `keel-*`; npm `@globalart/keel`. Products carry a brand for people and
 an id for machines: KeelDNS is `dns`, KeelPanel is `panel`, KeelBill is `bill`; `demo` is the
-dogfood product. Per-product unix user `keel-<product>`, directories `/opt/keel/<product>`,
-`/etc/keel/<product>`, `/var/lib/keel/<product>`, `/run/keel/<product>`, database
-`keel_<product>`.
+dogfood bundle, compiled in only behind the `demo` feature. One installation per host: binary and
+CLI `keel`, unix user `keel`, `/opt/keel`, `/etc/keel`, `/var/lib/keel`, `/run/keel`, database
+and schema `keel`, cookie `__Host-keel_session`. Product ids name bundles, module groups, menu
+groups, license features, the `--product` flag and the prefixes `keel-<product>-` in shared
+include directories.

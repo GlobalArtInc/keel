@@ -1,13 +1,13 @@
 # keel
 
 The framework under a line of control panels. A product of the line — KeelDNS, KeelPanel, later
-KeelBill, KeelVM, KeelIP — is a set of modules composed on this core and shipped as one static
-binary. The core itself knows nothing about zones, sites or tariffs:
-it knows how to run a named function, who is calling it, how to describe its screen to the
-frontend, and how products discover and trust each other.
+KeelBill, KeelVM, KeelIP — is a set of modules composed on this core; every product ships in the
+one static binary `keel` and is enabled per installation. The core itself knows nothing about
+zones, sites or tariffs: it knows how to run a named function, who is calling it, how to describe
+its screen to the frontend, and how products discover and trust each other.
 
 Backend in Rust; frontend in Angular on `@globalart/phoenix-ui`; Postgres on the host, one
-database per product; one binary per product with the frontend embedded.
+database per host; one binary `keel` per host with the frontend embedded.
 
 ## Status
 
@@ -15,22 +15,24 @@ Designed, not yet built. The design is in `docs/design/`, the order of work in `
 
 | Milestone | Scope | State |
 |---|---|---|
-| M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` product | not started |
+| M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` bundle | not started |
 | M1 | Identity, access and audit: `auth`, `settings`, `audit`, conformance skeleton | |
 | M2 | Frontend runtime `@globalart/keel` and the host agent spike | |
 | M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | |
 | M4 | Operator plane, `keel-host`, KeelDNS alpha | |
 | M5 | KeelPanel, `license`, `stats`, report and dashboard renderers | |
 | M6 | Products working together: `peers`, events, services, `keel-client` | |
-| M7 | External plugins, SDK 1.0, products move to their own repositories | |
+| M7 | External plugins, SDK 1.0, product module crates may move to their own repositories | |
 | M8 | Cluster of nodes | |
 
 ## Layout
 
 ```
 crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-host, ... (from M0)
-products/    demo, dns (KeelDNS), panel (KeelPanel) — one bin crate each
-frontend/    pnpm workspace: @globalart/keel and the product apps (from M2)
+products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
+bin/         keel — the binary: the explicit composition of every module and bundle
+frontend/    pnpm workspace: @globalart/keel, the shell application and the product view
+             libraries (from M2)
 contracts/   protocol.md, golden fixtures, generated openapi.json
 deploy/      install.sh, systemd units, sample configs (from M4)
 docs/        design and plan

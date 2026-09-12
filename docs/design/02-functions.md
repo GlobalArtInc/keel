@@ -238,9 +238,10 @@ Reading the example against the descriptor parts:
   — the transaction the kernel opened; a read call has none, so `tx()` answers an error there
   and `db()` is the accessor that works in both modes — `emit` into the outbox,
   `require::<dyn Trait>()` for a service another module provides, and `after_commit` for work
-  that must not run inside the transaction. `KeelError::conflict("dns.zone.error.exists").field("name")` becomes a field
-  error keyed for translation, an entry of `fields[]` with `path: name`; the status codes are
-  listed in [10-contracts.md](10-contracts.md).
+  that must not run inside the transaction.
+  `KeelError::conflict("dns.zone.error.exists").field("name")` becomes a field error keyed for
+  translation, an entry of `fields[]` with `path: name`; the status codes are listed in
+  [10-contracts.md](10-contracts.md).
 
 Other members of `Call` used elsewhere in the design: `invoke` for a nested function call,
 `check_limit(key, current)` for account limits, and `extra` for values of fields added to the
@@ -311,8 +312,9 @@ connection from the pool without a transaction.
 | HTTP verb      | `GET` allowed for `kind: list` and `kind: get` | `POST`                                               |
 
 The license module adds one more distinction: in the read-only degradation of an expired lease,
-write functions answer `402` while reads and login keep working (see
-[05-modules.md](05-modules.md)).
+write functions answer `402` while reads and login keep working. The lease is one document per
+installation listing the enabled products and an edition for each; a product the lease no longer
+lists degrades the same way on its own, product by product (see [05-modules.md](05-modules.md)).
 
 ### Guards
 
@@ -324,9 +326,11 @@ The guard stage runs the checks a function's `access` and its registrations impl
 - **Permission.** `access.permission` is a key such as `dns.zone.manage`, with defaults per
   level supplied by the module that registers it and stored by the `auth` module through
   `PermissionSource` (see [03-access.md](03-access.md)).
-- **Feature.** `access.feature` must be enabled for the installation; the set comes from the
-  product edition and, from M5, from the license lease. A function whose feature is off is
-  absent from the menu and answers `402`.
+- **Feature.** `access.feature` must be enabled for the installation. The enabled set is the
+  union, over the enabled products, of the features of the edition the lease grants that product
+  (until M5, of the edition the bundle names as its default). A function whose feature is off is
+  absent from the menu and answers `402`. A function of a disabled product is never registered,
+  so its name is unknown to the resolve stage and answers `not_found`, not `402`.
 - **Token scope.** An API token or a peer token may be limited to a mask of functions, a level
   ceiling and on-behalf rights; a token scoped to one function receives `403` on another.
 - **Module guards.** Guards contributed by modules, such as the `auth` module's IP rules and
@@ -463,11 +467,11 @@ reason it is not written inside the transaction: an audit row inside a rolled-ba
 would vanish with it. A write call that fails at any stage after its name resolved — a guard, the
 validation, a hook — is audited with that failure as its outcome; an idempotent replay executes
 nothing and raises no event. The event reaches the `audit` module through the `AuditSink`
-service it provides; without a sink the event is dropped. The `audit` module subscribes and writes in batches from a background
-worker so that the call's response does not wait for the audit write. For read functions the
-event is off by default. Optional subject and before/after snapshots for form functions, which
-feed the object-history screen, are described with the module in
-[05-modules.md](05-modules.md).
+service it provides; without a sink the event is dropped. The `audit` module subscribes and
+writes in batches from a background worker so that the call's response does not wait for the
+audit write. For read functions the event is off by default. Optional subject and before/after
+snapshots for form functions, which feed the object-history screen, are described with the module
+in [05-modules.md](05-modules.md).
 
 ### `after_commit`, host operations and tasks
 

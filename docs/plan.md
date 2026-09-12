@@ -29,17 +29,22 @@ Scope:
   `keel.account.*` / `keel.principal.*`, the control socket with peer credentials, HTTP
   `/healthz`, `/readyz`, `/api/v1/boot`, `/api/v1/functions`, `/api/v1/call`, `/api/v1/i18n`.
 - `keel-testkit`.
-- `products/demo` with the `note` module.
-- Five to six crates. No TLS, no metrics, no macros.
+- `bin/keel` with the composition; `products/demo` as a lib crate with the `note` module and the
+  `demo` bundle behind the cargo feature `demo`; `keel product list|enable|disable`.
+- Seven crates. No TLS, no metrics, no macros.
 
 Done when:
 
-- `demo ctl note.edit title=x` and `POST /api/v1/call/note.list` return the envelope;
+- `keel ctl note.edit title=x` and `POST /api/v1/call/note.list` return the envelope with the
+  `demo` bundle enabled;
 - descriptors match the committed snapshot;
 - the tests "a user neither sees nor edits another account's notes" and "a reseller sees its
   subtree" pass;
 - a nested `invoke` reuses the transaction of the call;
-- the binary starts without `config.yaml` against the default database;
+- the binary starts without `config.yaml` against the default database `keel`;
+- `keel serve` with no bundle enabled starts and answers `keel.account.list` on the socket;
+- `keel product disable demo` leaves the `note_` table in place, flips `note` to `orphaned` and
+  makes `note.list` answer `not_found`;
 - `fmt`, `clippy -D warnings` and `test` are green.
 
 ### M1 — Identity, access and audit
@@ -69,17 +74,22 @@ Done when:
 Scope:
 
 - `@globalart/keel` entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action,
-  wizard, tabs), `/shell`, `/testing`; embedding through rust-embed; Storybook with fixtures;
-  phoenix-ui batch 1; the OwnLate to `PHX_LABELS` bridge; publication to Nexus.
-- In parallel, a thin agent spike in a separate `products/spike`: unix socket with
+  wizard, tabs), `/shell`, `/testing`; the one shell application `frontend/apps/shell` with
+  `/boot.products`, the brand rule and product headings; `/boot` fixtures with no, one and two
+  products; embedding through rust-embed in `bin/keel`; Storybook with fixtures; phoenix-ui
+  batch 1; the OwnLate to `PHX_LABELS` bridge; publication of `@globalart/keel` to Nexus.
+- In parallel, a thin agent spike in a separate bin crate `bin/spike`: unix socket with
   `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx.
 
 Done when:
 
-- `demo` is driven entirely from the browser without product-specific TypeScript: a list with
-  search, sorting, filters and bulk delete with confirmation; a form with pages, `show_if`,
-  `recompute` and a field-level error; a wizard;
+- the `demo` bundle, enabled on the `keel` binary, is driven entirely from the browser without
+  product-specific TypeScript: a list with search, sorting, filters and bulk delete with
+  confirmation; a form with pages, `show_if`, `recompute` and a field-level error; a wizard;
 - one screen is replaced by a custom view through `provideKeelViews`;
+- Storybook renders the shell from `/boot` fixtures with one product and with two, showing the
+  product's brand in the first case and the platform brand with a heading per product in the
+  second;
 - `en` and `ru` switch;
 - on a VM the spike, running as an unprivileged uid, creates an OS user and a vhost through the
   agent, and an invalid template is rolled back;
@@ -109,21 +119,26 @@ Done when:
 
 Scope:
 
-- The operator plane in full: `install.sh`, directories, systemd units with hardening, a uid per
-  product, `privileged` with the update policy (check, apply, rollback, a pre-update dump of the
-  database, anti-rollback), `backup` and `restore` with `--with-secret-key`, `doctor`,
-  `support-bundle`.
+- The operator plane in full: `install.sh --product <id>` with its clean-host and container
+  checks, the directories and units of the single installation with hardening, the unix user
+  `keel` and the installation's uid range, `privileged` with the update policy (check, apply,
+  rollback, a pre-update dump of the database, anti-rollback), `backup` and `restore` with
+  `--with-secret-key`, `doctor`, `support-bundle`; `keel product enable|disable` on a running
+  installation through `keel.product.*` and a restart, with the lease check stubbed until M5.
 - `keel-host` in full: users, files, services, templates, packages, `AgentOp`, the `host`
   module.
 - The feature guard without a lease.
-- The product `dns`: `dns-zones`, `dns-records`, `dns-templates` on bind, account limits, an
+- The bundle `dns`: `dns-zones`, `dns-records`, `dns-templates` on bind, account limits, an
   OwnLate project, the release build and channel.
-- The first extraction rehearsal of a product from the facade.
+- The first dependency rehearsal: `bin/keel` built with the `dns` module crates pulled from a
+  git tag instead of the workspace.
 
 Done when:
 
-- on a clean Debian or Ubuntu, `curl | sh` installs `dns`, and no process other than
-  `privileged` runs as root;
+- on a clean Debian or Ubuntu, `curl | sh -s -- --product dns` installs Keel with `dns` enabled,
+  and no process other than `privileged` runs as root;
+- `keel product disable dns` leaves the `dns_*` tables orphaned and `enable` brings them back
+  without re-running applied migrations;
 - a zone is created from the UI, from the CLI and with an API token, and bind serves it;
 - a broken template is rolled back without downtime;
 - the update 0.1 to 0.2 runs from a button and rolls back without losing the database;
@@ -134,22 +149,35 @@ Done when:
 
 Scope:
 
-- `license`: Ed25519 lease, editions, trial, grace and read-only degradation, monotonic time.
+- `license`: Ed25519 lease listing products and editions, trial, grace and read-only
+  degradation, monotonic time; a product the lease does not list cannot be enabled.
 - `stats`.
 - Renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`.
 - phoenix-ui batch 3: code editor, log view, key-value field, transfer list.
-- The product `panel`: `hosting-users`, `hosting-web` (nginx, php-fpm), `hosting-mail`,
-  `hosting-db`, `hosting-ftp`, `hosting-ssl` (ACME), `hosting-backup`, `hosting-services`; the
-  file manager and the configuration editor as custom views.
+- The bundle `panel`: `hosting-users`, `hosting-web` (nginx, php-fpm), `hosting-mail`,
+  `hosting-db`, `hosting-ftp`, `hosting-ssl` (ACME), `hosting-backup`, `hosting-services`;
+  `dns-local` and `dns-peer` as the two sides of its bridge to `dns`; the file manager and the
+  configuration editor as custom views in `frontend/products/panel`;
+  `install.sh --product panel`.
+
+The size cap of the release binary is set at the start of this milestone.
 
 Done when:
 
+- `install.sh --product panel` on a clean host installs Keel with `panel` alone;
+  `keel product enable panel` on a host running `dns` yields one login that sees both products,
+  with the platform brand and a group per product in the menu;
 - a site with a Let's Encrypt certificate is set up by the wizard and is served;
+- a site created in `panel` gets its zone through `dns-local` in the same installation, under
+  the same account and in the same transaction, and a DNS error reaches the hosting form as a
+  key on a field;
 - there are exactly two custom views;
-- with the license server unreachable the panel works until `expires`, then in grace, then
-  read-only, verified on a shifted clock;
-- a function with `feature: dns.dnssec` is hidden from the `lite` menu and answers `402`;
-- the share of custom views is at most 10 % of functions;
+- with the license server unreachable the installation works until `expires`, then in grace,
+  then read-only, verified on a shifted clock;
+- a lease that lists `dns` alone refuses `keel product enable panel` with `license`;
+- a function with `feature: dns.dnssec` is hidden from the menu of a lease that licenses `dns`
+  as `lite` and answers `402`;
+- the share of custom views is at most 10 % of the functions of `panel`;
 - `support-bundle` contains no secrets.
 
 ### M6 — Ecosystem: peers, events, services
@@ -163,20 +191,22 @@ Scope:
 - `Idempotency-Key` end to end.
 - The `svc` module, `keel-client`, the full `keel-conformance`.
 - `keel.principal.upsert` by `origin` / `external_id` and the `keel.account.*` events.
-- `panel` to `dns` through `dns-peer`.
+- `panel` on one host to `dns` on another host through `dns-peer`.
 
 Done when:
 
-- two instances are paired by code;
-- creating a site in `panel` creates a zone in `dns` on behalf of the client, and a DNS
-  error arrives in the hosting form as a key on a field;
-- the DNS panel opens from the hosting panel by a one-time key, with `actor` in the audit trail;
+- two installations on two hosts are paired by code;
+- creating a site in `panel` on one host creates a zone in `dns` on the other on behalf of the
+  client, and a DNS error arrives in the hosting form as a key on a field;
+- the `dns` installation opens from the `panel` installation by a one-time key, with `actor` in
+  the audit trail;
 - `svc.dns.zones.open` called twice with the same key produces one service;
 - an event arrives signed, and a repeat creates no duplicate;
-- conformance is green against both products;
+- conformance is green against an installation with `dns` alone, with `panel` alone and with
+  both enabled;
 - revoking a token breaks its calls with `401`.
 
-### M7 — Plugins, SDK 1.0, extraction of products
+### M7 — Plugins, SDK 1.0, products in their own repositories
 
 Scope:
 
@@ -184,7 +214,9 @@ Scope:
   the kv store, a separate uid, timeouts.
 - A Python SDK and a sample plugin.
 - Stabilisation of `keel-sdk` 1.0 and descriptor v1: CHANGELOG, semver policy.
-- Extraction of `dns` and `panel` into their own repositories by tag.
+- Product module crates may move to their own repositories and are pulled into the `keel` build
+  as dependencies pinned here; the binary is still built in the keel repository; whether their
+  frontend libraries move with them is decided then.
 - A load test of lists at 100k rows.
 - Security review.
 - Operator and developer documentation.
@@ -195,12 +227,12 @@ Done when:
   shows its own list in the menu, all without a rebuild;
 - a plugin hook on `auth.*` is rejected at start;
 - a crash of a daemon plugin does not take the kernel down;
-- the tags `keel-v1.0.0`, `dns-v1.0.0` and `panel-v1.0.0` exist and the products build
-  against the published tag;
+- the tag `keel-v1.0.0` exists, `bin/keel` builds with a product module crate pulled from its
+  own repository by tag, and the release binary carries `dns` and `panel` at that version;
 - a list of 100k zones answers in under 300 ms;
 - the security checklist is closed;
-- the first external operator installs `panel` from the documentation without the author's
-  help;
+- the first external operator installs Keel with `panel` enabled from the documentation without
+  the author's help;
 - the vocabulary audit finds no borrowed product names or identifiers anywhere in the
   repository.
 
@@ -249,7 +281,8 @@ workspace declares `members = ["crates/*", "products/*"]`; the toolchain is pinn
 `cargo test --workspace` against a Postgres service of version 15 or newer, whose connection
 string reaches the tests through the environment. `hack/check-deps.sh` asserts from the cargo
 graph that `keel-kernel` depends on neither `keel-system` nor `keel-host`. `contracts/` gets its
-directory skeleton for the fixtures of step 2.
+directory skeleton for the fixtures of step 2. Step 12 extends the workspace members with
+`bin/*`.
 
 **Touches.** `Cargo.toml`, `crates/keel/`, `.github/workflows/ci.yml`, `hack/check-deps.sh`,
 `contracts/`.
@@ -276,13 +309,15 @@ the `ui` block (columns, actions, pages, `show_if` / `required_if` / `readonly_i
 `invalidate_on`, `multi`, `empty`, `search`); the `Level` ladder
 `guest < service < user < reseller < admin < owner` as an ordered enum; `Principal` with its
 optional `actor`, `Account`; the envelope and the error with `fields[]`; the error code list
-with its HTTP status mapping; `ListQuery`, `Sort`, `Filter`, `Page<T>`; the event shape; the
-condition AST (`eq`, `ne`, `in`, `gt`, `lt`, `truthy`, `empty`, `matches`, `and`, `or`, `not`;
-variables are fields, `$mode`, `$principal.level`, `$screen.params.*`), its parser from the
-mini-language and its interpreter; the `check` preset evaluator; the ULID identifier type. The
-types derive `JsonSchema` so that M2 can generate TypeScript from them. Golden fixtures land in
-`contracts/fixtures/`: `expr-cases.json`, check cases, the `dns.zone.list` descriptor from the
-contracts document, envelope examples for `200`, `422` and `403`, a `ListQuery` and a `Page`.
+with its HTTP status mapping; `ListQuery`, `Sort`, `Filter`, `Page<T>`; the event shape
+(`instanceId`, `module`, no product); the condition AST (`eq`, `ne`, `in`, `gt`, `lt`, `truthy`,
+`empty`, `matches`, `and`, `or`, `not`; variables are fields, `$mode`, `$principal.level`,
+`$screen.params.*`), its parser from the mini-language and its interpreter; the `check` preset
+evaluator; the ULID identifier type. The types derive `JsonSchema` so that M2 can generate
+TypeScript from them. Golden fixtures land in `contracts/fixtures/`: `expr-cases.json`, check
+cases, the `dns.zone.list` descriptor from the contracts document, envelope examples for `200`,
+`422` and `403`, a `ListQuery` and a `Page`. The implemented step carries `product` in the event
+shape and in `contracts/fixtures/event.json`; step 10 renames it to `module`.
 
 **Touches.** `crates/types/`, `contracts/fixtures/`.
 
@@ -346,17 +381,22 @@ plugin-facing types.
 **Goal.** Give `keel-kernel` the layer everything else stands on, per
 [design/04-storage.md](design/04-storage.md) and [design/09-operations.md](design/09-operations.md).
 Configuration: `config.yaml` may be absent; the keys are `listen`, `socket`, `data_dir`,
-`database`, `tls`, `trusted_proxies` and `log`; defaults for `listen`, `socket` and `data_dir`
-come from the product manifest, and `database` defaults to
-`postgres:///keel_<product>?host=/run/postgresql` for peer authentication under the product's
-uid, with `${<PRODUCT>_DB_PASS}` substituted for a TCP URL. The connection goes through sea-orm
-1.1 (sqlx-postgres, runtime-tokio-rustls): a pool of 20, connect and acquire timeouts of 10 s,
-`search_path` set to the product's schema. The kernel's migrations are an embedded sqlmig 0.2
-catalogue with the ledger `keel_migration`; they create the eight kernel tables and insert the
-root account (`kind = system`, `path = /`), and they run under a session-level
-`pg_advisory_lock`. On first start the kernel creates `data_dir`, generates `secret.key` (mode
-0600) and `instance.id`, and writes the instance id and the wrapped key into `keel_kv`. Logging
-is initialised from the `log` key (tracing, `json` or `text`).
+`database`, `tls`, `trusted_proxies` and `log`; the defaults are kernel constants: `socket`
+`/run/keel/core.sock`, `data_dir` `/var/lib/keel`, `database`
+`postgres:///keel?host=/run/postgresql` for peer authentication under the uid `keel`, with
+`${KEEL_DB_PASS}` substituted for a TCP URL, and the configuration file at
+`/etc/keel/config.yaml`; `listen` keeps a provisional value while the port is open. The
+connection goes through sea-orm 1.1 (sqlx-postgres, runtime-tokio-rustls): a pool of 20, connect
+and acquire timeouts of 10 s, `search_path` set to the installation's schema `keel`. The
+kernel's migrations are an embedded sqlmig 0.2 catalogue with the ledger `keel_migration`; they
+create the eight kernel tables and insert the root account (`kind = system`, `path = /`), and
+they run under a session-level `pg_advisory_lock`. On first start the kernel creates `data_dir`,
+generates `secret.key` (mode 0600) and `instance.id`, and writes the instance id and the wrapped
+key into `keel_kv`. Logging is initialised from the `log` key (tracing, `json` or `text`). The
+implemented step carries a product id in `ManifestDefaults`, builds
+`/run/keel/<product>/core.sock`, `/var/lib/keel/<product>`, `keel_<product>`,
+`${<PRODUCT>_DB_PASS}` and `/etc/keel/<product>/config.yaml`, and names the schema after the
+product; step 10 removes the product id and reworks these to the constants above.
 
 **Touches.** `crates/kernel/` (config, storage, migrations), `crates/kernel/migrations/`.
 
@@ -368,7 +408,7 @@ is initialised from the `log` key (tracing, `json` or `text`).
 - On a fresh database the migration creates the eight tables and the ledger; a second run
   changes nothing, and the ledger row count is identical.
 - The root account row exists with `kind = system` and `path = /` and is the only account.
-- A missing `config.yaml` yields the defaults; `${DEMO_DB_PASS}` is substituted in a TCP URL; an
+- A missing `config.yaml` yields the defaults; `${KEEL_DB_PASS}` is substituted in a TCP URL; an
   unusable `database` value fails start with a message naming the key.
 - Two processes migrating the same database at once serialise on the advisory lock and leave one
   ledger.
@@ -390,7 +430,8 @@ compiles conditions and checks the field names they use, validates descriptors a
 that every i18n key exists at least for `en`. `start(ctx)` runs in graph order with
 `ctx.spawn` for background work; `stop` runs in reverse. The typed contribution bag
 `r.contribute(T)` / `ctx.contributions::<T>()`, `provide::<dyn Trait>` / `require`, and the
-reserved point `r.invoker` are part of this step.
+reserved point `r.invoker` are part of this step. Step 10 narrows the composition to the enabled
+set; the acceptance here holds for the composition as a whole.
 
 **Touches.** `crates/kernel/` (loader, registry, freeze, contributions, services).
 
@@ -494,7 +535,7 @@ places them); `keel.account.delete` as an action that runs as a task walking
 [design/10-contracts.md](design/10-contracts.md): `GET /healthz`; `GET /readyz` (database
 reachable, migrations applied, not draining); `GET /api/v1/boot`; `GET /api/v1/functions` and
 `GET /api/v1/functions/{name}`, projected for the principal, with
-`ETag = hash(build, modules, edition, lang, principal_id, acl_gen)` and `private, no-store`;
+`ETag = hash(build, modules, products, lang, principal_id, acl_gen)` and `private, no-store`;
 `POST /api/v1/call/{func}`, with `GET` allowed for `kind: list | get`; `GET /api/v1/i18n` for
 the catalogue in the principal's language. Every response carries `X-Keel-Request-Id`, calls
 carry `X-Keel-Meta-Version`, replays carry `X-Keel-Idempotent-Replay`. Error codes map to HTTP
@@ -524,21 +565,25 @@ metrics; the embedded frontend (M2); cookies, CSRF enforcement and rate limiting
 
 ### 9. Control socket and ctl
 
-**Goal.** Serve the same call protocol on the unix socket named by `socket` (the manifest
-default is `/run/keel/<product>/core.sock`). The kernel reads `SO_PEERCRED`; the design fixes
-only that the local socket is the owner level and that `ctl` is identified by peer credentials.
-As a plan-level arrangement, M0 accepts only the kernel's own uid, which becomes the owner
-principal of the root account; whether root or other uids are admitted is not fixed by the
-design and stays open. The `ctl` subcommand is a client of that socket:
-`<product> ctl <func> key=value … --out json|table`, returning the same envelope as HTTP;
-`--out table` renders `ui.columns` for `kind: list`, translating keys through the catalogue of
-step 10. The `serve` subcommand starts the kernel; `migrate` runs the migrations of step 5 and
-exits. Running `migrate` only while the service is stopped is a plan-level arrangement for M0;
-the migrations serialise on the advisory lock of step 4 either way. This step also adds the test
-"a product of one bare kernel starts and answers on the socket".
+**Goal.** Serve the same call protocol on the unix socket named by `socket` (default
+`/run/keel/core.sock`). The kernel reads `SO_PEERCRED`; the design fixes only that the local
+socket is the owner level and that `ctl` is identified by peer credentials. As a plan-level
+arrangement, M0 accepts only the kernel's own uid, which becomes the owner principal of the root
+account; whether root or other uids are admitted is not fixed by the design and stays open. The
+`ctl` subcommand is a client of that socket: `keel ctl <func> key=value … --out json|table`,
+returning the same envelope as HTTP; `--out table` renders `ui.columns` for `kind: list`,
+translating keys through the catalogue of step 10. The `serve` subcommand starts the kernel;
+`migrate` runs the migrations of step 5 and exits; `product list|enable|disable` reads and
+writes `keel_kv.products` under the `keelinst` lock directly against the database while the
+service is stopped, the same arrangement as `migrate` (the running-installation path through
+`keel.product.*` and a restart arrives in M4). Running `migrate` only while the service is
+stopped is a plan-level arrangement for M0; the migrations serialise on the advisory lock of
+step 4 either way. This step also adds the test that a composition of the bare kernel starts and
+answers on the socket, which is the state of a fresh installation before its first
+`keel product enable`.
 
 **Touches.** `crates/kernel/` (socket transport, peer credentials, subcommands `serve`, `ctl`,
-`migrate`).
+`migrate`, `product`).
 
 **Out of scope.** `--as <login>`, which is delegation and belongs to `auth.su` in M1; the full
 CLI parameter grammar (repeated keys, `a.b=v`, `@file.json` versus JSON only), an open question
@@ -553,47 +598,82 @@ exit criteria use and leaves the rest open; the subcommands `privileged`, `backu
 - A connection from a uid other than the kernel's is refused (unit test on the credential check).
 - For the same call the envelope over the socket and over HTTP differ only in `meta`.
 - `--out table` for `keel.account.list` renders the columns declared in `ui.columns`.
-- A product composed of the bare kernel with no modules starts and answers `keel.account.list`
+- A composition of the bare kernel with no bundle enabled starts and answers `keel.account.list`
   on the socket.
+- `keel product enable x` for an id the composition does not carry fails naming the id;
+  `keel product list` prints the enabled set.
 
-### 10. i18n catalogue, manifest, menu and /boot
+### 10. i18n catalogue, product bundles, menu and /boot
 
-**Goal.** The `ProductManifest` type in `keel-sdk`. The design does not fix a field list; it
-mentions the product id, name, version, `api`, the brand, the level labels and disabled levels,
-the editions, `license` and the menu groups, and it says the defaults for `listen`, `socket` and
-`data_dir` come from the manifest. Any further field (languages, update channel, host settings,
-account kinds) is proposed at M0 and not fixed by the design. The default listen ports stay open, per
-[design/11-decisions.md](design/11-decisions.md); M0 picks provisional values. At M0 the kernel
-consumes id, name, version, `api`, `listen`, `socket`, `data_dir`, brand, levels, menu groups
-and languages. The i18n
-catalogue merges the `r.i18n(lang, json)` dictionaries of all modules, applies the key
-convention of [design/08-frontend.md](design/08-frontend.md) (`<module>.<entity>.<field>`,
-`.hint`, `.placeholder`, `.<enum>`, `.action.<id>`, `.page.<id>`, `.column.<key>`, shared
-`keel.*` with inheritance) and the single placeholder format `{name}`; freeze fails on a key
-missing for `en`. Menu nodes registered with `r.menu` are placed under the manifest's groups and
-projected by level and permission. `GET /api/v1/boot` returns `product`, `brand`, `principal`,
-`features`, `menu`, `views`, `meta` and the fields fed by modules absent from the composition
-(`license`, `dashboard`, `problems`) as null or empty. With `license: None` the license
-mechanism is off; the feature guard arrives in M4 and is not exercised at M0.
+**Goal.** The `ProductManifest` type in `keel-sdk`: the bundle of a product, with `id`, `brand`
+(name key, logo, `hue`, `chroma`), `modules` (module ids), `bridges` (`to`, `local`, `remote`),
+`menu` (groups with `id`, `label`, `icon`, `order`), `levels` (labels and disabled levels),
+`editions` (id, feature set, the default edition), `account_kinds` and `i18n`, as
+[design/05-modules.md](design/05-modules.md) lists them; any further field (languages, update
+channel) is proposed at M0 and not fixed by the design. There is no `version`, `listen`, `socket`
+or `data_dir` in the bundle: the version is the binary's and the defaults are kernel constants.
+The default listen port stays open, per [design/11-decisions.md](design/11-decisions.md); M0
+keeps a provisional value. This step reworks the implemented steps 2, 4 and 5: `ManifestDefaults`
+loses its product id and the paths, database, password variable, configuration path and schema
+become the constants of step 4; the event shape's `product` becomes `module` with its fixture;
+the loader reads `keel_kv.products` after the kernel migrations and before validation (no row,
+no bundle enabled), fixes the loaded set as the platform modules (those no bundle names) plus the
+modules of the enabled bundles plus one side of every bridge of an enabled bundle, attributes a
+module named by two enabled bundles to the first in composition order, and runs validation,
+migrations, `init`, freeze and `start` over that set only. The i18n catalogue merges the
+`r.i18n(lang, json)` dictionaries of the loaded modules and the dictionaries of the enabled
+bundles, applies the key convention of [design/08-frontend.md](design/08-frontend.md)
+(`<module>.<entity>.<field>`, `.hint`, `.placeholder`, `.<enum>`, `.action.<id>`, `.page.<id>`,
+`.column.<key>`, `menu.<group>`, `product.<id>.*`, shared `keel.*` with inheritance) and the
+single placeholder format `{name}`; freeze fails on a key missing for `en`. Menu nodes registered
+with `r.menu` are placed under the groups of the enabled bundles and the platform group `system`
+and projected by level and permission; a node whose group no enabled bundle declares and a group
+id declared twice fail freeze. `GET /api/v1/boot` returns `keel`, `products`, `brand` (the single
+enabled product's brand, otherwise the platform brand), `principal`, `features`, `menu` with
+`product` on every group, `views`, `meta`, and the fields fed by modules absent from the
+composition (`license`, `dashboard`, `problems`) as null or empty. The `keel` module registers
+`keel.product.list`, `keel.product.enable` and `keel.product.disable` (`admin`, `.unowned()`);
+at M0 they only read and write `keel_kv.products`, and the `product` subcommand of step 9 keeps
+writing the database directly with the service stopped. With `license: None` the license
+mechanism is off and every compiled-in bundle may be enabled.
 
-**Touches.** `crates/sdk/` (`ProductManifest`), `crates/kernel/` (i18n, menu, boot,
-meta-version).
+**Touches.** `crates/types/` (event shape, fixture), `crates/sdk/` (`ProductManifest`, `Bridge`,
+`MenuGroup`, `Edition`, `Levels`), `crates/kernel/` (config constants, schema name, enabled set in
+the loader, i18n, menu, boot, meta-version, `keel.product.*`), `contracts/fixtures/`.
 
 **Out of scope.** `ManifestPatch` and white-label by hostname (`settings`, M1); dashboard
 widgets, problems and license state (M3, M5); custom views in `views` (M2); OwnLate export at
-build time and `keel-dev i18n missing` in CI (M2); the `PhxIconName` check (M2).
+build time and `keel-dev i18n missing` in CI (M2); the `PhxIconName` check (M2); the lease check
+in `keel.product.enable` (M5); the restart after enable or disable and `--switch-remote` (M4).
 
 **Acceptance.**
 
-- `/api/v1/boot` over the socket as owner returns the product block from the manifest, the brand,
-  the owner principal with `account` set to the root account, the menu with the `keel` module's
-  own node and a `meta` value; the same request as a guest returns no menu entry above the guest
-  level. The demo's `note` node is checked in step 12.
+- `/api/v1/boot` over the socket as owner with the `demo` bundle enabled returns `keel`,
+  `products` with `demo`, the demo brand as `brand`, the owner principal with `account` set to
+  the root account, the menu with the platform group and the demo group carrying
+  `product: "demo"`, and a `meta` value; with no bundle enabled `products` is empty, `brand` is
+  the platform brand and the menu has the platform group only; as a guest no entry above the
+  guest level is returned.
+- With `demo` disabled, `note.*` is absent from `/api/v1/functions`, no `note_` table and no
+  `keel_migration_note` ledger exist and `keel_module` has no `note` row; after
+  `keel product enable demo` and a start they exist; after `keel product disable demo` and a
+  start the row is `orphaned` and the tables stay; enabling again returns it to `active` without
+  re-running applied migrations.
+- A bundle naming a module the composition does not list fails start naming both; a module
+  whose `requires` names a module outside the loaded set fails start naming the module and the
+  bundle; a menu node whose group no enabled bundle declares fails freeze; a group id declared by
+  two enabled bundles fails freeze.
+- With the testkit's two fixture bundles: when the bridged product is enabled the `local`
+  module is loaded and the `remote` one is not; when it is disabled, the reverse; a module named
+  by both bundles has one `keel_module` row.
+- A missing `config.yaml` yields `/run/keel/core.sock`, `/var/lib/keel` and
+  `postgres:///keel?host=/run/postgresql`; the schema is `keel`; `${KEEL_DB_PASS}` is the only
+  substitution.
 - A function registered without an `en` title key fails start with the key named.
-- `/api/v1/i18n` returns the merged catalogue for the requested language. Whether a key missing
-  in `ru` falls back to `en` or is reported as missing is a plan-level expectation for M0 (fall
-  back), not fixed by the design, which only requires every key to exist for `en`.
-- `meta` changes when the composition changes and when the principal's `acl_gen` changes.
+- `/api/v1/i18n` returns the merged catalogue of the loaded modules and enabled bundles for the
+  requested language and contains no key of a disabled bundle; a key missing in `ru` falls back
+  to `en` as a plan-level expectation.
+- `meta` changes when the enabled set changes and when the principal's `acl_gen` changes.
 
 ### 11. keel-testkit
 
@@ -605,7 +685,9 @@ a fixture account tree (root, a reseller with a subtree, a user); a fixed clock;
 snapshots per level; the two standard tests as reusable helpers, "a reseller sees only its
 subtree" and "a user cannot edit a foreign row by id". For HTTP tests the harness registers a
 test `Authenticator` that maps a request header to a fixture principal; this is a test-only
-arrangement, not part of the design's authentication model.
+arrangement, not part of the design's authentication model. `.product(&MANIFEST)` boots a bundle
+with the modules it names; the harness ships two fixture bundles joined by a bridge, for the
+loader tests of step 10.
 
 **Touches.** `crates/testkit/`.
 
@@ -620,29 +702,40 @@ arrangement, not part of the design's authentication model.
 - A changed descriptor makes the snapshot test fail with a diff.
 - The two standard helpers pass against the `keel` module's own functions before the demo exists.
 
-### 12. products/demo with the note module
+### 12. The `keel` binary and the demo bundle
 
-**Goal.** The first product. The facade crate `keel` gains `Product::new(&MANIFEST)`, `.module()`,
-`.run()` returning `keel::ExitCode`, and re-exports of `keel-sdk` and `keel-types`.
-`products/demo` carries `MANIFEST` and a `main.rs` that composes the kernel with the `note`
-module. The module `note` is a dogfood module without host access: one table with the `note_`
-prefix and an account column, the functions `note.list` (`list`, read), `note.get` (`get`,
-read), `note.edit` (`form`, write, `.owned`) and `note.delete` (`action`, write, `.owned`), the
-permissions `note.read` and `note.manage`, a menu node, dictionaries for `en` and `ru`, and one
-`before` and one `within` hook so that both hook kinds are exercised by a real module.
-`note.edit` invokes `keel.account.get` through `call.invoke` to exercise nested invocation.
+**Goal.** The facade crate `keel` gains `Composition::new()`, `.module()`, `.product()`,
+`.run()` returning `keel::ExitCode`, and re-exports of `keel-sdk` and `keel-types`; it stays a
+library, so `cargo-semver-checks` keeps running on it and no product crate enters its dependency
+graph. The binary lives in `bin/keel` (package `keel-bin`, binary `keel`), a workspace member
+under `bin/*`; its `main.rs` is the explicit composition of the kernel, every system module that
+exists at this milestone, every bundle and every product module of the workspace. The `demo`
+bundle and its `note` module are composed behind the cargo feature `demo` of `bin/keel`, on by
+default in the workspace and off in `hack/release.py`. `products/demo` becomes a lib crate
+exporting `MANIFEST` and the `note` module: a dogfood module without host access, one table with
+the `note_` prefix and an account column, the functions `note.list` (`list`, read), `note.get`
+(`get`, read), `note.edit` (`form`, write, `.owned`) and `note.delete` (`action`, write,
+`.owned`), the permissions `note.read` and `note.manage`, a menu node under the bundle's group,
+dictionaries for `en` and `ru`, and one `before` and one `within` hook so that both hook kinds
+are exercised by a real module. `note.edit` invokes `keel.account.get` through `call.invoke` to
+exercise nested invocation. No lease ever lists `demo`; it is enabled only by
+`keel product enable demo` in development and CI.
 
-**Touches.** `crates/keel/`, `products/demo/`.
+**Touches.** `Cargo.toml` (members), `crates/keel/`, `bin/keel/`, `products/demo/`,
+`hack/check-deps.sh`.
 
-**Out of scope.** `embed_frontend!` and any frontend (M2); `note.export` (M3); a `products/spike`
-(M2); `dns` and `panel`.
+**Out of scope.** `embed_frontend!` and any frontend (M2); `note.export` (M3); `bin/spike`
+(M2); the `dns` and `panel` bundles.
 
 **Acceptance.**
 
-- `products/demo` depends only on the facade `keel`; `hack/check-deps.sh` still passes.
-- `demo serve` starts without `config.yaml` against the default database and answers on the
-  socket and on HTTP.
-- `demo ctl note.edit title=x` and `POST /api/v1/call/note.list` return the envelope.
+- `products/demo` depends only on the facade `keel`; `bin/keel` is the only crate that depends
+  on product crates; `hack/check-deps.sh` asserts both.
+- `keel product enable demo` against a fresh database, then `keel serve` without `config.yaml`,
+  starts against the default database and answers on the socket and on HTTP.
+- `keel ctl note.edit title=x` and `POST /api/v1/call/note.list` return the envelope.
+- With `demo` disabled `note.*` are unknown and no `note_` table is created; a build with
+  `--no-default-features` carries no `note` module.
 - The `note.*` descriptors match the committed snapshot.
 - The standard tests pass against `note`: a user neither sees nor edits another account's notes;
   a reseller sees the notes of its subtree.
@@ -651,12 +744,15 @@ permissions `note.read` and `note.manage`, a menu node, dictionaries for `en` an
 
 ### 13. hack/prove-binary.sh
 
-**Goal.** A script CI runs against the built `demo` binary: start `serve` with a temporary
-`data_dir` and a fresh database, wait for `/readyz`, call `ctl keel.account.create`, `/healthz`,
-`/api/v1/boot`, `ctl note.edit title=x` and `ctl note.list --out json`, then
-`POST /api/v1/call/note.list` over HTTP, where no authenticator is registered, asserting the
-`401 unauthenticated` error envelope with `ok: false`; stop the process and exit non-zero on
-any failure. CI runs it after the build.
+**Goal.** A script CI runs against the built `keel` binary: create a fresh database and a
+temporary `data_dir`, run `keel product enable demo`, start `serve`, wait for `/readyz`, call
+`ctl keel.product.list` and assert `demo` is enabled, `ctl keel.account.create`, `/healthz`,
+`/api/v1/boot` asserting `products` contains `demo` and `brand` is the demo brand,
+`ctl note.edit title=x` and `ctl note.list --out json`, then `POST /api/v1/call/note.list` over
+HTTP, where no authenticator is registered, asserting the `401 unauthenticated` error envelope
+with `ok: false`; stop the process and exit non-zero on any failure. A second run with no bundle
+enabled asserts that `serve` starts and `ctl keel.account.list` answers, and that `note.list`
+answers `not_found`. CI runs it after the build.
 
 **Touches.** `hack/prove-binary.sh`, `.github/workflows/ci.yml`.
 
@@ -672,7 +768,8 @@ any failure. CI runs it after the build.
 ## How we work
 
 - The code lives in the monorepo `GlobalArtInc/keel` on the `main` branch until the SDK reaches
-  1.0; products are extracted by tag in M7 ([design/01-overview.md](design/01-overview.md)).
+  1.0; a product's crates may move to their own repository after M7 and are pulled into the
+  `keel` build as dependencies ([design/01-overview.md](design/01-overview.md)).
 - One task is one PR-sized change; a task is not split across branches.
 - Verify with the same commands CI runs before pushing: `cargo fmt --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against a
@@ -689,13 +786,15 @@ any failure. CI runs it after the build.
 
 ## M0 exit checklist
 
-- [ ] `demo ctl note.edit title=x` returns the envelope.
+- [ ] `keel ctl note.edit title=x` returns the envelope with the `demo` bundle enabled.
 - [ ] `POST /api/v1/call/note.list` returns the envelope.
 - [ ] Descriptors match the committed snapshot.
 - [ ] The test "a user neither sees nor edits another account's notes" passes.
 - [ ] The test "a reseller sees its subtree" passes.
 - [ ] A nested `invoke` reuses the transaction of the call.
-- [ ] The binary starts without `config.yaml` against the default database.
+- [ ] The binary starts without `config.yaml` against the default database `keel`.
+- [ ] `keel serve` with no bundle enabled starts and answers on the socket.
+- [ ] `keel product disable demo` leaves the `note_` table and flips `note` to `orphaned`.
 - [ ] `cargo fmt --check` is green.
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` is green.
 - [ ] `cargo test --workspace` is green against Postgres.

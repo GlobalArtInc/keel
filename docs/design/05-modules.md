@@ -1,13 +1,14 @@
 # Modules, the SDK and system modules
 
-This document specifies the unit of composition in Keel: what a module is, how a product assembles
-modules into one binary, what happens between process start and the first served request, what a
-module registers and contributes, the isolation rules the toolchain enforces, the three planes on
-which compatibility is versioned, the tooling around modules, and the catalogue of system modules
-shipped in `keel-system`. The dispatcher that runs registered functions is specified in
-[02-functions.md](02-functions.md), accounts and scoping in [03-access.md](03-access.md), the
-storage rules a module's tables follow in [04-storage.md](04-storage.md), and the layers the crates
-fit into in [01-overview.md](01-overview.md).
+This document specifies the unit of composition in Keel: what a module is, how the composition
+assembles modules and product bundles into one binary, what happens between process start and the
+first served request, what a module registers and contributes, the isolation rules the toolchain
+enforces, the three planes on which compatibility is versioned, the tooling around modules, and the
+catalogue of system modules shipped in `keel-system`. The dispatcher that runs registered functions
+is specified in [02-functions.md](02-functions.md), accounts and scoping in
+[03-access.md](03-access.md), the storage rules a module's tables follow in
+[04-storage.md](04-storage.md), and the layers the crates fit into in
+[01-overview.md](01-overview.md).
 
 ## Module definition
 
@@ -24,48 +25,88 @@ plain struct with static slices; there is no trait to implement and no macro to 
 | `migrations` | Optional embedded migration directory (`migrator::embed!`), applied under the module's own ledger `keel_migration_<module>`. The static names the ledger itself, `.table("keel_migration_<module>")`; the loader refuses a module whose ledger is named otherwise. |
 | `init`       | `fn(&mut Registrar) -> keel::Result<()>`; registration only, no I/O. |
 
-### Product composition
+### Composition and product bundles
 
-A product is a bin crate: a manifest, an explicit list of modules, a brand and editions. The list
-is an explicit builder in `main.rs` (see the example at the end of this document), so the
-composition is visible in one place and checked by the compiler. Self-registration through an
-`inventory`-style crate is not used: in a static musl build with LTO a registrar crate that nothing
-references silently drops out of the binary.
+The composition is an explicit builder in `bin/keel/src/main.rs` (see the example at the end of
+this document): it lists every module of the platform and of every first-party product, and
+every product bundle. Self-registration through an `inventory`-style crate is not used: in a
+static musl build with LTO a registrar crate that nothing references silently drops out of the
+binary.
 
-The order of `.module()` calls means nothing. The kernel builds a graph from `requires`, sorts it
-topologically and fails at start with a list of cycles, duplicate ids and missing dependencies. A
-product depends only on the facade crate `keel` (and on `@globalart/keel` for the frontend), which
-is what lets it leave the monorepo later without changes ([01-overview.md](01-overview.md)).
+A product bundle is a `ProductManifest`, a plain struct with static slices exported by the
+product's lib crate as `pub static MANIFEST`:
+
+| Field           | Meaning |
+|-----------------|---------|
+| `id`            | Product id, `[a-z][a-z0-9_]*`: groups modules, prefixes the product's files and OS users, names the product in the lease, in `/boot` and in the handshake. |
+| `brand`         | Name key, logo, `hue` and `chroma` for the shell; the brand of a single enabled product is the brand of the installation. |
+| `modules`       | Ids of the modules the product enables, `host` included when its modules need the agent; naming a module the composition does not list fails the start. |
+| `bridges`       | `Bridge { to, local, remote }`: the pair of modules through which this product reaches product `to`; `local` is loaded when `to` is enabled on the same installation, `remote` otherwise. |
+| `menu`          | Menu groups (`id`, `label`, `icon`, `order`) under which the modules' `MenuNode`s are placed; group ids are unique across enabled bundles. |
+| `levels`        | Level labels and disabled levels ([03-access.md](03-access.md)). |
+| `editions`      | Edition ids with their feature sets and the default edition used while no lease is present; the lease names the edition of each product. |
+| `account_kinds` | The account kinds the product creates ([03-access.md](03-access.md)). |
+| `i18n`          | The bundle's own dictionaries: brand name, menu group labels, level labels. |
+
+Which bundles are enabled is recorded in `keel_kv` under `products`
+([04-storage.md](04-storage.md)). `keel product enable <id>` and `keel product disable <id>`
+change it — through `keel.product.enable` and `keel.product.disable`, `admin`-level `.unowned()`
+functions of the `keel` module that check the lease and end with a restart request, or directly
+against the database while the service is stopped — and the change takes effect at the next
+start. The loader computes the loaded set from it: the platform modules, which no bundle names,
+plus the modules of every enabled bundle, plus one side of every bridge of an enabled bundle. A
+module named by two enabled bundles is loaded once and attributed to the bundle that comes first
+in the composition. Modules outside the loaded set are neither migrated nor initialised; their
+tables, if any, are orphaned ([04-storage.md](04-storage.md)). `disable` refuses a product whose
+module another enabled bundle's module requires, and refuses a product another enabled bundle
+bridges to locally unless `--switch-remote` is given ([07-ecosystem.md](07-ecosystem.md)).
+
+The order of `.module()` calls means nothing; the order of `.product()` calls is the order of
+the products in `/boot` and in the menu. The kernel builds a graph from `requires` over the
+loaded set, sorts it topologically and fails at start with a list of cycles, duplicate ids and
+missing dependencies, naming the bundle whose module requires a module no enabled bundle names.
+Bundles and module crates depend only on the facade crate `keel` (and on `@globalart/keel` for
+the frontend), which is what lets a product's crates move to their own repository later without
+changes ([01-overview.md](01-overview.md)).
 
 ## Lifecycle
 
 Between process start and the first served request the kernel runs these steps, in this order:
 
-1. Validation: `sdk == keel_sdk::VERSION` for every module, the format and uniqueness of `id`,
-   resolvability of `requires`; the topological order is fixed here.
-2. Migrations: the kernel's own first, then every module in graph order, before any port is
+1. Enabled set: after the kernel's own migrations, the loader reads `keel_kv.products`, checks
+   every enabled product against the lease (a product the lease does not list is a boot error
+   naming it, unless `license: None`), refuses a bundle that names a module the composition does
+   not list, chooses the side of every bridge and fixes the loaded module set; every later step
+   runs over that set only, and modules of disabled bundles are never initialised.
+2. Validation: `sdk == keel_sdk::VERSION` for every module, the format and uniqueness of `id`,
+   resolvability of `requires` within the loaded set; the topological order is fixed here.
+3. Migrations: the kernel's own first, then every loaded module in graph order, before any port is
    opened and under a session lock ([04-storage.md](04-storage.md)).
-3. `init(&mut Registrar)` for every module in graph order: registration only, no I/O.
-4. Freeze of the registries. The kernel checks that every required service has a provider
+4. `init(&mut Registrar)` for every module in graph order: registration only, no I/O.
+5. Freeze of the registries. The kernel checks that every required service has a provider
    and no service or invoker has two, applies patches to other modules' descriptors (a patch
    cannot weaken `access`; a field added by a patch must carry `store`), compiles condition
    expressions and verifies that every field name they mention exists, validates descriptors
    (every function, action and permission a descriptor or a menu node names is registered,
    `ui.read` names a `get` and `x-keel.options` an `options` function, `x-keel` and `x-ui`
    attributes are members of their enums) and checks that the i18n keys a descriptor or a menu
-   node carries exist at least for `en`. Every problem is collected and reported in one error.
-5. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
+   node carries exist at least for `en`, that every menu node's group is declared by an enabled
+   bundle or is the platform group `system`, that no group id is declared by two enabled bundles,
+   and that no `ConfigTemplate` id is contributed twice across the loaded set. Every problem is
+   collected and reported in one error.
+6. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
    spawned through `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's
    stop hook runs first, then the tasks it spawned are cancelled and awaited. A start hook that
    fails stops the modules already started and fails the boot.
 
 There is deliberately no dynamic loading after boot: registries are immutable and every check
 runs at startup, so a typo in a condition or a missing translation cannot reach a deployed
-instance. Installing a plugin ends with `request_restart`.
+instance. Installing a plugin ends with `request_restart`; so does enabling or disabling a
+product. CI additionally validates the full composition with every bundle enabled.
 
 ## What a module registers
 
-Everything a module adds to the product goes through `Registrar` inside `init`:
+Everything a module adds to the installation goes through `Registrar` inside `init`:
 
 - Functions, built with `keel::function::<Params, Result>("<module>.<entity>.<verb>")` and
   registered with `r.function(...)`. Descriptors, the pipeline and the guards that run them are
@@ -78,7 +119,8 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
   without a descriptor but with access rules for the menu and features
   ([08-frontend.md](08-frontend.md)).
 - Migrations, through `ModuleDef.migrations`.
-- Menu nodes, `r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10))`.
+- Menu nodes, `r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10))`; the
+  first path segment names a menu group declared by a bundle or the platform group `system`.
 - i18n dictionaries per language, `r.i18n("en", ...)`; key names follow the convention in
   [08-frontend.md](08-frontend.md).
 - Permission keys with their default levels, `r.permission("dns.zone.manage", &[Level::User])`.
@@ -101,9 +143,9 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
   context carries no database handle in M0; a module that needs one at start gets it with the
   milestone that needs it.
 - Services, `r.provide::<dyn Trait>(Arc::new(...))`, consumed elsewhere with
-  `call.require::<dyn Trait>()`. Which module provides an implementation is a product
-  composition choice: `hosting-web` declares `DnsProvider`, and either `dns-local` or `dns-peer`
-  provides it ([07-ecosystem.md](07-ecosystem.md)).
+  `call.require::<dyn Trait>()`. Which module provides an implementation is decided by the
+  enabled set: `hosting-web` declares `DnsProvider`, and the panel bundle's bridge loads
+  `dns-local` or `dns-peer` ([07-ecosystem.md](07-ecosystem.md)).
 - Contributions, `r.contribute(T)`, into extension points that modules themselves declare in
   their `pub mod api` and read back with `ctx.contributions::<T>()`. The kernel knows nothing
   about any of them; it only provides the typed bag.
@@ -121,12 +163,12 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
 | `DashboardWidget` | A widget for the `dashboard` block of `GET /api/v1/boot` | the shell ([08-frontend.md](08-frontend.md)) |
 | `ProblemSource` | A source of problems for the problem registry | `notify` |
 | `MailTemplate` | A minijinja template for outgoing mail | `notify` |
-| `ConfigTemplate` | A configuration file template with its validate command, overridable in `/etc/keel/<product>/templates/` | `keel-host` ([06-host.md](06-host.md)) |
+| `ConfigTemplate` | A configuration file template with its validate command, overridable in `/etc/keel/templates/`; ids are unique across the loaded set | `keel-host` ([06-host.md](06-host.md)) |
 | `AgentOp` | A typed host-agent operation: argument and result schemas, handler, policy class | `keel-host` ([06-host.md](06-host.md)) |
 | `BackupSource` | The module's own data in a backup archive | `backup` |
 | `ConfigSection` | The module's own section of `config.yaml` | configuration loading ([09-operations.md](09-operations.md)) |
 | `PermissionSource` | Fine-grained permission keys and their defaults | `auth` |
-| `ManifestPatch` | A patch of the product manifest, for example white-label branding by hostname | `settings` |
+| `ManifestPatch` | A patch of the effective brand and of the bundle fields served in `/boot`, for example white-label branding by hostname | `settings` |
 | `ServiceKind` | A service type for billing: `Params`, `State` and `Account` schemas with `schema_version` | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
 | `LimitDef` | An account limit: key, unit, default, level, whether `unlimited` is allowed | `keel_limit` and `call.check_limit` ([03-access.md](03-access.md)) |
 | `AccountLifecycle` | `on_suspend`, `on_resume`, `on_delete`, `on_rename` handlers | `keel.account.*` ([03-access.md](03-access.md)) |
@@ -183,7 +225,7 @@ depends only on `keel-sdk`, which cargo verifies; the kernel imports neither `ke
 operations on the OS: `update` talks to the root unit, not to `keel-host`.
 
 CI runs a matrix over the crate: every module built alone, and the crate built without each
-module in turn, plus the test that a product composed of the bare kernel starts and answers on the
+module in turn, plus the test that a composition of the bare kernel starts and answers on the
 control socket. This is what keeps every system module replaceable by product composition, for
 example SSO in place of `auth`, or a different `notify` for billing.
 
@@ -214,25 +256,30 @@ The storage counterpart of the data plane, additive-only migrations inside a maj
 |-------|-------|---------|
 | `keel-testkit` | L2 | Test harness for a module in isolation |
 | `keel-dev` | L7 | Developer CLI: scaffolding, descriptors, types, i18n, lints, docs |
-| `keel-conformance` | L7 | Contract suite against a running binary of any product |
+| `keel-conformance` | L7 | Contract suite against the running `keel` binary with any set of products enabled |
 | `keel-client` | L4 | Rust client for calling a peer |
 
-`keel-testkit` boots a module with `Harness::new().module(&M).boot()`. Every test gets a
-temporary Postgres database created from a template with `CREATE DATABASE`; CI provides the server
-through testcontainers. The harness offers `call_as(Level::Reseller, "dns.zone.list", json!({}))`,
-`FakeHost` in place of the host agent, a fixed clock and snapshots of descriptors as projected for
-each level. The module template ships two standard tests: "a reseller sees only its subtree" and
-"a user cannot edit another account's row by id".
+`keel-testkit` boots a module with `Harness::new().module(&M).boot()`; `.product(&MANIFEST)`
+boots a bundle with the modules it names, and the harness ships two fixture bundles joined by a
+bridge. Every test gets a temporary Postgres database created from a template with
+`CREATE DATABASE`; CI provides the server through testcontainers. The harness offers
+`call_as(Level::Reseller, "dns.zone.list", json!({}))`, `FakeHost` in place of the host agent, a
+fixed clock and snapshots of descriptors as projected for each level. The module template ships
+two standard tests: "a reseller sees only its subtree" and "a user cannot edit another account's
+row by id".
 
-`keel-dev` provides `new-module` and `new-product`, `migrate create`, `descriptors dump | check |
-diff`, `types` (TypeScript from the schemas), `i18n extract | pull | missing`, `check` and `docs`.
-`check` lints prefixes, foreign keys, imports, `.owned()` / `.unowned()` on every function with a
-key, additivity of migrations and `ldd` cleanliness of the binary. `docs` generates the catalogue
-of functions, permissions, events and settings from the registry.
+`keel-dev` provides `new-module` and `new-product` (a bundle lib crate), `migrate create`,
+`descriptors dump | check | diff`, `types` (TypeScript from the schemas), `i18n extract | pull |
+missing`, `check` and `docs`. `check` lints prefixes, foreign keys, imports, `.owned()` /
+`.unowned()` on every function with a key, additivity of migrations, `ldd` cleanliness of the
+binary, that every module crate under `products/` is named by its bundle, and that the facade
+depends on no product crate. `docs` generates the catalogue of functions, permissions, events and
+settings from the registry.
 
-`keel-conformance` runs against a started binary of any product: boot, auth, the list contract,
-errors, idempotency, webhooks and `svc.*`, plus the check that a field shown by the descriptor is
-accepted by the server. The skeleton exists from M1 and is a mandatory CI job of every product.
+`keel-conformance` runs against the started `keel` binary with any set of products enabled: boot,
+auth, the list contract, errors, idempotency, webhooks and `svc.*`, plus the check that a field
+shown by the descriptor is accepted by the server. The skeleton exists from M1 and is a mandatory
+CI job, run with each first-party bundle alone and with all of them.
 
 `keel-client` is the Rust client of a peer, typed with `keel-types`; it retries only requests that
 carry an `Idempotency-Key`. Other languages use the OpenAPI document generated from the function
@@ -240,8 +287,8 @@ registry.
 
 ## System modules
 
-A subsystem belongs to the kernel only if the product does not start and does not answer on the
-local socket without it, and if it cannot be replaced by product composition without touching its
+A subsystem belongs to the kernel only if the installation does not start and does not answer on
+the local socket without it, and if it cannot be replaced by composition without touching its
 neighbours. By this test the kernel keeps the function dispatcher, descriptors, principal and
 account, storage with migrations, the outbox, the message catalogue, the manifest and the
 transports. Everything else is a system module: an ordinary `ModuleDef` on the public SDK, replaced
@@ -275,8 +322,9 @@ function attribute ([06-host.md](06-host.md)).
 - Tokens are opaque, prefixed `ks_` (session), `kat_` (API token), `kpt_` (peer token) and
   `kok_` (one-time login key); only their sha256 is stored, so revocation is immediate and a
   backup contains no usable keys.
-- The session cookie is `__Host-keel_<product>_session`, which is why the panel listens on TLS
-  only from its first start ([09-operations.md](09-operations.md)).
+- The session cookie is `__Host-keel_session`, one for the installation whatever products are
+  enabled; the `__Host-` prefix is why the installation listens on TLS only from its first start
+  ([09-operations.md](09-operations.md)).
 - `auth.login` is a function of level `guest`, so rate limiting, audit and hooks apply to it
   like to any other function.
 - Sessions can be listed and revoked; there is a password policy, lockout after N failed
@@ -325,7 +373,7 @@ function attribute ([06-host.md](06-host.md)).
   with a `download` result; `keel.account.delete` runs as a task with a checkpoint
   ([02-functions.md](02-functions.md), [03-access.md](03-access.md)).
 - Cron leadership and the single task worker are held through `pg_advisory_lock`
-  ([04-storage.md](04-storage.md)); task logs live under `/var/lib/keel/<product>/tasks/`.
+  ([04-storage.md](04-storage.md)); task logs live under `/var/lib/keel/tasks/`.
 - `cron` runs `CronJob` contributions and the `cron` sections of plugin manifests.
 
 ### notify
@@ -346,14 +394,21 @@ function attribute ([06-host.md](06-host.md)).
 
 ### license
 
-- The guard on `access.feature`: a function whose feature is not in the edition is hidden from
-  the menu and answers 402.
+- The guard on `access.feature`: a function whose feature is not in the edition the lease grants
+  the product that owns the feature is hidden from the menu and answers 402.
 - The lease is an Ed25519-signed JSON document bound to `instance_id`, with a grace period and
   degradation to read-only (mutating functions answer 402; reads and login keep working).
+- The lease lists the products of the installation and the edition of each; the features of an
+  edition are the ones the bundle declares for it, and `/boot.features` is their union.
+- `keel.product.enable` refuses a product the lease does not list; with `license: None` every
+  compiled-in bundle may be enabled. An enabled product that a later lease no longer lists is
+  treated like an expired lease for its modules — reads keep working, writes answer `402` — and
+  a problem is raised; the rest of the installation is unaffected.
 - Monotonic time in `keel_kv` protects against clock changes.
 - `license: None` switches the mechanism off, which is how internal builds run without a key.
   Until M5 the feature guard runs without a lease.
-- The edition ceiling for account limits comes from here ([03-access.md](03-access.md)).
+- The edition ceiling for account limits is per product and comes from here
+  ([03-access.md](03-access.md)).
 - The first releases are expected to run on long offline leases issued by hand; when the license
   server is written as a product on Keel and where its signing key is kept are open questions in
   [11-decisions.md](11-decisions.md).
@@ -363,6 +418,7 @@ function attribute ([06-host.md](06-host.md)).
 - The kernel writes `update.request`; the root unit can do exactly one thing, install signed
   version X. Anti-rollback uses the minimum version in the channel manifest. Before an update the
   queue drains and a logical dump of the database is taken.
+- An update moves every enabled product at once, because there is one binary and one version.
 - A backup is `tar.zst` with a manifest, `BackupSource` contributions from modules, targets
   through `keel-storage`, and `--with-secret-key` under a passphrase.
 - `doctor` belongs here as well. The full procedure, restore and support bundle are in
@@ -385,6 +441,8 @@ function attribute ([06-host.md](06-host.md)).
 
 ### peers
 
+- Peers link installations on different hosts; products enabled on one installation share the
+  kernel, the account tree and the outbox and need no pairing ([07-ecosystem.md](07-ecosystem.md)).
 - Pairing with a one-time code; mutual `kpt_` tokens with scopes; trust on first use by the
   instance's Ed25519 key, so a TLS rotation does not break the link.
 - A pull feed `/api/v1/x/peers/feed?after=seq` for instances behind NAT; the inbox deduplicates
@@ -408,7 +466,7 @@ function attribute ([06-host.md](06-host.md)).
 - `stats.series` functions serve dashboard widgets and `report` screens
   ([08-frontend.md](08-frontend.md)).
 
-## Example: module and product
+## Example: module, bundle and composition
 
 ```rust
 pub static MODULE: ModuleDef = ModuleDef {
@@ -436,21 +494,48 @@ fn init(r: &mut Registrar) -> keel::Result<()> {
     Ok(())
 }
 
-// products/dns/src/main.rs
+// products/dns/src/lib.rs
+pub static MANIFEST: ProductManifest = ProductManifest {
+    id: "dns",
+    brand: Brand { name: "product.dns.brand", logo: "brand/logo.svg", hue: 264, chroma: 0.12 },
+    modules: &["host", "dns", "dns_records", "dns_templates"],
+    bridges: &[],
+    menu: &[MenuGroup { id: "dns", label: "menu.dns", icon: "globe", order: 10 }],
+    levels: Levels { labels: &[], disabled: &[] },
+    editions: &[
+        Edition { id: "lite", features: &["dns.zones"] },
+        Edition { id: "pro", features: &["dns.zones", "dns.dnssec", "dns.secondary"] },
+    ],
+    account_kinds: &["user"],
+    i18n: &[("en", include_str!("../i18n/en.json")), ("ru", include_str!("../i18n/ru.json"))],
+};
+
+// bin/keel/src/main.rs
 fn main() -> keel::ExitCode {
-    keel::Product::new(&keel_dns::MANIFEST)
+    let composition = keel::Composition::new()
         .module(&keel_system::auth::MODULE).module(&keel_system::settings::MODULE).module(&keel_system::audit::MODULE)
         .module(&keel_system::tasks::MODULE).module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
-        .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE).module(&keel_system::backup::MODULE)
+        .module(&keel_system::webhooks::MODULE).module(&keel_system::license::MODULE).module(&keel_system::update::MODULE)
+        .module(&keel_system::backup::MODULE).module(&keel_system::plugins::MODULE).module(&keel_system::peers::MODULE)
+        .module(&keel_system::svc::MODULE).module(&keel_system::stats::MODULE)
         .module(&keel_host::MODULE)
         .module(&dns_zones::MODULE).module(&dns_records::MODULE).module(&dns_templates::MODULE)
-        .frontend(keel::embed_frontend!("../../frontend/dist/dns"))
-        .run()
+        .module(&hosting_users::MODULE).module(&hosting_web::MODULE).module(&hosting_mail::MODULE)
+        .module(&hosting_db::MODULE).module(&hosting_ftp::MODULE).module(&hosting_ssl::MODULE)
+        .module(&hosting_backup::MODULE).module(&hosting_services::MODULE)
+        .module(&dns_local::MODULE).module(&dns_peer::MODULE)
+        .product(&keel_dns::MANIFEST).product(&keel_panel::MANIFEST);
+    #[cfg(feature = "demo")]
+    let composition = composition.module(&keel_demo::note::MODULE).product(&keel_demo::MANIFEST);
+    composition.frontend(keel::embed_frontend!("../../frontend/dist/shell")).run()
 }
 ```
 
-The product composes the system modules it needs, the host library and its own module crates
-(`dns-zones`, `dns-records`, `dns-templates`); the embedded frontend is either the product's own
-build or the prebuilt `@globalart/keel-shell-app` ([08-frontend.md](08-frontend.md)). The
-function descriptor this module produces and the envelope of a call are in
-[10-contracts.md](10-contracts.md).
+The panel bundle differs in its bridge, `bridges: &[Bridge { to: "dns", local: "dns_local",
+remote: "dns_peer" }]`, which is how `DnsProvider` is served in-process when `dns` is enabled on
+the same installation and through a peer otherwise ([07-ecosystem.md](07-ecosystem.md)). The
+ids of the `dns-records` and `dns-templates` modules above are illustrative. The composition
+lists the system modules, the host library, the module crates of every first-party product and
+their bundles; the embedded frontend is the one shell application built in the repository
+([08-frontend.md](08-frontend.md)). The function descriptor this module produces and the envelope
+of a call are in [10-contracts.md](10-contracts.md).

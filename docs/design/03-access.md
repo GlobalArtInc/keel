@@ -1,6 +1,6 @@
 # Accounts, principals and access
 
-This document defines who owns data in a Keel product and who may call what: the account as the
+This document defines who owns data in a Keel installation and who may call what: the account as the
 unit of ownership, the principal as a member of an account, the fixed ladder of access levels,
 fine-grained permissions, delegation (`su`, socket, on-behalf), the ownership and scoping helpers
 the SDK gives to modules, per-account limits, the account lifecycle, and the stable external
@@ -18,11 +18,22 @@ customer is a company with several people; a virtual-machine project is a team. 
 as the owner, every owned row of every module carries an `account_id`, and the kernel can answer
 "may this caller see this row" with one rule for every product.
 
-The kernel owns three of its eight tables for this: `keel_account`, `keel_principal` and `keel_limit`. It also
-owns the `keel.account.*` and `keel.principal.*` functions and the ownership guard in the
-dispatcher. Passwords, sessions, API tokens, `su` and the storage of fine-grained permissions are
-not in the kernel; they belong to the `auth` system module, which is written on the public SDK
-and can be replaced by the product composition (for example by an SSO module).
+The kernel owns three of its eight tables for this: `keel_account`, `keel_principal` and
+`keel_limit`. It also owns the `keel.account.*` and `keel.principal.*` functions and the
+ownership guard in the dispatcher. Passwords, sessions, API tokens, `su` and the storage of
+fine-grained permissions are not in the kernel; they belong to the `auth` system module, which is
+written on the public SDK and can be replaced by the product composition (for example by an SSO
+module).
+
+Accounts and principals belong to the installation, not to a product. Every product enabled on a
+host shares the one account tree, the one principal set and the one session: a customer of
+KeelPanel and KeelDNS on the same host has one login and sees the objects of both, an
+administrator administers both, and a reseller's subtree is the same subtree in every product. A
+product contributes only vocabulary — the account kinds and roles it creates — and its own owned
+tables, which carry `account_id` like any other. What separates products for a principal is
+permission keys and license features, never a second account table. Products on different hosts
+remain separate installations with separate trees, synchronised through `origin` and
+`external_id` ([07-ecosystem.md](07-ecosystem.md)).
 
 ## Levels
 
@@ -40,12 +51,16 @@ guest < service < user < reseller < admin < owner
 | `user`     | A member of a customer account.                                                  |
 | `reseller` | A principal of level `reseller` in an account of kind `reseller`; sees the       |
 |            | subtree of accounts under its own.                                               |
-| `admin`    | Product administrator; sees everything.                                          |
+| `admin`    | Administrator of the installation; sees everything in every enabled product.    |
 | `owner`    | The local control socket (`ctl` with peer credentials), not an HTTP login.       |
 
-The enum itself never changes per product. What the product manifest controls is the labels and
+The enum itself never changes per product. What a product bundle controls is the labels and
 which levels are enabled: a billing product labels `user` as "client", a VM product does without
-`reseller`. Disabling a level in the manifest hides it; it does not renumber the ladder.
+`reseller`. Disabling a level hides it; it does not renumber the ladder. With exactly one product
+enabled on the installation its labels and disabled levels apply everywhere. With several, the
+platform labels `keel.level.<level>` apply and a level is hidden only when every enabled bundle
+disables it; whether a product's own labels should still appear inside its own screens is an
+open question below.
 
 Levels are used in several places of the protocol, always with the same ordering:
 
@@ -84,6 +99,13 @@ kernel asks the source, it does not read the table itself. `Principal::can(permi
 call-side view of the same answer. The defaults are the answer when no source is composed, and
 the floor under any source: `admin` and `owner` hold every registered key, and a lower level
 holds a key when the module listed that level in the defaults.
+
+The registry holds the keys of the modules that are loaded, so the permission set of an
+installation is the union over its enabled products. Grants the `auth` module stores for a key of
+a product that is later disabled stay in its tables like any orphaned data and count again when
+the product is enabled. `admin` and `owner` hold every registered key of every enabled product: an
+administrator of the installation administers all of them, and a lower level holds by default
+every key whose module listed that level, whichever product the module belongs to.
 
 A function declares its access as a triple: level, permission and licence feature.
 
@@ -161,7 +183,7 @@ The envelope of every call reports the pair in `meta.principal`:
 
 ```
 POST /api/v1/call/dns.zone.edit
-Authorization: Bearer kat_01J9…          (or Cookie: __Host-keel_dns_session=ks_…)
+Authorization: Bearer kat_01J9…          (or Cookie: __Host-keel_session=ks_…)
 Idempotency-Key: bill-order-9912-open
 { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3", "ttl": 300 }
 
@@ -176,7 +198,7 @@ The same shape is returned by the CLI, which runs over the local socket and may 
 principal to act as:
 
 ```
-CLI:  keel-dns ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (same envelope; --out table renders ui.columns)
+CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (same envelope; --out table renders ui.columns)
 ```
 
 On-behalf calls from a neighbouring product (`X-Keel-On-Behalf-Of: origin=…; external_id=…`)
@@ -193,11 +215,13 @@ failed calls (see [../plan.md](../plan.md)).
 ### `acl_gen` and metadata caching
 
 Descriptors and `/api/v1/boot` depend on the principal's rights, so their cache key must include
-the principal. The ETag is `hash(build, modules, edition, lang, principal_id, acl_gen)`.
-`acl_gen` is a counter in `keel_principal` that is incremented in the same transaction that
-changes the principal's permissions, role or account; when an account subtree changes, every
-principal in that subtree is bumped by `path`. Responses are `private, no-store`, and the SSE
-event `meta.invalidate` tells open clients to refetch.
+the principal. The ETag is `hash(build, modules, products, lang, principal_id, acl_gen)`, where
+`modules` is the loaded module set and `products` the enabled products with their editions, so
+enabling a product or changing its edition changes the key. `acl_gen` is a counter in
+`keel_principal` that is incremented in the same transaction that changes the principal's
+permissions, role or account; when an account subtree changes, every principal in that subtree is
+bumped by `path`. Responses are `private, no-store`, and the SSE event `meta.invalidate` tells
+open clients to refetch.
 
 ## Accounts
 
@@ -207,8 +231,10 @@ event `meta.invalidate` tells open clients to refetch.
 |---------------|--------------------------------------------------------------------------------|
 | `id`          | ULID, `TEXT`.                                                                  |
 | `kind`        | Account kind. The kernel uses `system` for the root account and `reseller`     |
-|               | for reseller accounts; other values (`user`, `client`, `project`) are the      |
-|               | product's vocabulary.                                                          |
+|               | for reseller accounts; other values (`user`, `client`, `project`) are declared |
+|               | by the bundles enabled on the installation through                             |
+|               | `ProductManifest.account_kinds`, and the kernel accepts their union — the      |
+|               | same kind declared by two bundles is one kind.                                 |
 | `parent_id`   | Parent account; `NULL` only for the root.                                      |
 | `path`        | Materialized path from the root; the root's path is `/`.                       |
 | `state`       | `active`, `suspended`, `deleting`.                                             |
@@ -229,7 +255,8 @@ a `guest` function that exists only while no admin exists and is reached by the 
 printed at first start ([09-operations.md](09-operations.md)).
 
 A reseller is not a special table: it is a principal of level `reseller` in an account of kind
-`reseller`, and its customers are accounts whose `parent_id` is that account.
+`reseller`, and its customers are accounts whose `parent_id` is that account. An account is
+visible to every enabled product whatever its kind, because scoping is by `path`, not by kind.
 
 ```sql
 CREATE TABLE IF NOT EXISTS keel_account (
@@ -249,7 +276,7 @@ CREATE TABLE IF NOT EXISTS keel_account (
 ```rust
 pub struct Account {
     pub id: Id,
-    pub kind: String,            /* "user" | "client" | "project": product vocabulary */
+    pub kind: String,            /* "user" | "client" | "project": vocabulary of the enabled bundles */
     pub parent_id: Option<Id>,
     pub path: String,
     pub state: State,
@@ -466,6 +493,9 @@ tables. `keel.account.upsert` and `keel.principal.upsert` are idempotent on this
 them the primitive for synchronisation from billing: repeating a call creates nothing twice, and
 two services of different kinds for the same client resolve to one account.
 
+Products enabled on the same installation need none of this: they share the rows directly.
+`origin` and `external_id` are for installations on different hosts.
+
 ```
 POST /api/v1/call/keel.principal.upsert
 { "origin": "bill:01J9A", "externalId": "client-42", "login": "alice", "level": "user",
@@ -485,6 +515,16 @@ The following questions are open and change the design depending on the answer.
 
 - Membership cardinality. 1:N at M0 with an additive `keel_membership` later is the proposal; the
   alternative is N:M from the first migration. If a billing product with "a company of three
-  employees" is planned within the first year, N:M from the start is the better choice.
+  employees" is planned within the first year, N:M from the start is the better choice. One tree
+  serving a hosting product and a billing product on the same host makes the question more
+  pressing.
 - Reseller depth. An arbitrary chain of accounts by `path`, as proposed, or exactly one reseller
   level. The answer shapes the UI for granting permissions and limits.
+- Account kinds across products. With one tree an account carries the kind of the product that
+  created it; whether a kind should become a set, or be replaced by a per-account product
+  entitlement, is open.
+- Product-scoped administrators. `admin` sees every enabled product and no grant limits an
+  administrator to one product on a shared installation; fine-grained keys can be withdrawn per
+  product, but a product-scoped `admin` would need a new mechanism.
+- Level labels inside a product's own screens when several products are enabled: platform labels
+  everywhere is the rule; a product's labels inside its own screens is the alternative.

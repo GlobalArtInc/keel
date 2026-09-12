@@ -1,20 +1,20 @@
 # Frontend
 
 This document describes the browser side of Keel: the single Angular library `@globalart/keel` and
-what each of its entry points contains, the prebuilt shell application a product embeds when it has
-no screens of its own, the boundary between Keel and the phoenix-ui design system with the additions
-requested from phoenix-ui per milestone, the registry of custom views and the ceiling placed on
-their share, and the conventions for translation keys, placeholders and bundles. The wire
-contracts the frontend consumes are specified in [10-contracts.md](10-contracts.md); descriptors,
-field attributes and the `ui` block are specified in [02-functions.md](02-functions.md).
+what each of its entry points contains, the one shell application the `keel` binary embeds, the
+boundary between Keel and the phoenix-ui design system with the additions requested from phoenix-ui
+per milestone, the registry of custom views and the ceiling placed on their share, and the
+conventions for translation keys, placeholders and bundles. The wire contracts the frontend
+consumes are specified in [10-contracts.md](10-contracts.md); descriptors, field attributes and the
+`ui` block are specified in [02-functions.md](02-functions.md).
 
 ## Position in the architecture
 
 The frontend is layer L6 of the dependency graph described in [01-overview.md](01-overview.md). It
-consists of two npm packages: `@globalart/keel`, the library with entry points, and
-`@globalart/keel-shell-app`, the prebuilt shell. Both are built on Angular 19 and phoenix-ui.
-`@globalart/keel` is published to Nexus next to phoenix-ui; where the prebuilt shell is published
-is an open question (see "Embedding and the prebuilt shell").
+consists of the npm library `@globalart/keel` with its entry points and of one shell application,
+`frontend/apps/shell`, whose build the `keel` binary embeds. Both are built on Angular 19 and
+phoenix-ui. `@globalart/keel` is published to Nexus next to phoenix-ui; the shell application is
+not published, it is built in the repository and embedded (see "Embedding").
 
 Two things are explicitly outside this layer:
 
@@ -30,7 +30,7 @@ Two things are explicitly outside this layer:
 The frontend is one client of the dispatcher among several: the CLI, the external API, plugins and
 neighbouring products call the same `POST /api/v1/call/{func}` and read the same descriptors from
 `/api/v1/functions`. The library carries no product knowledge; a product without custom screens
-ships without a line of TypeScript of its own.
+has no TypeScript of its own.
 
 The major version of `@globalart/keel` equals the descriptor version: descriptors carry `"keel": 1`
 and are served under `/api/v1`; a breaking change to the descriptor is published as `/api/v2` next
@@ -155,7 +155,7 @@ only and may be ignored without breaking anything, while the `x-keel` attributes
 
 The same code renders a form from a schema that did not come from this product: the future billing
 product draws the parameter form of a service from the `ServiceKind` schema published by a
-neighbouring panel (see [07-ecosystem.md](07-ecosystem.md)).
+neighbouring installation (see [07-ecosystem.md](07-ecosystem.md)).
 
 ### `/renderer`
 
@@ -193,17 +193,25 @@ mechanism, not an escape hatch (see "Custom views" below).
 
 ### `/shell`
 
-The application frame. A product application is a call to
-`bootstrapKeel({ views, widgets, icons })` plus its custom components; `views` come from
-`provideKeelViews`, `widgets` from `provideKeelWidgets`, and `icons` is the icon set made available
-to the shell. Icon names used in descriptors and menus are checked by the server against
-`PhxIconName` at start, so the shell never receives an unknown icon.
+The application frame. The shell application is a call to `bootstrapKeel({ products, icons })`:
+`products` lists the frontend libraries of the first-party products that have custom views, each
+contributing its `views` (from `provideKeelViews`) and `widgets` (from `provideKeelWidgets`), and
+`icons` is the icon set made available to the shell. The shell registers the providers of the
+products `/boot.products` names and never loads the others. Icon names used in descriptors and
+menus are checked by the server against `PhxIconName` at start, so the shell never receives an
+unknown icon.
 
-- `/boot` is the first request. It returns the product and edition, the brand, the principal with
-  `lang`, `tz`, `actor` and `totp`, the enabled features, the license state, the menu already cut to
-  the principal's level, the dashboard, the list of custom views, the meta version and the count
-  of open problems. `phx-layout` and `phx-sidebar` are built from `menu`; a `badge` on a menu item
-  is bound to a problem key.
+- `/boot` is the first request. It returns the `keel` version and API, the enabled products with
+  their brands and editions, the effective brand, the principal with `lang`, `tz`, `actor` and
+  `totp`, the enabled features, the license state, the menu already cut to the principal's level
+  with a `product` on every group, the dashboard, the list of custom views, the meta version and
+  the count of open problems. With exactly one product enabled the effective brand is that
+  product's brand and `phx-sidebar` shows its groups followed by the platform group `system`;
+  with several, the effective brand is the platform brand and the sidebar shows a heading per
+  enabled product, in the order of `/boot.products`, with that product's groups under it and
+  the platform group last; a heading with no visible item is not shown. With none, the shell
+  shows the platform brand and the platform group only. `phx-layout` and `phx-sidebar` are
+  built from `menu`; a `badge` on a menu item is bound to a problem key.
 - The rail carries notifications, tasks, help and the user menu.
 - A banner is shown while the session runs as somebody else: `su` (a separate session with `actor`
   filled in, see [03-access.md](03-access.md)) or on-behalf from a neighbouring product.
@@ -214,25 +222,27 @@ to the shell. Icon names used in descriptors and menus are checked by the server
   `auth.*` are refused at start, see [05-modules.md](05-modules.md)), TOTP, one-time login key,
   and creation of the first administrator. The login-key page at `/login?key=...` performs a
   same-origin `POST auth.key.redeem` itself, because a cross-site navigation would fail the
-  `Sec-Fetch-Site` policy; the key is consumed on first use. The first-administrator screen is `keel.setup.admin`, a
-  `guest` function that exists while the product has no administrator and is reached through the
-  one-time `kok_` link printed at first start.
+  `Sec-Fetch-Site` policy; the key is consumed on first use. The first-administrator screen is
+  `keel.setup.admin`, a `guest` function that exists while the installation has no administrator
+  and is reached through the one-time `kok_` link printed at first start.
 - The OwnLate to `PHX_LABELS` bridge feeds the labels phoenix-ui components need from the `phx.*`
   namespace of the translation bundles.
 - The theme is derived from the brand: `hue` and `chroma` from `/boot.brand` go through
-  `PhxThemeService`, the logo is served from `/brand/logo.svg`. White-label by hostname is a
-  `ManifestPatch` on the server side, so it changes `/boot` and needs no product code in the
-  browser.
+  `PhxThemeService`, the effective logo is served from `/brand/logo.svg` and each product's from
+  `/brand/<product>/logo.svg`. White-label by hostname is a `ManifestPatch` on the server side, so
+  it changes `/boot` and needs no product code in the browser.
 - Metadata cache keyed by the meta version. Descriptor responses carry an `ETag` computed from the
-  build, the module set, the edition, the language, the principal id and the principal's `acl_gen`,
-  which is incremented in the same transaction that changes the principal's permissions, role or
-  account (for a reseller subtree, by path). Responses are `private, no-store`; the shell keeps its
-  own cache keyed by `/boot.meta` and `X-Keel-Meta-Version`, and drops it on `meta.invalidate` or
-  when a response carries a different version. Without the principal in the key, `su` in the same
-  browser would show another principal's menu.
+  build, the loaded module set, the enabled products with their editions, the language, the
+  principal id and the principal's `acl_gen`, which is incremented in the same transaction that
+  changes the principal's permissions, role or account (for a reseller subtree, by path). Responses
+  are `private, no-store`; the shell keeps its own cache keyed by `/boot.meta` and
+  `X-Keel-Meta-Version`, and drops it on `meta.invalidate` or when a response carries a different
+  version. Without the principal in the key, `su` in the same browser would show another
+  principal's menu.
 - Screens of the system modules ship in the shell: settings, accounts, permissions, tasks,
-  scheduler, notifications, problems, audit, logs, license, updates, backups, plugins, peers, brand
-  and support. A product gets them by composing the modules, without writing any UI.
+  scheduler, notifications, problems, audit, logs, license, updates, backups, plugins, peers,
+  products (enabling and disabling bundles, from the `keel.product.*` descriptors), brand and
+  support. Every installation has them, without writing any UI.
 - From M3 the shell consumes SSE: the progress modal, the notification centre, scope-filtered
   `data.invalidate`, and catch-up by `Last-Event-ID`.
 
@@ -245,32 +255,32 @@ to the shell. Icon names used in descriptors and menus are checked by the server
 - Storybook decorators. Storybook for `/renderer` runs on descriptor fixtures and the mock client;
   it serves as documentation of the contract and as visual regression without a backend.
 - A harness for Playwright against a built binary.
+- `/boot` fixtures with no product, one product and two products enabled, so the brand rule and
+  the product headings are covered by Storybook and Playwright without a second installation.
 
-## Embedding and the prebuilt shell
+## Embedding
 
-The frontend is compiled into the product binary through `rust-embed`: assets are brotli-compressed
-and served immutable by content hash (see [09-operations.md](09-operations.md)). A product declares
-what it embeds in `main.rs`:
+The frontend is compiled into the `keel` binary through `rust-embed`: assets are brotli-compressed
+and served immutable by content hash (see [09-operations.md](09-operations.md)). The composition
+declares what it embeds in `bin/keel/src/main.rs`:
 
 ```
-.frontend(keel::embed_frontend!("../../frontend/dist/dns"))
+.frontend(keel::embed_frontend!("../../frontend/dist/shell"))
 ```
 
-Two cases:
+There is one frontend build, `frontend/dist/shell`, and it carries the views of every first-party
+product. A product with custom views keeps them in an Angular library `frontend/products/<id>` that
+exports its `provideKeelViews` and `provideKeelWidgets` providers, built as a lazily loaded chunk
+the shell fetches only when a route of that product opens; a product without custom screens has no
+frontend code at all and is rendered from descriptors. Which products a running installation has
+enabled is not a build question: the shell registers the providers of the products `/boot.products`
+names and never loads the chunks of the others. A product whose crates move to their own
+repository ([01-overview.md](01-overview.md)) keeps its frontend library in this repository or
+publishes it to Nexus as `@globalart/keel-<id>`; which, is decided when it happens. A third-party
+composition built from the facade builds and embeds a shell of its own from the same sources.
 
-- A product with custom views has its own Angular application in the workspace: a `bootstrapKeel`
-  call with its `views` and `widgets`, built to `frontend/dist/<product>` and embedded as above.
-- A product without custom screens does not hold an Angular workspace at all. It points
-  `embed_frontend!` at `@globalart/keel-shell-app`, the prebuilt distribution of the same shell with
-  no custom views. When such a shell meets a view name it does not know, it shows `phx-not-found`
-  with a hint.
-
-The `frontend/` directory is a pnpm workspace: `libs/keel` with the entry points, `apps/shell-app`,
-one application per product that has custom views, and Storybook.
-
-How the prebuilt shell is distributed is an open question: an npm tarball in Nexus is proposed;
-GitHub release assets are the alternative, but they do not pass the production proxy wall without
-extra configuration (see [11-decisions.md](11-decisions.md)).
+The `frontend/` directory is a pnpm workspace: `libs/keel` with the entry points, `apps/shell`,
+`products/<id>` for each product with custom views, and Storybook.
 
 ## Boundary with phoenix-ui
 
@@ -326,16 +336,17 @@ KeelViewContext { descriptor?, params, client, principal, tabs }
 component that replaces the generic screen of a function through `provideKeelViews` (the M2
 acceptance criterion replaces one screen of the demo product this way) receives that function's
 descriptor. `params` are the screen parameters from the route, `client` is the `/client` instance,
-`principal` the current principal, `tabs` the object-tab service. The prebuilt shell, which carries
-no product components, shows `phx-not-found` with a hint for any view it meets.
+`principal` the current principal, `tabs` the object-tab service. A shell built without a
+product's frontend library shows `phx-not-found` with a hint for that product's views.
 
 ### The ceiling
 
 Custom views absorb everything metadata cannot express — the file manager, the configuration
 editor, the terminal, monitoring — and their share is the measure of whether the
-metadata approach is paying off. CI computes the share from the `r.view` registry as the ratio of
-views to functions; the alarm threshold is 20 % of functions. Above it the economics of the
-platform do not hold.
+metadata approach is paying off. CI computes the share from the `r.view` registry per product
+bundle (the views of its modules against the functions of its modules) and for the whole
+composition; the alarm threshold is 20 % of functions. Above it the economics of the platform do
+not hold.
 
 Measures:
 
@@ -347,8 +358,8 @@ Measures:
 - the `ui` vocabulary is reviewed once per milestone.
 
 Milestone targets: at M5 `panel` has exactly two custom views (the file manager and the
-configuration editor) and the share of custom views is at most 10 % of functions (see
-[../plan.md](../plan.md)).
+configuration editor) and the share of custom views is at most 10 % of the functions of `panel`
+(see [../plan.md](../plan.md)).
 
 ## Internationalisation
 
@@ -368,6 +379,10 @@ a manual list.
 | `<module>.<entity>.action.<id>`       | action label                              |
 | `<module>.<entity>.page.<id>`         | page or tab label                         |
 | `<module>.<entity>.column.<key>`      | column header                             |
+| `menu.<group>`                        | menu group label, declared by a bundle or the platform |
+| `product.<id>.brand`                  | brand name of a product                   |
+| `product.<id>.level.<level>`          | a bundle's label of a level, used while it is the only enabled product |
+| `keel.level.<level>`                  | platform label of a level, used when several products are enabled |
 | `keel.*`                              | shared labels, inherited                  |
 | `phx.*`                               | labels of phoenix-ui components (`PHX_LABELS`) |
 
@@ -396,16 +411,18 @@ A module embeds its dictionaries at compile time:
 r.i18n("en", include_str!("../i18n/en.json")).i18n("ru", include_str!("../i18n/ru.json"));
 ```
 
-A plugin ships its own files and names them in its manifest (`"i18n": { "en": "i18n/en.json",
-"ru": "i18n/ru.json" }`). The server merges the dictionaries and serves them over `/api/v1/i18n`;
-the shell picks the language from `principal.lang` in `/boot`, and the user's language lives in
-`settings_pref`.
+A bundle embeds its own dictionaries through `ProductManifest.i18n`. A plugin ships its own files
+and names them in its manifest (`"i18n": { "en": "i18n/en.json", "ru": "i18n/ru.json" }`). The
+server merges the dictionaries of the loaded modules and of the enabled bundles and serves them
+over `/api/v1/i18n`, so a disabled product contributes no keys; the shell picks the language from
+`principal.lang` in `/boot`, and the user's language lives in `settings_pref`.
 
 Translations are managed in OwnLate: one project for the core (system modules, the frontend
-runtime, the `phx.*` keys) and one project per product. Bundles are pulled from OwnLate at build
-time by `keel-dev i18n pull` and compiled into the binary, because the server a panel is installed
-on may have no outbound access and cannot fetch translations at runtime. `keel-dev i18n missing`
-compares the keys of the registry with the bundles and fails CI on any key without a translation.
+runtime, the `phx.*` keys) and one project per product. `keel-dev i18n pull` pulls every
+first-party project into the one build at build time, and the bundles are compiled into the
+binary, because the server Keel is installed on may have no outbound access and cannot fetch
+translations at runtime. `keel-dev i18n missing` compares the keys of the registry with the
+bundles and fails CI on any key without a translation.
 
 `phx.*` is the namespace reserved for `PHX_LABELS`: the labels phoenix-ui components render
 themselves (table chrome, pagination, dialogs) come through the same bundles and are bridged into
@@ -417,12 +434,14 @@ The full plan is in [../plan.md](../plan.md); the frontend-relevant parts are:
 
 | Milestone | Frontend scope                                                                      |
 |-----------|-------------------------------------------------------------------------------------|
-| M2        | entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action, wizard, tabs), `/shell`, `/testing`; `rust-embed`; Storybook with fixtures; phoenix-ui batch 1; OwnLate to `PHX_LABELS` bridge; publication to Nexus |
+| M2        | entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action, wizard, tabs), `/shell` with the one shell application (`/boot.products`, the brand rule, product headings), `/testing` with the `/boot` fixtures; `rust-embed` in `bin/keel`; Storybook with fixtures; phoenix-ui batch 1; the OwnLate to `PHX_LABELS` bridge; publication of `@globalart/keel` to Nexus |
 | M3        | SSE in the shell (progress modal, notification centre, scope filter, `Last-Event-ID`); `ui.result = task`; phoenix-ui batch 2 |
-| M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3; the file manager and configuration editor of `panel` as custom views |
+| M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3; the file manager and configuration editor of `panel` as custom views in `frontend/products/panel` |
 
-M2 is done when the demo product is driven entirely from the browser without any product
-TypeScript: a list with search, sorting, filters and bulk delete with confirmation; a form with
-pages, `show_if`, recompute and a field-level error; a wizard; one screen replaced by a custom view
-through `provideKeelViews`; `en` and `ru` switch; and the binary with the frontend inside is smaller
-than 40 MB.
+M2 is done when the `demo` bundle, enabled on the `keel` binary, is driven entirely from the
+browser without any product TypeScript: a list with search, sorting, filters and bulk delete with
+confirmation; a form with pages, `show_if`, recompute and a field-level error; a wizard; one screen
+replaced by a custom view through `provideKeelViews`; `en` and `ru` switch; Storybook renders the
+shell from `/boot` fixtures with one product and with two; and the binary with the frontend inside
+is smaller than 40 MB. The cap for the release binary carrying `dns` and `panel` is set at the
+start of M5 ([11-decisions.md](11-decisions.md)).

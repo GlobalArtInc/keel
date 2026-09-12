@@ -1,20 +1,20 @@
 # Storage and migrations
 
 This document specifies the storage layer of Keel: Postgres as the only database engine, how it is
-delivered together with a product and how a product connects to it, the identifier and column
-conventions, schema migrations with sqlmig and the additive-only policy, the isolation rules between
-module tables, encrypted secrets, and the eight tables the kernel owns. The dispatcher pipeline that
-opens and commits transactions is specified in [02-functions.md](02-functions.md), the accounts and
-principals that live in the kernel tables in [03-access.md](03-access.md), and installation, updates
-and backups in [09-operations.md](09-operations.md).
+delivered together with the installation and how the kernel connects to it, the identifier and
+column conventions, schema migrations with sqlmig and the additive-only policy, the isolation rules
+between module tables, encrypted secrets, and the eight tables the kernel owns. The dispatcher
+pipeline that opens and commits transactions is specified in [02-functions.md](02-functions.md),
+the accounts and principals that live in the kernel tables in [03-access.md](03-access.md), and
+installation, updates and backups in [09-operations.md](09-operations.md).
 
 ## One database engine
 
-Every product of the line keeps its data in Postgres. A panel is installed on the customer's own
+Every product of the line keeps its data in Postgres. Keel is installed on the customer's own
 server, so Postgres is part of the delivery: `install.sh` installs it from the distribution's
-packages, creates a role and a database for the product, and the panel connects over the unix
-socket with peer authentication. Several products on one host share one Postgres server but never
-a database: each product owns `keel_<product>` (`keel_dns`, `keel_panel`).
+packages, creates the role `keel` and the database `keel` once per host, and the kernel connects
+over the unix socket with peer authentication. Every enabled product's tables live in that one
+database, distinguished by their module prefix; there is nothing per product in Postgres.
 
 Database access goes through sea-orm 1.1 (`sqlx-postgres`, `runtime-tokio-rustls`); modules
 contain no raw sqlx. The connection pool belongs to `keel-kernel`. `keel-sdk` knows nothing about
@@ -31,15 +31,15 @@ one more service on the customer's server; the mitigations are listed below.
 
 - The minimum version is 15; Debian 12, Ubuntu 24.04 and RHEL 9 ship it.
 - `install.sh` installs the server package only when the host has no Postgres server; otherwise it
-  only creates the product's role and database. The role matches the product's unix user
-  `keel-<product>`, so peer authentication over the unix socket needs no password.
-- A panel update never touches Postgres.
-- The panel never manages a server it does not own. It owns its role and its database and nothing
+  only creates the role `keel` and the database `keel`. The role matches the unix user `keel`, so
+  peer authentication over the unix socket needs no password.
+- An update never touches Postgres.
+- Keel never manages a server it does not own. It owns its role and its database and nothing
   else; a pre-existing server with its own settings is left as it is.
 - `doctor` checks the Postgres version, the socket, the privileges of the role and free disk space.
   `/readyz` reports the database and the state of migrations.
-- When the database is unreachable the panel raises a problem on the dashboard through the notify
-  module (see [05-modules.md](05-modules.md)).
+- When the database is unreachable the installation raises a problem on the dashboard through the
+  notify module (see [05-modules.md](05-modules.md)).
 - An external database, whether a managed service or a shared server, is configured through the
   same `database` parameter with a TCP URL.
 
@@ -53,26 +53,24 @@ see "Open points" below and [11-decisions.md](11-decisions.md).
 
 ## Connection
 
-The `database` key of `/etc/keel/<product>/config.yaml` holds the connection URL. The file may be
-absent; the default for dns is:
+The `database` key of `/etc/keel/config.yaml` holds the connection URL. The file may be absent;
+the default is:
 
 ```yaml
-database: postgres:///keel_dns?host=/run/postgresql
+database: postgres:///keel?host=/run/postgresql
 ```
 
-That is the unix socket with peer authentication under the uid `keel-dns`. For an external
-database the value is a TCP URL, and the password comes from the environment variable
-`${<PRODUCT>_DB_PASS}` (`DNS_DB_PASS` for dns) rather than from the file. A binary started
-without `config.yaml` connects to the default database; this is an M0 acceptance criterion
-([docs/plan.md](../plan.md)).
+That is the unix socket with peer authentication under the uid `keel`. For an external database
+the value is a TCP URL, and the password comes from the environment variable `${KEEL_DB_PASS}`
+rather than from the file. A binary started without `config.yaml` connects to the default
+database; this is an M0 acceptance criterion ([docs/plan.md](../plan.md)).
 
 Pool parameters: 20 connections, connect and acquire timeout 10 s, `search_path` set to the
-product's schema. The product's schema is named after the product id (`dns`, `panel`, `demo`),
-and the kernel creates it at connect time when it is missing, so the role needs `CREATE` on its
-database, which the role that owns the database has. Every table of the product, ledgers
-included, lives in that schema; `public` is not on the search path.
+installation's schema `keel`, which the kernel creates at connect time when it is missing, so the
+role needs `CREATE` on its database, which the role that owns the database has. Every table of
+every enabled module, ledgers included, lives in that schema; `public` is not on the search path.
 
-The placeholder `${<PRODUCT>_DB_PASS}` is the only substitution the kernel performs in the
+The placeholder `${KEEL_DB_PASS}` is the only substitution the kernel performs in the
 `database` value: the variable's value is percent-encoded and put in the placeholder's place, an
 unset variable fails the start, and any other `${...}` is refused. A value that does not start
 with `postgres://` (`postgresql://` is accepted and normalised) or does not parse as a
@@ -99,9 +97,10 @@ no other coordination mechanism. The kernel's own advisory lock keys are the 64-
 values of eight ASCII bytes, kept in one place in `keel-kernel`: `keelmigr` is the session lock
 held on a pinned connection for the whole migration step of a boot (kernel catalogue first, then
 the modules), `keelledg` is the per-catalogue lock sqlmig takes underneath for the kernel ledger,
-`keelschm` is the transaction lock around the creation of the product's schema, and `keelinst`
-the transaction lock around the first-start rows of `keel_kv`. Advisory locks are scoped to a
-database, so two products on one server never wait on each other.
+`keelschm` is the transaction lock around the creation of the schema `keel`, and `keelinst`
+the transaction lock around the first-start rows of `keel_kv` and around every write of the
+enabled product set by `keel product enable|disable`. Advisory locks are scoped to a database;
+the installation's keys are the only Keel keys in `keel`.
 
 ## Identifiers, time and JSON
 
@@ -137,10 +136,13 @@ pub static MODULE: ModuleDef = ModuleDef {
 };
 ```
 
-At start the kernel applies migrations in the order kernel, then modules in topological order of
-`requires`, before the port is opened and before any module `init` runs, under a session-level
-lock so that two processes never migrate concurrently. The full boot sequence is in
-[05-modules.md](05-modules.md). The product binary exposes a `migrate` subcommand for running this
+At start the kernel applies its own migrations first; then it reads the enabled products from
+`keel_kv`, fixes the loaded module set (the platform modules, the modules of the enabled bundles
+and the chosen side of every bridge, [05-modules.md](05-modules.md)) and migrates those modules
+in topological order of `requires`, before the port is opened and before any module `init` runs,
+under a session-level lock so that two processes never migrate concurrently. Modules of disabled
+products are not migrated. Enabling a product writes the set and takes effect at the next start,
+where the newly enabled modules migrate before the port opens. The `migrate` subcommand runs this
 step on its own, and `keel-dev migrate create` creates a new migration file in a module.
 
 The schema contract lives in `keel-types` and in `keel-conformance`, not in SQL markers: a
@@ -165,12 +167,14 @@ the host; the archive layout and the restore procedure are in [09-operations.md]
 
 ## Orphaned modules and schema prune
 
-A module removed from a product leaves its tables in place. The kernel records the module in
-`keel_module` with `state = orphaned` and keeps running; nothing is deleted implicitly. `schema
-prune` removes the tables of an orphaned module as a deliberate operator action. The row is
-written right after the module's own migrations have run, so a module whose migration fails
-leaves no row; a module composed again after an absence goes back to `active` on the next start
-with its ledger untouched.
+A module outside the loaded set — because its product was disabled with `keel product disable`,
+or because the binary no longer composes it — leaves its tables in place. The kernel records the
+module in `keel_module` with `state = orphaned` and keeps running; nothing is deleted implicitly.
+`schema prune` removes the tables of an orphaned module as a deliberate operator action and is
+never implied by `disable`. The row is written right after the module's own migrations have run,
+so a module whose migration fails leaves no row; a module loaded again after an absence goes back
+to `active` on the next start with its ledger untouched and applies only the migrations it
+missed.
 
 ## Isolation between modules
 
@@ -189,11 +193,11 @@ with its ledger untouched.
 ## Secrets
 
 A value that must not be readable from the database is typed `Secret` in the SDK. It is encrypted
-with AES-GCM under the key from `/var/lib/keel/<product>/secret.key`, a file with mode 0600 that
-the product generates at its first start; `keel_kv` holds the wrapped key. A copy of the
-database without the matching `secret.key` cannot decrypt its `Secret` columns, which is why a
-backup includes the key only optionally, under a passphrase (`--with-secret-key`, see
-[09-operations.md](09-operations.md)).
+with AES-GCM under the key from `/var/lib/keel/secret.key`, a file with mode 0600 that the
+installation generates at its first start; one key serves the `Secret` columns of every product;
+`keel_kv` holds the wrapped key. A copy of the database without the matching `secret.key` cannot
+decrypt its `Secret` columns, which is why a backup includes the key only optionally, under a
+passphrase (`--with-secret-key`, see [09-operations.md](09-operations.md)).
 
 Two keys are involved. `secret.key` holds 32 random bytes written as 64 hex characters; it is
 the key-encryption key and never leaves the data directory. The data key that encrypts `Secret`
@@ -219,8 +223,8 @@ prefix.
 | `keel_account` | Tenant: the unit of ownership, a tree by materialized path | `id`, `kind`, `parent_id`, `path`, `state`, `origin`, `external_id` |
 | `keel_principal` | Person or token holder, member of one account with a role | `id`, `account_id`, `login`, `level`, `role`, `state`, `lang`, `origin`, `external_id`, `acl_gen` |
 | `keel_migration` | sqlmig ledger of the kernel's own migrations | sqlmig's own layout |
-| `keel_module` | Registry of modules that ever ran against this database | `id`, `version`, `state` |
-| `keel_kv` | Instance-level values: instance id, wrapped key, version history, monotonic time | `key`, `value` |
+| `keel_module` | Registry of modules that ever ran against this database; a module outside the loaded set is `orphaned` | `id`, `version`, `state` |
+| `keel_kv` | Instance-level values: instance id, wrapped key, enabled products, version history, monotonic time | `key`, `value` |
 | `keel_outbox` | Events written in the call transaction, delivered at least once | `seq`, `id`, `type`, `actor_json`, `subject_json`, `data_json` |
 | `keel_idempotency` | Recorded responses for `Idempotency-Key` replays | `principal_id`, `key`, `func`, `request_hash`, `status`, `response_json` |
 | `keel_limit` | Per-account values of the limits modules contribute through `LimitDef`, inherited along `path` | `account_id`, `key`, `value` |
@@ -233,8 +237,9 @@ prefix.
 `path` is the materialized path of the account in the tree, so the scope of a reseller is one
 `LIKE` on the prefix. The root account with `kind = system` and `path = /` is created by a kernel
 migration; its id is the nil ULID `00000000000000000000000000`, the constant `Id::ROOT_ACCOUNT`
-of `keel-types` that every product knows without a query; it owns the owner, the administrators, the service tokens and the principals of plugins
-and peer products. The pair `(origin, external_id)` is the stable identity used by peers:
+of `keel-types` that every product knows without a query; it owns the owner, the administrators,
+the service tokens and the principals of plugins and peer products. The pair
+`(origin, external_id)` is the stable identity used by peers:
 `keel.account.upsert` is idempotent by it. The semantics are in [03-access.md](03-access.md).
 
 ### keel_principal
@@ -263,14 +268,15 @@ ledger's own layout and is not counted either.
 `id TEXT`, `version TEXT`, `state TEXT` (`active` or `orphaned`), `installed_at timestamptz`,
 `updated_at timestamptz`.
 
-One row per module id that has ever migrated this database. A module missing from the current
-composition keeps its row with `state = orphaned` until `schema prune`.
+One row per module id that has ever migrated this database. A module outside the loaded set — its
+product disabled, or absent from the binary — keeps its row with `state = orphaned` until `schema
+prune`.
 
 ### keel_kv
 
 `key TEXT`, `value jsonb`. A small key-value store for values that exist once per installation:
-the instance id, the wrapped secret key, the history of versions that ran against this database,
-and the monotonic time that the license module uses against clock changes
+the instance id, the wrapped secret key, the enabled products, the history of versions that ran
+against this database, and the monotonic time that the license module uses against clock changes
 ([05-modules.md](05-modules.md)).
 
 The kernel writes `instance_id` (a ULID, the same value as `instance.id` in the data directory)
@@ -278,6 +284,14 @@ and `secret_key` (the wrapped data key, see "Secrets") at first start. The insta
 generated once and copied in both places; a missing `instance.id` file is restored from the
 row, and a file that names a different id than the row fails the start, because a data
 directory and a database of two installations must not be combined.
+
+`products` holds the enabled product bundles as a map from product id to the time it was enabled
+and the principal that enabled it. It is written under the `keelinst` lock by `keel product
+enable` and `keel product disable` and read once by the loader before validation
+([05-modules.md](05-modules.md)). A product id absent from the map is disabled: its modules are
+neither migrated nor initialised, and their `keel_module` rows are `orphaned`. The set lives in
+`keel_kv` rather than in a ninth table because it is one instance-level value consulted once at
+boot, like the instance id.
 
 ### keel_outbox
 
@@ -308,9 +322,9 @@ rejected with `409 idempotency_mismatch`. Expired records are removed by retenti
 There is no in-memory substitute. `keel-testkit` gives every test its own temporary database,
 created with `CREATE DATABASE` from a template; CI provides the server through testcontainers from
 M1. The CI matrix of `keel-system` ("every module alone and without each one in turn") and the
-test "a product of one bare kernel starts and answers on the socket" start a product for each
-composition and therefore run its migrations. See [05-modules.md](05-modules.md) and
-[docs/plan.md](../plan.md).
+test "a composition of the bare kernel starts and answers on the socket" start the binary for
+each composition and enabled set and therefore run its migrations. See
+[05-modules.md](05-modules.md) and [docs/plan.md](../plan.md).
 
 ## Open points
 
