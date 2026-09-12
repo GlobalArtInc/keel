@@ -85,6 +85,14 @@ jobs:
       - name: The binary without the demo bundle
         run: cargo test -p keel-bin
 
+      - name: Build the binary with the demo bundle
+        run: cargo build -p keel-bin --features demo
+
+      - name: Prove the binary
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: hack/prove-binary.sh target/debug/keel
+
       - name: No test database remains
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
