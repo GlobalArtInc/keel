@@ -304,10 +304,17 @@ pub struct Principal {
 
 impl Principal {
     pub fn can_see(&self, account_path: &str) -> bool;                       /* path.starts_with(self.account.path) for reseller */
-    pub fn resolve_account(&self, requested: Option<Id>) -> keel::Result<Id>; /* user: own; reseller/admin: inside the subtree */
     pub fn can(&self, permission: &str) -> bool;                              /* PermissionSource */
 }
+
+impl<P> Call<P> {
+    pub async fn resolve_account(&self, requested: Option<Id>) -> keel::Result<Id>; /* user: own; reseller/admin: inside the subtree */
+}
 ```
+
+`resolve_account` lives on the call rather than on the principal because a reseller's answer
+needs the database: whether the requested account lies under the reseller's path is a query
+against `keel_account`, run on the call's connection.
 
 `/api/v1/boot` returns the principal the shell renders for, including the preferences the shell
 needs (language, time zone, whether TOTP is enrolled) and the actor when a delegated session is
@@ -340,12 +347,14 @@ pub fn scope_by_account<E: Owned>(q: Select<E>, p: &Principal) -> Select<E>;
 
 | Caller level       | Visible accounts                                   |
 |--------------------|----------------------------------------------------|
-| `user`             | its own account                                    |
+| `guest`            | nothing                                            |
+| `service`, `user`  | its own account                                    |
 | `reseller`         | the subtree under its account, by `path`           |
 | `admin`, `owner`   | everything                                         |
 
-`scope_by_account` defines visibility for `user`, `reseller`, `admin` and `owner`; the rule for
-`service` principals is not stated.
+The table is the `AccountScope` of a principal: `Nothing`, `Own(account)`, `Subtree(account)`
+or `All`. A service token sits in an account like a user and sees that account; a guest has no
+account and sees no row.
 
 The rule is a `ScopePolicy` service; a product may provide its own implementation (for example a
 project-based product with a different visibility rule) without touching the kernel. The same
@@ -365,17 +374,18 @@ references the storage rules permit outside a declared `requires` ([04-storage.m
 
 ### `resolve_account`
 
-When a form lets a higher level choose the tenant for a new row, the handler asks the principal to
-resolve the requested account:
+When a form lets a higher level choose the tenant for a new row, the handler asks the call to
+resolve the requested account for its principal:
 
 ```rust
-let account = call.principal().resolve_account(call.params().account)?;
+let account = call.resolve_account(call.params().account).await?;
 ```
 
 - `user`: always its own account; the `account` field is above its level, so a value sent by a
   user is refused earlier as `forbidden_field`.
-- `reseller` and `admin`: any account inside their visible subtree; an account outside it is an
-  error.
+- `reseller` and `admin`: any account inside their visible subtree; an account outside it, or
+  one that does not exist, is answered with `not_found` attached to the `account` field, so the
+  form shows the error on the field and the existence of foreign accounts is not revealed.
 
 The `account` field of such a form uses `keel.account.options` as its remote option source, so
 the select shows only what the caller may pick.

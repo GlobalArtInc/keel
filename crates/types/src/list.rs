@@ -81,6 +81,7 @@ pub enum FilterValue {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[schemars(rename = "Page_{T}")]
 pub struct Page<T> {
     pub data: Vec<T>,
     pub total: u64,
@@ -138,6 +139,26 @@ mod tests {
         assert!(serde_json::from_value::<SortDir>(json!("ascending")).is_err());
         assert!(serde_json::from_value::<FilterOp>(json!("like")).is_err());
         assert!(serde_json::from_value::<Filter>(json!({ "key": "ttl", "value": 300 })).is_err());
+    }
+
+    #[test]
+    fn page_schema_is_named_after_its_row_type() {
+        #[derive(Serialize, schemars::JsonSchema)]
+        struct ZoneRow {
+            name: String,
+        }
+        let schema = schemars::schema_for!(Page<ZoneRow>);
+        let value = schema.as_value();
+        assert_eq!(value["title"], json!("Page_ZoneRow"));
+        assert_eq!(
+            value["properties"]["data"]["items"],
+            json!({ "$ref": "#/$defs/ZoneRow" })
+        );
+        assert_eq!(value["required"], json!(["data", "total"]));
+        assert_eq!(
+            <Page<Value> as schemars::JsonSchema>::schema_name(),
+            "Page_AnyValue"
+        );
     }
 
     #[test]

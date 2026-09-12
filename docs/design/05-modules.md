@@ -126,6 +126,14 @@ column names where each contribution is consumed.
   its `requires`. Importing anything else is an error reported by `keel-dev check`. The host
   executor is not part of the SDK: `HostExecutor` lives in `keel_host::api`, so a module that
   manages the host names `host` in `requires` ([06-host.md](06-host.md)).
+- The crates the SDK surface is expressed in — `serde`, `serde_json`, `schemars`, `sea-orm`,
+  `async-trait` and the migrator — are re-exported by `keel-sdk` under their own names, so one
+  version of each is shared by the kernel and every module. Their derives are pointed at the
+  re-exports: `#[serde(crate = "keel_sdk::serde")]` and
+  `#[schemars(crate = "keel_sdk::schemars")]` on the struct, `use keel_sdk::sea_orm;` in the
+  module that defines an entity ([02-functions.md](02-functions.md)). The crate
+  `keel-sdk-probe` is such a module, kept in the workspace with `keel-sdk` as its only
+  dependency so that CI proves the rule on every build.
 - Every table, function, permission key, setting and i18n key of a module carries the module id
   as its prefix.
 - Foreign keys between modules exist only inside a declared `requires` relation and towards

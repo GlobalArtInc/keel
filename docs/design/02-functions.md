@@ -168,8 +168,15 @@ handler. The only check on the shape of a descriptor is the golden fixture and t
 in CI. A derive for the `ui` block will be added only if, after two products, the builder code
 proves repetitive.
 
+A module lists `keel-sdk` as its only dependency ([05-modules.md](05-modules.md)), so the
+derives are pointed at the SDK's re-exports: `#[serde(crate = "keel_sdk::serde")]` and
+`#[schemars(crate = "keel_sdk::schemars")]` on every struct that derives them, and
+`use keel_sdk::sea_orm;` in the module that defines an entity.
+
 ```rust
 #[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
 pub struct ZoneEdit {
     pub id: Option<Id>,
     #[schemars(extend("x-keel" = json!({ "check": "domain" })))]
@@ -198,10 +205,10 @@ pub fn edit() -> FunctionDef {
             .field("ttl").recompute("dns.zone.recompute")
             .multi(["ttl"]))
         .handler(|call: Call<ZoneEdit>| async move {
-            let account = call.principal().resolve_account(call.params().account)?;
-            let row = zone::upsert(call.tx(), account, call.params()).await
+            let account = call.resolve_account(call.params().account).await?;
+            let row = zone::upsert(call.tx()?, account, call.params()).await
                 .map_err(|e| KeelError::conflict("dns.zone.error.exists").field("name").source(e))?;
-            call.emit("dns.zone.saved", &row);
+            call.emit("dns.zone.saved", &row)?;
             let dns = call.require::<dyn DnsProvider>()?;
             call.after_commit(move |ctx| async move { dns.apply(&ctx, &row).await });
             Ok(Saved { id: row.id })
@@ -228,9 +235,10 @@ Reading the example against the descriptor parts:
   `ttl` calls `dns.zone.recompute`; `ttl` is the one field allowed in group editing.
 - The handler receives `Call<ZoneEdit>` and uses only what the SDK exposes on it:
   `principal()` and `resolve_account` (see [03-access.md](03-access.md)), `params()`, `tx()`
-  — the transaction the kernel opened — `emit` into the outbox, `require::<dyn Trait>()` for a
-  service another module provides, and `after_commit` for work that must not run inside the
-  transaction. `KeelError::conflict("dns.zone.error.exists").field("name")` becomes a field
+  — the transaction the kernel opened; a read call has none, so `tx()` answers an error there
+  and `db()` is the accessor that works in both modes — `emit` into the outbox,
+  `require::<dyn Trait>()` for a service another module provides, and `after_commit` for work
+  that must not run inside the transaction. `KeelError::conflict("dns.zone.error.exists").field("name")` becomes a field
   error keyed for translation, an entry of `fields[]` with `path: name`; the status codes are
   listed in [10-contracts.md](10-contracts.md).
 

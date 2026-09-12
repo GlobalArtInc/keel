@@ -1,0 +1,21 @@
+[package]
+name = "keel-sdk"
+description = "The public surface every module is written against: module definition, registrar, function builder and call context"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+futures = { workspace = true }
+keel-types = { workspace = true }
+migrator = { workspace = true }
+schemars = { workspace = true }
+sea-orm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

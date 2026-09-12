@@ -1,0 +1,11 @@
+{
+  "memo": {
+    "item": {
+      "list": { "title": "Memos" },
+      "edit": { "title": "Memo" },
+      "empty": "No memos yet",
+      "error": { "exists": "A memo with this title exists" }
+    }
+  },
+  "menu": { "memo": "Memos" }
+}

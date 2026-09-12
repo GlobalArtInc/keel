@@ -1,0 +1,183 @@
+{
+  "keel": 1,
+  "name": "dns.zone.edit",
+  "module": "dns",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.manage",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "ZoneEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "name": {
+        "type": "string",
+        "x-keel": {
+          "check": "domain"
+        }
+      },
+      "kind": {
+        "$ref": "#/$defs/ZoneKind"
+      },
+      "master_ips": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "x-keel": {
+          "check": "ip"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "ttl": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "tsig_key": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Secret"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password",
+          "generate": true
+        }
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "name",
+      "kind",
+      "master_ips",
+      "ttl"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ZoneKind": {
+        "type": "string",
+        "enum": [
+          "master",
+          "slave"
+        ]
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Saved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.zone.edit.title",
+    "read": "dns.zone.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "kind",
+          "ttl",
+          "account"
+        ]
+      },
+      {
+        "id": "transfer",
+        "fields": [
+          "master_ips",
+          "tsig_key"
+        ],
+        "show_if": {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        }
+      }
+    ],
+    "fields": {
+      "master_ips": {
+        "required_if": {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        }
+      },
+      "name": {
+        "readonly_if": {
+          "eq": [
+            "$mode",
+            "edit"
+          ]
+        }
+      },
+      "ttl": {
+        "recompute": "dns.zone.recompute"
+      }
+    },
+    "multi": [
+      "ttl"
+    ]
+  }
+}

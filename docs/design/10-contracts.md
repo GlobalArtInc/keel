@@ -86,7 +86,7 @@ delivered and hidden. The three parts of a descriptor — the parameter schema, 
 ```json
 { "keel": 1, "name": "dns.zone.list", "module": "dns", "kind": "list", "mode": "read",
   "access": { "level": "user", "permission": "dns.zone.read", "feature": "dns.zones" }, "key": "id",
-  "params": { "$ref": "keel://ListQuery" }, "result": { "$ref": "#/$defs/Page_ZoneRow" },
+  "params": { "$ref": "keel://ListQuery" }, "result": { "title": "Page_ZoneRow", "type": "object" },
   "ui": {
     "title": "dns.zone.list.title", "search": ["name"],
     "columns": [
@@ -114,7 +114,7 @@ delivered and hidden. The three parts of a descriptor — the parameter schema, 
 | `kind`, `mode` | screen kind and `read \| write`; `mode` selects the dispatcher path (no transaction, no idempotency, no outbox for `read`) |
 | `access` | minimum `level`, required `permission`, licence `feature`; evaluated by the guards |
 | `key` | the row key column; its presence makes the function owned, so `OwnedGuard` loads the row's account before the handler ([02-functions.md](02-functions.md)) |
-| `params`, `result` | JSON Schema; `keel://ListQuery` is the shared list query, `Page_ZoneRow` is generated from the Rust row type |
+| `params`, `result` | JSON Schema; `keel://ListQuery` is the shared list query, and the result of a list is the page schema, titled `Page_<Row>` after the Rust row type, with `data`, `total` and `totals`; the example abbreviates its body |
 | `ui.title`, `ui.search` | title key and the columns full-text search runs over |
 | `ui.columns[]` | `key`, `type` (mapped onto `PhxColumn.type`), `sortable`, `primary`, `total` (footer aggregate), `map` (value → status tone), `filter` with either static `options` or a `remote` options function, `to` for `link` columns (target `screen` with `params`), `edit` for in-cell editing through another function, and `access` that projects the column away for callers below it |
 | `ui.actions[]` | `id`, `role`, and either a `screen` to open or a `function` to call; `icon`; `default` marks the action a row opens; `params` for child screens; `confirm` as `true` or `{ destructive, items, input }` (show the affected items by the named column and ask the user to type their count); `hidden_if` as a condition AST; `formats` for `export` |

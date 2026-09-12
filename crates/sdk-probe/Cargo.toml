@@ -1,0 +1,10 @@
+[package]
+name = "keel-sdk-probe"
+description = "A module written against keel-sdk alone, built in CI to prove that the SDK is the whole surface a module needs"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+keel-sdk = { workspace = true }

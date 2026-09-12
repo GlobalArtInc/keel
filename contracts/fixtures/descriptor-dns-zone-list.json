@@ -1,6 +1,6 @@
 { "keel": 1, "name": "dns.zone.list", "module": "dns", "kind": "list", "mode": "read",
   "access": { "level": "user", "permission": "dns.zone.read", "feature": "dns.zones" }, "key": "id",
-  "params": { "$ref": "keel://ListQuery" }, "result": { "$ref": "#/$defs/Page_ZoneRow" },
+  "params": { "$ref": "keel://ListQuery" }, "result": { "title": "Page_ZoneRow", "type": "object" },
   "ui": {
     "title": "dns.zone.list.title", "search": ["name"],
     "columns": [

@@ -322,7 +322,7 @@ from [design/03-access.md](design/03-access.md). `ListSource` with the sea-orm e
 first implementation. The `Secret` type. `keel_sdk::system`, `#[doc(hidden)]`, with
 `Authenticator`; the other system hooks arrive with the modules that use them. A prelude.
 
-**Touches.** `crates/sdk/`.
+**Touches.** `crates/sdk/`, `crates/sdk-probe/`, `hack/check-deps.sh`.
 
 **Out of scope.** Proc-macros and a derive for `ui`; `HostExecutor` (it lives in
 `keel_host::api`); `LimitDef` and `check_limit` (M4); `AccountLifecycle` (M3); the contribution
@@ -334,7 +334,8 @@ plugin-facing types.
 - `cargo tree -p keel-sdk` shows no axum and no cookie crate, and the public API exposes no
   sqlx or sea-orm pool type; the crate depends on `keel-types`.
 - A test crate that depends only on `keel-sdk` defines a `MODULE` with one function of each
-  `mode` and compiles.
+  `mode` and compiles; it is a workspace member, so every CI build proves it, and
+  `hack/check-deps.sh` asserts that `keel-sdk` is its only direct dependency.
 - The builder for the `dns.zone.edit` example in the functions document compiles, and the
   descriptor it produces is committed as a snapshot under `contracts/fixtures/`.
 - A function built with `.owned::<E>()` records the entity's account column in its definition,

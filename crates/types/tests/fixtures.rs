@@ -9,8 +9,9 @@ use keel_types::{
 use serde::Deserialize;
 use serde_json::Value;
 
-const KNOWN: [&str; 10] = [
+const KNOWN: [&str; 11] = [
     "check-cases.json",
+    "descriptor-dns-zone-edit.json",
     "descriptor-dns-zone-list.json",
     "envelope-200.json",
     "envelope-403.json",
@@ -161,6 +162,23 @@ fn descriptor_fixture_round_trips_without_loss() {
         hidden,
         &Expr::parse("status == 'suspended'").expect("parses")
     );
+}
+
+#[test]
+fn form_descriptor_fixture_round_trips_without_loss() {
+    let descriptor: Descriptor = round_trip(load("descriptor-dns-zone-edit.json"));
+    assert_eq!(descriptor.name, "dns.zone.edit");
+    assert_eq!(descriptor.kind, Kind::Form);
+    assert_eq!(descriptor.mode, Mode::Write);
+    assert_eq!(descriptor.key.as_deref(), Some("id"));
+    let ui = descriptor.ui.expect("form ui");
+    assert_eq!(ui.read.as_deref(), Some("dns.zone.get"));
+    assert_eq!(ui.pages.len(), 2);
+    assert_eq!(
+        ui.pages[1].show_if.as_ref(),
+        Some(&Expr::parse("kind == 'slave'").expect("parses"))
+    );
+    assert_eq!(ui.multi, ["ttl"]);
 }
 
 #[test]

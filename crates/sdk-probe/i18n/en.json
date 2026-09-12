@@ -1,0 +1,10 @@
+{
+  "probe": {
+    "item": {
+      "list": { "title": "Items" },
+      "edit": { "title": "Item" },
+      "empty": "No items yet"
+    }
+  },
+  "menu": { "probe": "Probe" }
+}

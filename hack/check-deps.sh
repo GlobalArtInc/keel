@@ -35,4 +35,23 @@ for forbidden in tokio async-std smol sqlx sea-orm axum hyper http reqwest; do
 done
 echo "keel-types graph checked"
 
+for forbidden in axum cookie cookie_store hyper http reqwest tower tower-http keel-kernel keel-system keel-host; do
+  if cargo tree -p keel-sdk -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-sdk depends on $forbidden" >&2
+    fail=1
+  fi
+done
+if ! cargo tree -p keel-sdk -e normal --prefix none --depth 1 | awk '{print $1}' | grep -qx "keel-types"; then
+  echo "keel-sdk does not depend on keel-types" >&2
+  fail=1
+fi
+echo "keel-sdk graph checked"
+
+direct=$(cargo tree -p keel-sdk-probe -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
+if [ "$direct" != "keel-sdk " ]; then
+  echo "keel-sdk-probe depends on more than keel-sdk: $direct" >&2
+  fail=1
+fi
+echo "keel-sdk-probe graph checked"
+
 exit "$fail"
