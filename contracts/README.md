@@ -2,7 +2,8 @@
 
 The wire contract of the platform, in a form both sides can check against.
 
-- `protocol.md` — the prose of the contract; `docs/design/10-contracts.md` is its specification.
+- `protocol.md` — the prose of the contract, not yet written; until it is,
+  `docs/design/10-contracts.md` is the contract's specification.
 - `fixtures/` — golden JSON fixtures loaded by the tests of `keel-types` and, from M2, by the
   frontend test suite: expression cases, check cases, descriptors, envelopes, list queries, the
   event and the `/boot` payload.

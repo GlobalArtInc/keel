@@ -427,12 +427,13 @@ r.i18n("en", include_str!("../i18n/en.json")).i18n("ru", include_str!("../i18n/r
 A bundle embeds its own dictionaries through `ProductManifest.i18n`. A plugin ships its own files
 and names them in its manifest (`"i18n": { "en": "i18n/en.json", "ru": "i18n/ru.json" }`). The
 server merges the dictionaries of the loaded modules and of the enabled bundles and serves them
-over `/api/v1/i18n?lang=` as `{ lang, messages }`, one language at a time with `en` filling every
-gap ([10-contracts.md](10-contracts.md)), so a disabled product contributes no keys; the shell
-picks the language from `principal.lang` in `/boot`, and the user's language lives in
-`settings_pref`. The products screen of the shell is the kernel's `keel.product.list` with its
-row actions `enable` and `disable`, both confirmed, not a screen of its own; a product's logo is
-served at `/brand/<id>/logo.svg` from the asset its `Brand.logo` names.
+over `/api/v1/i18n?lang=` as `{ lang, messages }` in the `data` of the call envelope, one language
+at a time with `en` filling every gap ([10-contracts.md](10-contracts.md)), so a disabled product
+contributes no keys; the shell picks the language from `principal.lang` in `/boot`, and the
+user's language lives in `settings_pref`. The products screen of the shell is the kernel's
+`keel.product.list` with its row actions `enable` and `disable`, both confirmed, not a screen of
+its own; a product's logo is served at `/brand/<id>/logo.svg` from the asset its `Brand.logo`
+names.
 
 Translations are managed in OwnLate: one project for the core (system modules, the frontend
 runtime, the `phx.*` keys) and one project per product. `keel-dev i18n pull` pulls every

@@ -37,7 +37,8 @@ bin/keel/    keel-bin — the binary keel: the composition of every module and e
              demo bundle; release builds pass --no-default-features and carry no demo
 frontend/    pnpm workspace: @globalart/keel, the shell application and the product view
              libraries (from M2)
-contracts/   protocol.md, golden fixtures, generated openapi.json
+contracts/   golden fixtures and the kernel's descriptor snapshots; protocol.md and the
+             generated openapi.json come later (from M2)
 deploy/      install.sh, systemd units, sample configs (from M4)
 docs/        design and plan
 hack/        scripts CI runs
@@ -54,10 +55,14 @@ export KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:5432/postgres
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-hack/check-deps.sh
+cargo test -p keel-bin --no-default-features
 cargo build -p keel-bin
 hack/prove-binary.sh target/debug/keel
+hack/check-test-databases.sh
+hack/check-deps.sh
 ```
+
+CI ends with `cargo-semver-checks` against the facade crate `keel`.
 
 `cargo build -p keel-bin` produces `target/debug/keel` with the `demo` bundle compiled in, since
 the feature `demo` of `keel-bin` is on by default; `--no-default-features` builds the binary a

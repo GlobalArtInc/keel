@@ -115,7 +115,7 @@ every key whose module listed that level, whichever product the module belongs t
 A function declares its access as a triple: level, permission and licence feature.
 
 ```rust
-keel::function::<ZoneEdit, Saved>("dns.zone.edit")
+function::<ZoneEdit, Saved>("dns.zone.edit")
     .kind(Kind::Form).mode(Mode::Write)
     .access(Level::User, "dns.zone.manage").feature("dns.zones")
     .owned::<zone::Entity>()
@@ -269,7 +269,7 @@ A reseller is not a special table: it is a principal of level `reseller` in an a
 visible to every enabled product whatever its kind, because scoping is by `path`, not by kind.
 
 ```sql
-CREATE TABLE IF NOT EXISTS keel_account (
+CREATE TABLE keel_account (
     id          TEXT PRIMARY KEY,
     kind        TEXT NOT NULL,
     parent_id   TEXT REFERENCES keel_account(id),
@@ -332,7 +332,7 @@ The row on the wire carries `accountId`, `externalId`, `aclGen`, `createdAt` and
 the forms take the account as `account` ([10-contracts.md](10-contracts.md)).
 
 ```sql
-CREATE TABLE IF NOT EXISTS keel_principal (
+CREATE TABLE keel_principal (
     id          TEXT PRIMARY KEY,
     account_id  TEXT NOT NULL REFERENCES keel_account(id),
     login       TEXT NOT NULL UNIQUE,

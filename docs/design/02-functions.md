@@ -194,7 +194,7 @@ pub struct ZoneEdit {
 }
 
 pub fn edit() -> FunctionDef {
-    keel::function::<ZoneEdit, Saved>("dns.zone.edit")
+    function::<ZoneEdit, Saved>("dns.zone.edit")
         .kind(Kind::Form).mode(Mode::Write)
         .access(Level::User, "dns.zone.manage").feature("dns.zones")
         .owned::<zone::Entity>()

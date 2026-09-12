@@ -641,15 +641,19 @@ descriptors are cached under.
 
 Labels in `menu`, `brand.name` and `products[].brand.name` are i18n keys resolved by the client
 from the catalogues served under `/api/v1/i18n`. Over the control socket the same payload is
-answered to the frame `{ "boot": true }` as the owner. `contracts/fixtures/boot.json` is the
-golden fixture of this shape as M0 serves it: `edition: null`, no lease, no dashboard, no views.
+answered to the frame `{ "boot": true }` as the owner, as the `data` of an envelope.
+`contracts/fixtures/boot.json` is the golden fixture of this shape as M0 serves it:
+`edition: null`, no lease, no dashboard, no views.
 
 ## `GET /api/v1/i18n`
 
-`GET /api/v1/i18n?lang=<code>` answers `{ "lang": "<code>", "messages": { … } }`: the merged
-dictionaries of the loaded modules and the enabled bundles for that language as one nested
-object, with every key missing in the language filled from `en`; a language nobody ships falls
-back to `en` altogether, and `lang` names the language actually served. The response carries
-the catalogue's `ETag` (the metadata hash without a principal), `private, no-store`, and `304`
-on a matching `If-None-Match`. The same catalogue answers the socket frame `{ "i18n": "<code>" }`,
-which is how `keel ctl --out table` translates its headers.
+`GET /api/v1/i18n?lang=<code>` answers the call envelope whose `data` is
+`{ "lang": "<code>", "messages": { … } }`: the merged dictionaries of the loaded modules and the
+enabled bundles for that language as one nested object, with every key missing in the language
+filled from `en`; a language nobody ships falls back to `en` altogether, and `lang` names the
+language actually served; without `lang` the principal's language is served. The response
+carries the catalogue's `ETag` (the metadata hash without a principal), `private, no-store`, and
+`304` on a matching `If-None-Match`. The same catalogue answers the socket frame
+`{ "i18n": "<code>" }` as the `data` of an envelope, which is how `keel ctl --out table`
+translates its headers. Unlike this route, `GET /api/v1/boot` and `GET /api/v1/functions` answer
+their payload bare, without the envelope.

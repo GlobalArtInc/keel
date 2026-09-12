@@ -133,7 +133,8 @@ product. CI additionally validates the full composition with every bundle enable
 
 Everything a module adds to the installation goes through `Registrar` inside `init`:
 
-- Functions, built with `keel::function::<Params, Result>("<module>.<entity>.<verb>")` and
+- Functions, built with `keel_sdk::function::<Params, Result>("<module>.<entity>.<verb>")`
+  (in the prelude as `function`) and
   registered with `r.function(...)`. Descriptors, the pipeline and the guards that run them are
   in [02-functions.md](02-functions.md).
 - SSE streams, `r.stream("dns.zone.log", handler)`.

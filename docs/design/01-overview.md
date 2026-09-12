@@ -177,7 +177,8 @@ The kernel imports neither `keel-system` nor `keel-host`.
 | L7 Tools | `keel-dev`, `keel-conformance`, `hack/` | not part of the `keel` binary |
 
 The facade crate `keel` sits between products and the layers below it: it re-exports the SDK
-(`keel::sdk`, `keel::prelude`, `keel::function`, `keel::ModuleDef`, `keel::ProductManifest`) and
+(`keel::sdk`, `keel::prelude`, `keel::ModuleDef`, `keel::ProductManifest`; the function builder
+is `keel::sdk::function`, also brought in by the prelude) and
 the types (`keel::types`), and it owns the runtime builder `keel::Runtime` with what it returns
 (`Running`, `Config`, `Change`, `ProductState`) and, from M2, `keel::embed_frontend!`. Bundles
 and module crates depend only on the facade `keel` and on `@globalart/keel`; `bin/keel` is the
@@ -237,7 +238,7 @@ lists them with the product they belong to, not as a fixed path.
 | `products/dns` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`, the product's section of `agent.yaml`; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
 | `products/panel` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
 | `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing`), `apps/shell` (the one shell application), `products/<id>` (an Angular library per product with custom views), Storybook |
-| `contracts/` | `protocol.md`, `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots), generated `openapi.json` committed for diffs |
+| `contracts/` | `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots); later `protocol.md`, the prose of the contract, and the generated `openapi.json` committed for diffs (M2) — neither exists at M0 |
 | `plugins/` | Python plugin SDK and example plugins |
 | `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` with a section per product, the public release keys |
 | `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `vm-test.sh` and `release.py` with the operator plane |
@@ -245,7 +246,9 @@ lists them with the product they belong to, not as a fixed path.
 | `.github/workflows/` | `ci.yml`, `release.yml`, `publish-npm.yml` |
 
 Crates are created lazily: about fourteen in total, seven at M0, which needs `keel-types`,
-`keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`. A
+`keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`,
+plus the probe module `crates/sdk-probe` (`keel-sdk-probe`) that CI builds against `keel-sdk`
+alone ([05-modules.md](05-modules.md)). A
 product without custom screens keeps no frontend code at all; the one shell application renders
 its screens from descriptors.
 

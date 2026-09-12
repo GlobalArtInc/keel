@@ -31,7 +31,7 @@ Scope:
 - `keel-testkit`.
 - `bin/keel` with the composition; `products/demo` as a lib crate with the `note` module and the
   `demo` bundle behind the cargo feature `demo`; `keel product list|enable|disable`.
-- Seven crates. No TLS, no metrics, no macros.
+- Seven crates, plus the probe module `keel-sdk-probe` of step 3. No TLS, no metrics, no macros.
 
 The M0 exit checklist at the end of this document records what the built M0 delivers.
 
@@ -597,9 +597,9 @@ listener, boots the kernel (`Kernel::boot`), attaches the dispatcher to the list
 the socket, so `/healthz` answers during the migrations; `migrate` runs the kernel's
 migrations, then those of the loaded modules, prints the applied names per module and exits;
 `product list|enable|disable` reads and writes `keel_kv.products` under the `keelinst` lock
-directly against the database while the service is stopped, the same arrangement as `migrate`,
-and refuses to run while the socket answers (the running-installation path through
-`keel.product.*` and a restart arrives in M4). Running `migrate` only while the service is
+directly against the database while the service is stopped, the same arrangement as `migrate`;
+`enable` and `disable` refuse to run while the socket answers (the running-installation path
+through `keel.product.*` and a restart arrives in M4). Running `migrate` only while the service is
 stopped is a plan-level arrangement for M0; the migrations serialise on the advisory lock of
 step 4 either way. This step also adds the test that a composition of the bare kernel starts and
 answers on the socket, which is the state of a fresh installation before its first
@@ -854,9 +854,10 @@ check.
 - One task is one PR-sized change; a task is not split across branches.
 - Verify with the same commands CI runs before pushing: `cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the
-  Postgres server `KEEL_TEST_DATABASE_URL` names, `hack/check-deps.sh`, then
-  `cargo build -p keel-bin` and `hack/prove-binary.sh target/debug/keel`; the README lists them
-  in order. Once `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
+  Postgres server `KEEL_TEST_DATABASE_URL` names, `cargo test -p keel-bin --no-default-features`,
+  `cargo build -p keel-bin` and `hack/prove-binary.sh target/debug/keel`, then
+  `hack/check-test-databases.sh` and `hack/check-deps.sh`; the README lists them in CI's order.
+  Once `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
 - No comments in code. Explanations go into the commit message or into `docs/`; the only
   exception is a link to an RFC next to the code that implements it.
