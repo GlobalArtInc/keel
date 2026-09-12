@@ -2,13 +2,12 @@ mod common;
 
 use std::collections::BTreeMap;
 
+use keel_kernel::config::SCHEMA;
 use keel_kernel::loader::{ACTIVE, MigrateError, Migrated, ORPHANED};
 use keel_kernel::{BootError, Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_sdk::{Registrar, migrator};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-
-use common::PRODUCT;
 
 const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -83,7 +82,7 @@ async fn tables(storage: &Storage) -> Vec<String> {
         .query_all(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name",
-            [PRODUCT.into()],
+            [SCHEMA.into()],
         ))
         .await
         .unwrap()

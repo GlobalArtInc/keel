@@ -24,17 +24,18 @@ pub fn permission(
     let Some(key) = &access.permission else {
         return Ok(());
     };
-    if principal.level >= Level::Admin {
-        return Ok(());
-    }
-    let held = registry
-        .permission(key)
-        .is_some_and(|def| def.defaults.contains(&principal.level));
-    if held {
+    if holds(registry, key, principal) {
         Ok(())
     } else {
         Err(KeelError::forbidden("keel.error.permission").param("permission", key.as_str()))
     }
+}
+
+pub fn holds(registry: &Registry, key: &str, principal: &Principal) -> bool {
+    principal.level >= Level::Admin
+        || registry
+            .permission(key)
+            .is_some_and(|def| def.defaults.contains(&principal.level))
 }
 
 pub async fn owned(

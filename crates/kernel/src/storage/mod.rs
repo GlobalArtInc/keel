@@ -5,7 +5,7 @@ use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, TransactionTrait,
 };
 
-use crate::config::Config;
+use crate::config::{Config, SCHEMA};
 use crate::migrations;
 
 pub(crate) mod lock;
@@ -50,7 +50,7 @@ pub enum StorageError {
 
 impl Storage {
     pub async fn connect(config: &Config) -> Result<Self, StorageError> {
-        let schema = config.product.clone();
+        let schema = SCHEMA.to_owned();
         let mut options = ConnectOptions::new(config.database.expose());
         options
             .max_connections(POOL_SIZE)

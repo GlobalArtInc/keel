@@ -112,6 +112,13 @@
       "service_missing": "The service {service} is not provided",
       "ownership_undeclared": "The function {function} declares neither owned nor unowned",
       "owned_composite_key": "The function {function} is owned through a composite key",
+      "cross_site": "The request comes from another site",
+      "method_not_allowed": "The function {function} is called with {allowed}",
+      "body_too_large": "The request body is above {limit} bytes",
+      "body_not_json": "The request body is not JSON",
+      "query_not_json": "The parameter {parameter} is not JSON",
+      "query_not_object": "The parameter {parameter} is not a JSON object",
+      "route_not_found": "The path {path} does not exist",
       "list": {
         "page": "The page must be 1 or more",
         "page_size": "The page size must be 1 or more",

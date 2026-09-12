@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 use sea_orm::sqlx::postgres::PgConnectOptions;
@@ -9,29 +9,16 @@ use serde::Deserialize;
 use serde_yaml_ng::Value;
 
 pub const FILE_NAME: &str = "config.yaml";
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ManifestDefaults {
-    pub product: String,
-    pub listen: SocketAddr,
-    pub socket: PathBuf,
-    pub data_dir: PathBuf,
-}
-
-impl ManifestDefaults {
-    pub fn standard(product: &str, listen: SocketAddr) -> Self {
-        Self {
-            product: product.to_owned(),
-            listen,
-            socket: PathBuf::from(format!("/run/keel/{product}/core.sock")),
-            data_dir: PathBuf::from(format!("/var/lib/keel/{product}")),
-        }
-    }
-}
+pub const CONFIG_DIR: &str = "/etc/keel";
+pub const SOCKET: &str = "/run/keel/core.sock";
+pub const DATA_DIR: &str = "/var/lib/keel";
+pub const DATABASE: &str = "postgres:///keel?host=/run/postgresql";
+pub const PASSWORD_VARIABLE: &str = "KEEL_DB_PASS";
+pub const SCHEMA: &str = "keel";
+pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1500);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
-    pub product: String,
     pub listen: SocketAddr,
     pub socket: PathBuf,
     pub data_dir: PathBuf,
@@ -89,10 +76,6 @@ pub enum ConfigError {
     },
     #[error("the value of \"{key}\" in {FILE_NAME} is unusable: {reason}")]
     Invalid { key: &'static str, reason: String },
-    #[error(
-        "\"{0}\" is not a product id: it must start with a letter and contain only lowercase letters, digits and underscores"
-    )]
-    Product(String),
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -110,11 +93,11 @@ struct Raw {
 }
 
 impl Config {
-    pub fn default_path(product: &str) -> PathBuf {
-        PathBuf::from(format!("/etc/keel/{product}/{FILE_NAME}"))
+    pub fn default_path() -> PathBuf {
+        Path::new(CONFIG_DIR).join(FILE_NAME)
     }
 
-    pub fn load(path: &Path, defaults: &ManifestDefaults) -> Result<Self, ConfigError> {
+    pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => Some(text),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -132,12 +115,11 @@ impl Config {
             })?,
             None => Raw::default(),
         };
-        Self::resolve(raw, defaults, |name| std::env::var(name).ok())
+        Self::resolve(raw, |name| std::env::var(name).ok())
     }
 
     pub fn parse(
         text: Option<&str>,
-        defaults: &ManifestDefaults,
         env: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, ConfigError> {
         let raw = match text {
@@ -147,43 +129,30 @@ impl Config {
             })?,
             None => Raw::default(),
         };
-        Self::resolve(raw, defaults, env)
+        Self::resolve(raw, env)
     }
 
-    pub fn password_variable(product: &str) -> String {
-        format!("{}_DB_PASS", product.to_ascii_uppercase())
-    }
-
-    fn resolve(
-        raw: Raw,
-        defaults: &ManifestDefaults,
-        env: impl Fn(&str) -> Option<String>,
-    ) -> Result<Self, ConfigError> {
-        let product = defaults.product.clone();
-        if !is_product_id(&product) {
-            return Err(ConfigError::Product(product));
-        }
+    fn resolve(raw: Raw, env: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
         let listen = match raw.listen {
             Some(text) => text.parse().map_err(|error| ConfigError::Invalid {
                 key: "listen",
                 reason: format!("{error} ({text:?})"),
             })?,
-            None => defaults.listen,
+            None => DEFAULT_LISTEN,
         };
         let database = match raw.database {
-            Some(text) => DatabaseUrl::resolve(&text, &product, env).map_err(|error| {
-                ConfigError::Invalid {
+            Some(text) => {
+                DatabaseUrl::resolve(&text, env).map_err(|error| ConfigError::Invalid {
                     key: "database",
                     reason: error.to_string(),
-                }
-            })?,
-            None => DatabaseUrl::default_for(&product),
+                })?
+            }
+            None => DatabaseUrl::default(),
         };
         Ok(Self {
-            product,
             listen,
-            socket: raw.socket.unwrap_or_else(|| defaults.socket.clone()),
-            data_dir: raw.data_dir.unwrap_or_else(|| defaults.data_dir.clone()),
+            socket: raw.socket.unwrap_or_else(|| PathBuf::from(SOCKET)),
+            data_dir: raw.data_dir.unwrap_or_else(|| PathBuf::from(DATA_DIR)),
             database,
             tls: raw.tls.unwrap_or_default(),
             trusted_proxies: raw.trusted_proxies.unwrap_or_default(),
@@ -200,12 +169,6 @@ impl Raw {
             value => serde_yaml_ng::from_value(value),
         }
     }
-}
-
-fn is_product_id(id: &str) -> bool {
-    let mut chars = id.chars();
-    chars.next().is_some_and(|first| first.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -228,11 +191,13 @@ pub enum DatabaseUrlError {
     Malformed(String),
 }
 
-impl DatabaseUrl {
-    pub fn default_for(product: &str) -> Self {
-        Self(format!("postgres:///keel_{product}?host=/run/postgresql"))
+impl Default for DatabaseUrl {
+    fn default() -> Self {
+        Self(DATABASE.to_owned())
     }
+}
 
+impl DatabaseUrl {
     pub fn parse(text: &str) -> Result<Self, DatabaseUrlError> {
         let text = text.trim();
         if text.is_empty() {
@@ -253,10 +218,9 @@ impl DatabaseUrl {
 
     pub fn resolve(
         text: &str,
-        product: &str,
         env: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, DatabaseUrlError> {
-        let variable = Config::password_variable(product);
+        let variable = PASSWORD_VARIABLE.to_owned();
         let mut out = String::with_capacity(text.len());
         let mut rest = text;
         while let Some(start) = rest.find("${") {
@@ -350,25 +314,20 @@ fn percent_encode(value: &str) -> String {
 mod tests {
     use super::*;
 
-    fn defaults() -> ManifestDefaults {
-        ManifestDefaults::standard("demo", "127.0.0.1:8443".parse().unwrap())
-    }
-
     fn no_env(_: &str) -> Option<String> {
         None
     }
 
     #[test]
-    fn a_missing_config_file_yields_the_manifest_defaults() {
+    fn a_missing_config_file_yields_the_platform_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let config = Config::load(&dir.path().join(FILE_NAME), &defaults()).unwrap();
-        assert_eq!(config.product, "demo");
-        assert_eq!(config.listen, "127.0.0.1:8443".parse().unwrap());
-        assert_eq!(config.socket, PathBuf::from("/run/keel/demo/core.sock"));
-        assert_eq!(config.data_dir, PathBuf::from("/var/lib/keel/demo"));
+        let config = Config::load(&dir.path().join(FILE_NAME)).unwrap();
+        assert_eq!(config.listen, "127.0.0.1:1500".parse().unwrap());
+        assert_eq!(config.socket, PathBuf::from("/run/keel/core.sock"));
+        assert_eq!(config.data_dir, PathBuf::from("/var/lib/keel"));
         assert_eq!(
             config.database.expose(),
-            "postgres:///keel_demo?host=/run/postgresql"
+            "postgres:///keel?host=/run/postgresql"
         );
         assert_eq!(config.tls, Tls::default());
         assert!(config.tls.cert.is_empty());
@@ -379,12 +338,16 @@ mod tests {
         assert_eq!(config.log.level, "info");
         assert_eq!(config.log.format, LogFormat::Json);
         assert!(config.sections.is_empty());
+        assert_eq!(
+            Config::default_path(),
+            PathBuf::from("/etc/keel/config.yaml")
+        );
     }
 
     #[test]
     fn an_empty_file_yields_the_defaults_too() {
-        let from_empty = Config::parse(Some(""), &defaults(), no_env).unwrap();
-        let from_nothing = Config::parse(None, &defaults(), no_env).unwrap();
+        let from_empty = Config::parse(Some(""), no_env).unwrap();
+        let from_nothing = Config::parse(None, no_env).unwrap();
         assert_eq!(from_empty, from_nothing);
     }
 
@@ -392,23 +355,23 @@ mod tests {
     fn every_key_of_the_file_overrides_its_default() {
         let text = r#"
 listen: 0.0.0.0:9443
-socket: /tmp/demo.sock
-data_dir: /tmp/demo
-database: postgres://keel_demo@db.example.net/keel_demo
-tls: { cert: /etc/demo/cert.pem, key: /etc/demo/key.pem, acme: "" }
+socket: /tmp/keel.sock
+data_dir: /tmp/keel
+database: postgres://keel@db.example.net/keel
+tls: { cert: /etc/keel/cert.pem, key: /etc/keel/key.pem, acme: "" }
 trusted_proxies: [10.0.0.0/8]
 log: { level: debug, format: text }
 "#;
-        let config = Config::parse(Some(text), &defaults(), no_env).unwrap();
+        let config = Config::parse(Some(text), no_env).unwrap();
         assert_eq!(config.listen, "0.0.0.0:9443".parse().unwrap());
-        assert_eq!(config.socket, PathBuf::from("/tmp/demo.sock"));
-        assert_eq!(config.data_dir, PathBuf::from("/tmp/demo"));
+        assert_eq!(config.socket, PathBuf::from("/tmp/keel.sock"));
+        assert_eq!(config.data_dir, PathBuf::from("/tmp/keel"));
         assert_eq!(
             config.database.expose(),
-            "postgres://keel_demo@db.example.net/keel_demo"
+            "postgres://keel@db.example.net/keel"
         );
-        assert_eq!(config.tls.cert, "/etc/demo/cert.pem");
-        assert_eq!(config.tls.key, "/etc/demo/key.pem");
+        assert_eq!(config.tls.cert, "/etc/keel/cert.pem");
+        assert_eq!(config.tls.key, "/etc/keel/key.pem");
         assert!(config.tls.acme.is_empty());
         assert_eq!(config.trusted_proxies, ["10.0.0.0/8"]);
         assert_eq!(config.log.level, "debug");
@@ -417,86 +380,84 @@ log: { level: debug, format: text }
 
     #[test]
     fn the_password_placeholder_is_substituted_from_the_environment() {
-        let text = "database: postgres://keel_demo:${DEMO_DB_PASS}@db.example.net/keel_demo";
-        let config = Config::parse(Some(text), &defaults(), |name| {
-            (name == "DEMO_DB_PASS").then(|| "s3cret".to_owned())
+        let text = "database: postgres://keel:${KEEL_DB_PASS}@db.example.net/keel";
+        let config = Config::parse(Some(text), |name| {
+            (name == "KEEL_DB_PASS").then(|| "s3cret".to_owned())
         })
         .unwrap();
         assert_eq!(
             config.database.expose(),
-            "postgres://keel_demo:s3cret@db.example.net/keel_demo"
+            "postgres://keel:s3cret@db.example.net/keel"
         );
         assert_eq!(
             config.database.to_string(),
-            "postgres://keel_demo:***@db.example.net/keel_demo"
+            "postgres://keel:***@db.example.net/keel"
         );
         assert_eq!(
             format!("{:?}", config.database),
-            "DatabaseUrl(postgres://keel_demo:***@db.example.net/keel_demo)"
+            "DatabaseUrl(postgres://keel:***@db.example.net/keel)"
         );
     }
 
     #[test]
     fn a_password_query_parameter_of_a_tcp_url_is_redacted() {
-        let text = "database: postgres://keel_demo@db.example.net/keel_demo?password=${DEMO_DB_PASS}&sslmode=require";
-        let config = Config::parse(Some(text), &defaults(), |_| Some("s3cret".to_owned())).unwrap();
+        let text = "database: postgres://keel@db.example.net/keel?password=${KEEL_DB_PASS}&sslmode=require";
+        let config = Config::parse(Some(text), |_| Some("s3cret".to_owned())).unwrap();
         assert_eq!(
             config.database.expose(),
-            "postgres://keel_demo@db.example.net/keel_demo?password=s3cret&sslmode=require"
+            "postgres://keel@db.example.net/keel?password=s3cret&sslmode=require"
         );
         assert_eq!(
             config.database.to_string(),
-            "postgres://keel_demo@db.example.net/keel_demo?password=***&sslmode=require"
+            "postgres://keel@db.example.net/keel?password=***&sslmode=require"
         );
-        let both = DatabaseUrl::parse(
-            "postgres://keel_demo:s3cret@db.example.net:5433/keel_demo?password=s3cret",
-        )
-        .unwrap();
+        let both =
+            DatabaseUrl::parse("postgres://keel:s3cret@db.example.net:5433/keel?password=s3cret")
+                .unwrap();
         assert_eq!(
             both.to_string(),
-            "postgres://keel_demo:***@db.example.net:5433/keel_demo?password=***"
+            "postgres://keel:***@db.example.net:5433/keel?password=***"
         );
         assert!(!format!("{both:?}").contains("s3cret"));
     }
 
     #[test]
     fn a_password_query_parameter_of_a_socket_url_is_redacted() {
-        let url = DatabaseUrl::parse("postgres:///keel_demo?host=/run/postgresql&password=s3cret")
-            .unwrap();
+        let url =
+            DatabaseUrl::parse("postgres:///keel?host=/run/postgresql&password=s3cret").unwrap();
         assert_eq!(
             url.to_string(),
-            "postgres:///keel_demo?host=/run/postgresql&password=***"
+            "postgres:///keel?host=/run/postgresql&password=***"
         );
         let with_at =
-            DatabaseUrl::parse("postgres:///keel_demo?password=p@ss&host=/run/postgresql").unwrap();
+            DatabaseUrl::parse("postgres:///keel?password=p@ss&host=/run/postgresql").unwrap();
         assert_eq!(
             with_at.to_string(),
-            "postgres:///keel_demo?password=***&host=/run/postgresql"
+            "postgres:///keel?password=***&host=/run/postgresql"
         );
         assert_eq!(
-            DatabaseUrl::default_for("demo").to_string(),
-            "postgres:///keel_demo?host=/run/postgresql"
+            DatabaseUrl::default().to_string(),
+            "postgres:///keel?host=/run/postgresql"
         );
     }
 
     #[test]
     fn a_substituted_password_is_percent_encoded_and_decodes_back() {
-        let text = "database: postgres://keel_demo:${DEMO_DB_PASS}@db.example.net/keel_demo";
-        let config =
-            Config::parse(Some(text), &defaults(), |_| Some("p@ss/w:rd#1".to_owned())).unwrap();
+        let text = "database: postgres://keel:${KEEL_DB_PASS}@db.example.net/keel";
+        let config = Config::parse(Some(text), |_| Some("p@ss/w:rd#1".to_owned())).unwrap();
         assert_eq!(
             config.database.expose(),
-            "postgres://keel_demo:p%40ss%2Fw%3Ard%231@db.example.net/keel_demo"
+            "postgres://keel:p%40ss%2Fw%3Ard%231@db.example.net/keel"
         );
         let options: PgConnectOptions = config.database.expose().parse().unwrap();
-        assert_eq!(options.get_username(), "keel_demo");
-        assert_eq!(options.get_database(), Some("keel_demo"));
+        assert_eq!(options.get_username(), "keel");
+        assert_eq!(options.get_database(), Some("keel"));
     }
 
     #[test]
     fn an_unset_password_variable_fails_naming_the_key() {
-        let text = "database: postgres://keel_demo:${DEMO_DB_PASS}@db.example.net/keel_demo";
-        let error = Config::parse(Some(text), &defaults(), no_env).unwrap_err();
+        let text = "database: postgres://keel:${KEEL_DB_PASS}@db.example.net/keel";
+        let error = Config::parse(Some(text), no_env).unwrap_err();
         assert!(matches!(
             error,
             ConfigError::Invalid {
@@ -506,28 +467,28 @@ log: { level: debug, format: text }
         ));
         let message = error.to_string();
         assert!(message.contains("\"database\""), "{message}");
-        assert!(message.contains("DEMO_DB_PASS"), "{message}");
+        assert!(message.contains("KEEL_DB_PASS"), "{message}");
     }
 
     #[test]
     fn a_foreign_placeholder_is_refused() {
-        let text = "database: postgres://keel_demo:${OTHER}@db.example.net/keel_demo";
-        let error = Config::parse(Some(text), &defaults(), |_| Some("x".to_owned())).unwrap_err();
+        let text = "database: postgres://keel:${OTHER}@db.example.net/keel";
+        let error = Config::parse(Some(text), |_| Some("x".to_owned())).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("\"database\""), "{message}");
         assert!(message.contains("${OTHER}"), "{message}");
-        assert!(message.contains("${DEMO_DB_PASS}"), "{message}");
+        assert!(message.contains("${KEEL_DB_PASS}"), "{message}");
     }
 
     #[test]
     fn an_unusable_database_value_fails_naming_the_key() {
         for text in [
             "database: \"\"",
-            "database: mysql://keel_demo@localhost/keel_demo",
+            "database: mysql://keel@localhost/keel",
             "database: not a url at all",
-            "database: postgres://keel_demo@localhost:notaport/keel_demo",
+            "database: postgres://keel@localhost:notaport/keel",
         ] {
-            let error = Config::parse(Some(text), &defaults(), no_env).unwrap_err();
+            let error = Config::parse(Some(text), no_env).unwrap_err();
             assert!(
                 matches!(
                     error,
@@ -547,66 +508,40 @@ log: { level: debug, format: text }
 
     #[test]
     fn a_postgresql_scheme_is_accepted_and_normalised() {
-        let url = DatabaseUrl::parse("postgresql://keel_demo@localhost/keel_demo").unwrap();
-        assert_eq!(url.expose(), "postgres://keel_demo@localhost/keel_demo");
+        let url = DatabaseUrl::parse("postgresql://keel@localhost/keel").unwrap();
+        assert_eq!(url.expose(), "postgres://keel@localhost/keel");
         assert_eq!(url.to_string(), url.expose());
     }
 
     #[test]
     fn an_unusable_listen_value_fails_naming_the_key() {
-        let error = Config::parse(Some("listen: nowhere"), &defaults(), no_env).unwrap_err();
+        let error = Config::parse(Some("listen: nowhere"), no_env).unwrap_err();
         assert!(matches!(error, ConfigError::Invalid { key: "listen", .. }));
         assert!(error.to_string().contains("\"listen\""));
     }
 
     #[test]
     fn a_typo_inside_a_known_section_is_an_error() {
-        let error = Config::parse(Some("log: { levle: debug }"), &defaults(), no_env).unwrap_err();
+        let error = Config::parse(Some("log: { levle: debug }"), no_env).unwrap_err();
         assert!(matches!(error, ConfigError::Parse { .. }), "{error}");
         assert!(error.to_string().contains("levle"), "{error}");
     }
 
     #[test]
     fn unknown_top_level_sections_are_kept_for_modules() {
-        let text = "host:\n  socket: /run/keel/demo/agent.sock\n";
-        let config = Config::parse(Some(text), &defaults(), no_env).unwrap();
+        let text = "host:\n  socket: /run/keel/agent.sock\n";
+        let config = Config::parse(Some(text), no_env).unwrap();
         assert_eq!(config.sections.len(), 1);
         assert_eq!(
             config.sections["host"]["socket"],
-            Value::String("/run/keel/demo/agent.sock".to_owned())
+            Value::String("/run/keel/agent.sock".to_owned())
         );
     }
 
     #[test]
     fn an_unreadable_file_that_exists_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
-        let error = Config::load(dir.path(), &defaults()).unwrap_err();
+        let error = Config::load(dir.path()).unwrap_err();
         assert!(matches!(error, ConfigError::Read { .. }), "{error}");
-    }
-
-    #[test]
-    fn a_product_id_that_is_not_an_identifier_is_refused() {
-        for bad in ["", "Demo", "1demo", "de-mo", "de.mo", "demo;"] {
-            let defaults = ManifestDefaults::standard(bad, "127.0.0.1:1".parse().unwrap());
-            let error = Config::parse(None, &defaults, no_env).unwrap_err();
-            assert!(matches!(error, ConfigError::Product(_)), "{bad:?}: {error}");
-        }
-        for good in ["demo", "dns", "panel", "bill", "keel_vm", "a1"] {
-            let defaults = ManifestDefaults::standard(good, "127.0.0.1:1".parse().unwrap());
-            assert!(Config::parse(None, &defaults, no_env).is_ok(), "{good}");
-        }
-    }
-
-    #[test]
-    fn the_password_variable_and_the_default_path_follow_the_product() {
-        assert_eq!(Config::password_variable("dns"), "DNS_DB_PASS");
-        assert_eq!(
-            Config::default_path("dns"),
-            PathBuf::from("/etc/keel/dns/config.yaml")
-        );
-        assert_eq!(
-            DatabaseUrl::default_for("dns").expose(),
-            "postgres:///keel_dns?host=/run/postgresql"
-        );
     }
 }

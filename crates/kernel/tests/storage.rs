@@ -4,11 +4,10 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use keel_kernel::Storage;
+use keel_kernel::config::SCHEMA;
 use keel_kernel::migrations::{LEDGER, TABLES};
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-
-use common::PRODUCT;
 
 async fn tables(storage: &Storage) -> BTreeSet<String> {
     storage
@@ -16,7 +15,7 @@ async fn tables(storage: &Storage) -> BTreeSet<String> {
         .query_all(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = $1",
-            [PRODUCT.into()],
+            [SCHEMA.into()],
         ))
         .await
         .unwrap()
@@ -111,10 +110,10 @@ async fn the_root_account_is_the_only_account_with_kind_system_and_path_root() {
 }
 
 #[tokio::test]
-async fn the_pool_works_inside_the_product_schema() {
+async fn the_pool_works_inside_the_installation_schema() {
     let test = common::create().await;
     let storage = test.storage().await;
-    assert_eq!(storage.schema(), PRODUCT);
+    assert_eq!(storage.schema(), SCHEMA);
     let search_path = storage
         .db()
         .query_one(Statement::from_string(
@@ -126,7 +125,7 @@ async fn the_pool_works_inside_the_product_schema() {
         .unwrap()
         .try_get_by_index::<String>(0)
         .unwrap();
-    assert_eq!(search_path, PRODUCT);
+    assert_eq!(search_path, SCHEMA);
 
     storage.migrate().await.unwrap();
     let schema_of_ledger = storage
@@ -140,10 +139,10 @@ async fn the_pool_works_inside_the_product_schema() {
         .unwrap()
         .try_get_by_index::<String>(0)
         .unwrap();
-    assert_eq!(schema_of_ledger, PRODUCT);
+    assert_eq!(schema_of_ledger, SCHEMA);
 
     let again = test.storage().await;
-    assert_eq!(again.schema(), PRODUCT);
+    assert_eq!(again.schema(), SCHEMA);
     again.close().await.unwrap();
     storage.close().await.unwrap();
     test.drop().await;

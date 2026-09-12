@@ -1,9 +1,7 @@
 use keel_kernel::config::DatabaseUrl;
-use keel_kernel::{Config, ManifestDefaults, Storage};
+use keel_kernel::{Config, Storage};
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-
-pub const PRODUCT: &str = "demo";
 
 pub struct TestDatabase {
     admin: DatabaseConnection,
@@ -31,8 +29,7 @@ pub async fn create() -> TestDatabase {
 
 impl TestDatabase {
     pub fn config(&self) -> Config {
-        let defaults = ManifestDefaults::standard(PRODUCT, "127.0.0.1:8443".parse().unwrap());
-        let mut config = Config::parse(None, &defaults, |_| None).expect("the defaults resolve");
+        let mut config = Config::parse(None, |_| None).expect("the defaults resolve");
         config.database = DatabaseUrl::parse(&self.url).expect("the test database URL is usable");
         config
     }

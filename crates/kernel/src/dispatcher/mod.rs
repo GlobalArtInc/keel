@@ -1,4 +1,4 @@
-mod guards;
+pub(crate) mod guards;
 mod idempotency;
 mod list;
 mod outbox;
@@ -148,6 +148,10 @@ impl Dispatcher {
         self
     }
 
+    pub fn registry(&self) -> &Arc<Registry> {
+        &self.inner.registry
+    }
+
     pub async fn call(
         &self,
         principal: Principal,
@@ -155,9 +159,7 @@ impl Dispatcher {
         params: Value,
         options: CallOptions,
     ) -> Reply {
-        let request_id = options
-            .request_id
-            .unwrap_or_else(|| format!("req-{}", Id::generate().to_string().to_lowercase()));
+        let request_id = options.request_id.unwrap_or_else(generate_request_id);
         let started = Instant::now();
         let meta_principal = match meta_principal(&principal) {
             Ok(meta_principal) => meta_principal,
@@ -221,6 +223,10 @@ impl Dispatcher {
             Err(error) => error_reply(error, &request_id),
         }
     }
+}
+
+pub fn generate_request_id() -> String {
+    format!("req-{}", Id::generate().to_string().to_lowercase())
 }
 
 fn meta_principal(principal: &Principal) -> Result<Option<MetaPrincipal>, KeelError> {
