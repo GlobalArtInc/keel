@@ -1,0 +1,9 @@
+[package]
+name = "keel"
+description = "The facade every product of the line is built against"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
