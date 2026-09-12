@@ -11,7 +11,13 @@ name = "keel"
 path = "src/main.rs"
 
 [features]
-demo = []
+demo = ["dep:keel-demo"]
 
 [dependencies]
 keel = { workspace = true }
+keel-demo = { workspace = true, optional = true }
+
+[dev-dependencies]
+keel-testkit = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }

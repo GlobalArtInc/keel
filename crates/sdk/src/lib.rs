@@ -1,4 +1,5 @@
 pub mod access;
+pub mod clock;
 pub mod context;
 pub mod db;
 pub mod error;
@@ -21,6 +22,7 @@ pub mod runtime;
 pub mod system;
 
 pub use async_trait;
+pub use chrono;
 pub use keel_types as types;
 pub use migrator;
 pub use schemars;
@@ -30,6 +32,7 @@ pub use serde_json;
 
 pub use access::{AccountScope, DefaultScopePolicy, Owned, ScopePolicy, scope_by_account};
 pub use call::{AfterContext, Call};
+pub use clock::Clock;
 pub use context::Context;
 pub use db::Db;
 pub use error::{KeelError, Result};

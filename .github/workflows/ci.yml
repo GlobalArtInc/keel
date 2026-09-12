@@ -75,12 +75,15 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --features keel-bin/demo -- -D warnings
 
       - name: Test
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
-        run: cargo test --workspace
+        run: cargo test --workspace --features keel-bin/demo
+
+      - name: The binary without the demo bundle
+        run: cargo test -p keel-bin
 
       - name: No test database remains
         env:

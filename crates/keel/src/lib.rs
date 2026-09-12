@@ -7,6 +7,7 @@ pub use std::process::ExitCode;
 
 pub use keel_kernel::Config;
 pub use keel_sdk as sdk;
+pub use keel_sdk::prelude;
 pub use keel_sdk::{ModuleDef, ProductBundle};
 pub use keel_types as types;
 

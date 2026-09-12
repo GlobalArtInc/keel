@@ -86,4 +86,24 @@ if ! cargo tree -p keel-bin -e normal --prefix none --depth 1 | awk 'NR > 1 {pri
 fi
 echo "keel-bin graph checked"
 
+products=$(cargo metadata --format-version 1 --no-deps | python3 -c '
+import json, sys
+meta = json.load(sys.stdin)
+root = meta["workspace_root"] + "/products/"
+print(" ".join(sorted(p["name"] for p in meta["packages"] if p["manifest_path"].startswith(root))))
+')
+for product in $products; do
+  direct=$(cargo tree -p "$product" -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
+  if [ "$direct" != "keel " ]; then
+    echo "$product depends on more than the facade keel: $direct" >&2
+    fail=1
+  fi
+  dependants=$(cargo tree -i "$product" -e normal --prefix none --features keel-bin/demo | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
+  if [ "$dependants" != "keel-bin " ]; then
+    echo "$product is depended on by crates other than keel-bin: $dependants" >&2
+    fail=1
+  fi
+  echo "$product graph checked"
+done
+
 exit "$fail"

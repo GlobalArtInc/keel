@@ -1,0 +1,127 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.edit
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "note.edit",
+  "module": "note",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "note.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "NoteEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "body": {
+        "type": "string",
+        "default": ""
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "title"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Note",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "account_id": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "account_id",
+      "title",
+      "body",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "ui": {
+    "title": "note.edit.title",
+    "read": "note.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "title",
+          "body"
+        ]
+      },
+      {
+        "id": "owner",
+        "fields": [
+          "account"
+        ],
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -10,6 +10,7 @@ repository = "https://github.com/GlobalArtInc/keel"
 
 [workspace.dependencies]
 keel = { path = "crates/keel" }
+keel-demo = { path = "products/demo" }
 keel-kernel = { path = "crates/kernel" }
 keel-sdk = { path = "crates/sdk" }
 keel-testkit = { path = "crates/testkit" }

@@ -11,6 +11,7 @@ pub use composition::{Composition, CompositionError, Graph, LEDGER_PREFIX, Probl
 pub use freeze::{FreezeError, FreezeProblem, Frozen};
 pub use i18n::REQUIRED_LANGUAGE;
 pub use init::{InitError, Initialised};
+pub use keys::{DerivedKey, of as derived_keys};
 pub use lifecycle::{Kernel, StartError, StopError};
 pub use migrate::{ACTIVE, MigrateError, Migrated, ORPHANED};
 

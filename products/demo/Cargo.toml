@@ -1,0 +1,16 @@
+[package]
+name = "keel-demo"
+description = "The demo product bundle: the note module that dogfoods the platform and is compiled in behind the demo feature of keel-bin"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+
+[dev-dependencies]
+keel-testkit = { workspace = true }
+tempfile = { workspace = true }

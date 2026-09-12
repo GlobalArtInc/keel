@@ -1,0 +1,72 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.get
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "note.get",
+  "module": "note",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.read"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Note",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "account_id": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "account_id",
+      "title",
+      "body",
+      "created_at",
+      "updated_at"
+    ]
+  }
+}

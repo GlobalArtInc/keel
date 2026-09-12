@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 
-pub trait Clock: Send + Sync {
-    fn now(&self) -> DateTime<Utc>;
-}
+pub use keel_sdk::Clock;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;

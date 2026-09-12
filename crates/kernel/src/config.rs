@@ -318,6 +318,11 @@ mod tests {
         None
     }
 
+    fn password(value: &str) -> impl Fn(&str) -> Option<String> {
+        let value = value.to_owned();
+        move |name: &str| (name == PASSWORD_VARIABLE).then(|| value.clone())
+    }
+
     #[test]
     fn a_missing_config_file_yields_the_platform_defaults() {
         let dir = tempfile::tempdir().unwrap();
@@ -402,7 +407,7 @@ log: { level: debug, format: text }
     #[test]
     fn a_password_query_parameter_of_a_tcp_url_is_redacted() {
         let text = "database: postgres://keel@db.example.net/keel?password=${KEEL_DB_PASS}&sslmode=require";
-        let config = Config::parse(Some(text), |_| Some("s3cret".to_owned())).unwrap();
+        let config = Config::parse(Some(text), password("s3cret")).unwrap();
         assert_eq!(
             config.database.expose(),
             "postgres://keel@db.example.net/keel?password=s3cret&sslmode=require"
@@ -444,7 +449,7 @@ log: { level: debug, format: text }
     #[test]
     fn a_substituted_password_is_percent_encoded_and_decodes_back() {
         let text = "database: postgres://keel:${KEEL_DB_PASS}@db.example.net/keel";
-        let config = Config::parse(Some(text), |_| Some("p@ss/w:rd#1".to_owned())).unwrap();
+        let config = Config::parse(Some(text), password("p@ss/w:rd#1")).unwrap();
         assert_eq!(
             config.database.expose(),
             "postgres://keel:p%40ss%2Fw%3Ard%231@db.example.net/keel"
@@ -473,7 +478,7 @@ log: { level: debug, format: text }
     #[test]
     fn a_foreign_placeholder_is_refused() {
         let text = "database: postgres://keel:${OTHER}@db.example.net/keel";
-        let error = Config::parse(Some(text), |_| Some("x".to_owned())).unwrap_err();
+        let error = Config::parse(Some(text), password("x")).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("\"database\""), "{message}");
         assert!(message.contains("${OTHER}"), "{message}");
