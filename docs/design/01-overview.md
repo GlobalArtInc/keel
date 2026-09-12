@@ -78,34 +78,35 @@ storage in [04-storage.md](04-storage.md).
 ### What a product is
 
 A product is a bundle: a lib crate exporting `pub static MANIFEST: ProductManifest` — the
-product's id and brand, the ids of the modules it enables, the bridges through which it reaches
-other products, its menu groups, its level labels, its editions with their feature sets, the
-account kinds it creates and its own dictionaries ([05-modules.md](05-modules.md)) — together
-with the module crates it names. A bundle builds nothing on its own. Every first-party bundle and
-every module it names are compiled into the one binary `keel`; nothing is loaded dynamically. The
-composition is an explicit builder in `bin/keel/src/main.rs`, so it is visible and checked by the
-compiler:
+product's id, name and brand, the definitions of the modules it enables, the bridges through
+which it reaches other products, its menu groups, its level labels, its editions with their
+feature sets, the account kinds it creates and its own dictionaries
+([05-modules.md](05-modules.md)) — together with the module crates it names. A bundle builds
+nothing on its own. Every first-party bundle and every module it names are compiled into the one
+binary `keel`; nothing is loaded dynamically. The composition is an explicit builder,
+`keel::Runtime`, in `bin/keel/src/main.rs`, so it is visible and checked by the compiler; a
+bundle brings the modules it names, and `.module()` lists the platform modules no bundle names:
 
 ```rust
 // bin/keel/src/main.rs
 fn main() -> keel::ExitCode {
-    keel::Composition::new()
+    keel::Runtime::new()
         .module(&keel_system::auth::MODULE).module(&keel_system::settings::MODULE)
         .module(&keel_system::audit::MODULE).module(&keel_system::tasks::MODULE)
         .module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
         .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE)
         .module(&keel_system::backup::MODULE)
-        .module(&keel_host::MODULE)
-        .module(&dns_zones::MODULE).module(&dns_records::MODULE).module(&dns_templates::MODULE)
-        .module(&hosting_web::MODULE).module(&dns_local::MODULE).module(&dns_peer::MODULE)
         .product(&keel_dns::MANIFEST).product(&keel_panel::MANIFEST)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"))
         .run()
 }
 ```
 
-The `demo` bundle and its `note` module join the composition behind the cargo feature `demo` of
-`bin/keel`, which is on in the workspace and off in release builds.
+The kernel's own module `keel` is composed first by the loader and is never listed. The `demo`
+bundle and its `note` module join the composition behind the cargo feature `demo` of `bin/keel`,
+which is on by default so that the workspace, CI and `hack/prove-binary.sh` carry it, and off in
+release builds through `--no-default-features`. At M0 the composition is the two lines
+`keel::Runtime::new().product(&keel_demo::MANIFEST).run()`; `embed_frontend!` arrives with M2.
 
 On a host the binary is one installation with the subcommands `serve`, `ctl`, `product`,
 `privileged`, `migrate`, `backup`, `restore`, `doctor` and `support-bundle`. Which bundles are
@@ -168,17 +169,19 @@ The kernel imports neither `keel-system` nor `keel-host`.
 | Layer | Crates / packages | Explicitly excluded |
 |-------|-------------------|---------------------|
 | L1 Kernel | `keel-types`, `keel-kernel` | passwords and sessions, tasks, notifications, license, updates, plugins, any OS operation, minijinja, gRPC, Kafka, knowledge of a "node", a "service" or a "tariff" |
-| L2 SDK | `keel-sdk` (plus the hidden `keel_sdk::system` for system modules), `keel-testkit` | implementations: the SDK knows nothing about axum, the Postgres pool or cookies |
+| L2 SDK | `keel-sdk` (plus the hidden `keel_sdk::system` for system modules), `keel-testkit`, which a module's tests see as part of the SDK although it links `keel-kernel` to boot the module in process | implementations: the SDK knows nothing about axum, the Postgres pool or cookies |
 | L3 System modules | `keel-system`: one crate, one cargo feature per module; depends only on `keel-sdk` | OS operations (`update` talks to the root unit, not to `keel-host`) |
 | L4 Libraries | `keel-host`, `keel-host-agent`, `keel-storage`, `keel-client` | knowledge of nginx or bind as such; templates are brought by the product |
 | L5 Products | `products/demo`, `products/dns`, `products/panel` (bundles and their module crates); `bin/keel` (the composition) | own transports, own auth, own error format, own updates; users outside `keel_principal`; a process, a database, a session or an account tree of their own |
 | L6 Frontend | `@globalart/keel` (entry points), `frontend/apps/shell` (the one shell application) | the design system (external phoenix-ui); runtime loading of UI plugins |
 | L7 Tools | `keel-dev`, `keel-conformance`, `hack/` | not part of the `keel` binary |
 
-The facade crate `keel` sits between products and the layers below it: it re-exports the SDK and
-the kernel's composition builder (`keel::Composition`, `keel::function`, `keel::embed_frontend!`).
-Bundles and module crates depend only on the facade `keel` and on `@globalart/keel`; `bin/keel` is
-the only crate that depends on them.
+The facade crate `keel` sits between products and the layers below it: it re-exports the SDK
+(`keel::sdk`, `keel::prelude`, `keel::function`, `keel::ModuleDef`, `keel::ProductManifest`) and
+the types (`keel::types`), and it owns the runtime builder `keel::Runtime` with what it returns
+(`Running`, `Config`, `Change`, `ProductState`) and, from M2, `keel::embed_frontend!`. Bundles
+and module crates depend only on the facade `keel` and on `@globalart/keel`; `bin/keel` is the
+only crate that depends on them.
 
 The dependency rule at module level: a module depends on `keel-sdk` and, optionally, on the `api`
 of modules listed in its own `requires`; importing anything else is an error reported by
@@ -228,16 +231,16 @@ lists them with the product they belong to, not as a fixed path.
 | `crates/testkit` | `keel-testkit` |
 | `crates/conformance` | `keel-conformance` (bin) |
 | `crates/dev` | `keel-dev` (bin) |
-| `crates/keel` | `keel`: the facade (lib): `Composition`, `embed_frontend!`, re-exports |
+| `crates/keel` | `keel`: the facade (lib): `Runtime` with the subcommands, `Running`, `Config`, `Change`, `ProductState`, re-exports of the SDK and the types; `embed_frontend!` from M2 |
 | `bin/keel` | `keel-bin`: the binary `keel`; the explicit composition of every module and every bundle; the only crate that depends on product crates; cargo feature `demo` |
 | `products/demo` | dogfood bundle without host access, a lib crate: `MANIFEST` and the `note` module; compiled in only with the `demo` feature |
 | `products/dns` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`, the product's section of `agent.yaml`; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
 | `products/panel` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
 | `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing`), `apps/shell` (the one shell application), `products/<id>` (an Angular library per product with custom views), Storybook |
-| `contracts/` | `protocol.md`, `fixtures/*.json`, generated `openapi.json` committed for diffs |
+| `contracts/` | `protocol.md`, `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots), generated `openapi.json` committed for diffs |
 | `plugins/` | Python plugin SDK and example plugins |
 | `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` with a section per product, the public release keys |
-| `hack/` | `prove-binary.sh`, `vm-test.sh`, `release.py`, `check-deps.sh` |
+| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `vm-test.sh` and `release.py` with the operator plane |
 | `docs/` | operator, module developer, plugin protocol, descriptor and migration documentation |
 | `.github/workflows/` | `ci.yml`, `release.yml`, `publish-npm.yml` |
 

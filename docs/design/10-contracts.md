@@ -44,11 +44,11 @@ The routes this design names. Anything else the installation serves is a raw rou
 
 | Route | Purpose |
 |-------|---------|
-| `GET /healthz`, `GET /readyz` | liveness; readiness checks the database, migrations and that the process is not draining ([09-operations.md](09-operations.md)) |
+| `GET /healthz`, `GET /readyz` | liveness, `{ "status": "ok" }` as soon as the listener is bound; readiness answers `{ "status": "ready" }` once the database answers `SELECT 1`, the migrations are applied and the process is not draining, else `503` with `migrating`, `draining` or `database` ([09-operations.md](09-operations.md)) |
 | `GET /api/v1/boot` | the first request of the frontend: keel version, enabled products, effective brand, principal, menu, features, dashboard, metadata version |
 | `GET /api/v1/functions`, `GET /api/v1/functions/{func}` | descriptors, projected under the calling principal |
 | `POST /api/v1/call/{func}` | the call; `GET` is accepted for `kind: list \| get` |
-| `/api/v1/i18n` | message catalogues per language |
+| `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
 | `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
 | `/api/v1/x/<module>/…` | raw routes of modules: upload, download, WebSocket terminal, VNC, the peers pull feed `/api/v1/x/peers/feed?after=seq` |
 | `/login?key=…` | the page that redeems a one-time login key same-origin ([07-ecosystem.md](07-ecosystem.md)) |
@@ -67,8 +67,16 @@ stream.
   it.
 - Every human-readable string is an i18n key, never a sentence: `title`, `label`, `error.key`,
   `fields[].key`. Placeholders have one format, `{name}`, in minijinja, the CLI and TypeScript.
-- Function names are `<module>.<entity>.<verb>`; the descriptor carries `"keel": 1`, the data
-  version of the descriptor format.
+- Function names are `<module>.<entity>.<verb>`, or `<module>.<verb>` for a module with a single
+  entity such as the demo's `note.list`; the descriptor carries `"keel": 1`, the data version of
+  the descriptor format.
+- Member names of every wire row are camelCase (`parentId`, `accountId`, `externalId`,
+  `createdAt`, `updatedAt`, `aclGen`), like the shared shapes (`pageSize`, `instanceId`,
+  `requestId`), whatever the snake_case column behind them; the column keys of `ui.columns` and
+  the i18n keys derived from them follow the wire name (`keel.account.column.parentId`). The
+  parameters of a form are named by the module's parameter type and need not mirror the row:
+  the account forms take `parent` and the principal forms `account`, while the rows they read
+  back carry `parentId` and `accountId`.
 - The vocabulary is closed by enums in `keel-types` and generated as TypeScript unions: `kind` ∈
   `list · get · form · action · wizard · report · options · stream · download · upload`;
   `control`; `column.type` (with an explicit mapping onto `PhxColumn.type`); `action.role` ∈
@@ -79,10 +87,18 @@ stream.
 
 The descriptor is returned already projected under the calling principal: columns and actions
 whose `access` is above the caller's level or outside the caller's permissions are cut out, not
-delivered and hidden. The three parts of a descriptor — the parameter schema, the `x-keel` /
-`x-ui` field attributes inside it, and the separate `ui` block — are explained in
-[02-functions.md](02-functions.md). Conditions (`hidden_if`, `show_if`, `required_if`,
-`readonly_if`) are delivered as the compiled JSON AST, never as the source string.
+delivered and hidden. The projection goes further than `access` members: a field whose
+`x-keel.level` is above the caller leaves the parameter and result schemas together with its
+`required` entry, and with it every mention in `ui.fields`, `ui.pages` and `ui.multi`; an action
+whose `function` or `screen` the caller may not call is cut, and so is its entry in
+`row_actions` and in `empty.action`; a column's inline `edit` is dropped when its function is
+not callable. A descriptor of a function above the caller is not served at all: a guest asking
+for it receives `401 unauthenticated`, a lower principal `403 forbidden`, and the list under
+`/api/v1/functions` carries only what the caller may call. The three parts of a descriptor —
+the parameter schema, the `x-keel` / `x-ui` field attributes inside it, and the separate `ui`
+block — are explained in [02-functions.md](02-functions.md). Conditions (`hidden_if`,
+`show_if`, `required_if`, `readonly_if`) are delivered as the compiled JSON AST, never as the
+source string.
 
 ```json
 { "keel": 1, "name": "dns.zone.list", "module": "dns", "kind": "list", "mode": "read",
@@ -131,20 +147,27 @@ current row. `filter.remote` names a `kind: options` function (see form dynamics
 Descriptor responses depend on who asks, so they are cached per principal and invalidated when
 the principal's rights change:
 
-- `ETag = hash(build, modules, products, lang, principal_id, acl_gen)`;
-- `modules` is the loaded module set and `products` the enabled products with their editions, so
-  enabling a product or changing its edition changes the key;
+- `ETag = hash(build, modules, products, lang, principal_id, acl_gen)`, rendered as
+  `m-<16 hex>` and quoted as an entity tag; a request whose `If-None-Match` names it is answered
+  `304`;
+- `build` is the platform version, the one version of the binary and of every product on it;
+  `modules` is the loaded module set with versions and `products` the enabled product ids, with
+  their editions once a lease exists, so enabling a product or changing its edition changes the
+  key;
 - `acl_gen` is a column of `keel_principal`, incremented in the same transaction that changes the
-  principal's permissions, role or account; for a reseller's subtree the increment is applied by
-  `path`;
+  principal's permissions, role, level or account, and on any change of an ancestor account;
+  for a reseller's subtree the increment is applied by `path`;
 - responses are `Cache-Control: private, no-store`;
 - the event stream's `meta.invalidate` tells the client to re-request.
 
-The same value is exposed as `X-Keel-Meta-Version` on call responses and as `meta` in `/boot`;
-the shell keys its metadata cache by it ([08-frontend.md](08-frontend.md)). The principal is part
-of the hash on purpose: a metadata ETag that ignored the principal while the body depended on the
-caller's rights would violate cache semantics — after `auth.su` in the same browser the client
-would show the delegated user another principal's menu. See [11-decisions.md](11-decisions.md).
+The same value is exposed as `X-Keel-Meta-Version` on call responses and as `meta` in `/boot`,
+which carries it as its `ETag` too; the shell keys its metadata cache by it
+([08-frontend.md](08-frontend.md)). The catalogue under `/api/v1/i18n` carries the same hash
+computed without a principal, so it changes with the loaded set and the language only. The
+principal is part of the hash on purpose: a metadata ETag that ignored the principal while the
+body depended on the caller's rights would violate cache semantics — after `auth.su` in the same
+browser the client would show the delegated user another principal's menu. See
+[11-decisions.md](11-decisions.md).
 
 ## Call and envelope: `POST /api/v1/call/{func}`
 
@@ -173,6 +196,25 @@ Idempotency-Key: bill-order-9912-open
 CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (same envelope; --out table renders by ui.columns)
 ```
 
+The request side follows these rules:
+
+- A `POST` body is JSON; an empty body is `{}`. A body above the platform's body limit, 1 MiB,
+  answers `422 validation` with `keel.error.body_too_large` and the limit in `params`; a body
+  that is not JSON answers `keel.error.body_not_json`. The limit is a kernel constant, not a
+  configuration key.
+- A `GET` carries the parameters in the query string, either as one `q` member holding a JSON
+  object (`?q={"search":"www","page":1}`) or as `key=value` pairs, where a value that parses as
+  JSON is taken as that value and any other value as a string. A `q` that is not JSON or not an
+  object answers `422 validation` with `keel.error.query_not_json` or
+  `keel.error.query_not_object`. A `GET` on a function whose kind is not `list` or `get` answers
+  `422 validation` with `keel.error.method_not_allowed` and an `Allow: POST` header.
+- `X-Keel-Request-Id` sent by the client is kept as the request id when it is plain — at most
+  64 characters of `[A-Za-z0-9._-]` — and replaced by a generated one otherwise; the response
+  always carries the effective value.
+- Until the kernel has booted, every route under `/api/v1/` answers `503 unavailable`
+  (`keel.error.unavailable`) while `/healthz` already answers and `/readyz` reports
+  `migrating` ([09-operations.md](09-operations.md)).
+
 ### Success envelope
 
 | Field | Meaning |
@@ -191,7 +233,7 @@ CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (sam
 | `error.code` | machine-readable code from the table below |
 | `error.key`, `error.params` | i18n key and its placeholders; the client renders, the server never formats sentences |
 | `error.requestId` | correlation id |
-| `error.fields[]` | field-addressed errors: `path` is a JSON path into the parameters (`master_ips[1]`), plus `code`, `key`, `params` for each; a `check` preset fails with `code: check.<preset>` and `key: keel.check.<preset>`; a handler error attached with `.field("name")` lands here with its own key |
+| `error.fields[]` | field-addressed errors: `path` is a JSON path into the parameters (`master_ips[1]`), plus `code`, `key`, `params` for each; a `check` preset fails with `code: check.<preset>` and `key: keel.check.<preset>`, a JSON Schema keyword with `keel.schema.<keyword>`; a handler error attached with `.field("name")` lands here with its own key, and the envelope's `code` is then `validation` whatever the handler's own code was — this is how `resolve_account` surfaces an account outside the caller's scope: `422 validation` with the field `account` keyed `keel.error.account_not_found` |
 
 | Code | HTTP | Raised when |
 |------|------|-------------|
@@ -217,8 +259,13 @@ Where each code originates in the pipeline is tabulated in [02-functions.md](02-
   opaque `ks_` token; API tokens are `kat_` Bearer tokens, peer tokens `kpt_`, one-time login keys
   `kok_` ([03-access.md](03-access.md)).
 - Cookie-authenticated requests are checked by `Sec-Fetch-Site` / `Origin`; Bearer requests are
-  not. This is why the one-time login key is redeemed by a same-origin page at `/login?key=…` that
-  posts `auth.key.redeem`, instead of the key being accepted on a cross-site navigation
+  not. The check applies exactly to requests that carry `__Host-keel_session`: a request with a
+  Bearer token, or with no credential at all, is not checked even when it carries other
+  cookies. A request is refused as `403 forbidden` with `keel.error.cross_site` when
+  `Sec-Fetch-Site` says `cross-site`, or when `Origin` is present and its authority differs from
+  the `Host` header, or from the request authority when there is no `Host`. This is why the
+  one-time login key is redeemed by a same-origin page at `/login?key=…` that posts
+  `auth.key.redeem`, instead of the key being accepted on a cross-site navigation
   ([07-ecosystem.md](07-ecosystem.md)).
 - The `__Host-` prefix requires TLS, so the installation listens only on TLS from the first start
   ([09-operations.md](09-operations.md)).
@@ -230,12 +277,35 @@ same body is a replay of the stored response marked with `X-Keel-Idempotent-Repl
 with a different body is `409 idempotency_mismatch`. Keys are stored in `keel_idempotency`
 ([04-storage.md](04-storage.md)); `keel-client` retries only calls that carry a key.
 
-### CLI
+### CLI and the control socket
 
 `keel ctl <func> …` goes through the local socket with peer-credential authentication and
 receives the same envelope; `--out json` prints it, `--out table` renders `data` by `ui.columns`.
 Whether parameters are accepted as `a.b=v` with repeated keys and `@file.json`, or only as JSON,
-is an open question ([11-decisions.md](11-decisions.md)).
+is an open question ([11-decisions.md](11-decisions.md)). What M0 fixes:
+
+- The socket speaks JSON Lines: one frame per line in, one envelope per line out, in order. A
+  frame is one of `{ "func", "params"?, "requestId"?, "idempotencyKey"? }` (a call),
+  `{ "describe": "<func>" }` (the descriptor projected for the caller), `{ "i18n": "<lang>" }`
+  (the catalogue) and `{ "boot": true }` (the `/boot` payload). A JSON line of another shape
+  answers `422 validation` with `keel.error.frame_unknown`; a line that is not JSON answers
+  `keel.error.body_not_json`. A line is limited to the same 1 MiB as an HTTP body, measured
+  without the delimiter. The idempotent replay marker is an HTTP header and has no counterpart
+  on the socket.
+- The socket file is created with mode `0600` in a directory the kernel creates when missing; a
+  stale file no process answers on is replaced, a file that answers makes the start fail. Only
+  the kernel's own uid is admitted, checked with `SO_PEERCRED`; every frame runs as the owner
+  principal: nil id, login `owner`, level `owner`, the root account, `via: socket`.
+- `keel ctl <func> key=value …` builds the parameters from the pairs: a value that parses as
+  JSON is that value (`ttl=300`, `ids=["a","b"]`, `dnssec=true`), anything else is a string, and
+  the last of repeated keys wins. `--out json` prints the envelope; `--out table` renders a
+  `kind: list` result as a grid whose headers are `<module>.<entity>.column.<key>` translated
+  through the catalogue in `--lang` (`en` by default), an object as two columns of member and
+  value, an error as `error: <code> <key> <params>` with one line per field entry and the
+  request id. `--socket <path>` overrides the socket named by the configuration; the global
+  `--config <path>` or `KEEL_CONFIG` names the configuration file.
+- Exit codes: `0` for `ok: true`, `1` for an error envelope or a failure to reach the socket,
+  `2` for a usage error.
 
 ## Lists: `ListQuery` → `Page`
 
@@ -295,7 +365,7 @@ block by the builder (`.field("ttl").recompute("dns.zone.recompute")`, `.multi([
 
 | Mechanism | Request | Response |
 |-----------|---------|----------|
-| `kind: options` | `{ search, scope, limit, cursor }` | `{ data: [{ value, label, hint?, icon?, group? }], more }` — the source for the remote mode of `phx-select` and for `filter.remote` on columns |
+| `kind: options` | `OptionsQuery { search, scope, limit, cursor }`; `limit` defaults to 20 | `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }`, `value` a string — the source for the remote mode of `phx-select` and for `filter.remote` on columns; the three types live in `keel-types` from M0 because `keel.account.options` needs them |
 | `recompute` | `{ values, changed }` | `{ values: patch, options: { field: [...] }, errors?: fields[] }`; which fields trigger it is declared in `ui` |
 | group editing | `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }` | `ui.multi` lists the fields that may be edited across several rows; above `batch_threshold` the call becomes a task |
 | `kind: wizard` | `pages[].validate: <func>` validates a step on the server before the next page opens | `ui.result` after the final step: `redirect · task · download` |
@@ -310,10 +380,13 @@ dependent fields; `errors` uses the same `fields[]` shape as the envelope.
 
 The compile-time contract of the SDK: a module is a crate exporting `pub static MODULE: ModuleDef`,
 a product is a lib crate exporting `pub static MANIFEST: ProductManifest`, and the composition is
-the `main.rs` of `bin/keel`, which lists every module and every bundle explicitly. The kernel
+the `main.rs` of `bin/keel`, which builds a `keel::Runtime` listing every platform module and
+every bundle explicitly; a bundle names its modules by definition, so they are not listed twice.
+The kernel's own module `keel` is composed first by the loader and is never listed. The kernel
 orders modules by `requires`, not by the order of `.module()` calls, and loads only the platform
 modules, the modules of the bundles enabled on the installation and the chosen side of every
-bridge; the lifecycle and the registration surface are specified in
+bridge; a module a bundle names that requires a module outside the loaded set fails the start
+naming the module and the product. The lifecycle and the registration surface are specified in
 [05-modules.md](05-modules.md).
 
 ```rust
@@ -329,7 +402,7 @@ fn init(r: &mut Registrar) -> keel::Result<()> {
     r.stream("dns.zone.log", logs::tail);
     r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10));
     r.i18n("en", include_str!("../i18n/en.json")).i18n("ru", include_str!("../i18n/ru.json"));
-    r.permission("dns.zone.read", &[Level::User]).permission("dns.zone.manage", &[Level::User]);
+    r.permission("dns.zone.read", &[Level::User, Level::Reseller]).permission("dns.zone.manage", &[Level::User, Level::Reseller]);
     r.within("keel.account.delete", hooks::forbid_delete_with_zones);
     r.contribute(LimitDef::new("dns.zone.max", Unit::Count).default(50).unlimited(true));
     r.contribute(AccountLifecycle { on_delete: Some(lifecycle::drop_zones), ..Default::default() });
@@ -344,11 +417,13 @@ fn init(r: &mut Registrar) -> keel::Result<()> {
 // products/dns/src/lib.rs
 pub static MANIFEST: ProductManifest = ProductManifest {
     id: "dns",
-    brand: Brand { name: "product.dns.brand", logo: "brand/logo.svg", hue: 264, chroma: 0.12 },
-    modules: &["host", "dns", "dns_records", "dns_templates"],
-    bridges: &[],
+    name: "product.dns.brand",
+    version: env!("CARGO_PKG_VERSION"),
+    api: keel::types::DESCRIPTOR_VERSION,
+    brand: Brand { logo: "product.dns.logo", hue: 264, chroma: 0.12 },
+    modules: &[&keel_host::MODULE, &dns_zones::MODULE, &dns_records::MODULE, &dns_templates::MODULE],
     menu: &[MenuGroup { id: "dns", label: "menu.dns", icon: "globe", order: 10 }],
-    levels: Levels { labels: &[(Level::User, "product.dns.level.user")], disabled: &[] },
+    levels: LevelLabels { labels: &[(Level::User, "product.dns.level.user")], disabled: &[] },
     editions: &[
         Edition { id: "lite", features: &["dns.zones"] },
         Edition { id: "pro", features: &["dns.zones", "dns.dnssec", "dns.secondary"] },
@@ -359,15 +434,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
 
 // bin/keel/src/main.rs
 fn main() -> keel::ExitCode {
-    keel::Composition::new()
+    keel::Runtime::new()
         .module(&keel_system::auth::MODULE).module(&keel_system::settings::MODULE).module(&keel_system::audit::MODULE)
         .module(&keel_system::tasks::MODULE).module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
         .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE).module(&keel_system::backup::MODULE)
         .module(&keel_system::peers::MODULE)
-        .module(&keel_host::MODULE)
-        .module(&dns_zones::MODULE).module(&dns_records::MODULE).module(&dns_templates::MODULE)
-        .module(&hosting_users::MODULE).module(&hosting_web::MODULE)
-        .module(&dns_local::MODULE).module(&dns_peer::MODULE)
         .product(&keel_dns::MANIFEST).product(&keel_panel::MANIFEST)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"))
         .run()
@@ -377,8 +448,9 @@ fn main() -> keel::ExitCode {
 `init` only registers; it performs no I/O. Everything a module can register — functions, streams,
 raw routes, views, migrations, menu nodes, i18n catalogues, permission keys, hooks, descriptor
 patches, services and contributions — is listed in [05-modules.md](05-modules.md). The
-composition above is abbreviated; the full list of system modules and hosting module crates, the
-bundle fields and the `demo` feature are in the example at the end of that document.
+composition above is abbreviated; the full list of system modules, the bundle fields, the
+`bridges` field the `panel` bundle adds and the `demo` feature are in the example at the end of
+that document. At M0 `main.rs` is `keel::Runtime::new().product(&keel_demo::MANIFEST).run()`.
 
 ## Plugin manifest and frames
 
@@ -525,13 +597,13 @@ descriptors are cached under.
 ```json
 { "keel": { "version": "1.2.0", "api": 1 },
   "products": [
-    { "id": "dns", "edition": "pro",
+    { "id": "dns", "name": "product.dns.brand", "edition": "pro",
       "brand": { "name": "product.dns.brand", "logo": "/brand/dns/logo.svg",
                  "hue": 264, "chroma": 0.12 } },
-    { "id": "panel", "edition": "lite",
+    { "id": "panel", "name": "product.panel.brand", "edition": "lite",
       "brand": { "name": "product.panel.brand", "logo": "/brand/panel/logo.svg",
                  "hue": 200, "chroma": 0.10 } } ],
-  "brand": { "name": "keel.brand", "logo": "/brand/logo.svg", "hue": 240, "chroma": 0.08 },
+  "brand": { "name": "keel.brand", "hue": 220, "chroma": 0.08 },
   "principal": { "id": "01J8…", "login": "res1", "level": "reseller", "account": "01J8A…",
                  "lang": "ru", "tz": "Europe/Belgrade", "actor": null, "totp": true },
   "features": ["dns.zones", "dns.dnssec", "dns.secondary", "hosting.web"],
@@ -539,32 +611,45 @@ descriptors are cached under.
   "menu": [
     { "id": "dns", "product": "dns", "label": "menu.dns", "icon": "globe",
       "items": [ { "path": "dns/zones", "label": "dns.zone.list.title", "func": "dns.zone.list",
-                   "kind": "list", "badge": { "problem": "dns.zone_stale" } } ] },
+                   "kind": "list", "icon": "globe", "badge": { "problem": "dns.zone_stale" } } ] },
     { "id": "hosting", "product": "panel", "label": "menu.hosting", "icon": "server",
       "items": [ { "path": "hosting/sites", "label": "hosting.site.list.title",
                    "func": "hosting.site.list", "kind": "list" } ] },
-    { "id": "system", "product": null, "label": "menu.system",
-      "items": [ { "path": "system/accounts", "func": "keel.account.list" },
-                 { "path": "system/tasks", "func": "task.list" },
-                 { "path": "system/products", "func": "keel.product.list" } ] } ],
+    { "id": "system", "product": null, "label": "menu.system", "icon": "settings",
+      "items": [ { "path": "system/accounts", "label": "keel.account.list.title", "func": "keel.account.list", "kind": "list", "icon": "users" },
+                 { "path": "system/principals", "label": "keel.principal.list.title", "func": "keel.principal.list", "kind": "list", "icon": "user" },
+                 { "path": "system/tasks", "label": "task.list.title", "func": "task.list", "kind": "list" },
+                 { "path": "system/products", "label": "keel.product.list.title", "func": "keel.product.list", "kind": "list", "icon": "package" } ] } ],
   "dashboard": [ { "kind": "stat", "func": "dns.widget.zones" },
                  { "kind": "list", "func": "problem.list", "limit": 5 } ],
-  "views": ["hosting.file-manager"], "meta": "m-7f3a2c", "problems": { "open": 1, "critical": 0 } }
+  "views": ["hosting.file-manager"], "meta": "m-7f3a2c1b9d4e0a62", "problems": { "open": 1, "critical": 0 } }
 ```
 
 | Field | Meaning |
 |-------|---------|
 | `keel` | version of the installation, which is the version of every product on it, and the API version |
-| `products` | the enabled products in composition order: id, licensed edition and brand |
-| `brand` | the effective brand: the single enabled product's brand, otherwise the platform brand; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; replaced per hostname by a `ManifestPatch` for white-label |
-| `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled |
-| `features` | licence features of the enabled products' editions, as one list; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
-| `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`) |
-| `menu` | groups of the enabled bundles and the platform group, each with `product` (`null` for the platform), items projected under the principal's level: `path` is the shell route, `func` the function it opens, `kind` its screen kind, `badge.problem` a problem key whose open count is shown on the item |
-| `dashboard` | widgets: a `kind` and the function that feeds it |
-| `views` | the bespoke views registered with `r.view(...)` that the principal may open; the shell shows `phx-not-found` for an unknown one |
-| `meta` | the metadata version, equal to `X-Keel-Meta-Version` |
-| `problems` | counts for the notification rail |
+| `products` | the enabled products in composition order: `id`, `name` (the brand name key), `edition` and the product's own `brand`, with its logo at `/brand/<id>/logo.svg`; `edition` is the licensed edition once a lease exists and the bundle's default edition, or `null` for a bundle without editions, while none does |
+| `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 220, chroma 0.08 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; replaced per hostname by a `ManifestPatch` for white-label |
+| `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. Until `settings` and `auth` exist, `tz` is `null` and `totp` is `false`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
+| `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
+| `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |
+| `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |
+| `dashboard` | widgets: a `kind` and the function that feeds it; empty until `DashboardWidget` contributions exist |
+| `views` | the bespoke views registered with `r.view(...)` that the principal may open; the shell shows `phx-not-found` for an unknown one; empty until M2 |
+| `meta` | the metadata version, equal to `X-Keel-Meta-Version`, also served as the response's `ETag` with `private, no-store` and `304` on a matching `If-None-Match` |
+| `problems` | counts for the notification rail; `null` until `notify` exists |
 
 Labels in `menu`, `brand.name` and `products[].brand.name` are i18n keys resolved by the client
-from the catalogues served under `/api/v1/i18n`.
+from the catalogues served under `/api/v1/i18n`. Over the control socket the same payload is
+answered to the frame `{ "boot": true }` as the owner. `contracts/fixtures/boot.json` is the
+golden fixture of this shape as M0 serves it: `edition: null`, no lease, no dashboard, no views.
+
+## `GET /api/v1/i18n`
+
+`GET /api/v1/i18n?lang=<code>` answers `{ "lang": "<code>", "messages": { … } }`: the merged
+dictionaries of the loaded modules and the enabled bundles for that language as one nested
+object, with every key missing in the language filled from `en`; a language nobody ships falls
+back to `en` altogether, and `lang` names the language actually served. The response carries
+the catalogue's `ETag` (the metadata hash without a principal), `private, no-store`, and `304`
+on a matching `If-None-Match`. The same catalogue answers the socket frame `{ "i18n": "<code>" }`,
+which is how `keel ctl --out table` translates its headers.

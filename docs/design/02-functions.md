@@ -12,7 +12,9 @@ is in [05-modules.md](05-modules.md).
 
 Everything a product does is a function named `<module>.<entity>.<verb>`: `dns.zone.list`,
 `dns.zone.edit`, `keel.account.list`, `task.list`, `auth.su`. The first segment is the id of the
-module that owns it; kernel functions use the `keel` prefix. A function declares:
+module that owns it; kernel functions use the `keel` prefix. A module with a single entity may
+drop the middle segment, as the demo's `note.list` and `note.edit` do; the i18n prefix of such
+a function is then the module id alone. A function declares:
 
 - its parameters as JSON Schema, produced from a Rust type through `schemars`;
 - its result, likewise;
@@ -130,7 +132,7 @@ What each kind means for the pipeline and the renderer:
 | `action`    | A write invoked from an action of a list or object screen, usually with `confirm`.                                 |
 | `wizard`    | A write split into server-validated steps with a `result` after the last one.                                      |
 | `report`    | Bands and diagrams for the report renderer (M5).                                                                   |
-| `options`   | `{ search, scope, limit, cursor }` → `{ data: [{ value, label, hint?, icon?, group? }], more }`, the source for remote selects and filters. |
+| `options`   | `OptionsQuery { search, scope, limit, cursor }` → `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }` from `keel-types`, `limit` 20 by default and `value` a string; the source for remote selects and filters. |
 | `stream`    | Server-sent frames, for example a log tail.                                                                        |
 | `download`  | Returns `{ filename, content_type }` and streams a body; always behind a guard and an audit event.                  |
 | `upload`    | Multipart parameters; always behind a guard and an audit event.                                                    |
@@ -237,10 +239,12 @@ Reading the example against the descriptor parts:
   `principal()` and `resolve_account` (see [03-access.md](03-access.md)), `params()`, `tx()`
   — the transaction the kernel opened; a read call has none, so `tx()` answers an error there
   and `db()` is the accessor that works in both modes — `emit` into the outbox,
-  `require::<dyn Trait>()` for a service another module provides, and `after_commit` for work
-  that must not run inside the transaction.
+  `require::<dyn Trait>()` for a service another module provides — `dyn Clock` among them,
+  the kernel's clock from which every stored time is stamped, so that a test can freeze it —
+  and `after_commit` for work that must not run inside the transaction.
   `KeelError::conflict("dns.zone.error.exists").field("name")` becomes a field error keyed for
-  translation, an entry of `fields[]` with `path: name`; the status codes are listed in
+  translation, an entry of `fields[]` with `path: name`, and the envelope's `code` is then
+  `validation` (`422`) whatever code the error was built with; the status codes are listed in
   [10-contracts.md](10-contracts.md).
 
 Other members of `Call` used elsewhere in the design: `invoke` for a nested function call,
@@ -340,15 +344,19 @@ The guard stage runs the checks a function's `access` and its registrations impl
   code (`rate_limited`, `forbidden`). A nested `invoke` does not run module guards: it belongs
   to a request the guards already admitted.
 - **OwnedGuard.** Mandatory for every function that declares a `key`. Before the handler runs,
-  the kernel loads the `account_id` of the row named by the key — or of every id in a batch —
-  and checks it against the caller's scope. A row outside the scope is answered with
-  `not_found`, not `forbidden`, so that the existence of another account's objects is not
-  revealed. A function that has a key but no owner (a system setting, a task) declares
-  `.unowned()` explicitly; a function that declares neither fails `keel-dev check`. The guard
-  is what closes the gap between lists, which are scoped through `ListSource`, and single-object
-  functions, which would otherwise depend on each handler remembering to check. `keel-testkit`
-  ships the two tests every module template starts with: a reseller sees only its subtree, and a
-  user cannot edit another account's row by id.
+  the kernel loads the `account_id` of the row named by the key — or of every id in a batch,
+  when the key parameter is an array such as `ids`, checked element by element — and checks it
+  against the caller's scope. A row outside the scope is answered with `not_found`, not
+  `forbidden`, so that the existence of another account's objects is not revealed; one foreign
+  id fails the whole batch. A function that has a key but no owner (a system setting, a task)
+  declares `.unowned()` explicitly; a function that declares neither fails `keel-dev check`,
+  and the dispatcher refuses to run it (`internal`, `keel.error.ownership_undeclared`). The
+  guard is what closes the gap between lists, which are scoped through `ListSource`, and
+  single-object functions, which would otherwise depend on each handler remembering to check.
+  `keel-testkit` ships the two tests every module template starts with: a reseller sees only
+  its subtree, and a user cannot edit another account's row by id. A hook that vetoes a keyed
+  call names the key parameter as its field (`ids` for a batch), which is where the screen
+  shows the veto.
 
 The scoping rules themselves — `Owned`, `scope_by_account`, `resolve_account`, `ScopePolicy` —
 are specified in [03-access.md](03-access.md).
@@ -358,8 +366,12 @@ are specified in [03-access.md](03-access.md).
 A field or column whose `x-keel.level` is above the caller's level does not exist for that
 caller:
 
-- in the descriptor: the column or action is not served, and the descriptor's `ETag` includes
-  the principal and its `acl_gen`, so a change of rights invalidates the cached copy (see
+- in the descriptor: the field leaves the schemas with its `required` entry and its mentions in
+  `ui.fields`, `ui.pages` and `ui.multi`; the column or action is not served, nor an action
+  whose function or screen the caller cannot call, nor a column's inline `edit` whose function
+  it cannot call; a descriptor the caller may not call at all answers `401` to a guest and
+  `403` to a lower principal; and the descriptor's `ETag` includes the principal and its
+  `acl_gen`, so a change of rights invalidates the cached copy (see
   [10-contracts.md](10-contracts.md));
 - in a response: the field is cut from the row or object;
 - in a request: sending it is an error, `403` with `code: forbidden_field` and the offending
@@ -495,7 +507,8 @@ Per function, declared on the definition:
 | `default_sort`    | Sort applied when the query carries none.                                                      |
 | `batch_threshold` | A group-edit or batch call with more ids than this is not executed inline: it becomes a task with progress and log. The same rule turns `keel.export` above a row threshold into a task whose result is a download. |
 
-Globally: `body_limit` on the request body and `sse_max_clients` on concurrent event streams.
+Globally: the body limit on a request, a platform constant of 1 MiB rather than a configuration
+key, and `sse_max_clients` on concurrent event streams.
 
 ### Error codes by stage
 

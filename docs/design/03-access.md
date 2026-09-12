@@ -90,7 +90,8 @@ Levels are coarse. Fine-grained rights are string keys such as `dns.zone.manage`
 the module that owns them together with the levels that hold them by default:
 
 ```rust
-r.permission("dns.zone.read", &[Level::User]).permission("dns.zone.manage", &[Level::User]);
+r.permission("dns.zone.read", &[Level::User, Level::Reseller])
+    .permission("dns.zone.manage", &[Level::User, Level::Reseller]);
 ```
 
 The kernel knows the keys and their defaults from the registry. Which principal actually holds
@@ -98,7 +99,11 @@ which key is stored by the `auth` module through the `PermissionSource` extensio
 kernel asks the source, it does not read the table itself. `Principal::can(permission)` is the
 call-side view of the same answer. The defaults are the answer when no source is composed, and
 the floor under any source: `admin` and `owner` hold every registered key, and a lower level
-holds a key when the module listed that level in the defaults.
+holds a key exactly when the module listed that level in the defaults — the levels do not
+inherit from one another, so a module that wants a reseller to read its subtree lists
+`reseller` next to `user`, as the `keel` module does: `keel.account.read`,
+`keel.principal.read` and `keel.principal.manage` default to `[user, reseller]`, and
+`keel.account.manage` to `[reseller]`.
 
 The registry holds the keys of the modules that are loaded, so the permission set of an
 installation is the union over its enabled products. Grants the `auth` module stores for a key of
@@ -201,6 +206,10 @@ principal to act as:
 CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (same envelope; --out table renders ui.columns)
 ```
 
+Without `--as`, which arrives with `auth.su` in M1, every frame on the socket runs as the owner
+principal: the nil id `Id::ROOT_ACCOUNT` as its id, login `owner`, level `owner`, the root
+account, no actor, `via: socket` ([10-contracts.md](10-contracts.md)).
+
 On-behalf calls from a neighbouring product (`X-Keel-On-Behalf-Of: origin=…; external_id=…`)
 produce a principal whose `actor` is the peer. They are accepted only for principals and accounts
 whose `origin` is that peer, so a leaked billing token does not open a login under manually
@@ -236,7 +245,8 @@ open clients to refetch.
 |               | `ProductManifest.account_kinds`, and the kernel accepts their union — the      |
 |               | same kind declared by two bundles is one kind.                                 |
 | `parent_id`   | Parent account; `NULL` only for the root.                                      |
-| `path`        | Materialized path from the root; the root's path is `/`.                       |
+| `path`        | Materialized path from the root: the root's path is `/`, a child's is its      |
+|               | parent's path followed by the child's id and `/`, so `/<id>/…/`.               |
 | `state`       | `active`, `suspended`, `deleting`.                                             |
 | `origin`      | Which neighbour created the account (`NULL` for local ones).                   |
 | `external_id` | The account's id in that neighbour. `(origin, external_id)` is unique.         |
@@ -285,6 +295,21 @@ pub struct Account {
 }
 ```
 
+On the wire the row of `keel.account.get` and `keel.account.list` carries these members in
+camelCase — `parentId`, `externalId`, `createdAt`, `updatedAt` — while the columns stay
+snake_case ([10-contracts.md](10-contracts.md)); the forms `keel.account.create` and
+`keel.account.update` take the parent as `parent`. `keel_account` is itself `Owned` by `id`:
+the scope of a caller over accounts is the same subtree rule as over any owned row, so a user
+sees only its own account and a reseller its subtree. The kernel reserves `kind = system` for
+the root and refuses it on create and update (`keel.account.error.kind_reserved`); the root
+row cannot be changed (`keel.account.error.root_immutable`), and an account cannot be moved
+under itself or one of its descendants (`keel.account.error.parent_cycle`). Moving an account
+rewrites the `path` of its whole subtree. The union of the enabled bundles' `account_kinds` is
+not yet enforced on create: at M0 any identifier other than `system` is accepted, and the check
+arrives with the first bundle that declares a kind other than `user`. `AccountLifecycle`'s
+`on_rename` and the `keel.account.renamed` event presume a name the table does not carry; which
+column they act on is decided when the lifecycle is built (M3).
+
 ## Principals
 
 `keel_principal` holds identity and membership. At M0 a principal belongs to exactly one account:
@@ -295,13 +320,16 @@ pub struct Account {
 | `id`          | ULID, `TEXT`.                                                                  |
 | `account_id`  | The account the principal is a member of.                                      |
 | `login`       | Unique login name.                                                             |
-| `level`       | One of the ladder values.                                                      |
+| `level`       | One of the ladder values, never `guest`. `keel.principal.create` and `update` refuse a level above the caller's own, and bind the level to the account's kind: `admin` and `owner` live only in the root account, `reseller` only in an account of kind `reseller`. |
 | `role`        | Role inside the account (`owner`, `member`, ...): product vocabulary.          |
 | `state`       | Principal state; `active` by default, `suspended` after `keel.principal.suspend`. |
 | `lang`        | Language of the principal.                                                     |
 | `origin`, `external_id` | Stable external identity, unique as a pair.                          |
-| `acl_gen`     | Rights generation counter for metadata caching.                                |
+| `acl_gen`     | Rights generation counter for metadata caching; bumped by a change of the principal's level, role or account, and for every principal of a subtree by a change of an ancestor account. |
 | `created_at`, `updated_at` | `timestamptz`.                                                    |
+
+The row on the wire carries `accountId`, `externalId`, `aclGen`, `createdAt` and `updatedAt`;
+the forms take the account as `account` ([10-contracts.md](10-contracts.md)).
 
 ```sql
 CREATE TABLE IF NOT EXISTS keel_principal (
@@ -398,8 +426,12 @@ guard: before the handler runs, the kernel loads the `account_id` of the address
 ids in a batch) and answers `not_found` (404) if it is outside the caller's scope, so that the
 existence of foreign rows is not revealed. A function that deliberately has no owner declares
 `.unowned()`; a function with a key and neither declaration is rejected by `keel-dev check`.
-`keel-testkit` ships two tests in the module template that pin this invariant: "reseller sees only
-its subtree" and "user cannot edit a foreign row by id".
+`keel-testkit` ships two tests in the module template that pin this invariant, the helpers
+`Harness::assert_reseller_sees_only_subtree(func_list, &fixture)` and
+`Harness::assert_user_cannot_edit_foreign_row(func_edit, &fixture)`, where the `Fixture` creates
+a row of the module in a given account. They hold only when the module's permission defaults
+list `reseller`: under the default source a level holds a key exactly when listed (see
+"Permissions").
 
 Foreign keys from module tables to `keel_account` and `keel_principal` are the only cross-module
 references the storage rules permit outside a declared `requires` ([04-storage.md](04-storage.md)).
@@ -416,8 +448,10 @@ let account = call.resolve_account(call.params().account).await?;
 - `user`: always its own account; the `account` field is above its level, so a value sent by a
   user is refused earlier as `forbidden_field`.
 - `reseller` and `admin`: any account inside their visible subtree; an account outside it, or
-  one that does not exist, is answered with `not_found` attached to the `account` field, so the
-  form shows the error on the field and the existence of foreign accounts is not revealed.
+  one that does not exist, is answered with `keel.error.account_not_found` attached to the
+  `account` field, which the envelope carries as `422 validation` with one entry in `fields[]`
+  ([10-contracts.md](10-contracts.md)), so the form shows the error on the field and the
+  existence of foreign accounts is not revealed.
 
 The `account` field of such a form uses `keel.account.options` as its remote option source, so
 the select shows only what the caller may pick.

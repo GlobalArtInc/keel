@@ -136,11 +136,13 @@ pub static MODULE: ModuleDef = ModuleDef {
 };
 ```
 
-At start the kernel applies its own migrations first; then it reads the enabled products from
-`keel_kv`, fixes the loaded module set (the platform modules, the modules of the enabled bundles
-and the chosen side of every bridge, [05-modules.md](05-modules.md)) and migrates those modules
-in topological order of `requires`, before the port is opened and before any module `init` runs,
-under a session-level lock so that two processes never migrate concurrently. Modules of disabled
+At start the kernel applies its own migrations first; then the runtime reads the enabled products
+from `keel_kv` and the loader fixes the loaded module set (the platform modules, the modules of
+the enabled bundles and the chosen side of every bridge, [05-modules.md](05-modules.md)) and
+migrates those modules in topological order of `requires`, before `/api/v1` answers and before
+any module `init` runs, under a session-level lock so that two processes never migrate
+concurrently; the listener itself is bound first, so `/healthz` answers and `/readyz` reports
+`migrating` while the migrations run ([09-operations.md](09-operations.md)). Modules of disabled
 products are not migrated. Enabling a product writes the set and takes effect at the next start,
 where the newly enabled modules migrate before the port opens. The `migrate` subcommand runs this
 step on its own, and `keel-dev migrate create` creates a new migration file in a module.
@@ -225,7 +227,7 @@ prefix.
 | `keel_migration` | sqlmig ledger of the kernel's own migrations | sqlmig's own layout |
 | `keel_module` | Registry of modules that ever ran against this database; a module outside the loaded set is `orphaned` | `id`, `version`, `state` |
 | `keel_kv` | Instance-level values: instance id, wrapped key, enabled products, version history, monotonic time | `key`, `value` |
-| `keel_outbox` | Events written in the call transaction, delivered at least once | `seq`, `id`, `type`, `actor_json`, `subject_json`, `data_json` |
+| `keel_outbox` | Events written in the call transaction, delivered at least once | `seq`, `id`, `type`, `module`, `actor_json`, `subject_json`, `data_json` |
 | `keel_idempotency` | Recorded responses for `Idempotency-Key` replays | `principal_id`, `key`, `func`, `request_hash`, `status`, `response_json` |
 | `keel_limit` | Per-account values of the limits modules contribute through `LimitDef`, inherited along `path` | `account_id`, `key`, `value` |
 
@@ -286,18 +288,23 @@ row, and a file that names a different id than the row fails the start, because 
 directory and a database of two installations must not be combined.
 
 `products` holds the enabled product bundles as a map from product id to the time it was enabled
-and the principal that enabled it. It is written under the `keelinst` lock by `keel product
-enable` and `keel product disable` and read once by the loader before validation
-([05-modules.md](05-modules.md)). A product id absent from the map is disabled: its modules are
-neither migrated nor initialised, and their `keel_module` rows are `orphaned`. The set lives in
-`keel_kv` rather than in a ninth table because it is one instance-level value consulted once at
-boot, like the instance id.
+and the principal that enabled it, `{ "<id>": { "enabledAt": "<RFC 3339>", "by": "<login>" } }`,
+where `by` is `install` when the offline subcommand wrote the entry. Enabling and disabling is
+one read-modify-write of the value in a transaction under the `keelinst` lock: the call's own
+transaction for `keel.product.enable` and `keel.product.disable`, a transaction of its own for
+`keel product enable` and `keel product disable` while the service is stopped. The runtime
+reads it once before validation and hands the ids to the loader
+([05-modules.md](05-modules.md)); no row means no product enabled. A product id absent from the
+map is disabled: its modules are neither migrated nor initialised, and their `keel_module` rows
+are `orphaned`. The set lives in `keel_kv` rather than in a ninth table because it is one
+instance-level value consulted once at boot, like the instance id.
 
 ### keel_outbox
 
 `seq` (monotonic, assigned by the database), `id TEXT` (ULID of the event), `type TEXT`,
-`at timestamptz`, `actor_json jsonb`, `subject_json jsonb`, `data_json jsonb`,
-`created_at timestamptz`.
+`module TEXT` (the module of the function whose handler emitted the event, the `module` of the
+event shape in [07-ecosystem.md](07-ecosystem.md)), `at timestamptz`, `actor_json jsonb`,
+`subject_json jsonb`, `data_json jsonb`, `created_at timestamptz`.
 
 A row is inserted inside the transaction of the call that produced the event, so an event exists
 exactly when its change is committed. Delivery to webhooks, peer products and notifications reads
@@ -320,11 +327,13 @@ rejected with `409 idempotency_mismatch`. Expired records are removed by retenti
 ## Testing against Postgres
 
 There is no in-memory substitute. `keel-testkit` gives every test its own temporary database,
-created with `CREATE DATABASE` from a template; CI provides the server through testcontainers from
-M1. The CI matrix of `keel-system` ("every module alone and without each one in turn") and the
-test "a composition of the bare kernel starts and answers on the socket" start the binary for
-each composition and enabled set and therefore run its migrations. See
-[05-modules.md](05-modules.md) and [docs/plan.md](../plan.md).
+created with `CREATE DATABASE` from a template on the server named by `KEEL_TEST_DATABASE_URL`
+and dropped when the test finishes; `hack/check-test-databases.sh` fails CI when one remains. CI
+provides the server as a service until testcontainers take over in M1. The CI matrix of
+`keel-system` ("every module alone and without each one in turn") and the test "a composition
+of the bare kernel starts and answers on the socket" start the binary for each composition and
+enabled set and therefore run its migrations. See [05-modules.md](05-modules.md) and
+[docs/plan.md](../plan.md).
 
 ## Open points
 

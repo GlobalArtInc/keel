@@ -57,7 +57,16 @@ The binary exposes the following subcommands:
 
 `product` is a client of `keel.product.*` over the control socket while the service runs (the
 call checks the lease and requests a restart), and a direct write of `keel_kv.products` under the
-`keelinst` lock while it is stopped; the enabled set is read once at boot.
+`keelinst` lock while it is stopped; the enabled set is read once at boot. At M0 only the direct
+path exists: `product enable|disable` refuses to run while something answers on the socket, and
+the socket path, the lease check and the restart are the operator plane's work in M4 and M5
+([05-modules.md](05-modules.md)). `product list` prints every bundle the binary carries as
+`<id>\t<enabled|disabled>\t<version>`, and an enabled id the binary does not carry as
+`not carried by this binary`; `serve` refuses to start in that state, naming the id and the
+bundles it knows. `migrate` runs the kernel's migrations, then those of the loaded modules, and
+prints the applied migration names per module (`kernel: applied …`, `note: up to date`) and the
+modules left orphaned. The `serve` subcommand creates the socket's parent directory when it is
+missing, next to `secret.key` and `instance.id` under `data_dir` at first start.
 
 `ctl` uses the same call envelope as HTTP ([10-contracts.md](10-contracts.md)); the level granted
 over the local socket is `owner` ([03-access.md](03-access.md)):
@@ -67,7 +76,12 @@ CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (sam
 ```
 
 The parameter syntax of `ctl` (`a.b=v`, repeated keys, `@file.json`, or JSON only) is an open
-question ([11-decisions.md](11-decisions.md)).
+question ([11-decisions.md](11-decisions.md)); M0 implements `key=value` pairs whose value is
+JSON when it parses and a string otherwise, with the last of repeated keys winning, plus
+`--out json|table`, `--lang` for the table headers and `--socket` for another socket path. The
+global `--config <path>`, or `KEEL_CONFIG`, names the configuration file of every subcommand.
+Exit codes are `0` for a successful call, `1` for an error envelope or a failure and `2` for a
+usage error; the socket protocol behind `ctl` is in [10-contracts.md](10-contracts.md).
 
 Tables left behind by a disabled product, or by a module the binary no longer composes, stay in
 the database as `orphaned`; the explicit schema prune that removes them is a deliberate operator
@@ -269,7 +283,14 @@ this revision ([06-host.md](06-host.md)). The kernel keeps every top-level key i
 a raw section for those contributions, while a misspelt key inside `tls` or `log`, an unusable
 `listen` or `database` value, or a file that is not YAML fails the start with a message naming the
 file and the key. An empty file is the same as no file. The default listen port of the
-installation is open ([11-decisions.md](11-decisions.md)); the value above is only an example.
+installation is open ([11-decisions.md](11-decisions.md)); the value above is only an example,
+and M0 keeps the provisional default `127.0.0.1:1500` while the port is undecided. The body
+limit of a request is a kernel constant, 1 MiB, not a key of this file. The runtime binds the
+listener before the kernel boots and attaches the dispatcher after it, so `/healthz` answers
+`{ "status": "ok" }` from the first moment, `/readyz` reports `migrating` (and later `draining`,
+or `database` when `SELECT 1` fails) with `503` until it reports `ready`, and `/api/v1/*`
+answers `503 unavailable` in between ([10-contracts.md](10-contracts.md)); the readiness flags
+belong to the runtime, not to a module.
 
 ## Updates
 

@@ -11,11 +11,12 @@ database per host; one binary `keel` per host with the frontend embedded.
 
 ## Status
 
-Designed, not yet built. The design is in `docs/design/`, the order of work in `docs/plan.md`.
+The design is in `docs/design/`, the order of work in `docs/plan.md`. M0 is built; the
+milestones after it are designed, not yet built.
 
 | Milestone | Scope | State |
 |---|---|---|
-| M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` bundle | not started |
+| M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` bundle | done: the binary `keel` serves the `keel` module and the `demo` bundle over HTTP and the control socket, with every check of the M0 exit checklist in `docs/plan.md` green |
 | M1 | Identity, access and audit: `auth`, `settings`, `audit`, conformance skeleton | |
 | M2 | Frontend runtime `@globalart/keel` and the host agent spike | |
 | M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | |
@@ -41,6 +42,42 @@ deploy/      install.sh, systemd units, sample configs (from M4)
 docs/        design and plan
 hack/        scripts CI runs
 ```
+
+## Building and running
+
+The checks below are the ones CI runs, in the same order; run them before pushing. The tests
+and `hack/prove-binary.sh` need a Postgres superuser connection in `KEEL_TEST_DATABASE_URL`,
+from which every test creates and drops a database of its own:
+
+```
+export KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:5432/postgres
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+hack/check-deps.sh
+cargo build -p keel-bin
+hack/prove-binary.sh target/debug/keel
+```
+
+`cargo build -p keel-bin` produces `target/debug/keel` with the `demo` bundle compiled in, since
+the feature `demo` of `keel-bin` is on by default; `--no-default-features` builds the binary a
+release ships, without it. `hack/prove-binary.sh` drives the built binary through a fresh
+database: it enables `demo`, starts `serve`, exercises the socket and HTTP, then repeats the run
+with `demo` disabled. The same steps by hand, against the default database `keel` when no
+`config.yaml` names another one:
+
+```
+keel product enable demo          # writes the enabled set; the service must be stopped
+keel serve                        # migrates, then listens on 127.0.0.1:1500 and the socket
+keel ctl note.edit title=x        # the envelope of the call, as JSON
+keel ctl note.list --out table    # the rows rendered by ui.columns with translated headers
+keel product list                 # every bundle the binary carries, enabled or disabled
+```
+
+`keel --config <path>` (or `KEEL_CONFIG`) points at another configuration file; `keel ctl
+--socket <path>` at another control socket than `/run/keel/core.sock`. The descriptor snapshots
+of the kernel under `contracts/fixtures/descriptors/` are refreshed with
+`KEEL_UPDATE_SNAPSHOTS=1 cargo test -p keel-kernel` after reviewing the diff.
 
 ## Documents
 

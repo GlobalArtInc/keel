@@ -261,8 +261,8 @@ unknown icon.
 ## Embedding
 
 The frontend is compiled into the `keel` binary through `rust-embed`: assets are brotli-compressed
-and served immutable by content hash (see [09-operations.md](09-operations.md)). The composition
-declares what it embeds in `bin/keel/src/main.rs`:
+and served immutable by content hash (see [09-operations.md](09-operations.md)). The runtime
+builder declares what it embeds in `bin/keel/src/main.rs`:
 
 ```
 .frontend(keel::embed_frontend!("../../frontend/dist/shell"))
@@ -372,36 +372,49 @@ a manual list.
 
 | Key                                   | Used for                                  |
 |---------------------------------------|-------------------------------------------|
-| `<module>.<entity>.<field>`           | field label                               |
-| `<module>.<entity>.<field>.hint`      | field hint                                |
-| `<module>.<entity>.<field>.placeholder` | field placeholder                       |
-| `<module>.<entity>.<field>.<enum>`    | label of an enum value                    |
-| `<module>.<entity>.action.<id>`       | action label                              |
-| `<module>.<entity>.page.<id>`         | page or tab label                         |
-| `<module>.<entity>.column.<key>`      | column header                             |
-| `menu.<group>`                        | menu group label, declared by a bundle or the platform |
-| `product.<id>.brand`                  | brand name of a product                   |
-| `product.<id>.level.<level>`          | a bundle's label of a level, used while it is the only enabled product |
-| `keel.level.<level>`                  | platform label of a level, used when several products are enabled |
+| `<module>.<entity>.<field>`           | field label; derived for every field of the parameter schema |
+| `<module>.<entity>.<field>.<enum>`    | label of an enum value; derived for every value of an enum field |
+| `<module>.<entity>.action.<id>`       | action label; derived for every action    |
+| `<module>.<entity>.page.<id>`         | page or tab label; derived for every page |
+| `<module>.<entity>.column.<key>`      | column header; derived for every column, with `<key>` the wire name (`createdAt`) |
+| `<module>.<entity>.<column>.<value>`  | label of a filter option or status value of a column; derived for every value in `filter.options` and `map` |
+| `<module>.<entity>.<field>.hint`, `.placeholder` | field hint and placeholder; the schema names them explicitly in `x-ui.help` and `x-ui.placeholder`, and only a named key is checked |
+| `<patching module>.<entity>.<field>`  | label of a field another module added by a descriptor patch (`storing.item.sync` for a patch of `base.item.edit` by `storing`); a module never writes keys under another module's prefix |
+| `menu.<group>`                        | menu group label, declared by a bundle or the platform; `menu.system` is the kernel's |
+| `product.<id>.brand`                  | brand name of a product, the `name` of its manifest |
+| `product.<id>.level.<level>`          | a bundle's label of a level, from `levels.labels`, used while it is the only enabled product |
+| `keel.level.<level>`                  | platform label of a level, shipped by the kernel, used when several products are enabled |
 | `keel.*`                              | shared labels, inherited                  |
+| `keel.error.*`, `keel.check.*`, `keel.schema.<keyword>` | the kernel's error, check-preset and schema-keyword messages |
 | `phx.*`                               | labels of phoenix-ui components (`PHX_LABELS`) |
 
 Shared labels live under `keel.*` and are inherited: a field, column or action without a
-module-specific key resolves to the shared key with the same tail, so common names such as `id`,
-`name`, `status` or `created_at` are translated once. Keys that are not derivable are explicit in
-the descriptor: `ui.title` (`dns.zone.list.title`), the empty state (`dns.zone.empty`), menu labels
-(`menu.dns`), error keys (`dns.zone.error.exists`, `keel.error.validation`) and check keys
-(`keel.check.ip`).
+module-specific key resolves to the shared key with the same tail, `keel.<tail>`, so common
+names such as `id`, `name`, `state` or `createdAt` are translated once. The kernel ships the
+shared labels `keel.{id,name,title,kind,state,login,role,lang,createdAt,updatedAt}`,
+`keel.column.*` for the same names, `keel.action.{create,edit,delete,refresh,export}` and
+`keel.page.main`, and a derived key is satisfied by either its own entry or the shared one. Keys
+that are not derivable are explicit in the descriptor: `ui.title` (`dns.zone.list.title`), the
+empty state (`dns.zone.empty`), menu labels (`menu.dns`; the kernel's menu nodes reuse the
+screen titles `keel.account.list.title` and `keel.principal.list.title`), error keys
+(`dns.zone.error.exists`, `keel.error.validation`) and check keys (`keel.check.ip`). Shared keys
+follow the wire member names of [10-contracts.md](10-contracts.md), so the kernel's rows carry
+`keel.account.column.parentId` and `keel.principal.column.accountId`.
 
 At registry freeze the server verifies that every key it will emit has a translation at least for
-`en` (see the module lifecycle in [05-modules.md](05-modules.md)).
+`en`, that a bundle's dictionaries are JSON objects, and that no message anywhere uses a
+placeholder format other than `{name}` (see the module lifecycle in
+[05-modules.md](05-modules.md)).
 
 ### Placeholders
 
 Messages in the envelope are not translated by the server: it sends a key and `params`, and the
 consumer formats them. Mail and notification templates are rendered on the server with minijinja.
 Placeholders have one format, `{name}`, in minijinja templates, in CLI output and in TypeScript, so
-a message key has a single translation that works in all three places.
+a message key has a single translation that works in all three places. A name is an identifier,
+`[A-Za-z_][A-Za-z0-9_]*`; freeze refuses a message with `{{`, `}}`, a printf-style `%s` or
+`%1$s`, a positional `{0}`, a padded `{ name }`, an unbalanced brace or an empty `{}`, naming the
+offending fragment. A bare `%` (`100%`) is fine.
 
 ### Bundles
 
@@ -414,8 +427,12 @@ r.i18n("en", include_str!("../i18n/en.json")).i18n("ru", include_str!("../i18n/r
 A bundle embeds its own dictionaries through `ProductManifest.i18n`. A plugin ships its own files
 and names them in its manifest (`"i18n": { "en": "i18n/en.json", "ru": "i18n/ru.json" }`). The
 server merges the dictionaries of the loaded modules and of the enabled bundles and serves them
-over `/api/v1/i18n`, so a disabled product contributes no keys; the shell picks the language from
-`principal.lang` in `/boot`, and the user's language lives in `settings_pref`.
+over `/api/v1/i18n?lang=` as `{ lang, messages }`, one language at a time with `en` filling every
+gap ([10-contracts.md](10-contracts.md)), so a disabled product contributes no keys; the shell
+picks the language from `principal.lang` in `/boot`, and the user's language lives in
+`settings_pref`. The products screen of the shell is the kernel's `keel.product.list` with its
+row actions `enable` and `disable`, both confirmed, not a screen of its own; a product's logo is
+served at `/brand/<id>/logo.svg` from the asset its `Brand.logo` names.
 
 Translations are managed in OwnLate: one project for the core (system modules, the frontend
 runtime, the `phx.*` keys) and one project per product. `keel-dev i18n pull` pulls every
