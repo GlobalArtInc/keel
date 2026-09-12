@@ -330,7 +330,12 @@ impl Parser {
                 self.position += 1;
                 let offset = self.offset();
                 match self.next() {
-                    Some(Token::Str(pattern)) => Expr::Matches(variable, pattern),
+                    Some(Token::Str(pattern)) => {
+                        if regex::Regex::new(&pattern).is_err() {
+                            return Err(ParseError::new(offset, "invalid pattern"));
+                        }
+                        Expr::Matches(variable, pattern)
+                    }
                     _ => return Err(ParseError::new(offset, "expected a pattern string")),
                 }
             }
@@ -473,6 +478,7 @@ mod tests {
             "a == 'bad\\n'",
             "a in 'x'",
             "a matches x",
+            "a matches '('",
             "a == b",
             "1 == 1",
             "a.",

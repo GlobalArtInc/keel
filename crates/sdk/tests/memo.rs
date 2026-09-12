@@ -510,7 +510,7 @@ async fn a_read_call_has_neither_transaction_nor_outbox() {
             .await
             .expect_err("no invoker")
             .code(),
-        ErrorCode::Unavailable
+        ErrorCode::Internal
     );
     let missing = call.require::<dyn Notifier>().err().expect("not provided");
     assert_eq!(missing.key(), "keel.error.service_missing");

@@ -6,7 +6,7 @@ use rand::TryRng;
 use rand::rngs::SysRng;
 use serde::{Deserialize, Serialize};
 
-pub const KEY_LEN: usize = 32;
+const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 const ALGORITHM: &str = "A256GCM";
 

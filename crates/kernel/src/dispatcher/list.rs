@@ -2,7 +2,7 @@ use keel_sdk::runtime::ListSpec;
 use keel_types::Total;
 use serde_json::{Map, Number, Value};
 
-pub fn totals(spec: &ListSpec, page: &mut Value) {
+pub fn totals(spec: &ListSpec, visible: impl Fn(&str) -> bool, page: &mut Value) {
     if spec.totals.is_empty() {
         return;
     }
@@ -11,8 +11,7 @@ pub fn totals(spec: &ListSpec, page: &mut Value) {
     };
     let mut totals = Map::new();
     for (key, total) in &spec.totals {
-        let present = rows.is_empty() || rows.iter().any(|row| row.get(key).is_some());
-        if !present {
+        if !visible(key) {
             continue;
         }
         let value = match total {
@@ -103,6 +102,7 @@ mod tests {
                 ("rating", Total::Avg),
                 ("title", Total::Count),
             ]),
+            |_| true,
             &mut page,
         );
         assert_eq!(
@@ -110,26 +110,38 @@ mod tests {
             json!({ "pages": 16, "rating": 2.0, "title": 3 })
         );
         let mut page = json!({ "data": [ { "pages": 1.5 }, { "pages": 2 } ], "total": 2 });
-        totals(&spec(&[("pages", Total::Min)]), &mut page);
+        totals(&spec(&[("pages", Total::Min)]), |_| true, &mut page);
         assert_eq!(page["totals"]["pages"], json!(1.5));
         let mut page = json!({ "data": [ { "pages": 4 }, { "pages": 2 } ], "total": 2 });
-        totals(&spec(&[("pages", Total::Max)]), &mut page);
+        totals(&spec(&[("pages", Total::Max)]), |_| true, &mut page);
         assert_eq!(page["totals"]["pages"], json!(4));
     }
 
     #[test]
-    fn a_stripped_column_and_an_undeclared_list_leave_totals_alone() {
+    fn a_column_the_caller_cannot_see_has_no_total_even_on_an_empty_page() {
         let mut page = json!({ "data": [ { "title": "a" } ], "total": 1, "totals": null });
-        totals(&spec(&[("pages", Total::Sum)]), &mut page);
+        totals(
+            &spec(&[("pages", Total::Sum)]),
+            |key| key != "pages",
+            &mut page,
+        );
         assert_eq!(page["totals"], json!({}));
         let mut page = json!({ "data": [], "total": 0, "totals": null });
         totals(
             &spec(&[("pages", Total::Sum), ("rating", Total::Avg)]),
+            |key| key != "rating",
+            &mut page,
+        );
+        assert_eq!(page["totals"], json!({ "pages": 0 }));
+        let mut page = json!({ "data": [], "total": 0, "totals": null });
+        totals(
+            &spec(&[("pages", Total::Sum), ("rating", Total::Avg)]),
+            |_| true,
             &mut page,
         );
         assert_eq!(page["totals"], json!({ "pages": 0, "rating": null }));
         let mut page = json!({ "data": [ { "pages": 1 } ], "total": 1, "totals": null });
-        totals(&spec(&[]), &mut page);
+        totals(&spec(&[]), |_| true, &mut page);
         assert_eq!(page["totals"], Value::Null);
     }
 }

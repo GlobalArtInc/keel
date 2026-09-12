@@ -123,7 +123,7 @@ impl<P> Call<P> {
     pub fn invoke(&self, func: &str, params: Value) -> BoxFuture<'static, Result<Value>> {
         match &self.state.invoker {
             Some(invoker) => invoker.invoke(CallHandle(self.state.clone()), func, params),
-            None => Box::pin(std::future::ready(Err(KeelError::unavailable(
+            None => Box::pin(std::future::ready(Err(KeelError::internal(
                 "keel.error.invoke_unavailable",
             )))),
         }
@@ -143,7 +143,8 @@ impl<P> Call<P> {
 
     pub fn require<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>> {
         self.state.services.get::<T>().ok_or_else(|| {
-            KeelError::internal("keel.error.service_missing").param("service", type_name::<T>())
+            KeelError::internal("keel.error.service_missing")
+                .source(std::io::Error::other(type_name::<T>()))
         })
     }
 

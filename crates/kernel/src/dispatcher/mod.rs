@@ -499,7 +499,8 @@ impl Inner {
         target.prepared.result.strip(level, data);
         target.prepared.result.mask(data);
         if let Some(spec) = target.function.def().list_spec() {
-            list::totals(spec, data);
+            let result = &target.prepared.result;
+            list::totals(spec, |key| result.row_visible(key, level), data);
         }
     }
 

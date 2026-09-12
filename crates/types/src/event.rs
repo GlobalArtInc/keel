@@ -12,6 +12,7 @@ pub struct Event {
     pub seq: u64,
     #[serde(rename = "type")]
     pub kind: String,
+    #[serde(serialize_with = "millis")]
     pub at: DateTime<Utc>,
     pub instance_id: Id,
     pub product: String,
@@ -21,6 +22,10 @@ pub struct Event {
     pub subject: Option<EventSubject>,
     #[serde(default)]
     pub data: Value,
+}
+
+fn millis<S: serde::Serializer>(at: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -54,7 +59,7 @@ mod tests {
     #[test]
     fn event_from_the_design_round_trips() {
         let wire = json!({
-            "id": "01J9EV5K00000000000000000A", "seq": 8812, "type": "dns.zone.created", "at": "2026-09-12T10:00:00Z",
+            "id": "01J9EV5K00000000000000000A", "seq": 8812, "type": "dns.zone.created", "at": "2026-09-12T10:00:00.000Z",
             "instanceId": "01J9B0000000000000000000A1", "product": "dns",
             "actor": { "kind": "peer", "id": "01J9A0000000000000000000A1" },
             "subject": { "kind": "dns.zone", "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3", "accountId": "01J8A0000000000000000000A1" },
@@ -68,14 +73,14 @@ mod tests {
     }
 
     #[test]
-    fn fractional_seconds_are_accepted_on_input() {
+    fn whole_seconds_are_accepted_on_input_and_written_with_milliseconds() {
         let event: Event = serde_json::from_value(json!({
-            "id": "01J9EV5K00000000000000000A", "seq": 1, "type": "x.y", "at": "2026-09-12T10:00:00.000Z",
+            "id": "01J9EV5K00000000000000000A", "seq": 1, "type": "x.y", "at": "2026-09-12T10:00:00Z",
             "instanceId": "01J9B0000000000000000000A1", "product": "dns", "data": null
         })).unwrap();
         assert_eq!(
             serde_json::to_value(&event).unwrap()["at"],
-            json!("2026-09-12T10:00:00Z")
+            json!("2026-09-12T10:00:00.000Z")
         );
     }
 

@@ -59,6 +59,16 @@ impl Plan {
     pub fn mask(&self, value: &mut Value) {
         mask(&self.0, value);
     }
+
+    pub fn row_visible(&self, key: &str, level: Level) -> bool {
+        self.0
+            .fields
+            .get("data")
+            .and_then(|data| data.nested.items.as_deref())
+            .and_then(|row| row.fields.get(key))
+            .and_then(|node| node.attrs.level)
+            .is_none_or(|required| level >= required)
+    }
 }
 
 fn strip(tree: &Tree, level: Level, value: &mut Value) {

@@ -12,8 +12,8 @@ pub(crate) mod lock;
 
 pub use lock::MigrationLock;
 
-pub const POOL_SIZE: u32 = 20;
-pub const TIMEOUT: Duration = Duration::from_secs(10);
+const POOL_SIZE: u32 = 20;
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug)]
 pub struct Storage {
