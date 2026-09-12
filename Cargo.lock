@@ -946,9 +946,11 @@ name = "keel-kernel"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "futures",
  "keel-sdk",
  "keel-types",
  "rand 0.10.2",
+ "schemars",
  "sea-orm",
  "serde",
  "serde_json",

@@ -9,7 +9,8 @@ use keel_types::{Access, Level};
 use schemars::Schema;
 use serde_json::Value;
 
-use crate::call::Call;
+use crate::call::{Call, Invoker};
+use crate::context::Context;
 use crate::error::Result;
 use crate::function::FunctionDef;
 use crate::services::{ServiceKey, Services};
@@ -103,6 +104,8 @@ pub type BeforeHook = Arc<dyn Fn(Call<Value>) -> BoxFuture<'static, Result<Befor
 pub type WithinHook = Arc<dyn Fn(Call<Value>) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 pub type StoreHook =
     Arc<dyn Fn(Call<Value>, Stored) -> BoxFuture<'static, Result<()>> + Send + Sync>;
+pub type StartHook = Box<dyn FnOnce(Context) -> BoxFuture<'static, Result<()>> + Send>;
+pub type StopHook = Box<dyn FnOnce() -> BoxFuture<'static, Result<()>> + Send>;
 
 #[derive(Clone)]
 pub struct HookDef<H> {
@@ -137,7 +140,7 @@ pub struct AddedField {
     pub name: String,
     pub schema: Schema,
     pub after: Option<String>,
-    pub store: StoreHook,
+    pub store: Option<StoreHook>,
 }
 
 impl fmt::Debug for AddedField {
@@ -145,6 +148,7 @@ impl fmt::Debug for AddedField {
         f.debug_struct("AddedField")
             .field("name", &self.name)
             .field("after", &self.after)
+            .field("store", &self.store.is_some())
             .finish()
     }
 }
@@ -168,16 +172,12 @@ impl DescriptorPatch {
         }
     }
 
-    pub fn field<F, Fut>(mut self, name: &str, schema: Schema, store: F) -> Self
-    where
-        F: Fn(Call<Value>, Stored) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<()>> + Send + 'static,
-    {
+    pub fn field(mut self, name: &str, schema: Schema) -> Self {
         self.fields.push(AddedField {
             name: name.to_owned(),
             schema,
             after: None,
-            store: Arc::new(move |call, stored| Box::pin(store(call, stored))),
+            store: None,
         });
         self
     }
@@ -185,6 +185,17 @@ impl DescriptorPatch {
     pub fn after(mut self, field: &str) -> Self {
         if let Some(last) = self.fields.last_mut() {
             last.after = Some(field.to_owned());
+        }
+        self
+    }
+
+    pub fn store<F, Fut>(mut self, store: F) -> Self
+    where
+        F: Fn(Call<Value>, Stored) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if let Some(last) = self.fields.last_mut() {
+            last.store = Some(Arc::new(move |call, stored| Box::pin(store(call, stored))));
         }
         self
     }
@@ -296,6 +307,9 @@ pub struct Registrar {
     contributions: Contributions,
     provides: Services,
     requires: Vec<ServiceKey>,
+    start: Option<StartHook>,
+    stop: Option<StopHook>,
+    invoker: Option<Arc<dyn Invoker>>,
     errors: Vec<RegistrationError>,
 }
 
@@ -311,6 +325,9 @@ pub struct Registrations {
     pub contributions: Contributions,
     pub provides: Services,
     pub requires: Vec<ServiceKey>,
+    pub start: Option<StartHook>,
+    pub stop: Option<StopHook>,
+    pub invoker: Option<Arc<dyn Invoker>>,
 }
 
 impl fmt::Debug for Registrations {
@@ -326,6 +343,9 @@ impl fmt::Debug for Registrations {
             .field("contributions", &self.contributions)
             .field("provides", &self.provides)
             .field("requires", &self.requires)
+            .field("start", &self.start.is_some())
+            .field("stop", &self.stop.is_some())
+            .field("invoker", &self.invoker.is_some())
             .finish()
     }
 }
@@ -344,6 +364,9 @@ impl Registrar {
             contributions: Contributions::default(),
             provides: Services::new(),
             requires: Vec::new(),
+            start: None,
+            stop: None,
+            invoker: None,
             errors: Vec::new(),
         }
     }
@@ -463,6 +486,50 @@ impl Registrar {
         self
     }
 
+    pub fn start<F, Fut>(&mut self, hook: F) -> &mut Self
+    where
+        F: FnOnce(Context) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if self.start.is_some() {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "start hook",
+                name: "start".to_owned(),
+            });
+        }
+        self.start = Some(Box::new(move |ctx| Box::pin(hook(ctx))));
+        self
+    }
+
+    pub fn stop<F, Fut>(&mut self, hook: F) -> &mut Self
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if self.stop.is_some() {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "stop hook",
+                name: "stop".to_owned(),
+            });
+        }
+        self.stop = Some(Box::new(move || Box::pin(hook())));
+        self
+    }
+
+    pub fn invoker(&mut self, invoker: Arc<dyn Invoker>) -> &mut Self {
+        if self.invoker.is_some() {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "invoker",
+                name: "invoker".to_owned(),
+            });
+        }
+        self.invoker = Some(invoker);
+        self
+    }
+
     pub fn errors(&self) -> &[RegistrationError] {
         &self.errors
     }
@@ -487,6 +554,9 @@ impl Registrar {
             contributions: self.contributions,
             provides: self.provides,
             requires: self.requires,
+            start: self.start,
+            stop: self.stop,
+            invoker: self.invoker,
         })
     }
 
@@ -549,6 +619,19 @@ mod tests {
 
     struct Widget(&'static str);
 
+    struct Local;
+
+    impl Invoker for Local {
+        fn invoke(
+            &self,
+            _: crate::call::CallHandle,
+            _: &str,
+            params: Value,
+        ) -> BoxFuture<'static, Result<Value>> {
+            Box::pin(async move { Ok(params) })
+        }
+    }
+
     #[test]
     fn a_registrar_hands_every_registration_back() {
         let mut r = Registrar::new("dns");
@@ -571,19 +654,22 @@ mod tests {
             .within("keel.account.delete", |_: Call<Value>| async { Ok(()) })
             .patch(
                 DescriptorPatch::new("hosting.site.edit")
-                    .field(
-                        "dnsZone",
-                        json_schema!({ "type": "string" }),
-                        |_, _| async { Ok(()) },
-                    )
-                    .after("name"),
+                    .field("dnsZone", json_schema!({ "type": "string" }))
+                    .after("name")
+                    .store(|_, _| async { Ok(()) })
+                    .field("dnsTtl", json_schema!({ "type": "integer" })),
             )
             .contribute(Widget("zones"))
             .contribute(Widget("records"))
             .contribute(7u8)
             .provide::<dyn Clock>(Arc::new(Fixed))
             .require::<dyn Clock>()
-            .require::<dyn Clock>();
+            .require::<dyn Clock>()
+            .start(|ctx| async move {
+                assert_eq!(ctx.module(), "dns");
+                Ok(())
+            })
+            .stop(|| async { Ok(()) });
         assert!(r.errors().is_empty());
         let registrations = r.into_registrations().unwrap();
         assert_eq!(registrations.module, "dns");
@@ -607,6 +693,15 @@ mod tests {
             registrations.patches[0].fields()[0].after.as_deref(),
             Some("name")
         );
+        assert!(registrations.patches[0].fields()[0].store.is_some());
+        assert!(registrations.patches[0].fields()[1].store.is_none());
+        assert_eq!(
+            format!("{:?}", registrations.patches[0]),
+            "DescriptorPatch { target: \"hosting.site.edit\", fields: [AddedField { name: \"dnsZone\", after: Some(\"name\"), store: true }, AddedField { name: \"dnsTtl\", after: None, store: false }], access: None }"
+        );
+        assert!(registrations.start.is_some());
+        assert!(registrations.stop.is_some());
+        assert!(registrations.invoker.is_none());
         let widgets: Vec<&str> = registrations
             .contributions
             .of::<Widget>()
@@ -630,7 +725,13 @@ mod tests {
             .i18n("ru", "[1, 2]")
             .i18n("de", "{ not json")
             .provide::<dyn Clock>(Arc::new(Fixed))
-            .provide::<dyn Clock>(Arc::new(Fixed));
+            .provide::<dyn Clock>(Arc::new(Fixed))
+            .start(|_| async { Ok(()) })
+            .start(|_| async { Ok(()) })
+            .stop(|| async { Ok(()) })
+            .stop(|| async { Ok(()) })
+            .invoker(Arc::new(Local))
+            .invoker(Arc::new(Local));
         let errors = r.into_registrations().unwrap_err();
         let kinds: Vec<String> = errors.iter().map(ToString::to_string).collect();
         assert_eq!(
@@ -647,6 +748,9 @@ mod tests {
                     ServiceKey::of::<dyn Clock>().name()
                 )
                 .as_str(),
+                "module dns: start hook \"start\" is registered twice",
+                "module dns: stop hook \"stop\" is registered twice",
+                "module dns: invoker \"invoker\" is registered twice",
             ]
         );
     }

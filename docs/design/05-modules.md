@@ -17,11 +17,11 @@ plain struct with static slices; there is no trait to implement and no macro to 
 
 | Field        | Meaning |
 |--------------|---------|
-| `id`         | Module identifier; the prefix of every table, function, permission key, setting and i18n key the module owns. |
+| `id`         | Module identifier: a lowercase ASCII identifier, `[a-z][a-z0-9_]*`, because it prefixes every table, function, permission key, setting and i18n key the module owns; the loader refuses any other id. |
 | `version`    | Crate version, `env!("CARGO_PKG_VERSION")`. |
 | `sdk`        | The `keel_sdk::VERSION` the crate was compiled against; compared with the kernel's at boot. |
 | `requires`   | Ids of the modules this one depends on. The list fixes migration order, which `api` modules may be imported and which foreign keys are allowed. |
-| `migrations` | Optional embedded migration directory (`migrator::embed!`), applied under the module's own ledger `keel_migration_<module>`. |
+| `migrations` | Optional embedded migration directory (`migrator::embed!`), applied under the module's own ledger `keel_migration_<module>`. The static names the ledger itself, `.table("keel_migration_<module>")`; the loader refuses a module whose ledger is named otherwise. |
 | `init`       | `fn(&mut Registrar) -> keel::Result<()>`; registration only, no I/O. |
 
 ### Product composition
@@ -41,18 +41,23 @@ is what lets it leave the monorepo later without changes ([01-overview.md](01-ov
 
 Between process start and the first served request the kernel runs these steps, in this order:
 
-1. Validation: `sdk == keel_sdk::VERSION` for every module, uniqueness of `id`, resolvability of
-   `requires`; the topological order is fixed here.
+1. Validation: `sdk == keel_sdk::VERSION` for every module, the format and uniqueness of `id`,
+   resolvability of `requires`; the topological order is fixed here.
 2. Migrations: the kernel's own first, then every module in graph order, before any port is
    opened and under a session lock ([04-storage.md](04-storage.md)).
 3. `init(&mut Registrar)` for every module in graph order: registration only, no I/O.
-4. Freeze of the registries. The kernel checks that every required service has a provider,
-   applies patches to other modules' descriptors (a patch cannot weaken `access`; a field added
-   by a patch must carry `store`), compiles condition expressions and verifies that every field
-   name they mention exists, validates descriptors and checks that i18n keys exist at least for
-   `en`.
-5. `start(ctx)`: background work is spawned through `ctx.spawn`, then transports open. `stop`
-   runs in reverse order.
+4. Freeze of the registries. The kernel checks that every required service has a provider
+   and no service or invoker has two, applies patches to other modules' descriptors (a patch
+   cannot weaken `access`; a field added by a patch must carry `store`), compiles condition
+   expressions and verifies that every field name they mention exists, validates descriptors
+   (every function, action and permission a descriptor or a menu node names is registered,
+   `ui.read` names a `get` and `x-keel.options` an `options` function, `x-keel` and `x-ui`
+   attributes are members of their enums) and checks that the i18n keys a descriptor or a menu
+   node carries exist at least for `en`. Every problem is collected and reported in one error.
+5. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
+   spawned through `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's
+   stop hook runs first, then the tasks it spawned are cancelled and awaited. A start hook that
+   fails stops the modules already started and fails the boot.
 
 There is deliberately no dynamic loading after boot: registries are immutable and every check
 runs at startup, so a typo in a condition or a missing translation cannot reach a deployed
@@ -83,8 +88,15 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
   invariant checks such as quotas and limits belong there and nowhere else. A nested
   `call.invoke` reuses the transaction of the call and does not run plugin hooks; plugins see
   events after commit.
-- Patches to other modules' descriptors, within the limits checked at freeze; the `store`
-  mechanics of an added field are in [10-contracts.md](10-contracts.md).
+- Patches to other modules' descriptors,
+  `r.patch(DescriptorPatch::new("hosting.site.edit").field("dnsZone", schema).after("name").store(hooks::store_zone))`,
+  within the limits checked at freeze; the `store` mechanics of an added field are in
+  [10-contracts.md](10-contracts.md).
+- Start and stop hooks, `r.start(|ctx| async move { … })` and `r.stop(|| async { … })`, one of
+  each per module. `ctx` is the module's `Context`: `ctx.spawn` for background work,
+  `ctx.contributions::<T>()` for the typed bag, `ctx.require::<dyn Trait>()` for services. The
+  context carries no database handle in M0; a module that needs one at start gets it with the
+  milestone that needs it.
 - Services, `r.provide::<dyn Trait>(Arc::new(...))`, consumed elsewhere with
   `call.require::<dyn Trait>()`. Which module provides an implementation is a product
   composition choice: `hosting-web` declares `DnsProvider`, and either `dns-local` or `dns-peer`
@@ -92,8 +104,10 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
 - Contributions, `r.contribute(T)`, into extension points that modules themselves declare in
   their `pub mod api` and read back with `ctx.contributions::<T>()`. The kernel knows nothing
   about any of them; it only provides the typed bag.
-- `r.invoker` is reserved in the kernel from M0 for the cluster milestone: an `Invoker` selects
-  the node a function runs on by a function attribute ([06-host.md](06-host.md)).
+- `r.invoker(Arc<dyn Invoker>)` is reserved in the kernel from M0 for the cluster milestone: an
+  `Invoker` selects the node a function runs on by a function attribute
+  ([06-host.md](06-host.md)). The kernel has one invoker slot; a composition with two providers
+  fails at freeze, and without one the dispatcher runs every function locally.
 
 ### Contribution points
 
@@ -148,7 +162,8 @@ column names where each contribution is consumed.
 
 `keel-sdk` is layer L2 together with `keel-testkit`; a hidden `keel_sdk::system` sits beside it.
 The SDK is an interface, not an implementation: it knows nothing of axum, the Postgres pool or
-cookies. What module code sees is `ModuleDef`, `Registrar` and `Call<P>` with `params()`,
+cookies; even `ctx.spawn` hands the task to a spawner the kernel implements, so the SDK carries no
+runtime. What module code sees is `ModuleDef`, `Registrar`, `Context` and `Call<P>` with `params()`,
 `principal()`, `tx()`, `invoke`, `emit`, `after_commit`, `require::<dyn Trait>()`, `check_limit`
 and `extra` (values of patched fields); `Principal`, `Account` and `Level`; `KeelError` with an
 i18n key, an optional field and a source; `ListQuery`, `Page` and `ListSource`; `MenuNode`;
@@ -414,6 +429,7 @@ fn init(r: &mut Registrar) -> keel::Result<()> {
     r.contribute(ConfigTemplate::new("bind/zone.j2", include_str!("../templates/zone.j2")).validate("named-checkzone"));
     r.contribute(BackupSource::new("dns.zonefiles", backup::zonefiles));
     r.provide::<dyn DnsProvider>(Arc::new(BindProvider::new()));
+    r.start(|ctx| async move { ctx.spawn(jobs::serial_watch(ctx)); Ok(()) });
     Ok(())
 }
 

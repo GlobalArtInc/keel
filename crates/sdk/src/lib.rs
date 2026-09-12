@@ -1,4 +1,5 @@
 pub mod access;
+pub mod context;
 pub mod db;
 pub mod error;
 pub mod function;
@@ -27,6 +28,7 @@ pub use serde_json;
 
 pub use access::{AccountScope, DefaultScopePolicy, Owned, ScopePolicy, scope_by_account};
 pub use call::{AfterContext, Call};
+pub use context::Context;
 pub use db::Db;
 pub use error::{KeelError, Result};
 pub use function::{FunctionBuilder, FunctionDef, function};

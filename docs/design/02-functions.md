@@ -254,8 +254,9 @@ the kernel:
 - applies patches to descriptors of other modules and plugins, refusing a patch that weakens
   `access` and requiring `store` on every added field;
 - compiles every condition and checks each field name against the schema;
-- validates every descriptor (enum membership, icons against `PhxIconName`) and checks that
-  i18n keys exist at least for `en`.
+- validates every descriptor (enum membership, icons against `PhxIconName`, every function,
+  action and permission it names is registered, `ui.read` is a `get` and `x-keel.options` an
+  `options` function) and checks that i18n keys exist at least for `en`.
 
 `keel-dev check` adds what needs the source: every function with a `key` is either `.owned()` or
 explicitly `.unowned()`, and module prefixes are respected. `keel-dev descriptors dump | check |

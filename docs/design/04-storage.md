@@ -119,8 +119,11 @@ database, so two products on one server never wait on each other.
 Migrations are run by sqlmig 0.2 as it is; the migrator is not extended. Each module embeds its
 own migrations directory and keeps its own ledger table `keel_migration_<module>`
 (`keel_migration_auth`, `keel_migration_tasks`); sqlmig already accepts the ledger table name as a
-parameter, which is why one ledger per module needs no change in the migrator. The kernel's own
-migrations are recorded in `keel_migration`. The layout of a ledger table is sqlmig's own and is
+parameter, which is why one ledger per module needs no change in the migrator. The name is fixed
+when the module's static is built, `migrator::embed!(...).table("keel_migration_dns")`, so the
+module names its own ledger and the loader verifies at start that it is `keel_migration_<id>`,
+refusing the composition otherwise. The kernel's own migrations are recorded in
+`keel_migration`. The layout of a ledger table is sqlmig's own and is
 not part of the Keel schema contract.
 
 A module declares its migrations in `ModuleDef`:
@@ -164,7 +167,10 @@ the host; the archive layout and the restore procedure are in [09-operations.md]
 
 A module removed from a product leaves its tables in place. The kernel records the module in
 `keel_module` with `state = orphaned` and keeps running; nothing is deleted implicitly. `schema
-prune` removes the tables of an orphaned module as a deliberate operator action.
+prune` removes the tables of an orphaned module as a deliberate operator action. The row is
+written right after the module's own migrations have run, so a module whose migration fails
+leaves no row; a module composed again after an absence goes back to `active` on the next start
+with its ledger untouched.
 
 ## Isolation between modules
 

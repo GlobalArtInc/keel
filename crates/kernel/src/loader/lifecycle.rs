@@ -1,0 +1,403 @@
+use std::fmt;
+use std::sync::{Arc, Mutex, PoisonError};
+
+use futures::future::BoxFuture;
+use keel_sdk::runtime::{Spawner, StopHook};
+use keel_sdk::{Context, KeelError};
+use tokio::task::JoinSet;
+
+use super::composition::Graph;
+use super::freeze::Frozen;
+use crate::registry::Registry;
+
+pub struct Kernel {
+    graph: Graph,
+    registry: Arc<Registry>,
+    running: Vec<Running>,
+}
+
+struct Running {
+    module: String,
+    stop: Option<StopHook>,
+    tasks: Arc<TaskSet>,
+}
+
+struct TaskSet {
+    module: String,
+    tasks: Mutex<Option<JoinSet<()>>>,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("module {module}: start failed: {source}")]
+pub struct StartError {
+    pub module: String,
+    #[source]
+    pub source: KeelError,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub struct StopError {
+    failed: Vec<(String, KeelError)>,
+}
+
+impl Frozen {
+    pub async fn start(self) -> Result<Kernel, StartError> {
+        let mut kernel = Kernel {
+            graph: self.graph,
+            registry: self.registry,
+            running: Vec::with_capacity(self.lifecycle.len()),
+        };
+        for lifecycle in self.lifecycle {
+            let tasks = Arc::new(TaskSet::new(&lifecycle.module));
+            if let Some(start) = lifecycle.start {
+                let ctx = Context::new(
+                    &lifecycle.module,
+                    kernel.registry.contributions().clone(),
+                    kernel.registry.services().clone(),
+                    tasks.clone(),
+                );
+                if let Err(source) = start(ctx).await {
+                    tasks.shutdown().await;
+                    let failed = StartError {
+                        module: lifecycle.module,
+                        source,
+                    };
+                    tracing::error!(error = %failed, "start failed; stopping what started");
+                    if let Err(error) = kernel.stop().await {
+                        tracing::error!(error = %error, "stopping after a failed start");
+                    }
+                    return Err(failed);
+                }
+            }
+            tracing::debug!(module = lifecycle.module, "module started");
+            kernel.running.push(Running {
+                module: lifecycle.module,
+                stop: lifecycle.stop,
+                tasks,
+            });
+        }
+        tracing::info!(modules = ?kernel.graph.ids(), "modules started");
+        Ok(kernel)
+    }
+}
+
+impl Kernel {
+    pub fn graph(&self) -> &Graph {
+        &self.graph
+    }
+
+    pub fn registry(&self) -> &Arc<Registry> {
+        &self.registry
+    }
+
+    pub fn running(&self) -> impl Iterator<Item = &str> {
+        self.running.iter().map(|running| running.module.as_str())
+    }
+
+    pub async fn stop(mut self) -> Result<(), StopError> {
+        let mut failed = Vec::new();
+        while let Some(running) = self.running.pop() {
+            if let Some(stop) = running.stop
+                && let Err(error) = stop().await
+            {
+                tracing::error!(module = running.module, error = %error, "stop hook failed");
+                failed.push((running.module.clone(), error));
+            }
+            running.tasks.shutdown().await;
+            tracing::debug!(module = running.module, "module stopped");
+        }
+        if failed.is_empty() {
+            Ok(())
+        } else {
+            Err(StopError { failed })
+        }
+    }
+}
+
+impl TaskSet {
+    fn new(module: &str) -> Self {
+        Self {
+            module: module.to_owned(),
+            tasks: Mutex::new(Some(JoinSet::new())),
+        }
+    }
+
+    async fn shutdown(&self) {
+        let taken = self
+            .tasks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        let Some(mut tasks) = taken else {
+            return;
+        };
+        tasks.abort_all();
+        while let Some(outcome) = tasks.join_next().await {
+            if let Err(error) = outcome
+                && error.is_panic()
+            {
+                tracing::error!(module = self.module, "a background task panicked");
+            }
+        }
+    }
+}
+
+impl Spawner for TaskSet {
+    fn spawn(&self, task: BoxFuture<'static, ()>) {
+        let mut guard = self.tasks.lock().unwrap_or_else(PoisonError::into_inner);
+        match guard.as_mut() {
+            Some(tasks) => {
+                tasks.spawn(task);
+            }
+            None => tracing::warn!(
+                module = self.module,
+                "a task was spawned after the module stopped; it is dropped"
+            ),
+        }
+    }
+}
+
+impl fmt::Debug for Kernel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Kernel")
+            .field("graph", &self.graph)
+            .field("running", &self.running().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl StopError {
+    pub fn failed(&self) -> &[(String, KeelError)] {
+        &self.failed
+    }
+}
+
+impl fmt::Display for StopError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "stop hooks failed:")?;
+        for (module, error) in &self.failed {
+            write!(f, "\n  - module {module}: {error}")?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use keel_sdk::Registrar;
+    use keel_sdk::prelude::*;
+
+    use super::*;
+    use crate::loader::Composition;
+    use crate::loader::testing::module;
+
+    static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn note(event: String) {
+        EVENTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(event);
+    }
+
+    fn events_of(prefix: &str) -> Vec<String> {
+        EVENTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|event| event.starts_with(prefix))
+            .cloned()
+            .collect()
+    }
+
+    struct Dropped(String);
+
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            note(format!("{}:task_dropped", self.0));
+        }
+    }
+
+    trait Clock: Send + Sync {
+        fn now(&self) -> u64;
+    }
+
+    struct Fixed;
+
+    impl Clock for Fixed {
+        fn now(&self) -> u64 {
+            7
+        }
+    }
+
+    struct Widget(&'static str);
+
+    fn lifecycle(r: &mut Registrar) -> Result<()> {
+        let id = r.module().to_owned();
+        let stopped = id.clone();
+        r.start(move |ctx| async move {
+            note(format!("{id}:start"));
+            let guard = Dropped(ctx.module().to_owned());
+            ctx.spawn(async move {
+                let _guard = guard;
+                loop {
+                    tokio::time::sleep(Duration::from_secs(3600)).await;
+                }
+            });
+            Ok(())
+        })
+        .stop(move || async move {
+            note(format!("{stopped}:stop"));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    module!(ORDER_A, "order_a", [], lifecycle);
+    module!(ORDER_B, "order_b", ["order_a"], lifecycle);
+    module!(ORDER_C, "order_c", ["order_b"], lifecycle);
+
+    async fn start(modules: &[&'static keel_sdk::ModuleDef]) -> Result<Kernel, StartError> {
+        let mut composition = Composition::new();
+        for module in modules {
+            composition = composition.module(module);
+        }
+        composition
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect("the registries freeze")
+            .start()
+            .await
+    }
+
+    #[tokio::test]
+    async fn modules_start_in_graph_order_and_stop_in_reverse_cancelling_their_tasks() {
+        let kernel = start(&[&ORDER_C, &ORDER_A, &ORDER_B]).await.unwrap();
+        assert_eq!(
+            kernel.running().collect::<Vec<_>>(),
+            ["order_a", "order_b", "order_c"]
+        );
+        assert_eq!(
+            events_of("order_"),
+            ["order_a:start", "order_b:start", "order_c:start"]
+        );
+        assert!(format!("{kernel:?}").contains("running: [\"order_a\", \"order_b\", \"order_c\"]"));
+        kernel.stop().await.unwrap();
+        assert_eq!(
+            events_of("order_"),
+            [
+                "order_a:start",
+                "order_b:start",
+                "order_c:start",
+                "order_c:stop",
+                "order_c:task_dropped",
+                "order_b:stop",
+                "order_b:task_dropped",
+                "order_a:stop",
+                "order_a:task_dropped",
+            ]
+        );
+    }
+
+    fn failing_start(r: &mut Registrar) -> Result<()> {
+        r.start(|ctx| async move {
+            note(format!("{}:start", ctx.module()));
+            Err(KeelError::unavailable("fail_b.error.no_socket"))
+        })
+        .stop(|| async {
+            note("fail_b:stop".to_owned());
+            Ok(())
+        });
+        Ok(())
+    }
+
+    module!(FAIL_A, "fail_a", [], lifecycle);
+    module!(FAIL_B, "fail_b", ["fail_a"], failing_start);
+    module!(FAIL_C, "fail_c", ["fail_b"], lifecycle);
+
+    #[tokio::test]
+    async fn a_failed_start_stops_the_modules_that_already_started_and_names_the_module() {
+        let error = start(&[&FAIL_A, &FAIL_B, &FAIL_C]).await.unwrap_err();
+        assert_eq!(error.module, "fail_b");
+        assert_eq!(
+            error.to_string(),
+            "module fail_b: start failed: unavailable: fail_b.error.no_socket"
+        );
+        assert_eq!(
+            events_of("fail_"),
+            [
+                "fail_a:start",
+                "fail_b:start",
+                "fail_a:stop",
+                "fail_a:task_dropped"
+            ]
+        );
+    }
+
+    fn failing_stop(r: &mut Registrar) -> Result<()> {
+        r.stop(|| async { Err(KeelError::internal("stop_b.error.stuck")) });
+        Ok(())
+    }
+
+    module!(STOP_A, "stop_a", [], lifecycle);
+    module!(STOP_B, "stop_b", ["stop_a"], failing_stop);
+
+    #[tokio::test]
+    async fn a_failing_stop_hook_does_not_keep_the_other_modules_from_stopping() {
+        let kernel = start(&[&STOP_A, &STOP_B]).await.unwrap();
+        let error = kernel.stop().await.unwrap_err();
+        assert_eq!(error.failed().len(), 1);
+        assert_eq!(error.failed()[0].0, "stop_b");
+        assert_eq!(
+            error.to_string(),
+            "stop hooks failed:\n  - module stop_b: internal: stop_b.error.stuck"
+        );
+        assert_eq!(
+            events_of("stop_"),
+            ["stop_a:start", "stop_a:stop", "stop_a:task_dropped"]
+        );
+    }
+
+    fn providing(r: &mut Registrar) -> Result<()> {
+        r.provide::<dyn Clock>(Arc::new(Fixed))
+            .contribute(Widget("one"))
+            .contribute(Widget("two"));
+        Ok(())
+    }
+
+    fn consuming(r: &mut Registrar) -> Result<()> {
+        r.require::<dyn Clock>().start(|ctx| async move {
+            let widgets: Vec<&str> = ctx.contributions::<Widget>().map(|w| w.0).collect();
+            note(format!("ctx_b:widgets={}", widgets.join(",")));
+            note(format!("ctx_b:now={}", ctx.require::<dyn Clock>()?.now()));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    module!(CTX_A, "ctx_a", [], providing);
+    module!(CTX_B, "ctx_b", ["ctx_a"], consuming);
+
+    #[tokio::test]
+    async fn the_start_context_reads_the_contribution_bag_and_the_services() {
+        let kernel = start(&[&CTX_B, &CTX_A]).await.unwrap();
+        assert_eq!(events_of("ctx_"), ["ctx_b:widgets=one,two", "ctx_b:now=7"]);
+        kernel.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_task_spawned_after_stop_is_dropped_instead_of_leaking() {
+        let set = TaskSet::new("late");
+        set.spawn(Box::pin(async {}));
+        set.shutdown().await;
+        set.spawn(Box::pin(async {}));
+        set.shutdown().await;
+        assert!(set.tasks.lock().unwrap().is_none());
+    }
+}
