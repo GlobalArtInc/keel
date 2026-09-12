@@ -119,6 +119,7 @@
       "query_not_json": "The parameter {parameter} is not JSON",
       "query_not_object": "The parameter {parameter} is not a JSON object",
       "route_not_found": "The path {path} does not exist",
+      "frame_unknown": "The frame is not a func, describe or i18n frame",
       "list": {
         "page": "The page must be 1 or more",
         "page_size": "The page size must be 1 or more",

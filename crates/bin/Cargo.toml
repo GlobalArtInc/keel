@@ -1,0 +1,17 @@
+[package]
+name = "keel-bin"
+description = "The keel binary: the runtime composed with every product bundle of the workspace"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "keel"
+path = "src/main.rs"
+
+[features]
+demo = []
+
+[dependencies]
+keel = { workspace = true }

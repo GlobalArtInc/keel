@@ -19,20 +19,20 @@ use crate::registry::{Function, Registry};
 
 const MAX_DEPTH: usize = 16;
 
-pub(super) struct Projection<'a> {
+pub(crate) struct Projection<'a> {
     registry: &'a Registry,
     principal: &'a Principal,
 }
 
 impl<'a> Projection<'a> {
-    pub(super) fn new(registry: &'a Registry, principal: &'a Principal) -> Self {
+    pub(crate) fn new(registry: &'a Registry, principal: &'a Principal) -> Self {
         Self {
             registry,
             principal,
         }
     }
 
-    pub(super) fn admit(&self, function: &Function) -> Result<(), KeelError> {
+    pub(crate) fn admit(&self, function: &Function) -> Result<(), KeelError> {
         let access = &function.descriptor().access;
         guards::level(access, self.principal)?;
         guards::permission(self.registry, access, self.principal)
@@ -52,7 +52,7 @@ impl<'a> Projection<'a> {
             .collect()
     }
 
-    pub(super) fn project(&self, function: &Function) -> Descriptor {
+    pub(crate) fn project(&self, function: &Function) -> Descriptor {
         let level = self.principal.level;
         let mut descriptor = function.descriptor().clone();
         if let Some(params) = descriptor.params.as_object_mut() {

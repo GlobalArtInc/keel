@@ -119,6 +119,7 @@
       "query_not_json": "Параметр {parameter} не является JSON",
       "query_not_object": "Параметр {parameter} не является объектом JSON",
       "route_not_found": "Путь {path} не существует",
+      "frame_unknown": "Кадр не является кадром func, describe или i18n",
       "list": {
         "page": "Номер страницы должен быть не меньше 1",
         "page_size": "Размер страницы должен быть не меньше 1",

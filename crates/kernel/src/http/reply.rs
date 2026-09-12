@@ -44,7 +44,7 @@ pub(super) fn request_id_in(extensions: &Extensions) -> String {
         .unwrap_or_else(generate_request_id)
 }
 
-fn acceptable_request_id(value: &str) -> bool {
+pub(crate) fn acceptable_request_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= REQUEST_ID_MAX_LEN
         && value

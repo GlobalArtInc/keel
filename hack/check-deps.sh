@@ -60,4 +60,23 @@ if [ "$direct" != "keel-sdk " ]; then
 fi
 echo "keel-sdk-probe graph checked"
 
+facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$facade" != "keel-kernel keel-sdk keel-types " ]; then
+  echo "the facade keel depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $facade" >&2
+  fail=1
+fi
+echo "keel graph checked"
+
+for forbidden in keel-kernel keel-sdk keel-types; do
+  if cargo tree -p keel-bin -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep -qx "$forbidden"; then
+    echo "keel-bin depends directly on $forbidden; the binary composes through the facade keel" >&2
+    fail=1
+  fi
+done
+if ! cargo tree -p keel-bin -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep -qx "keel"; then
+  echo "keel-bin does not depend on the facade keel" >&2
+  fail=1
+fi
+echo "keel-bin graph checked"
+
 exit "$fail"

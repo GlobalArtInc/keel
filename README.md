@@ -30,7 +30,7 @@ Designed, not yet built. The design is in `docs/design/`, the order of work in `
 ```
 crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-host, ... (from M0)
 products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
-bin/         keel — the binary: the explicit composition of every module and bundle
+crates/bin/  keel — the binary: the runtime composed with every bundle of the workspace
 frontend/    pnpm workspace: @globalart/keel, the shell application and the product view
              libraries (from M2)
 contracts/   protocol.md, golden fixtures, generated openapi.json

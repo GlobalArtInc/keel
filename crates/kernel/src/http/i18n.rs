@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::Response;
 use keel_types::{Id, Principal};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::Shared;
@@ -17,13 +17,13 @@ use crate::registry::Registry;
 
 pub(super) const LANG_PARAM: &str = "lang";
 
-#[derive(Debug, Serialize)]
-pub(super) struct Catalogue {
-    pub(super) lang: String,
-    pub(super) messages: Map<String, Value>,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Catalogue {
+    pub lang: String,
+    pub messages: Map<String, Value>,
 }
 
-pub(super) fn catalogue(registry: &Registry, lang: &str) -> Catalogue {
+pub fn catalogue(registry: &Registry, lang: &str) -> Catalogue {
     let mut messages = registry
         .i18n(REQUIRED_LANGUAGE)
         .cloned()

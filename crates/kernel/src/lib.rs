@@ -1,4 +1,5 @@
 pub mod config;
+pub mod ctl;
 pub mod dispatcher;
 pub mod http;
 pub mod instance;
@@ -6,8 +7,10 @@ pub mod keel;
 pub mod loader;
 pub mod logging;
 pub mod migrations;
+pub mod products;
 pub mod registry;
 pub mod secret;
+pub mod socket;
 pub mod storage;
 
 mod kv;
@@ -18,4 +21,5 @@ pub use http::{Http, HttpError, HttpOptions, Readiness, Served};
 pub use instance::{Instance, InstanceError};
 pub use loader::{BootError, Composition, Kernel};
 pub use registry::Registry;
+pub use socket::{Socket, SocketError};
 pub use storage::{Storage, StorageError};

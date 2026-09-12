@@ -32,7 +32,11 @@ use live::Live;
 use meta::MetaKey;
 
 pub use auth::SESSION_COOKIE;
+pub use i18n::{Catalogue, catalogue};
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
+
+pub(crate) use descriptors::Projection;
+pub(crate) use reply::acceptable_request_id;
 
 pub const API_PREFIX: &str = "/api/v1";
 pub const BODY_LIMIT: usize = 1024 * 1024;
