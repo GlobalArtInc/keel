@@ -22,6 +22,12 @@ import json, sys
 meta = json.load(sys.stdin)
 sys.exit(0 if any(p["name"] == "keel-kernel" for p in meta["packages"]) else 1)
 '; then
+  for required in keel-sdk keel-types; do
+    if ! cargo tree -p keel-kernel -e normal --prefix none --depth 1 | awk '{print $1}' | grep -qx "$required"; then
+      echo "keel-kernel does not depend on $required" >&2
+      fail=1
+    fi
+  done
   echo "keel-kernel graph checked"
 else
   echo "keel-kernel is not in the workspace yet; nothing to check"

@@ -67,7 +67,17 @@ without `config.yaml` connects to the default database; this is an M0 acceptance
 ([docs/plan.md](../plan.md)).
 
 Pool parameters: 20 connections, connect and acquire timeout 10 s, `search_path` set to the
-product's schema.
+product's schema. The product's schema is named after the product id (`dns`, `panel`, `demo`),
+and the kernel creates it at connect time when it is missing, so the role needs `CREATE` on its
+database, which the role that owns the database has. Every table of the product, ledgers
+included, lives in that schema; `public` is not on the search path.
+
+The placeholder `${<PRODUCT>_DB_PASS}` is the only substitution the kernel performs in the
+`database` value: the variable's value is percent-encoded and put in the placeholder's place, an
+unset variable fails the start, and any other `${...}` is refused. A value that does not start
+with `postgres://` (`postgresql://` is accepted and normalised) or does not parse as a
+connection URL fails the start with a message naming the `database` key; the password is never
+part of such a message or of a log line.
 
 Transactions are opened by the kernel, not by handlers. The rules, in full in
 [02-functions.md](02-functions.md):
@@ -85,7 +95,13 @@ Transactions are opened by the kernel, not by handlers. The rules, in full in
   background worker so that the response of a call is not extended.
 
 The cron leader and the single task worker are elected with `pg_advisory_lock`; the design names
-no other coordination mechanism.
+no other coordination mechanism. The kernel's own advisory lock keys are the 64-bit big-endian
+values of eight ASCII bytes, kept in one place in `keel-kernel`: `keelmigr` is the session lock
+held on a pinned connection for the whole migration step of a boot (kernel catalogue first, then
+the modules), `keelledg` is the per-catalogue lock sqlmig takes underneath for the kernel ledger,
+`keelschm` is the transaction lock around the creation of the product's schema, and `keelinst`
+the transaction lock around the first-start rows of `keel_kv`. Advisory locks are scoped to a
+database, so two products on one server never wait on each other.
 
 ## Identifiers, time and JSON
 
@@ -173,6 +189,15 @@ database without the matching `secret.key` cannot decrypt its `Secret` columns, 
 backup includes the key only optionally, under a passphrase (`--with-secret-key`, see
 [09-operations.md](09-operations.md)).
 
+Two keys are involved. `secret.key` holds 32 random bytes written as 64 hex characters; it is
+the key-encryption key and never leaves the data directory. The data key that encrypts `Secret`
+columns is generated at first start, sealed with AES-256-GCM under the file key, and stored in
+`keel_kv` under `secret_key` as `{"alg": "A256GCM", "nonce": <hex>, "data": <hex>}`. On every
+start the kernel opens the stored value with the file key; a file that does not open it (a
+regenerated key, or a database restored next to the wrong data directory) fails the start
+instead of silently starting an installation that cannot read its own secrets. A `secret.key`
+readable by group or others is refused the same way.
+
 Fields marked `x-keel.secret` in a function schema are the same fields that audit, logs and the
 support bundle mask; see [02-functions.md](02-functions.md). Session and API tokens are not
 `Secret` values: the auth module stores only their SHA-256 hashes, so a backup contains no usable
@@ -201,7 +226,8 @@ prefix.
 
 `path` is the materialized path of the account in the tree, so the scope of a reseller is one
 `LIKE` on the prefix. The root account with `kind = system` and `path = /` is created by a kernel
-migration; it owns the owner, the administrators, the service tokens and the principals of plugins
+migration; its id is the nil ULID `00000000000000000000000000`, the constant `Id::ROOT_ACCOUNT`
+of `keel-types` that every product knows without a query; it owns the owner, the administrators, the service tokens and the principals of plugins
 and peer products. The pair `(origin, external_id)` is the stable identity used by peers:
 `keel.account.upsert` is idempotent by it. The semantics are in [03-access.md](03-access.md).
 
@@ -223,6 +249,8 @@ and for the subtree of a reseller by `path`; it is part of the descriptor `ETag`
 
 The sqlmig ledger of the kernel's migrations. Module ledgers are the separate tables
 `keel_migration_<module>` created by sqlmig for each module; they are not counted among the eight.
+sqlmig keeps a companion table `<ledger>_checksum` next to every ledger; it is part of the
+ledger's own layout and is not counted either.
 
 ### keel_module
 
@@ -238,6 +266,12 @@ composition keeps its row with `state = orphaned` until `schema prune`.
 the instance id, the wrapped secret key, the history of versions that ran against this database,
 and the monotonic time that the license module uses against clock changes
 ([05-modules.md](05-modules.md)).
+
+The kernel writes `instance_id` (a ULID, the same value as `instance.id` in the data directory)
+and `secret_key` (the wrapped data key, see "Secrets") at first start. The instance id is
+generated once and copied in both places; a missing `instance.id` file is restored from the
+row, and a file that names a different id than the row fails the start, because a data
+directory and a database of two installations must not be combined.
 
 ### keel_outbox
 

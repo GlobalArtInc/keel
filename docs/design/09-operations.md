@@ -241,9 +241,13 @@ log: { level: info, format: json }
 
 Every key is optional. `database` may instead be a TCP URL such as
 `postgres://keel_dns:${DNS_DB_PASS}@db.example.net/keel_dns`; an empty `tls` means
-the self-signed certificate under `<data_dir>/tls`. Sections of modules (`host`, `plugins`) are
-added by their `ConfigSection` contributions; their keys are not fixed by this revision
-([06-host.md](06-host.md)). The default port of each product is part of the open naming question
+the self-signed certificate under `<data_dir>/tls`. The values above for `log` are also its
+defaults. Sections of modules (`host`, `plugins`) are added by their `ConfigSection`
+contributions; their keys are not fixed by this revision ([06-host.md](06-host.md)). The kernel
+keeps every top-level key it does not know as a raw section for those contributions, while a
+misspelt key inside `tls` or `log`, an unusable `listen` or `database` value, or a file that is
+not YAML fails the start with a message naming the file and the key. An empty file is the same as
+no file. The default port of each product is part of the open naming question
 ([11-decisions.md](11-decisions.md)); the value above is only an example.
 
 ## Updates

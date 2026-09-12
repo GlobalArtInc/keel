@@ -18,6 +18,8 @@ pub struct InvalidId(String);
 const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 impl Id {
+    pub const ROOT_ACCOUNT: Id = Id(Ulid::nil());
+
     pub fn generate() -> Self {
         Self(Ulid::generate())
     }
@@ -152,6 +154,16 @@ mod tests {
                 "{text:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_root_account_is_the_nil_identifier() {
+        assert_eq!(Id::ROOT_ACCOUNT, Id::from(Ulid::nil()));
+        assert_eq!(Id::ROOT_ACCOUNT.to_string(), "00000000000000000000000000");
+        assert_eq!(
+            "00000000000000000000000000".parse::<Id>().unwrap(),
+            Id::ROOT_ACCOUNT
+        );
     }
 
     #[test]
