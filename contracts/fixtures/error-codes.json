@@ -1,0 +1,15 @@
+[
+  { "code": "validation", "status": 422 },
+  { "code": "forbidden", "status": 403 },
+  { "code": "forbidden_field", "status": 403 },
+  { "code": "unauthenticated", "status": 401 },
+  { "code": "not_found", "status": 404 },
+  { "code": "conflict", "status": 409 },
+  { "code": "idempotency_mismatch", "status": 409 },
+  { "code": "limit_exceeded", "status": 409 },
+  { "code": "license", "status": 402 },
+  { "code": "rate_limited", "status": 429 },
+  { "code": "unavailable", "status": 503 },
+  { "code": "peer", "status": 502 },
+  { "code": "internal", "status": 500 }
+]

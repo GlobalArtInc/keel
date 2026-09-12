@@ -1,0 +1,16 @@
+[package]
+name = "keel-types"
+description = "The wire contract of the platform: descriptors, envelope, lists, principals, conditions and check presets"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+regex = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ulid = { workspace = true }

@@ -51,7 +51,7 @@ are removed) and carries the top-level fields below. The complete example for `d
 | `key`    | Name of the parameter that identifies the owned row (`"id"`); its presence makes the function subject to `OwnedGuard`. |
 | `params` | JSON Schema of the parameters; lists point at `keel://ListQuery` through `$ref`.        |
 | `result` | JSON Schema of the result.                                                               |
-| `ui`     | The screen block.                                                                        |
+| `ui`     | The screen block; a kind without a screen of its own (`get`, `options`, `download`, `upload`) omits it. |
 
 Titles, labels, hints and error messages inside a descriptor are i18n keys, never strings;
 the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.md).

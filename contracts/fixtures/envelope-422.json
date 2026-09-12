@@ -1,0 +1,3 @@
+{ "ok": false, "error": { "code": "validation", "key": "keel.error.validation", "requestId": "req-1a2c",
+  "fields": [ { "path": "master_ips[1]", "code": "check.ip", "key": "keel.check.ip", "params": { "value": "10.0.0" } },
+              { "path": "name", "code": "dns.zone.error.exists", "key": "dns.zone.error.exists", "params": { "name": "a.org" } } ] } }

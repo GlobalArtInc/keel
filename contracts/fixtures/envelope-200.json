@@ -1,0 +1,4 @@
+{ "ok": true, "data": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" },
+  "meta": { "requestId": "req-1a2b",
+            "principal": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9A1", "login": "alice", "level": "user", "account": "01J8A0000000000000000000A1",
+                           "actor": { "id": "01J8A0000000000000000000B2", "login": "root", "level": "admin", "via": "su" } } } }

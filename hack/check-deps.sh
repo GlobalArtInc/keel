@@ -27,4 +27,12 @@ else
   echo "keel-kernel is not in the workspace yet; nothing to check"
 fi
 
+for forbidden in tokio async-std smol sqlx sea-orm axum hyper http reqwest; do
+  if cargo tree -p keel-types -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-types depends on $forbidden" >&2
+    fail=1
+  fi
+done
+echo "keel-types graph checked"
+
 exit "$fail"

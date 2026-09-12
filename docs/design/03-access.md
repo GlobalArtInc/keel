@@ -136,6 +136,11 @@ context carries two identities: the effective `principal` and the `actor` who in
 | `ctl --as`| the local socket (`owner`) running as a principal | `socket`    |
 | on-behalf | a paired neighbour acting for one of its clients | `peer`      |
 
+The mechanism is the `via` of the actor principal itself: the actor of a `su` session carries
+`via: Su`, the `--as` actor is the socket principal with `via: Socket`, the on-behalf actor is
+the peer with `via: Peer(id)`; an actor with any other `via` is a kernel bug, so `actor.via` on
+the wire is a closed set of exactly these three values.
+
 Rules for `su`:
 
 - Only downwards on the ladder: a reseller may enter a `user` of its subtree, an admin may enter
@@ -285,7 +290,7 @@ CREATE TABLE IF NOT EXISTS keel_principal (
 ```
 
 The in-process call context is richer than the row: it carries the actor, the token scope and
-the transport the call arrived on.
+`via`: the transport the call arrived on, or `Su` for the actor recorded by a delegated session.
 
 ```rust
 pub struct Principal {
@@ -293,7 +298,7 @@ pub struct Principal {
     pub account_id: Id, pub role: String,           /* role inside the account (owner|member|...): product vocabulary */
     pub actor: Option<Box<Principal>>,               /* su, --as, on-behalf (via = su|socket|peer) */
     pub scope: Scope,                               /* Full | Functions(masks) | ReadOnly */
-    pub via: Via,                                   /* Http | Socket | Plugin(id) | Peer(id) | Internal */
+    pub via: Via,                                   /* Http | Socket | Plugin(id) | Peer(id) | Internal | Su */
     pub external_id: Option<String>, pub origin: Option<String>, pub lang: String,
 }
 

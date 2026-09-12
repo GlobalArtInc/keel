@@ -1,0 +1,762 @@
+[
+  {
+    "check": "domain",
+    "value": "a.org",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "example.com",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "sub.example.co.uk",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "Sub.Example.COM",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "xn--80ak6aa92e.com",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "a-b.org",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "1a.org",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "a1.b2.c3.org",
+    "expect": true
+  },
+  {
+    "check": "domain",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a..org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "-a.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a-.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a.org.",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": ".a.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a_b.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a b.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "10.0.0.1",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a.123",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a.org/x",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a.-org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "*.a.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.org",
+    "expect": false
+  },
+  {
+    "check": "domain",
+    "value": "a.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.ba.b.org",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "10.0.0.1",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "0.0.0.0",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "255.255.255.255",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "::1",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "::",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "2001:db8::1",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "fe80::1",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "::ffff:10.0.0.1",
+    "expect": true
+  },
+  {
+    "check": "ip",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "10.0.0",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "10.0.0.256",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "10.0.0.1.1",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "10.0.0.1/24",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "1.2.3.4 ",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "2001:db8::1::2",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "g::1",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "fe80::1%eth0",
+    "expect": false
+  },
+  {
+    "check": "ip",
+    "value": "a.org",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/8",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.1/32",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "0.0.0.0/0",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "2001:db8::/32",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "::/0",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "2001:db8::1/128",
+    "expect": true
+  },
+  {
+    "check": "cidr",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/33",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/-1",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/08",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/+8",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0/8",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "2001:db8::/129",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "/8",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/8/8",
+    "expect": false
+  },
+  {
+    "check": "cidr",
+    "value": "10.0.0.0/ 8",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@a.org",
+    "expect": true
+  },
+  {
+    "check": "email",
+    "value": "alice.smith@example.com",
+    "expect": true
+  },
+  {
+    "check": "email",
+    "value": "a+tag@sub.example.co.uk",
+    "expect": true
+  },
+  {
+    "check": "email",
+    "value": "a_b-c@example.com",
+    "expect": true
+  },
+  {
+    "check": "email",
+    "value": "A@B.ORG",
+    "expect": true
+  },
+  {
+    "check": "email",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "al ice@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": ".alice@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice.@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "al..ice@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@a..org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@10.0.0.1",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@a.org",
+    "expect": false
+  },
+  {
+    "check": "email",
+    "value": "alice@a.org.",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "0",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "1",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "42",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "-1",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "-42",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "9223372036854775807",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "-9223372036854775808",
+    "expect": true
+  },
+  {
+    "check": "int",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "+1",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "01",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "007",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "-0.5",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "1.0",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "1e3",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "abc",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": " 1",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "1 ",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "9223372036854775808",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "--1",
+    "expect": false
+  },
+  {
+    "check": "int",
+    "value": "-",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "web",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "web1",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "web_1",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "web-1",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "Web",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "a",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expect": true
+  },
+  {
+    "check": "name",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "1web",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "_web",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "-web",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "web.1",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "web 1",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "web/1",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "wéb",
+    "expect": false
+  },
+  {
+    "check": "name",
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "1",
+    "expect": true
+  },
+  {
+    "check": "port",
+    "value": "22",
+    "expect": true
+  },
+  {
+    "check": "port",
+    "value": "80",
+    "expect": true
+  },
+  {
+    "check": "port",
+    "value": "8080",
+    "expect": true
+  },
+  {
+    "check": "port",
+    "value": "65535",
+    "expect": true
+  },
+  {
+    "check": "port",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "0",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "-1",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "+80",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "080",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "65536",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "99999",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "80a",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "8 0",
+    "expect": false
+  },
+  {
+    "check": "port",
+    "value": "80.0",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/var",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/var/www",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/var/www/a.org",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/opt/keel/dns",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/a b/c",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/.hidden",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "/a/..b",
+    "expect": true
+  },
+  {
+    "check": "path",
+    "value": "",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "var/www",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "./var",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "../var",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var/",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var//www",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var/./www",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var/../etc",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/..",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/.",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var/w\tww",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "/var/w\nww",
+    "expect": false
+  },
+  {
+    "check": "path",
+    "value": "//",
+    "expect": false
+  }
+]

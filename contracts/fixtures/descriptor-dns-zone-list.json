@@ -1,0 +1,21 @@
+{ "keel": 1, "name": "dns.zone.list", "module": "dns", "kind": "list", "mode": "read",
+  "access": { "level": "user", "permission": "dns.zone.read", "feature": "dns.zones" }, "key": "id",
+  "params": { "$ref": "keel://ListQuery" }, "result": { "$ref": "#/$defs/Page_ZoneRow" },
+  "ui": {
+    "title": "dns.zone.list.title", "search": ["name"],
+    "columns": [
+      { "key": "name", "type": "link", "to": { "screen": "dns.zone.edit", "params": { "id": "$id" } }, "sortable": true, "primary": true },
+      { "key": "records", "type": "number", "sortable": true, "total": "sum" },
+      { "key": "status", "type": "status", "map": { "active": "success", "suspended": "warning" }, "filter": { "options": ["active", "suspended"] } },
+      { "key": "dnssec", "type": "toggle", "edit": { "function": "dns.zone.update" }, "access": { "permission": "dns.zone.manage" } },
+      { "key": "account", "type": "text", "access": { "level": "reseller" }, "filter": { "remote": "keel.account.options" } } ],
+    "actions": [
+      { "id": "create", "role": "new", "screen": "dns.zone.edit", "icon": "plus" },
+      { "id": "edit", "role": "edit", "screen": "dns.zone.edit", "default": true },
+      { "id": "records", "role": "child", "screen": "dns.record.list", "params": { "zone_id": "$id" } },
+      { "id": "suspend", "role": "group", "function": "dns.zone.suspend", "confirm": true, "hidden_if": { "eq": ["status", "suspended"] } },
+      { "id": "delete", "role": "delete", "function": "dns.zone.delete", "confirm": { "destructive": true, "items": "name", "input": "count" } },
+      { "id": "export", "role": "export", "formats": ["csv", "json"] } ],
+    "row_actions": ["edit", "records", "suspend", "delete"],
+    "empty": { "title": "dns.zone.empty", "action": "create" },
+    "invalidate_on": ["dns.zone.*"] } }

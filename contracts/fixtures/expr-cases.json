@@ -1,0 +1,1213 @@
+[
+  {
+    "name": "eq on a field that matches",
+    "source": "status == 'suspended'",
+    "ast": {
+      "eq": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {
+        "status": "suspended"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq on a field that differs",
+    "source": "status == 'suspended'",
+    "ast": {
+      "eq": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {
+        "status": "active"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "eq on a missing field is false",
+    "source": "status == 'suspended'",
+    "ast": {
+      "eq": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": false
+  },
+  {
+    "name": "double-quoted strings are the same literal",
+    "source": "status == \"suspended\"",
+    "ast": {
+      "eq": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {
+        "status": "suspended"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "ne on a field",
+    "source": "status != 'suspended'",
+    "ast": {
+      "ne": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {
+        "status": "active"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "ne on a missing field is true",
+    "source": "status != 'suspended'",
+    "ast": {
+      "ne": [
+        "status",
+        "suspended"
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": true
+  },
+  {
+    "name": "the design example: slave without dnssec",
+    "source": "kind == 'slave' && !dnssec",
+    "ast": {
+      "and": [
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        },
+        {
+          "not": {
+            "truthy": "dnssec"
+          }
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "slave",
+        "dnssec": false
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "the design example: slave with dnssec",
+    "source": "kind == 'slave' && !dnssec",
+    "ast": {
+      "and": [
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        },
+        {
+          "not": {
+            "truthy": "dnssec"
+          }
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "slave",
+        "dnssec": true
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "the design example: master without dnssec",
+    "source": "kind == 'slave' && !dnssec",
+    "ast": {
+      "and": [
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        },
+        {
+          "not": {
+            "truthy": "dnssec"
+          }
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "master",
+        "dnssec": false
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "or of two comparisons",
+    "source": "kind == 'master' || kind == 'slave'",
+    "ast": {
+      "or": [
+        {
+          "eq": [
+            "kind",
+            "master"
+          ]
+        },
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "slave"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "or of two comparisons, neither matches",
+    "source": "kind == 'master' || kind == 'slave'",
+    "ast": {
+      "or": [
+        {
+          "eq": [
+            "kind",
+            "master"
+          ]
+        },
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "forward"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "and binds tighter than or",
+    "source": "a || b && c",
+    "ast": {
+      "or": [
+        {
+          "truthy": "a"
+        },
+        {
+          "and": [
+            {
+              "truthy": "b"
+            },
+            {
+              "truthy": "c"
+            }
+          ]
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "a": false,
+        "b": true,
+        "c": true
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "parentheses override precedence",
+    "source": "(a || b) && c",
+    "ast": {
+      "and": [
+        {
+          "or": [
+            {
+              "truthy": "a"
+            },
+            {
+              "truthy": "b"
+            }
+          ]
+        },
+        {
+          "truthy": "c"
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "a": true,
+        "b": false,
+        "c": false
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "and flattens a chain",
+    "source": "a && b && c",
+    "ast": {
+      "and": [
+        {
+          "truthy": "a"
+        },
+        {
+          "truthy": "b"
+        },
+        {
+          "truthy": "c"
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "a": true,
+        "b": true,
+        "c": 1
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "not of a group",
+    "source": "!(a && b)",
+    "ast": {
+      "not": {
+        "and": [
+          {
+            "truthy": "a"
+          },
+          {
+            "truthy": "b"
+          }
+        ]
+      }
+    },
+    "context": {
+      "fields": {
+        "a": true,
+        "b": false
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "double negation",
+    "source": "!!a",
+    "ast": {
+      "not": {
+        "not": {
+          "truthy": "a"
+        }
+      }
+    },
+    "context": {
+      "fields": {
+        "a": "x"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "not applies to the comparison that follows",
+    "source": "!status == 'suspended'",
+    "ast": {
+      "not": {
+        "eq": [
+          "status",
+          "suspended"
+        ]
+      }
+    },
+    "context": {
+      "fields": {
+        "status": "active"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "$mode in edit",
+    "source": "$mode == 'edit'",
+    "ast": {
+      "eq": [
+        "$mode",
+        "edit"
+      ]
+    },
+    "context": {
+      "mode": "edit"
+    },
+    "expect": true
+  },
+  {
+    "name": "$mode in new",
+    "source": "$mode == 'edit'",
+    "ast": {
+      "eq": [
+        "$mode",
+        "edit"
+      ]
+    },
+    "context": {
+      "mode": "new"
+    },
+    "expect": false
+  },
+  {
+    "name": "$mode unset",
+    "source": "$mode == 'edit'",
+    "ast": {
+      "eq": [
+        "$mode",
+        "edit"
+      ]
+    },
+    "context": {},
+    "expect": false
+  },
+  {
+    "name": "$principal.level in a list, reseller",
+    "source": "$principal.level in ['reseller', 'admin', 'owner']",
+    "ast": {
+      "in": [
+        "$principal.level",
+        [
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      ]
+    },
+    "context": {
+      "principal": {
+        "level": "reseller"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "$principal.level in a list, user",
+    "source": "$principal.level in ['reseller', 'admin', 'owner']",
+    "ast": {
+      "in": [
+        "$principal.level",
+        [
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      ]
+    },
+    "context": {
+      "principal": {
+        "level": "user"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "$principal.level unset",
+    "source": "$principal.level == 'admin'",
+    "ast": {
+      "eq": [
+        "$principal.level",
+        "admin"
+      ]
+    },
+    "context": {},
+    "expect": false
+  },
+  {
+    "name": "$screen.params of a child screen",
+    "source": "$screen.params.zone_id == '01J9Q3W6B1R8N5X2K4T7M0V9Z3'",
+    "ast": {
+      "eq": [
+        "$screen.params.zone_id",
+        "01J9Q3W6B1R8N5X2K4T7M0V9Z3"
+      ]
+    },
+    "context": {
+      "screen": {
+        "params": {
+          "zone_id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3"
+        }
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "$screen.params missing key is null",
+    "source": "$screen.params.zone_id == null",
+    "ast": {
+      "eq": [
+        "$screen.params.zone_id",
+        null
+      ]
+    },
+    "context": {
+      "screen": {
+        "params": {}
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "gt on numbers",
+    "source": "ttl > 300",
+    "ast": {
+      "gt": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 600
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "gt is strict",
+    "source": "ttl > 300",
+    "ast": {
+      "gt": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 300
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "lt on numbers",
+    "source": "ttl < 300",
+    "ast": {
+      "lt": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 600
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "lt with a decimal literal",
+    "source": "ttl < 300.5",
+    "ast": {
+      "lt": [
+        "ttl",
+        300.5
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 300
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "gt of a string field against a number is false",
+    "source": "ttl > 300",
+    "ast": {
+      "gt": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": "600"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "lt of a missing field is false",
+    "source": "ttl < 300",
+    "ast": {
+      "lt": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": false
+  },
+  {
+    "name": "gt on strings is lexicographic",
+    "source": "name > 'b'",
+    "ast": {
+      "gt": [
+        "name",
+        "b"
+      ]
+    },
+    "context": {
+      "fields": {
+        "name": "c"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq of integer and decimal representations",
+    "source": "ttl == 300",
+    "ast": {
+      "eq": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 300.0
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq of a number against its string is false",
+    "source": "ttl == 300",
+    "ast": {
+      "eq": [
+        "ttl",
+        300
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": "300"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "eq of a negative literal",
+    "source": "delta == -1",
+    "ast": {
+      "eq": [
+        "delta",
+        -1
+      ]
+    },
+    "context": {
+      "fields": {
+        "delta": -1
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq on a boolean",
+    "source": "dnssec == true",
+    "ast": {
+      "eq": [
+        "dnssec",
+        true
+      ]
+    },
+    "context": {
+      "fields": {
+        "dnssec": true
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq on null matches a missing field",
+    "source": "account == null",
+    "ast": {
+      "eq": [
+        "account",
+        null
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": true
+  },
+  {
+    "name": "eq on null does not match an empty string",
+    "source": "account == null",
+    "ast": {
+      "eq": [
+        "account",
+        null
+      ]
+    },
+    "context": {
+      "fields": {
+        "account": ""
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "eq on a list literal",
+    "source": "tags == ['a', 'b']",
+    "ast": {
+      "eq": [
+        "tags",
+        [
+          "a",
+          "b"
+        ]
+      ]
+    },
+    "context": {
+      "fields": {
+        "tags": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "eq on a list literal with a different order",
+    "source": "tags == ['a', 'b']",
+    "ast": {
+      "eq": [
+        "tags",
+        [
+          "a",
+          "b"
+        ]
+      ]
+    },
+    "context": {
+      "fields": {
+        "tags": [
+          "b",
+          "a"
+        ]
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "in on numbers",
+    "source": "ttl in [300, 600]",
+    "ast": {
+      "in": [
+        "ttl",
+        [
+          300,
+          600
+        ]
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 600
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "in with an empty list",
+    "source": "ttl in []",
+    "ast": {
+      "in": [
+        "ttl",
+        []
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 600
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "in on a missing field",
+    "source": "kind in ['master']",
+    "ast": {
+      "in": [
+        "kind",
+        [
+          "master"
+        ]
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": false
+  },
+  {
+    "name": "empty of an empty list",
+    "source": "empty(master_ips)",
+    "ast": {
+      "empty": "master_ips"
+    },
+    "context": {
+      "fields": {
+        "master_ips": []
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "empty of a filled list",
+    "source": "empty(master_ips)",
+    "ast": {
+      "empty": "master_ips"
+    },
+    "context": {
+      "fields": {
+        "master_ips": [
+          "10.0.0.1"
+        ]
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "empty of a missing field",
+    "source": "empty(master_ips)",
+    "ast": {
+      "empty": "master_ips"
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": true
+  },
+  {
+    "name": "empty of an empty string",
+    "source": "empty(name)",
+    "ast": {
+      "empty": "name"
+    },
+    "context": {
+      "fields": {
+        "name": ""
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "empty of zero is false",
+    "source": "empty(ttl)",
+    "ast": {
+      "empty": "ttl"
+    },
+    "context": {
+      "fields": {
+        "ttl": 0
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "empty of false is false",
+    "source": "empty(dnssec)",
+    "ast": {
+      "empty": "dnssec"
+    },
+    "context": {
+      "fields": {
+        "dnssec": false
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "empty of an empty object",
+    "source": "empty(meta)",
+    "ast": {
+      "empty": "meta"
+    },
+    "context": {
+      "fields": {
+        "meta": {}
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "truthy of true",
+    "source": "dnssec",
+    "ast": {
+      "truthy": "dnssec"
+    },
+    "context": {
+      "fields": {
+        "dnssec": true
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "truthy of zero",
+    "source": "ttl",
+    "ast": {
+      "truthy": "ttl"
+    },
+    "context": {
+      "fields": {
+        "ttl": 0
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "truthy of a non-zero number",
+    "source": "ttl",
+    "ast": {
+      "truthy": "ttl"
+    },
+    "context": {
+      "fields": {
+        "ttl": 300
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "truthy of a string",
+    "source": "name",
+    "ast": {
+      "truthy": "name"
+    },
+    "context": {
+      "fields": {
+        "name": "x"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "truthy of an empty string",
+    "source": "name",
+    "ast": {
+      "truthy": "name"
+    },
+    "context": {
+      "fields": {
+        "name": ""
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "truthy of a missing field",
+    "source": "name",
+    "ast": {
+      "truthy": "name"
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": false
+  },
+  {
+    "name": "truthy of an empty list",
+    "source": "tags",
+    "ast": {
+      "truthy": "tags"
+    },
+    "context": {
+      "fields": {
+        "tags": []
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "truthy of a filled object",
+    "source": "meta",
+    "ast": {
+      "truthy": "meta"
+    },
+    "context": {
+      "fields": {
+        "meta": {
+          "a": 1
+        }
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "matches a pattern",
+    "source": "name matches '^[a-z]+\\\\.org$'",
+    "ast": {
+      "matches": [
+        "name",
+        "^[a-z]+\\.org$"
+      ]
+    },
+    "context": {
+      "fields": {
+        "name": "a.org"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "matches is case-sensitive",
+    "source": "name matches '^[a-z]+\\\\.org$'",
+    "ast": {
+      "matches": [
+        "name",
+        "^[a-z]+\\.org$"
+      ]
+    },
+    "context": {
+      "fields": {
+        "name": "A.org"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "matches searches anywhere without anchors",
+    "source": "name matches 'org'",
+    "ast": {
+      "matches": [
+        "name",
+        "org"
+      ]
+    },
+    "context": {
+      "fields": {
+        "name": "a.org"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "matches on a non-string is false",
+    "source": "ttl matches '^3'",
+    "ast": {
+      "matches": [
+        "ttl",
+        "^3"
+      ]
+    },
+    "context": {
+      "fields": {
+        "ttl": 300
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "matches on a missing field is false",
+    "source": "name matches '.*'",
+    "ast": {
+      "matches": [
+        "name",
+        ".*"
+      ]
+    },
+    "context": {
+      "fields": {}
+    },
+    "expect": false
+  },
+  {
+    "name": "nested field path",
+    "source": "owner.login == 'alice'",
+    "ast": {
+      "eq": [
+        "owner.login",
+        "alice"
+      ]
+    },
+    "context": {
+      "fields": {
+        "owner": {
+          "login": "alice"
+        }
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "nested field path through a non-object",
+    "source": "owner.login == 'alice'",
+    "ast": {
+      "eq": [
+        "owner.login",
+        "alice"
+      ]
+    },
+    "context": {
+      "fields": {
+        "owner": "alice"
+      }
+    },
+    "expect": false
+  },
+  {
+    "name": "escaped quote inside a string",
+    "source": "name == 'it\\'s'",
+    "ast": {
+      "eq": [
+        "name",
+        "it's"
+      ]
+    },
+    "context": {
+      "fields": {
+        "name": "it's"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "whitespace is free",
+    "source": "  kind=='slave'&&!dnssec  ",
+    "ast": {
+      "and": [
+        {
+          "eq": [
+            "kind",
+            "slave"
+          ]
+        },
+        {
+          "not": {
+            "truthy": "dnssec"
+          }
+        }
+      ]
+    },
+    "context": {
+      "fields": {
+        "kind": "slave"
+      }
+    },
+    "expect": true
+  },
+  {
+    "name": "a literal on the left is not an expression",
+    "source": "'slave' == kind",
+    "invalid": true
+  },
+  {
+    "name": "a variable on the right is not a literal",
+    "source": "kind == other",
+    "invalid": true
+  },
+  {
+    "name": "gte is not an operator",
+    "source": "ttl >= 300",
+    "invalid": true
+  },
+  {
+    "name": "single equals is not an operator",
+    "source": "kind = 'slave'",
+    "invalid": true
+  },
+  {
+    "name": "a dangling operator",
+    "source": "kind ==",
+    "invalid": true
+  },
+  {
+    "name": "a dangling and",
+    "source": "a &&",
+    "invalid": true
+  },
+  {
+    "name": "single ampersand",
+    "source": "a & b",
+    "invalid": true
+  },
+  {
+    "name": "empty without parentheses",
+    "source": "empty master_ips",
+    "invalid": true
+  },
+  {
+    "name": "unbalanced parenthesis",
+    "source": "(a && b",
+    "invalid": true
+  },
+  {
+    "name": "unterminated string",
+    "source": "kind == 'slave",
+    "invalid": true
+  },
+  {
+    "name": "in requires a list",
+    "source": "kind in 'slave'",
+    "invalid": true
+  },
+  {
+    "name": "matches requires a string",
+    "source": "name matches 3",
+    "invalid": true
+  },
+  {
+    "name": "empty source",
+    "source": "",
+    "invalid": true
+  },
+  {
+    "name": "trailing token",
+    "source": "a b",
+    "invalid": true
+  },
+  {
+    "name": "trailing comma in a list",
+    "source": "a in [1,]",
+    "invalid": true
+  }
+]
