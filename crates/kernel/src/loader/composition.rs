@@ -3,6 +3,8 @@ use std::fmt;
 
 use keel_sdk::ModuleDef;
 
+use crate::keel;
+
 pub const LEDGER_PREFIX: &str = "keel_migration_";
 
 #[derive(Default)]
@@ -58,7 +60,8 @@ impl Composition {
 
     pub fn resolve(self) -> Result<Graph, CompositionError> {
         let mut problems = Vec::new();
-        let mut unique: BTreeMap<&'static str, &'static ModuleDef> = BTreeMap::new();
+        let mut unique: BTreeMap<&'static str, &'static ModuleDef> =
+            BTreeMap::from([(keel::MODULE.id, &keel::MODULE)]);
         for def in &self.modules {
             if def.sdk != keel_sdk::VERSION {
                 problems.push(Problem::SdkMismatch {
@@ -155,7 +158,7 @@ fn sort(
         .map(|(id, _)| *id)
         .collect();
     let mut ordered = Vec::with_capacity(modules.len());
-    while let Some(id) = ready.pop_first() {
+    while let Some(id) = next_ready(&mut ready) {
         pending.remove(id);
         ordered.push(modules[id]);
         for dependent in dependents.get(id).into_iter().flatten() {
@@ -168,6 +171,13 @@ fn sort(
         }
     }
     (ordered, pending.into_keys().collect())
+}
+
+fn next_ready(ready: &mut BTreeSet<&'static str>) -> Option<&'static str> {
+    if ready.remove(keel::MODULE.id) {
+        return Some(keel::MODULE.id);
+    }
+    ready.pop_first()
 }
 
 fn cycles(
@@ -334,18 +344,27 @@ mod tests {
             .module(&AUTH)
             .resolve()
             .unwrap();
-        assert_eq!(forward.ids(), ["auth", "notify", "tasks", "dns"]);
+        assert_eq!(forward.ids(), ["keel", "auth", "notify", "tasks", "dns"]);
         assert_eq!(forward.ids(), backward.ids());
         assert_eq!(
             format!("{forward:?}"),
-            "[\"auth\", \"notify\", \"tasks\", \"dns\"]"
+            "[\"keel\", \"auth\", \"notify\", \"tasks\", \"dns\"]"
         );
     }
 
     #[test]
-    fn an_empty_composition_resolves_to_an_empty_graph() {
+    fn an_empty_composition_resolves_to_the_kernel_module_alone() {
         let graph = Composition::new().resolve().unwrap();
-        assert!(graph.ids().is_empty());
+        assert_eq!(graph.ids(), ["keel"]);
+        assert!(std::ptr::eq(graph.modules()[0], &keel::MODULE));
+    }
+
+    module!(KEEL_AGAIN, "keel", []);
+
+    #[test]
+    fn a_module_named_after_the_kernel_is_composed_twice() {
+        let listed = problems(Composition::new().module(&KEEL_AGAIN));
+        assert_eq!(listed, ["module keel is composed twice"]);
     }
 
     #[test]

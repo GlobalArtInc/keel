@@ -1,6 +1,7 @@
 pub mod config;
 pub mod dispatcher;
 pub mod instance;
+pub mod keel;
 pub mod loader;
 pub mod logging;
 pub mod migrations;

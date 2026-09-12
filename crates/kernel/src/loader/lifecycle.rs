@@ -281,13 +281,16 @@ mod tests {
         let kernel = start(&[&ORDER_C, &ORDER_A, &ORDER_B]).await.unwrap();
         assert_eq!(
             kernel.running().collect::<Vec<_>>(),
-            ["order_a", "order_b", "order_c"]
+            ["keel", "order_a", "order_b", "order_c"]
         );
         assert_eq!(
             events_of("order_"),
             ["order_a:start", "order_b:start", "order_c:start"]
         );
-        assert!(format!("{kernel:?}").contains("running: [\"order_a\", \"order_b\", \"order_c\"]"));
+        assert!(
+            format!("{kernel:?}")
+                .contains("running: [\"keel\", \"order_a\", \"order_b\", \"order_c\"]")
+        );
         kernel.stop().await.unwrap();
         assert_eq!(
             events_of("order_"),

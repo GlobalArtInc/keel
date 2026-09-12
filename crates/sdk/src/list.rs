@@ -237,7 +237,7 @@ fn typed_value(column_type: &ColumnType, text: &str, path: &str) -> Result<Value
     })
 }
 
-fn escape_like(text: &str) -> String {
+pub fn escape_like(text: &str) -> String {
     text.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")

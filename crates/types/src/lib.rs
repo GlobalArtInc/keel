@@ -6,6 +6,7 @@ pub mod expr;
 pub mod id;
 pub mod level;
 pub mod list;
+pub mod options;
 pub mod principal;
 pub mod ui;
 
@@ -20,6 +21,7 @@ pub use expr::{Context, Expr};
 pub use id::Id;
 pub use level::Level;
 pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
+pub use options::{Choice, Choices, OptionsQuery};
 pub use principal::{Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via};
 pub use ui::{
     Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,

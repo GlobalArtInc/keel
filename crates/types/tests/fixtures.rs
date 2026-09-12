@@ -50,13 +50,9 @@ where
 fn every_fixture_file_has_a_test() {
     let present: BTreeSet<String> = fs::read_dir(fixtures_dir())
         .expect("contracts/fixtures exists")
-        .map(|entry| {
-            entry
-                .expect("readable entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
+        .map(|entry| entry.expect("readable entry"))
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
     let known: BTreeSet<String> = KNOWN.iter().map(|name| (*name).to_owned()).collect();
     assert_eq!(

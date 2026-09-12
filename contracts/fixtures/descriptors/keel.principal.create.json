@@ -1,0 +1,109 @@
+{
+  "keel": 1,
+  "name": "keel.principal.create",
+  "module": "keel",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "keel.principal.manage"
+  },
+  "params": {
+    "title": "PrincipalCreate",
+    "type": "object",
+    "properties": {
+      "login": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "level": {
+        "$ref": "#/$defs/Level"
+      },
+      "role": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "lang": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "login",
+      "level"
+    ],
+    "$defs": {
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Saved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.principal.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "login",
+          "level",
+          "role",
+          "lang",
+          "account"
+        ]
+      }
+    ]
+  }
+}

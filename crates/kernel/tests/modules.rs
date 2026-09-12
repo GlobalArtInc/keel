@@ -10,6 +10,8 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 use common::PRODUCT;
 
+const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 static BETA_MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/tests/modules/beta/migrations")
         .table("keel_migration_beta");
@@ -126,6 +128,7 @@ async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own
     assert_eq!(
         migrated.modules,
         [
+            ("keel".to_owned(), Vec::new()),
             (
                 "beta".to_owned(),
                 vec!["CreateBetaThing1789300000000".to_owned()]
@@ -176,6 +179,7 @@ async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own
             ("alpha".to_owned(), row("1.2.0", ACTIVE)),
             ("beta".to_owned(), row("1.0.0", ACTIVE)),
             ("gamma".to_owned(), row("0.3.0", ACTIVE)),
+            ("keel".to_owned(), row(KERNEL_VERSION, ACTIVE)),
         ])
     );
 
@@ -195,6 +199,7 @@ async fn a_second_start_applies_nothing_and_keeps_every_ledger_as_it_was() {
     assert_eq!(
         again.modules,
         [
+            ("keel".to_owned(), Vec::new()),
             ("beta".to_owned(), Vec::new()),
             ("alpha".to_owned(), Vec::new())
         ]
@@ -221,7 +226,7 @@ async fn a_second_start_applies_nothing_and_keeps_every_ledger_as_it_was() {
             "SELECT count(*) FROM keel_module WHERE installed_at = updated_at",
         )
         .await;
-    assert_eq!(untouched, 2);
+    assert_eq!(untouched, 3);
 
     storage.close().await.unwrap();
     test.drop().await;
@@ -240,6 +245,7 @@ async fn removing_a_module_leaves_its_tables_and_flips_its_row_to_orphaned_on_th
         BTreeMap::from([
             ("alpha".to_owned(), row("1.2.0", ORPHANED)),
             ("beta".to_owned(), row("1.0.0", ACTIVE)),
+            ("keel".to_owned(), row(KERNEL_VERSION, ACTIVE)),
         ])
     );
     let present = tables(&storage).await;
@@ -259,7 +265,7 @@ async fn removing_a_module_leaves_its_tables_and_flips_its_row_to_orphaned_on_th
 
     let with_alpha = migrate(&storage, &[&BETA, &ALPHA]).await;
     assert!(with_alpha.orphaned.is_empty());
-    assert_eq!(with_alpha.modules[1], ("alpha".to_owned(), Vec::new()));
+    assert_eq!(with_alpha.modules[2], ("alpha".to_owned(), Vec::new()));
     assert_eq!(modules(&storage).await["alpha"], row("1.2.0", ACTIVE));
 
     storage.close().await.unwrap();
@@ -291,7 +297,10 @@ async fn a_failing_module_migration_names_the_module_and_records_nothing_for_it(
     );
     assert_eq!(
         modules(&storage).await,
-        BTreeMap::from([("beta".to_owned(), row("1.0.0", ACTIVE))])
+        BTreeMap::from([
+            ("beta".to_owned(), row("1.0.0", ACTIVE)),
+            ("keel".to_owned(), row(KERNEL_VERSION, ACTIVE)),
+        ])
     );
 
     storage.close().await.unwrap();
@@ -308,10 +317,10 @@ async fn the_kernel_boots_a_composition_against_the_database_and_stops_in_revers
         .module(&BETA)
         .module(&ALPHA);
     let kernel = Kernel::boot(composition, &storage).await.unwrap();
-    assert_eq!(kernel.graph().ids(), ["beta", "alpha", "gamma"]);
+    assert_eq!(kernel.graph().ids(), ["keel", "beta", "alpha", "gamma"]);
     assert_eq!(
         kernel.running().collect::<Vec<_>>(),
-        ["beta", "alpha", "gamma"]
+        ["keel", "beta", "alpha", "gamma"]
     );
     let ids: Vec<&str> = kernel
         .registry()
@@ -319,8 +328,11 @@ async fn the_kernel_boots_a_composition_against_the_database_and_stops_in_revers
         .iter()
         .map(|module| module.id.as_str())
         .collect();
-    assert_eq!(ids, ["beta", "alpha", "gamma"]);
-    assert_eq!(kernel.registry().functions().count(), 0);
+    assert_eq!(ids, ["keel", "beta", "alpha", "gamma"]);
+    assert_eq!(
+        kernel.registry().functions().count(),
+        keel_kernel::keel::FUNCTIONS.len()
+    );
     kernel.stop().await.unwrap();
 
     let error = Kernel::boot(Composition::new().module(&ALPHA), &storage)

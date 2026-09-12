@@ -869,21 +869,26 @@ mod tests {
     fn init_and_freeze_run_without_a_database_so_init_cannot_do_io() {
         let frozen = freeze(&[&BASE]).unwrap();
         let registry = frozen.registry();
-        assert_eq!(registry.modules().len(), 1);
-        assert_eq!(registry.modules()[0].id, "base");
-        assert_eq!(registry.functions().count(), 4);
+        let kernel = crate::keel::FUNCTIONS.len();
+        assert_eq!(registry.modules().len(), 2);
+        assert_eq!(registry.modules()[0].id, "keel");
+        assert_eq!(registry.modules()[1].id, "base");
+        assert_eq!(registry.functions().count(), kernel + 4);
         assert!(registry.function("base.item.edit").is_some());
         assert!(registry.function("base.item.delete").is_none());
-        assert_eq!(registry.menu().len(), 1);
-        assert_eq!(registry.permissions().len(), 2);
+        assert!(registry.function("keel.account.list").is_some());
+        assert_eq!(registry.menu().len(), 3);
+        assert_eq!(registry.permissions().len(), 6);
         assert!(registry.permission("base.item.read").is_some());
-        assert_eq!(registry.languages().collect::<Vec<_>>(), ["en"]);
+        assert!(registry.permission("keel.account.manage").is_some());
+        assert_eq!(registry.languages().collect::<Vec<_>>(), ["en", "ru"]);
         assert!(registry.i18n("en").is_some());
-        assert!(registry.i18n("ru").is_none());
+        assert!(registry.i18n("ru").is_some());
+        assert!(registry.i18n("de").is_none());
         assert_eq!(registry.services().get::<dyn Clock>().unwrap().now(), 7);
         assert_eq!(registry.contributions().of::<Widget>().count(), 1);
         assert!(registry.invoker().is_some());
-        assert_eq!(frozen.graph().ids(), ["base"]);
+        assert_eq!(frozen.graph().ids(), ["keel", "base"]);
         assert!(format!("{frozen:?}").contains("Registry"));
         assert!(format!("{registry:?}").contains("\"base.item.edit\""));
     }
@@ -1403,7 +1408,7 @@ mod tests {
             .unwrap()
             .init()
             .unwrap();
-        assert_eq!(initialised.graph().ids(), ["base"]);
+        assert_eq!(initialised.graph().ids(), ["keel", "base"]);
         assert!(format!("{initialised:?}").contains("base"));
     }
 }

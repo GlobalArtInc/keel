@@ -1,0 +1,101 @@
+{
+  "keel": 1,
+  "name": "keel.principal.get",
+  "module": "keel",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "keel.principal.read"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Principal",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "account": {
+        "type": "string"
+      },
+      "login": {
+        "type": "string"
+      },
+      "level": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "lang": {
+        "type": "string"
+      },
+      "external_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "level": "admin"
+        }
+      },
+      "origin": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "level": "admin"
+        }
+      },
+      "acl_gen": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updated_at": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "account",
+      "login",
+      "level",
+      "role",
+      "state",
+      "lang",
+      "acl_gen",
+      "created_at",
+      "updated_at"
+    ]
+  }
+}

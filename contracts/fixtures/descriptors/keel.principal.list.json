@@ -1,0 +1,216 @@
+{
+  "keel": 1,
+  "name": "keel.principal.list",
+  "module": "keel",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "keel.principal.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Principal",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Principal"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Principal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "account": {
+            "type": "string"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "level": "admin"
+            }
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "level": "admin"
+            }
+          },
+          "acl_gen": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "account",
+          "login",
+          "level",
+          "role",
+          "state",
+          "lang",
+          "acl_gen",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.principal.list.title",
+    "search": [
+      "login"
+    ],
+    "columns": [
+      {
+        "key": "login",
+        "type": "link",
+        "to": {
+          "screen": "keel.principal.update",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "level",
+        "type": "text",
+        "sortable": true,
+        "filter": {
+          "options": [
+            "service",
+            "user",
+            "reseller",
+            "admin",
+            "owner"
+          ]
+        }
+      },
+      {
+        "key": "role",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "suspended": "warning"
+        },
+        "filter": {
+          "options": [
+            "active",
+            "suspended"
+          ]
+        }
+      },
+      {
+        "key": "account",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
+      },
+      {
+        "key": "lang",
+        "type": "text"
+      },
+      {
+        "key": "created_at",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "origin",
+        "type": "text",
+        "access": {
+          "level": "admin"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "keel.principal.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "keel.principal.update",
+        "default": true
+      }
+    ],
+    "row_actions": [
+      "edit"
+    ],
+    "empty": {
+      "title": "keel.principal.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "keel.principal.*"
+    ]
+  }
+}

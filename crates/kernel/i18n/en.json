@@ -1,0 +1,154 @@
+{
+  "menu": {
+    "system": "System"
+  },
+  "keel": {
+    "level": {
+      "guest": "Guest",
+      "service": "Service",
+      "user": "User",
+      "reseller": "Reseller",
+      "admin": "Administrator",
+      "owner": "Owner"
+    },
+    "account": {
+      "list": { "title": "Accounts" },
+      "create": { "title": "New account" },
+      "update": { "title": "Account" },
+      "empty": "No accounts yet",
+      "id": "Account",
+      "kind": "Kind",
+      "parent": "Parent account",
+      "state": {
+        "active": "Active",
+        "suspended": "Suspended",
+        "deleting": "Deleting"
+      },
+      "column": {
+        "id": "Account",
+        "kind": "Kind",
+        "state": "State",
+        "parent": "Parent",
+        "created_at": "Created",
+        "origin": "Origin"
+      },
+      "action": {
+        "create": "New account",
+        "edit": "Edit"
+      },
+      "page": { "main": "Account" },
+      "error": {
+        "kind_reserved": "The kind {kind} is reserved for the root account",
+        "root_immutable": "The root account cannot be changed",
+        "parent_cycle": "An account cannot be moved under itself or under one of its own accounts"
+      }
+    },
+    "principal": {
+      "list": { "title": "Principals" },
+      "create": { "title": "New principal" },
+      "update": { "title": "Principal" },
+      "empty": "No principals yet",
+      "login": "Login",
+      "level": "Level",
+      "role": "Role",
+      "lang": "Language",
+      "account": "Account",
+      "state": {
+        "active": "Active",
+        "suspended": "Suspended"
+      },
+      "column": {
+        "login": "Login",
+        "level": "Level",
+        "role": "Role",
+        "state": "State",
+        "account": "Account",
+        "lang": "Language",
+        "created_at": "Created",
+        "origin": "Origin"
+      },
+      "action": {
+        "create": "New principal",
+        "edit": "Edit"
+      },
+      "page": { "main": "Principal" },
+      "error": {
+        "login_exists": "A principal with this login exists",
+        "level_guest": "A principal cannot have the guest level",
+        "level_above_caller": "The level {level} is above your own",
+        "level_account": "A principal of level {level} cannot belong to an account of kind {kind}",
+        "level_unknown": "The stored level {level} of principal {id} is not on the ladder"
+      }
+    },
+    "error": {
+      "validation": "The request is not valid",
+      "forbidden": "You are not allowed to do this",
+      "forbidden_field": "A field is above your level",
+      "unauthenticated": "Sign in to continue",
+      "not_found": "Not found",
+      "conflict": "The change conflicts with the current state",
+      "idempotency_mismatch": "The same idempotency key was used with a different request",
+      "idempotency_race": "The same request is being processed; retry",
+      "limit_exceeded": "The limit is reached",
+      "license": "The feature is not licensed",
+      "rate_limited": "Too many requests",
+      "unavailable": "Temporarily unavailable",
+      "peer": "A neighbouring product did not answer",
+      "internal": "Internal error",
+      "level": "The level {level} is required",
+      "permission": "The permission {permission} is required",
+      "function_not_found": "The function {function} does not exist",
+      "account_not_found": "The account does not exist or is outside your scope",
+      "timeout": "The call took too long",
+      "hook_timeout": "A hook of {module} on {function} took too long",
+      "actor_not_delegated": "The actor arrived without delegation",
+      "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",
+      "invoke_unavailable": "Nested calls are not available here",
+      "invoke_write_outside_transaction": "The write function {function} cannot be invoked from a read call",
+      "read_call_has_no_transaction": "A read call has no transaction",
+      "read_call_has_no_outbox": "A read call has no outbox",
+      "write_call_without_transaction": "A write call lost its transaction",
+      "call_still_shared": "The call is still referenced when it should commit",
+      "service_missing": "The service {service} is not provided",
+      "ownership_undeclared": "The function {function} declares neither owned nor unowned",
+      "owned_composite_key": "The function {function} is owned through a composite key",
+      "list": {
+        "page": "The page must be 1 or more",
+        "page_size": "The page size must be 1 or more",
+        "not_sortable": "The list cannot be sorted by {field}",
+        "not_filterable": "The list cannot be filtered by {field}",
+        "unknown_field": "The field {field} does not exist",
+        "filter_value": "The value {value} does not fit the field",
+        "list_value_op": "A list of values only works with equality on {field}"
+      }
+    },
+    "check": {
+      "domain": "Enter a domain name",
+      "ip": "Enter an IP address",
+      "cidr": "Enter a network in CIDR notation",
+      "email": "Enter an e-mail address",
+      "int": "Enter a whole number",
+      "name": "Enter a name: a letter followed by letters, digits, underscores or dashes",
+      "port": "Enter a port between 1 and 65535",
+      "path": "Enter an absolute path"
+    },
+    "schema": {
+      "required": "This field is required",
+      "type": "The value has the wrong type",
+      "enum": "The value is not one of the allowed values",
+      "const": "The value is fixed",
+      "minimum": "The value is too small",
+      "maximum": "The value is too large",
+      "minLength": "The value is too short",
+      "maxLength": "The value is too long",
+      "pattern": "The value has the wrong format",
+      "format": "The value has the wrong format",
+      "minItems": "Too few items",
+      "maxItems": "Too many items",
+      "uniqueItems": "The items must be unique",
+      "additionalProperties": "The field is not part of the form",
+      "anyOf": "The value does not fit",
+      "oneOf": "The value does not fit"
+    }
+  }
+}

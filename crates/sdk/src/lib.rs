@@ -34,8 +34,10 @@ pub use db::Db;
 pub use error::{KeelError, Result};
 pub use function::{FunctionBuilder, FunctionDef, function};
 pub use guard::Guard;
-pub use keel_types::{Account, Id, Level, ListQuery, Page, Principal};
-pub use list::{EntitySource, ListSource, ListSpec, entity_source};
+pub use keel_types::{
+    Account, Choice, Choices, Id, Level, ListQuery, OptionsQuery, Page, Principal,
+};
+pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like};
 pub use module::ModuleDef;
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
