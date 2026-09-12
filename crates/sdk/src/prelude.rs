@@ -15,6 +15,7 @@ pub use crate::context::Context;
 pub use crate::db::Db;
 pub use crate::error::{KeelError, Result};
 pub use crate::function::{FunctionDef, function};
+pub use crate::guard::Guard;
 pub use crate::list::{ListSource, ListSpec, entity_source};
 pub use crate::module::ModuleDef;
 pub use crate::registrar::{Before, DescriptorPatch, MenuNode, Registrar};

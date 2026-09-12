@@ -256,8 +256,9 @@ A `Filter` is `{ key, op, value }` where `op` defaults to `eq` and `value` is a 
 of strings, as in the `type` filter above; the match semantics of a list value are not fixed by
 the design. `totals`
 holds the footer aggregates declared by `column.total` (`"sum"` in the descriptor above) or
-`null` when the function declares none. `page_size` is capped by the function's
-`max_page_size`, and a missing `sort` falls back to `default_sort`
+`null` when the function declares none; the kernel computes them over the rows of the returned
+page, after the strip, so a column the caller cannot see has no total either. `page_size` is
+capped by the function's `max_page_size`, and a missing `sort` falls back to `default_sort`
 ([02-functions.md](02-functions.md)).
 
 ### `ListSource`

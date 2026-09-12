@@ -13,6 +13,7 @@ use crate::call::{Call, Invoker};
 use crate::context::Context;
 use crate::error::Result;
 use crate::function::FunctionDef;
+use crate::guard::Guard;
 use crate::services::{ServiceKey, Services};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,6 +304,7 @@ pub struct Registrar {
     permissions: Vec<PermissionDef>,
     before: Vec<HookDef<BeforeHook>>,
     within: Vec<HookDef<WithinHook>>,
+    guards: Vec<Arc<dyn Guard>>,
     patches: Vec<DescriptorPatch>,
     contributions: Contributions,
     provides: Services,
@@ -321,6 +323,7 @@ pub struct Registrations {
     pub permissions: Vec<PermissionDef>,
     pub before: Vec<HookDef<BeforeHook>>,
     pub within: Vec<HookDef<WithinHook>>,
+    pub guards: Vec<Arc<dyn Guard>>,
     pub patches: Vec<DescriptorPatch>,
     pub contributions: Contributions,
     pub provides: Services,
@@ -339,6 +342,7 @@ impl fmt::Debug for Registrations {
             .field("permissions", &self.permissions)
             .field("before", &self.before)
             .field("within", &self.within)
+            .field("guards", &self.guards.len())
             .field("patches", &self.patches)
             .field("contributions", &self.contributions)
             .field("provides", &self.provides)
@@ -360,6 +364,7 @@ impl Registrar {
             permissions: Vec::new(),
             before: Vec::new(),
             within: Vec::new(),
+            guards: Vec::new(),
             patches: Vec::new(),
             contributions: Contributions::default(),
             provides: Services::new(),
@@ -457,6 +462,11 @@ impl Registrar {
         self
     }
 
+    pub fn guard(&mut self, guard: Arc<dyn Guard>) -> &mut Self {
+        self.guards.push(guard);
+        self
+    }
+
     pub fn patch(&mut self, patch: DescriptorPatch) -> &mut Self {
         self.patches.push(patch);
         self
@@ -550,6 +560,7 @@ impl Registrar {
             permissions: self.permissions,
             before: self.before,
             within: self.within,
+            guards: self.guards,
             patches: self.patches,
             contributions: self.contributions,
             provides: self.provides,
@@ -619,6 +630,15 @@ mod tests {
 
     struct Widget(&'static str);
 
+    struct Open;
+
+    #[async_trait::async_trait]
+    impl Guard for Open {
+        async fn check(&self, _: &str, _: &Call<Value>) -> Result<()> {
+            Ok(())
+        }
+    }
+
     struct Local;
 
     impl Invoker for Local {
@@ -652,6 +672,7 @@ mod tests {
                 Ok(Before::Proceed)
             })
             .within("keel.account.delete", |_: Call<Value>| async { Ok(()) })
+            .guard(Arc::new(Open))
             .patch(
                 DescriptorPatch::new("hosting.site.edit")
                     .field("dnsZone", json_schema!({ "type": "string" }))
@@ -688,6 +709,7 @@ mod tests {
         );
         assert_eq!(registrations.before[0].function, "dns.zone.delete");
         assert_eq!(registrations.within[0].function, "keel.account.delete");
+        assert_eq!(registrations.guards.len(), 1);
         assert_eq!(registrations.patches[0].target(), "hosting.site.edit");
         assert_eq!(
             registrations.patches[0].fields()[0].after.as_deref(),

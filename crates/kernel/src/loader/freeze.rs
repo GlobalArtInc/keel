@@ -3,8 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use keel_sdk::runtime::{
-    Contributions, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook, StopHook,
-    UiError,
+    Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
+    StopHook, UiError,
 };
 use keel_sdk::{FunctionDef, MenuNode};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
@@ -212,6 +212,7 @@ struct Freezer {
     owners: BTreeMap<String, String>,
     permissions: BTreeMap<String, PermissionDef>,
     permission_owners: BTreeMap<String, String>,
+    guards: Vec<Hook<Arc<dyn Guard>>>,
     menu: Vec<MenuNode>,
     menu_owners: BTreeMap<String, String>,
     catalogue: Catalogue,
@@ -232,6 +233,7 @@ impl Initialised {
             owners: BTreeMap::new(),
             permissions: BTreeMap::new(),
             permission_owners: BTreeMap::new(),
+            guards: Vec::new(),
             menu: Vec::new(),
             menu_owners: BTreeMap::new(),
             catalogue: Catalogue::default(),
@@ -254,6 +256,12 @@ impl Initialised {
             }
             for permission in registrations.permissions {
                 freezer.permission(&module, permission);
+            }
+            for guard in registrations.guards {
+                freezer.guards.push(Hook {
+                    module: module.clone(),
+                    hook: guard,
+                });
             }
             for node in registrations.menu {
                 freezer.menu(&module, node);
@@ -532,6 +540,7 @@ impl Freezer {
             functions: self.functions,
             menu: self.menu,
             permissions: self.permissions,
+            guards: self.guards,
             i18n: self.catalogue.into_languages(),
             services: Arc::new(self.services),
             contributions: Arc::new(self.contributions),

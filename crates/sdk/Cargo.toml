@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+chrono = { workspace = true }
 futures = { workspace = true }
 keel-types = { workspace = true }
 migrator = { workspace = true }

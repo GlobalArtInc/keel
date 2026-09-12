@@ -81,7 +81,9 @@ r.permission("dns.zone.read", &[Level::User]).permission("dns.zone.manage", &[Le
 The kernel knows the keys and their defaults from the registry. Which principal actually holds
 which key is stored by the `auth` module through the `PermissionSource` extension point; the
 kernel asks the source, it does not read the table itself. `Principal::can(permission)` is the
-call-side view of the same answer.
+call-side view of the same answer. The defaults are the answer when no source is composed, and
+the floor under any source: `admin` and `owner` hold every registered key, and a lower level
+holds a key when the module listed that level in the defaults.
 
 A function declares its access as a triple: level, permission and licence feature.
 
@@ -139,7 +141,10 @@ context carries two identities: the effective `principal` and the `actor` who in
 The mechanism is the `via` of the actor principal itself: the actor of a `su` session carries
 `via: Su`, the `--as` actor is the socket principal with `via: Socket`, the on-behalf actor is
 the peer with `via: Peer(id)`; an actor with any other `via` is a kernel bug, so `actor.via` on
-the wire is a closed set of exactly these three values.
+the wire is a closed set of exactly these three values. The dispatcher checks this before the
+call runs: a principal whose actor arrived any other way is answered `500` with
+`keel.error.actor_not_delegated` and the offending `via` in `params`, and no function runs for
+it.
 
 Rules for `su`:
 

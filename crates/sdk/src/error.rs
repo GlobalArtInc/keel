@@ -17,6 +17,7 @@ struct Inner {
     key: String,
     params: Map<String, Value>,
     field: Option<String>,
+    fields: Vec<FieldError>,
     source: Option<Source>,
 }
 
@@ -41,6 +42,7 @@ impl KeelError {
             key: key.into(),
             params: Map::new(),
             field: None,
+            fields: Vec::new(),
             source: None,
         }))
     }
@@ -63,6 +65,11 @@ impl KeelError {
 
     pub fn field(mut self, path: impl Into<String>) -> Self {
         self.0.field = Some(path.into());
+        self
+    }
+
+    pub fn fields(mut self, fields: impl IntoIterator<Item = FieldError>) -> Self {
+        self.0.fields.extend(fields);
         self
     }
 
@@ -98,7 +105,7 @@ impl KeelError {
 
     pub fn to_call_error(&self) -> CallError {
         let inner = &self.0;
-        match &inner.field {
+        let mut error = match &inner.field {
             Some(path) => {
                 let mut error = CallError::new(ErrorCode::Validation);
                 error.fields.push(FieldError {
@@ -115,7 +122,9 @@ impl KeelError {
                 error.params = inner.params.clone();
                 error
             }
-        }
+        };
+        error.fields.extend(inner.fields.iter().cloned());
+        error
     }
 }
 
@@ -162,6 +171,19 @@ impl From<serde_json::Error> for KeelError {
 impl From<KeelError> for CallError {
     fn from(error: KeelError) -> Self {
         error.to_call_error()
+    }
+}
+
+impl From<CallError> for KeelError {
+    fn from(error: CallError) -> Self {
+        Self(Box::new(Inner {
+            code: error.code,
+            key: error.key,
+            params: error.params,
+            field: None,
+            fields: error.fields,
+            source: None,
+        }))
     }
 }
 
@@ -250,6 +272,40 @@ mod tests {
                 .to_string(),
             "conflict: x at f {\"a\":1}"
         );
+    }
+
+    #[test]
+    fn a_wire_error_with_several_fields_round_trips_through_the_error_type() {
+        let mut wire = CallError::new(ErrorCode::ForbiddenField);
+        wire.fields.push(FieldError {
+            path: "account".into(),
+            code: None,
+            key: None,
+            params: Map::new(),
+        });
+        wire.fields.push(FieldError {
+            path: "note".into(),
+            code: None,
+            key: None,
+            params: Map::new(),
+        });
+        let error = KeelError::from(wire.clone());
+        assert_eq!(error.code(), ErrorCode::ForbiddenField);
+        assert_eq!(error.field_path(), None);
+        assert_eq!(error.to_call_error(), wire);
+        let mixed = KeelError::conflict("x.error.dup")
+            .field("title")
+            .fields([FieldError {
+                path: "pages".into(),
+                code: Some("check.int".into()),
+                key: Some("keel.check.int".into()),
+                params: Map::new(),
+            }]);
+        let wire = mixed.to_call_error();
+        assert_eq!(wire.code, ErrorCode::Validation);
+        assert_eq!(wire.fields.len(), 2);
+        assert_eq!(wire.fields[0].path, "title");
+        assert_eq!(wire.fields[1].path, "pages");
     }
 
     #[test]

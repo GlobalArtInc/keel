@@ -228,6 +228,11 @@ impl CallBuilder {
         self.build(Mode::Write, Db::from_transaction(transaction))
     }
 
+    #[doc(hidden)]
+    pub fn with_db(self, mode: Mode, db: Db) -> CallHandle {
+        self.build(mode, db)
+    }
+
     fn build(self, mode: Mode, db: Db) -> CallHandle {
         let scope = self
             .scope
@@ -279,6 +284,10 @@ impl CallHandle {
 
     pub fn db(&self) -> &Db {
         &self.0.db
+    }
+
+    pub fn extra(&self) -> &Map<String, Value> {
+        &self.0.extra
     }
 
     pub fn after_context(&self) -> AfterContext {

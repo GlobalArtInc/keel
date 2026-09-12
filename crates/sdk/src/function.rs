@@ -328,6 +328,10 @@ impl FunctionDef {
         &self.handler
     }
 
+    pub fn list_spec(&self) -> Option<&Arc<ListSpec>> {
+        self.list.as_ref()
+    }
+
     pub fn known_fields(&self) -> BTreeSet<String> {
         let mut known = property_names(&self.params);
         if let Some(ui) = &self.ui {

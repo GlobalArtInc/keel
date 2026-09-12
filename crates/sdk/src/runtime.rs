@@ -4,6 +4,7 @@ pub use crate::db::Db;
 pub use crate::function::{
     ErasedHandler, LIST_QUERY_REF, Limits, OwnedDef, Ownership, natural_mode, property_names,
 };
+pub use crate::guard::Guard;
 pub use crate::list::ListSpec;
 pub use crate::registrar::{
     AddedField, Before, BeforeHook, Contributions, HookDef, I18nBundle, PermissionDef,

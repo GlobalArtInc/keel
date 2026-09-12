@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use keel_sdk::runtime::{
-    BeforeHook, Contributions, Invoker, PermissionDef, Services, StoreHook, WithinHook,
+    BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, WithinHook,
 };
 use keel_sdk::{FunctionDef, MenuNode};
 use keel_types::Descriptor;
@@ -14,6 +14,7 @@ pub struct Registry {
     pub(crate) functions: BTreeMap<String, Function>,
     pub(crate) menu: Vec<MenuNode>,
     pub(crate) permissions: BTreeMap<String, PermissionDef>,
+    pub(crate) guards: Vec<Hook<Arc<dyn Guard>>>,
     pub(crate) i18n: BTreeMap<String, Map<String, Value>>,
     pub(crate) services: Arc<Services>,
     pub(crate) contributions: Arc<Contributions>,
@@ -70,6 +71,10 @@ impl Registry {
 
     pub fn permission(&self, key: &str) -> Option<&PermissionDef> {
         self.permissions.get(key)
+    }
+
+    pub fn guards(&self) -> &[Hook<Arc<dyn Guard>>] {
+        &self.guards
     }
 
     pub fn languages(&self) -> impl Iterator<Item = &str> {
@@ -130,6 +135,7 @@ impl fmt::Debug for Registry {
             .field("functions", &self.functions.keys().collect::<Vec<_>>())
             .field("menu", &self.menu)
             .field("permissions", &self.permissions.keys().collect::<Vec<_>>())
+            .field("guards", &self.guards)
             .field("languages", &self.i18n.keys().collect::<Vec<_>>())
             .field("services", &self.services)
             .field("contributions", &self.contributions)

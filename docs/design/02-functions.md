@@ -330,7 +330,11 @@ The guard stage runs the checks a function's `access` and its registrations impl
 - **Token scope.** An API token or a peer token may be limited to a mask of functions, a level
   ceiling and on-behalf rights; a token scoped to one function receives `403` on another.
 - **Module guards.** Guards contributed by modules, such as the `auth` module's IP rules and
-  rate limit, and the guard a module attaches to a raw route.
+  rate limit, and the guard a module attaches to a raw route. A module registers one with
+  `r.guard(Arc<dyn Guard>)`; the guard receives the function name and the call, runs on a
+  pooled connection for every call that enters through a transport, and refuses with any error
+  code (`rate_limited`, `forbidden`). A nested `invoke` does not run module guards: it belongs
+  to a request the guards already admitted.
 - **OwnedGuard.** Mandatory for every function that declares a `key`. Before the handler runs,
   the kernel loads the `account_id` of the row named by the key — or of every id in a batch —
   and checks it against the caller's scope. A row outside the scope is answered with
@@ -356,11 +360,19 @@ caller:
 - in a response: the field is cut from the row or object;
 - in a request: sending it is an error, `403` with `code: forbidden_field` and the offending
   paths in `fields[]`, never a silent drop. A client that silently lost a field would believe
-  the write succeeded as sent.
+  the write succeeded as sent. A field sent as `null` counts as absent, so a client that
+  round-trips an object it read does not have to know which fields were cut.
 
 Validation errors from the same stage are `422` with `code: validation` and one entry per
-field: `path`, `code` (`check.ip`, or a module key), the i18n `key` and `params`. A `secret`
-field is accepted on input and masked everywhere on output, including the audit record.
+field: `path`, `code` (`check.ip`, or a module key), the i18n `key` and `params`. A schema
+violation is reported under the keyword that failed, `code: schema.<keyword>` with
+`key: keel.schema.<keyword>` (`schema.required`, `schema.type`, `schema.minimum`); a `check`
+preset applies to a string field and to every string item of an array field, at any depth of
+the parameters, and fails with `code: check.<preset>`, `key: keel.check.<preset>`, the JSON
+path of the value (`records[1].ip`) and the offending `value` in `params`. A
+`secret` field is accepted on input and masked everywhere on output, including the audit record:
+the kernel replaces its value with `***` in every response, in the record an `Idempotency-Key`
+replays from and in the audit event, whatever type the handler returned it as.
 
 ### Two kinds of hooks
 
@@ -372,7 +384,12 @@ field is accepted on input and masked everywhere on output, including the audit 
 The split follows from what each side can be trusted with. A `before` hook may live in another
 process and may be slow or dead, so it gets a timeout and no transaction; a plugin that vetoes
 returns an error with an i18n key, parameters and optionally a field path, and the caller sees
-it as a field error of the form. Plugins may hook only functions not above their own level and
+it as a field error of the form. A hook that answers `Before::Enrich(value)` has the object
+merged over the parameters, key by key; the enriched parameters are what the transaction, the
+`within` hooks and the handler see, and they are not validated a second time. An enrichment
+that is not an object is a bug in the hook, and the kernel ends the call with `internal`
+(`keel.error.enrich_not_object`) naming the module rather than handing the handler a value the
+schema never admitted. Plugins may hook only functions not above their own level and
 never `keel.*` or `auth.*`; the plugins module enforces that at start-up and adds per-plugin
 timeouts and a circuit breaker (see [05-modules.md](05-modules.md)).
 
@@ -394,7 +411,11 @@ cleans its own storage.
 `call.invoke` calls another function from inside a handler or hook. It reuses the transaction
 of the outer call, runs under the outer call's principal and scope, and does not run plugin
 hooks: plugins observe the effects as outbox events after commit, never as an interception of
-an inner call. A module reads another module's data only through `call.invoke` or a service
+an inner call. The inner function still passes the level, permission and ownership guards, the
+strip and the validation of its own descriptor, and its in-process `before` and `within` hooks;
+its outbox rows go into the shared transaction and its `after_commit` callbacks run with the
+outer call's commit. A write function invoked from a read call is a programming error and
+answers `internal`. A module reads another module's data only through `call.invoke` or a service
 the other module provides; direct SQL across module prefixes is forbidden (see
 [04-storage.md](04-storage.md)). The M0 acceptance list includes the test that a nested
 `invoke` reuses the caller's transaction.
@@ -423,6 +444,12 @@ same key and a different body is `409` with `code: idempotency_mismatch`. The re
 `keel_idempotency` with an expiry (see [04-storage.md](04-storage.md)). Because the stage sits
 before the hooks and the handler, a replay costs no hook, no transaction and no second event.
 
+Three details the mechanism fixes: the record is written in the call's transaction, so only a
+committed response is ever replayed and a failed call leaves no record behind; a record expires
+24 hours after it was written; and a guest carries no identity to key on, so a key sent with a
+guest call is ignored. The dispatcher reports a replay next to the envelope, and the transport
+turns it into the header.
+
 `keel-client` retries only requests that carry a key; a billing peer opening a service twice
 with the same key therefore gets one service (the M6 acceptance criterion). The end-to-end path
 across products is finished in M6.
@@ -433,7 +460,10 @@ After commit or rollback the kernel raises an in-process audit event carrying wh
 (principal and, under `su` or on-behalf, the actor), what, with which parameters — `secret`
 fields masked — and how it ended. The event is raised for failed calls as well, which is the
 reason it is not written inside the transaction: an audit row inside a rolled-back transaction
-would vanish with it. The `audit` module subscribes and writes in batches from a background
+would vanish with it. A write call that fails at any stage after its name resolved — a guard, the
+validation, a hook — is audited with that failure as its outcome; an idempotent replay executes
+nothing and raises no event. The event reaches the `audit` module through the `AuditSink`
+service it provides; without a sink the event is dropped. The `audit` module subscribes and writes in batches from a background
 worker so that the call's response does not wait for the audit write. For read functions the
 event is off by default. Optional subject and before/after snapshots for form functions, which
 feed the object-history screen, are described with the module in

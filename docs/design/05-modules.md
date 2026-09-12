@@ -82,6 +82,9 @@ Everything a module adds to the product goes through `Registrar` inside `init`:
 - i18n dictionaries per language, `r.i18n("en", ...)`; key names follow the convention in
   [08-frontend.md](08-frontend.md).
 - Permission keys with their default levels, `r.permission("dns.zone.manage", &[Level::User])`.
+- Guards on every call, `r.guard(Arc::new(IpRules::new()))`: a `Guard` sees the function name
+  and the call and refuses with an error code; the `auth` module's IP rules and rate limit are
+  such guards ([02-functions.md](02-functions.md)).
 - Hooks on functions of other modules. `before` runs outside the transaction with a timeout, may
   only read, enrich `params` or veto, and is the kind available to plugins. `within` runs inside the
   transaction without a timeout and is available only to modules compiled into the binary;
