@@ -1,3 +1,4 @@
+pub mod boot;
 pub mod check;
 pub mod descriptor;
 pub mod envelope;
@@ -10,6 +11,9 @@ pub mod options;
 pub mod principal;
 pub mod ui;
 
+pub use boot::{
+    Badge, Boot, BootBrand, BootMenuGroup, BootMenuItem, BootPrincipal, BootProduct, Platform,
+};
 pub use check::Check;
 pub use descriptor::{
     Access, Control, DESCRIPTOR_VERSION, Descriptor, KeelAttrs, Kind, MemberAccess, Mode, UiAttrs,

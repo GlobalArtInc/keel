@@ -2,9 +2,12 @@ mod accounts;
 mod acl;
 mod entity;
 mod principals;
+mod products;
 
 use keel_sdk::prelude::*;
 use keel_sdk::{ModuleDef, Registrar};
+
+pub(crate) use accounts::SYSTEM_KIND;
 
 pub static MODULE: ModuleDef = ModuleDef {
     id: "keel",
@@ -15,7 +18,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 9] = [
+pub const FUNCTIONS: [&str; 12] = [
     "keel.account.list",
     "keel.account.get",
     "keel.account.create",
@@ -25,6 +28,9 @@ pub const FUNCTIONS: [&str; 9] = [
     "keel.principal.get",
     "keel.principal.create",
     "keel.principal.update",
+    "keel.product.list",
+    "keel.product.enable",
+    "keel.product.disable",
 ];
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -47,6 +53,9 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(principals::get())
         .function(principals::create())
         .function(principals::update())
+        .function(products::list())
+        .function(products::enable())
+        .function(products::disable())
         .permission("keel.account.read", &[Level::User, Level::Reseller])
         .permission("keel.account.manage", &[Level::Reseller])
         .permission("keel.principal.read", &[Level::User, Level::Reseller])
@@ -73,7 +82,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_nine_functions_under_the_keel_prefix() {
+    fn the_kernel_module_registers_its_twelve_functions_under_the_keel_prefix() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let names: Vec<&str> = registrar.function_names().into_iter().collect();

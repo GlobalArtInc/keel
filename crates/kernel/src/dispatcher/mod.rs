@@ -152,6 +152,10 @@ impl Dispatcher {
         &self.inner.registry
     }
 
+    pub(crate) fn db(&self) -> &DatabaseConnection {
+        &self.inner.db
+    }
+
     pub async fn call(
         &self,
         principal: Principal,
@@ -229,7 +233,7 @@ pub fn generate_request_id() -> String {
     format!("req-{}", Id::generate().to_string().to_lowercase())
 }
 
-fn meta_principal(principal: &Principal) -> Result<Option<MetaPrincipal>, KeelError> {
+pub(crate) fn meta_principal(principal: &Principal) -> Result<Option<MetaPrincipal>, KeelError> {
     if principal.level == Level::Guest {
         return Ok(None);
     }

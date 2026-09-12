@@ -43,6 +43,76 @@ impl Catalogue {
     }
 }
 
+pub fn placeholder_fault(text: &str) -> Option<String> {
+    for style in ["{{", "}}"] {
+        if text.contains(style) {
+            return Some(style.to_owned());
+        }
+    }
+    if let Some(fault) = percent_fault(text) {
+        return Some(fault);
+    }
+    let mut rest = text;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else {
+            return Some(rest[open..].to_owned());
+        };
+        let name = &after[..close];
+        if !placeholder_name(name) {
+            return Some(format!("{{{name}}}"));
+        }
+        rest = &after[close + 1..];
+    }
+    rest.contains('}').then(|| "}".to_owned())
+}
+
+fn percent_fault(text: &str) -> Option<String> {
+    for (start, c) in text.char_indices() {
+        if c != '%' {
+            continue;
+        }
+        let tail = &text[start + 1..];
+        let digits = tail.chars().take_while(char::is_ascii_digit).count();
+        let after = &tail[digits..];
+        let positional = digits > 0 && after.starts_with('$');
+        let spec = if positional { &after[1..] } else { tail };
+        if let Some(letter) = spec.chars().next()
+            && "sdifuxXeEgGc".contains(letter)
+            && (positional || digits == 0)
+        {
+            let len = 1 + digits + usize::from(positional) + letter.len_utf8();
+            return Some(text[start..start + len].to_owned());
+        }
+    }
+    None
+}
+
+fn placeholder_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+pub fn leaves(messages: &Map<String, Value>) -> Vec<(String, Value)> {
+    let mut into = Vec::new();
+    collect(messages, &mut Vec::new(), &mut into);
+    into
+}
+
+fn collect(messages: &Map<String, Value>, path: &mut Vec<String>, into: &mut Vec<(String, Value)>) {
+    for (key, value) in messages {
+        path.push(key.clone());
+        match value {
+            Value::Object(nested) => collect(nested, path, into),
+            _ => into.push((path.join("."), value.clone())),
+        }
+        path.pop();
+    }
+}
+
 fn merge_into(
     target: &mut Map<String, Value>,
     incoming: &Map<String, Value>,
@@ -137,5 +207,55 @@ mod tests {
         let mut catalogue = Catalogue::default();
         assert!(catalogue.merge("en", &json!([1, 2])).is_empty());
         assert!(catalogue.into_languages().is_empty());
+    }
+
+    #[test]
+    fn placeholders_are_names_in_single_braces_and_nothing_else() {
+        for text in [
+            "The level {level} is required",
+            "{a} and {b_2} and {_c}",
+            "100% sure",
+            "50 % of {total}",
+            "plain text",
+            "",
+        ] {
+            assert_eq!(placeholder_fault(text), None, "{text:?}");
+        }
+        let faults = [
+            ("Hello {{name}}", "{{"),
+            ("Hello {name}}", "}}"),
+            ("Hello %s", "%s"),
+            ("%d items", "%d"),
+            ("%1$s of %2$s", "%1$s"),
+            ("Hello {0}", "{0}"),
+            ("Hello { name }", "{ name }"),
+            ("Hello {name", "{name"),
+            ("Hello name}", "}"),
+            ("Hello {}", "{}"),
+        ];
+        for (text, expected) in faults {
+            assert_eq!(
+                placeholder_fault(text).as_deref(),
+                Some(expected),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn leaves_walk_nested_objects_and_keep_flat_entries() {
+        let messages = json!({ "a": { "b": "B", "c": { "d": 1 } }, "e.f": "EF" })
+            .as_object()
+            .cloned()
+            .unwrap();
+        let listed: Vec<(String, Value)> = leaves(&messages);
+        assert_eq!(
+            listed,
+            [
+                ("a.b".to_owned(), json!("B")),
+                ("a.c.d".to_owned(), json!(1)),
+                ("e.f".to_owned(), json!("EF")),
+            ]
+        );
     }
 }

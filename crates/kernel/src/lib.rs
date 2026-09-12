@@ -1,3 +1,4 @@
+pub mod boot;
 pub mod config;
 pub mod ctl;
 pub mod dispatcher;
@@ -6,6 +7,7 @@ pub mod instance;
 pub mod keel;
 pub mod loader;
 pub mod logging;
+pub mod menu;
 pub mod migrations;
 pub mod products;
 pub mod registry;
@@ -14,6 +16,7 @@ pub mod socket;
 pub mod storage;
 
 mod kv;
+mod meta;
 
 pub use config::{Config, ConfigError, DatabaseUrl, Log, LogFormat, Tls};
 pub use dispatcher::{CallOptions, Dispatcher, Reply};

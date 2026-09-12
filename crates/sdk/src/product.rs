@@ -15,13 +15,14 @@ pub struct ProductBundle {
     pub levels: LevelLabels,
     pub account_kinds: &'static [&'static str],
     pub editions: &'static [Edition],
+    pub i18n: &'static [(&'static str, &'static str)],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Brand {
     pub logo: &'static str,
     pub hue: u16,
-    pub chroma: f32,
+    pub chroma: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +68,10 @@ impl fmt::Debug for ProductBundle {
             .field("levels", &self.levels)
             .field("account_kinds", &self.account_kinds)
             .field("editions", &self.editions)
+            .field(
+                "i18n",
+                &self.i18n.iter().map(|(lang, _)| *lang).collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -91,7 +96,7 @@ mod tests {
 
     static DEMO: ProductBundle = ProductBundle {
         id: "demo",
-        name: "product.demo.name",
+        name: "product.demo.brand",
         version: "0.1.0",
         api: 1,
         brand: Brand {
@@ -121,6 +126,7 @@ mod tests {
                 features: &["note.basic", "note.export"],
             },
         ],
+        i18n: &[("en", r#"{ "product": { "demo": { "brand": "Demo" } } }"#)],
     };
 
     #[test]
@@ -138,9 +144,12 @@ mod tests {
                 disabled: &[]
             }
         );
+        assert_eq!(DEMO.menu[0].label, "menu.demo");
+        assert_eq!(DEMO.levels.disabled, [Level::Reseller]);
         let debug = format!("{DEMO:?}");
         assert!(debug.contains("id: \"demo\""), "{debug}");
         assert!(debug.contains("modules: [\"note\"]"), "{debug}");
         assert!(debug.contains("hue: 150"), "{debug}");
+        assert!(debug.contains("i18n: [\"en\"]"), "{debug}");
     }
 }

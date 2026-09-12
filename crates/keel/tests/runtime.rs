@@ -51,7 +51,7 @@ fn init(r: &mut Registrar) -> Result<()> {
 
 static PROBE: ProductBundle = ProductBundle {
     id: "probe",
-    name: "product.probe.name",
+    name: "product.probe.brand",
     version: "0.2.0",
     api: 1,
     brand: Brand {
@@ -75,6 +75,10 @@ static PROBE: ProductBundle = ProductBundle {
         id: "lite",
         features: &[],
     }],
+    i18n: &[(
+        "en",
+        r#"{ "product": { "probe": { "brand": "Probe" } }, "menu": { "probe": "Probe" } }"#,
+    )],
 };
 
 struct Site {

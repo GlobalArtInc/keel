@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use keel_types::{Descriptor, Envelope};
+use keel_types::{Boot, Descriptor, Envelope};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -73,6 +73,10 @@ impl Client {
 
     pub async fn i18n(&mut self, lang: &str) -> Result<Envelope<Catalogue>, ClientError> {
         self.send(&Frame::i18n(lang)).await
+    }
+
+    pub async fn boot(&mut self) -> Result<Envelope<Boot>, ClientError> {
+        self.send(&Frame::Boot).await
     }
 
     pub async fn send<T: DeserializeOwned>(

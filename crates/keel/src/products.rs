@@ -4,6 +4,7 @@ use keel_kernel::{Composition, Config, Storage, products};
 use keel_sdk::ProductBundle;
 use tokio::net::UnixStream;
 
+use crate::VERSION;
 use crate::error::Error;
 use crate::runtime::Runtime;
 
@@ -61,10 +62,8 @@ impl Runtime {
     }
 
     pub(crate) fn composition(&self, enabled: &[String]) -> Result<Composition, Error> {
-        let mut composition = Composition::new();
-        let mut composed: Vec<&'static str> = Vec::new();
+        let mut composition = Composition::new().version(VERSION);
         for module in &self.modules {
-            composed.push(module.id);
             composition = composition.module(module);
         }
         for id in enabled {
@@ -72,13 +71,7 @@ impl Runtime {
                 id: id.clone(),
                 known: self.known_ids(),
             })?;
-            for module in bundle.modules {
-                if composed.contains(&module.id) {
-                    continue;
-                }
-                composed.push(module.id);
-                composition = composition.module(module);
-            }
+            composition = composition.product(bundle);
         }
         Ok(composition)
     }

@@ -1,9 +1,9 @@
 mod auth;
+mod boot;
 mod call;
 mod descriptors;
 mod i18n;
 mod live;
-mod meta;
 mod reply;
 
 use std::future::Future;
@@ -29,7 +29,6 @@ use crate::dispatcher::Dispatcher;
 use crate::registry::Registry;
 
 use live::Live;
-use meta::MetaKey;
 
 pub use auth::SESSION_COOKIE;
 pub use i18n::{Catalogue, catalogue};
@@ -43,16 +42,12 @@ pub const BODY_LIMIT: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpOptions {
-    pub build: String,
-    pub products: Vec<String>,
     pub body_limit: usize,
 }
 
 impl Default for HttpOptions {
     fn default() -> Self {
         Self {
-            build: env!("CARGO_PKG_VERSION").to_owned(),
-            products: Vec::new(),
             body_limit: BODY_LIMIT,
         }
     }
@@ -141,6 +136,7 @@ impl Http {
 
     pub fn router(&self) -> Router {
         let api = Router::new()
+            .route("/boot", get(boot::serve))
             .route("/functions", get(descriptors::list))
             .route("/functions/{name}", get(descriptors::one))
             .route("/call/{func}", get(call::get).post(call::post))
@@ -219,16 +215,7 @@ impl Shared {
         registry: &Registry,
         principal: &Principal,
     ) -> Result<String, KeelError> {
-        let acl_gen = meta::acl_gen(&self.db, principal).await?;
-        Ok(MetaKey {
-            build: &self.options.build,
-            modules: registry.modules(),
-            products: &self.options.products,
-            lang: &principal.lang,
-            principal: principal.id,
-            acl_gen,
-        }
-        .version())
+        crate::meta::version(registry, &self.db, principal).await
     }
 }
 

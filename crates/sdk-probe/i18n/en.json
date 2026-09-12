@@ -3,7 +3,8 @@
     "item": {
       "list": { "title": "Items" },
       "edit": { "title": "Item" },
-      "empty": "No items yet"
+      "empty": "No items yet",
+      "account": "Account"
     }
   },
   "menu": { "probe": "Probe" }

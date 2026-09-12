@@ -2,6 +2,7 @@ mod composition;
 mod freeze;
 mod i18n;
 mod init;
+mod keys;
 mod lifecycle;
 mod migrate;
 mod patch;

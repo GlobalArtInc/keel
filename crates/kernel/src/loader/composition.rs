@@ -1,20 +1,25 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use keel_sdk::ModuleDef;
+use keel_sdk::{ModuleDef, ProductBundle};
 
 use crate::keel;
+use crate::keel::SYSTEM_KIND;
 
 pub const LEDGER_PREFIX: &str = "keel_migration_";
+pub const API: u32 = keel_types::DESCRIPTOR_VERSION;
 
-#[derive(Default)]
 pub struct Composition {
     modules: Vec<&'static ModuleDef>,
+    products: Vec<&'static ProductBundle>,
+    version: String,
 }
 
 #[derive(Clone)]
 pub struct Graph {
     modules: Vec<&'static ModuleDef>,
+    products: Vec<&'static ProductBundle>,
+    version: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -36,8 +41,15 @@ pub enum Problem {
     DuplicateId { id: String },
     #[error("module id {id:?} is not a valid identifier: {reason}")]
     Id { id: String, reason: &'static str },
-    #[error("module {module} requires {dependency}, which is not part of the composition")]
-    MissingDependency { module: String, dependency: String },
+    #[error(
+        "module {module}{} requires {dependency}, which is not part of the composition",
+        of_product(.product)
+    )]
+    MissingDependency {
+        module: String,
+        product: Option<String>,
+        dependency: String,
+    },
     #[error("modules depend on each other in a cycle: {}", .cycle.join(" -> "))]
     Cycle { cycle: Vec<String> },
     #[error("module {module} keeps its migrations under the ledger {found}; it must be {expected}")]
@@ -46,6 +58,32 @@ pub enum Problem {
         found: String,
         expected: String,
     },
+    #[error("product {id} is composed twice")]
+    DuplicateProduct { id: String },
+    #[error("product id {id:?} is not a valid identifier: {reason}")]
+    ProductId { id: String, reason: &'static str },
+    #[error("product {product} was built for api {found}; this kernel serves api {expected}")]
+    ProductApi {
+        product: String,
+        found: u32,
+        expected: u32,
+    },
+    #[error("product {product} declares the account kind {kind:?}: {reason}")]
+    AccountKind {
+        product: String,
+        kind: String,
+        reason: &'static str,
+    },
+}
+
+impl Default for Composition {
+    fn default() -> Self {
+        Self {
+            modules: Vec::new(),
+            products: Vec::new(),
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+        }
+    }
 }
 
 impl Composition {
@@ -58,11 +96,68 @@ impl Composition {
         self
     }
 
+    pub fn product(mut self, bundle: &'static ProductBundle) -> Self {
+        self.products.push(bundle);
+        self
+    }
+
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = version.into();
+        self
+    }
+
     pub fn resolve(self) -> Result<Graph, CompositionError> {
         let mut problems = Vec::new();
+        let mut products: Vec<&'static ProductBundle> = Vec::new();
+        for bundle in &self.products {
+            if let Err(reason) = check_id(bundle.id) {
+                problems.push(Problem::ProductId {
+                    id: bundle.id.to_owned(),
+                    reason,
+                });
+            }
+            if bundle.api != API {
+                problems.push(Problem::ProductApi {
+                    product: bundle.id.to_owned(),
+                    found: bundle.api,
+                    expected: API,
+                });
+            }
+            for kind in bundle.account_kinds {
+                let reason = match check_id(kind) {
+                    Err(reason) => Some(reason),
+                    Ok(()) if *kind == SYSTEM_KIND => Some("it is reserved for the root account"),
+                    Ok(()) => None,
+                };
+                if let Some(reason) = reason {
+                    problems.push(Problem::AccountKind {
+                        product: bundle.id.to_owned(),
+                        kind: (*kind).to_owned(),
+                        reason,
+                    });
+                }
+            }
+            if products.iter().any(|known| known.id == bundle.id) {
+                problems.push(Problem::DuplicateProduct {
+                    id: bundle.id.to_owned(),
+                });
+                continue;
+            }
+            products.push(bundle);
+        }
+        let mut modules = self.modules.clone();
+        let mut origin: BTreeMap<&'static str, &'static str> = BTreeMap::new();
+        for bundle in &products {
+            for module in bundle.modules {
+                if !modules.iter().any(|known| known.id == module.id) {
+                    modules.push(module);
+                    origin.insert(module.id, bundle.id);
+                }
+            }
+        }
         let mut unique: BTreeMap<&'static str, &'static ModuleDef> =
             BTreeMap::from([(keel::MODULE.id, &keel::MODULE)]);
-        for def in &self.modules {
+        for def in &modules {
             if def.sdk != keel_sdk::VERSION {
                 problems.push(Problem::SdkMismatch {
                     module: def.id.to_owned(),
@@ -97,6 +192,7 @@ impl Composition {
                 if !unique.contains_key(dependency) {
                     problems.push(Problem::MissingDependency {
                         module: def.id.to_owned(),
+                        product: origin.get(def.id).map(|product| (*product).to_owned()),
                         dependency: (*dependency).to_owned(),
                     });
                 }
@@ -107,11 +203,22 @@ impl Composition {
             problems.push(Problem::Cycle { cycle });
         }
         if problems.is_empty() {
-            Ok(Graph { modules: ordered })
+            Ok(Graph {
+                modules: ordered,
+                products,
+                version: self.version,
+            })
         } else {
             Err(CompositionError { problems })
         }
     }
+}
+
+fn of_product(product: &Option<String>) -> String {
+    product
+        .as_ref()
+        .map(|product| format!(" of product {product}"))
+        .unwrap_or_default()
 }
 
 fn check_id(id: &str) -> Result<(), &'static str> {
@@ -235,6 +342,18 @@ impl Graph {
 
     pub fn ids(&self) -> Vec<&'static str> {
         self.modules.iter().map(|def| def.id).collect()
+    }
+
+    pub fn products(&self) -> &[&'static ProductBundle] {
+        &self.products
+    }
+
+    pub fn product_ids(&self) -> Vec<&'static str> {
+        self.products.iter().map(|bundle| bundle.id).collect()
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
     }
 }
 
@@ -447,10 +566,12 @@ mod tests {
             [
                 Problem::MissingDependency {
                     module: "orphan".into(),
+                    product: None,
                     dependency: "nobody".into()
                 },
                 Problem::MissingDependency {
                     module: "tasks".into(),
+                    product: None,
                     dependency: "auth".into()
                 },
             ]
@@ -464,6 +585,114 @@ mod tests {
             listed,
             [
                 "module ledger keeps its migrations under the ledger keel_migration_other; it must be keel_migration_ledger"
+            ]
+        );
+    }
+
+    macro_rules! bundle {
+        ($name:ident, $id:literal, $api:expr, [$($module:expr),*], [$($kind:literal),*]) => {
+            static $name: ProductBundle = ProductBundle {
+                id: $id,
+                name: "product.x.brand",
+                version: "0.1.0",
+                api: $api,
+                brand: keel_sdk::Brand {
+                    logo: "product.x.logo",
+                    hue: 0,
+                    chroma: 0.0,
+                },
+                modules: &[$($module),*],
+                menu: &[],
+                levels: keel_sdk::LevelLabels {
+                    labels: &[],
+                    disabled: &[],
+                },
+                account_kinds: &[$($kind),*],
+                editions: &[],
+                i18n: &[],
+            };
+        };
+    }
+
+    bundle!(DNS_BUNDLE, "dns", API, [&DNS, &TASKS, &AUTH], ["user"]);
+    bundle!(NOTIFY_BUNDLE, "notify", API, [&NOTIFY, &AUTH], []);
+    bundle!(HALF_DNS_BUNDLE, "dns", API, [&DNS, &AUTH], []);
+    bundle!(
+        BROKEN_BUNDLE,
+        "Broken-Id",
+        API + 1,
+        [&AUTH],
+        ["system", "Bad Kind"]
+    );
+
+    #[test]
+    fn a_bundle_composes_its_modules_once_in_the_order_of_the_products() {
+        let graph = Composition::new()
+            .version("9.9.9")
+            .module(&AUTH)
+            .product(&NOTIFY_BUNDLE)
+            .product(&DNS_BUNDLE)
+            .resolve()
+            .unwrap();
+        assert_eq!(graph.ids(), ["keel", "auth", "notify", "tasks", "dns"]);
+        assert_eq!(graph.product_ids(), ["notify", "dns"]);
+        assert_eq!(graph.version(), "9.9.9");
+        assert!(std::ptr::eq(graph.products()[1], &DNS_BUNDLE));
+        let bare = Composition::new().resolve().unwrap();
+        assert!(bare.products().is_empty());
+        assert_eq!(bare.version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn a_bundle_module_requiring_a_module_no_enabled_bundle_carries_names_the_product() {
+        let error = Composition::new()
+            .product(&NOTIFY_BUNDLE)
+            .product(&HALF_DNS_BUNDLE)
+            .resolve()
+            .unwrap_err();
+        assert_eq!(
+            error.problems(),
+            [Problem::MissingDependency {
+                module: "dns".into(),
+                product: Some("dns".into()),
+                dependency: "tasks".into()
+            }]
+        );
+        assert_eq!(
+            error.to_string(),
+            "the module composition is invalid:\n  - module dns of product dns requires tasks, which is not part of the composition"
+        );
+        let explicit = Composition::new()
+            .module(&DNS)
+            .product(&HALF_DNS_BUNDLE)
+            .resolve()
+            .unwrap_err();
+        assert_eq!(
+            explicit.problems(),
+            [Problem::MissingDependency {
+                module: "dns".into(),
+                product: None,
+                dependency: "tasks".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_bundle_is_checked_for_its_id_api_account_kinds_and_repeats() {
+        let listed = problems(
+            Composition::new()
+                .product(&BROKEN_BUNDLE)
+                .product(&DNS_BUNDLE)
+                .product(&DNS_BUNDLE),
+        );
+        assert_eq!(
+            listed,
+            [
+                "product id \"Broken-Id\" is not a valid identifier: it must start with a lowercase ascii letter".to_owned(),
+                format!("product Broken-Id was built for api {}; this kernel serves api {API}", API + 1),
+                "product Broken-Id declares the account kind \"system\": it is reserved for the root account".to_owned(),
+                "product Broken-Id declares the account kind \"Bad Kind\": it must start with a lowercase ascii letter".to_owned(),
+                "product dns is composed twice".to_owned(),
             ]
         );
     }

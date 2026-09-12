@@ -3,30 +3,59 @@ use keel_types::{Id, Level, Principal};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use sha2::{Digest, Sha256};
 
-use crate::registry::ModuleInfo;
+use crate::registry::{ModuleInfo, Registry};
 
 const VERSION_PREFIX: &str = "m-";
 const VERSION_HEX_LEN: usize = 16;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct MetaKey<'a> {
-    pub(super) build: &'a str,
-    pub(super) modules: &'a [ModuleInfo],
-    pub(super) products: &'a [String],
-    pub(super) lang: &'a str,
-    pub(super) principal: Id,
-    pub(super) acl_gen: i32,
+pub(crate) struct MetaKey<'a> {
+    pub(crate) build: &'a str,
+    pub(crate) modules: &'a [ModuleInfo],
+    pub(crate) products: &'a [&'a str],
+    pub(crate) lang: &'a str,
+    pub(crate) principal: Id,
+    pub(crate) acl_gen: i32,
+}
+
+pub(crate) async fn version(
+    registry: &Registry,
+    db: &DatabaseConnection,
+    principal: &Principal,
+) -> Result<String, KeelError> {
+    let acl_gen = acl_gen(db, principal).await?;
+    Ok(MetaKey {
+        build: &registry.platform().version,
+        modules: registry.modules(),
+        products: &registry.product_ids(),
+        lang: &principal.lang,
+        principal: principal.id,
+        acl_gen,
+    }
+    .version())
+}
+
+pub(crate) fn catalogue_version(registry: &Registry, lang: &str) -> String {
+    MetaKey {
+        build: &registry.platform().version,
+        modules: registry.modules(),
+        products: &registry.product_ids(),
+        lang,
+        principal: Id::ROOT_ACCOUNT,
+        acl_gen: 0,
+    }
+    .version()
 }
 
 impl MetaKey<'_> {
-    pub(super) fn version(&self) -> String {
+    pub(crate) fn version(&self) -> String {
         let mut modules: Vec<String> = self
             .modules
             .iter()
             .map(|module| format!("{}@{}", module.id, module.version))
             .collect();
         modules.sort_unstable();
-        let mut products = self.products.to_vec();
+        let mut products: Vec<&str> = self.products.to_vec();
         products.sort_unstable();
         let mut hasher = Sha256::new();
         for line in [
@@ -46,7 +75,7 @@ impl MetaKey<'_> {
     }
 }
 
-pub(super) async fn acl_gen(
+pub(crate) async fn acl_gen(
     db: &DatabaseConnection,
     principal: &Principal,
 ) -> Result<i32, KeelError> {
@@ -83,7 +112,7 @@ mod tests {
         ]
     }
 
-    fn key<'a>(modules: &'a [ModuleInfo], products: &'a [String]) -> MetaKey<'a> {
+    fn key<'a>(modules: &'a [ModuleInfo], products: &'a [&'a str]) -> MetaKey<'a> {
         MetaKey {
             build: "0.1.0",
             modules,
@@ -122,7 +151,7 @@ mod tests {
                 ..base.clone()
             },
             MetaKey {
-                products: &["dns@pro".to_owned()],
+                products: &["dns"],
                 ..base.clone()
             },
             MetaKey {

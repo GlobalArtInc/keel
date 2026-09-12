@@ -3,13 +3,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use keel_types::{
-    Check, Context, Descriptor, Envelope, ErrorCode, Event, Expr, FilterOp, Kind, Level, ListQuery,
-    Mode, Page,
+    Boot, Check, Context, Descriptor, Envelope, ErrorCode, Event, Expr, FilterOp, Kind, Level,
+    ListQuery, Mode, Page,
 };
 use serde::Deserialize;
 use serde_json::Value;
 
-const KNOWN: [&str; 11] = [
+const KNOWN: [&str; 12] = [
+    "boot.json",
     "check-cases.json",
     "descriptor-dns-zone-edit.json",
     "descriptor-dns-zone-list.json",
@@ -267,6 +268,44 @@ fn page_fixture_round_trips() {
 fn event_fixture_round_trips() {
     let event: Event = round_trip(load("event.json"));
     assert_eq!(event.kind, "dns.zone.created");
+    assert_eq!(event.module, "dns");
     assert_eq!(event.seq, 8812);
     assert_eq!(event.subject.expect("subject").kind, "dns.zone");
+}
+
+#[test]
+fn boot_fixture_round_trips_with_the_platform_brand_and_a_product_on_every_group() {
+    let boot: Boot = round_trip(load("boot.json"));
+    assert_eq!(boot.platform.api, keel_types::DESCRIPTOR_VERSION);
+    assert_eq!(boot.products.len(), 2);
+    assert!(
+        boot.products
+            .iter()
+            .all(|product| product.edition.is_none())
+    );
+    assert_eq!(boot.brand.name, "keel.brand");
+    assert!(boot.brand.logo.is_none());
+    let principal = boot.principal.expect("a signed-in principal");
+    assert_eq!(principal.level, Level::Reseller);
+    assert_eq!(principal.lang, "ru");
+    assert!(principal.tz.is_none());
+    assert!(!principal.totp);
+    let products: Vec<Option<&str>> = boot
+        .menu
+        .iter()
+        .map(|group| group.product.as_deref())
+        .collect();
+    assert_eq!(products, [Some("dns"), Some("panel"), None]);
+    assert_eq!(boot.menu[0].items[0].kind, Kind::List);
+    assert_eq!(
+        boot.menu[0].items[0]
+            .badge
+            .as_ref()
+            .map(|badge| badge.problem.as_str()),
+        Some("dns.zone_stale")
+    );
+    assert!(boot.license.is_none());
+    assert!(boot.dashboard.is_empty());
+    assert!(boot.problems.is_none());
+    assert!(boot.meta.starts_with("m-"));
 }

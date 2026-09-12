@@ -1,18 +1,15 @@
-use std::sync::Arc;
-
 use axum::Extension;
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::http::HeaderMap;
 use axum::response::Response;
-use keel_types::{Id, Principal};
+use keel_types::Principal;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::Shared;
 use super::live::Live;
-use super::meta::MetaKey;
 use super::reply::{self, RequestId};
 use crate::loader::REQUIRED_LANGUAGE;
+use crate::meta;
 use crate::registry::Registry;
 
 pub(super) const LANG_PARAM: &str = "lang";
@@ -56,7 +53,6 @@ fn merge_over(base: &mut Map<String, Value>, overlay: &Map<String, Value>) {
 }
 
 pub(super) async fn serve(
-    State(state): State<Arc<Shared>>,
     live: Live,
     Extension(RequestId(request_id)): Extension<RequestId>,
     Extension(principal): Extension<Principal>,
@@ -71,15 +67,7 @@ pub(super) async fn serve(
         .unwrap_or(&principal.lang)
         .to_ascii_lowercase();
     let catalogue = catalogue(&live.registry, &lang);
-    let version = MetaKey {
-        build: &state.options.build,
-        modules: live.registry.modules(),
-        products: &state.options.products,
-        lang: &catalogue.lang,
-        principal: Id::ROOT_ACCOUNT,
-        acl_gen: 0,
-    }
-    .version();
+    let version = meta::catalogue_version(&live.registry, &catalogue.lang);
     if reply::matches_etag(&headers, &version) {
         return reply::not_modified(&version);
     }

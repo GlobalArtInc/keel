@@ -15,7 +15,7 @@ pub struct Event {
     #[serde(serialize_with = "millis")]
     pub at: DateTime<Utc>,
     pub instance_id: Id,
-    pub product: String,
+    pub module: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor: Option<EventActor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,13 +60,14 @@ mod tests {
     fn event_from_the_design_round_trips() {
         let wire = json!({
             "id": "01J9EV5K00000000000000000A", "seq": 8812, "type": "dns.zone.created", "at": "2026-09-12T10:00:00.000Z",
-            "instanceId": "01J9B0000000000000000000A1", "product": "dns",
+            "instanceId": "01J9B0000000000000000000A1", "module": "dns",
             "actor": { "kind": "peer", "id": "01J9A0000000000000000000A1" },
             "subject": { "kind": "dns.zone", "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3", "accountId": "01J8A0000000000000000000A1" },
             "data": { "name": "a.org" }
         });
         let event: Event = serde_json::from_value(wire.clone()).unwrap();
         assert_eq!(event.kind, "dns.zone.created");
+        assert_eq!(event.module, "dns");
         assert_eq!(event.actor.as_ref().unwrap().kind, EventActorKind::Peer);
         assert_eq!(event.at.to_rfc3339(), "2026-09-12T10:00:00+00:00");
         assert_eq!(serde_json::to_value(&event).unwrap(), wire);
@@ -76,7 +77,7 @@ mod tests {
     fn whole_seconds_are_accepted_on_input_and_written_with_milliseconds() {
         let event: Event = serde_json::from_value(json!({
             "id": "01J9EV5K00000000000000000A", "seq": 1, "type": "x.y", "at": "2026-09-12T10:00:00Z",
-            "instanceId": "01J9B0000000000000000000A1", "product": "dns", "data": null
+            "instanceId": "01J9B0000000000000000000A1", "module": "dns", "data": null
         })).unwrap();
         assert_eq!(
             serde_json::to_value(&event).unwrap()["at"],

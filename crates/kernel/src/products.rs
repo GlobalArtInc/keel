@@ -1,3 +1,4 @@
+use keel_sdk::ProductBundle;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, TransactionTrait};
 use serde_json::Value;
 
@@ -5,6 +6,26 @@ use crate::kv;
 use crate::storage::lock;
 
 pub const KEY: &str = "products.enabled";
+
+pub(crate) struct Composed {
+    bundles: Vec<&'static ProductBundle>,
+}
+
+impl Composed {
+    pub(crate) fn new(bundles: &[&'static ProductBundle]) -> Self {
+        Self {
+            bundles: bundles.to_vec(),
+        }
+    }
+
+    pub(crate) fn bundles(&self) -> &[&'static ProductBundle] {
+        &self.bundles
+    }
+
+    pub(crate) fn bundle(&self, id: &str) -> Option<&'static ProductBundle> {
+        self.bundles.iter().copied().find(|bundle| bundle.id == id)
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProductsError {
@@ -14,7 +35,7 @@ pub enum ProductsError {
     Database(#[from] DbErr),
 }
 
-pub async fn enabled(db: &DatabaseConnection) -> Result<Vec<String>, ProductsError> {
+pub async fn enabled<C: ConnectionTrait>(db: &C) -> Result<Vec<String>, ProductsError> {
     let Some(value) = kv::get(db, KEY).await? else {
         return Ok(Vec::new());
     };
@@ -23,12 +44,16 @@ pub async fn enabled(db: &DatabaseConnection) -> Result<Vec<String>, ProductsErr
 
 pub async fn set_enabled(db: &DatabaseConnection, ids: &[String]) -> Result<(), ProductsError> {
     let txn = db.begin().await?;
-    txn.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({})", lock::INSTANCE))
-        .await?;
-    let value = Value::Array(ids.iter().map(|id| Value::String(id.clone())).collect());
-    kv::set(&txn, KEY, &value).await?;
+    write(&txn, ids).await?;
     txn.commit().await?;
     Ok(())
+}
+
+pub async fn write<C: ConnectionTrait>(tx: &C, ids: &[String]) -> Result<(), DbErr> {
+    tx.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({})", lock::INSTANCE))
+        .await?;
+    let value = Value::Array(ids.iter().map(|id| Value::String(id.clone())).collect());
+    kv::set(tx, KEY, &value).await
 }
 
 fn parse(value: &Value) -> Result<Vec<String>, ProductsError> {

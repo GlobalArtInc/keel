@@ -3,6 +3,37 @@
     "system": "System"
   },
   "keel": {
+    "brand": "Keel",
+    "id": "Id",
+    "name": "Name",
+    "title": "Title",
+    "kind": "Kind",
+    "state": "State",
+    "login": "Login",
+    "role": "Role",
+    "lang": "Language",
+    "created_at": "Created",
+    "updated_at": "Updated",
+    "column": {
+      "id": "Id",
+      "name": "Name",
+      "title": "Title",
+      "kind": "Kind",
+      "state": "State",
+      "login": "Login",
+      "role": "Role",
+      "lang": "Language",
+      "created_at": "Created",
+      "updated_at": "Updated"
+    },
+    "action": {
+      "create": "New",
+      "edit": "Edit",
+      "delete": "Delete",
+      "refresh": "Refresh",
+      "export": "Export"
+    },
+    "page": { "main": "Main" },
     "level": {
       "guest": "Guest",
       "service": "Service",
@@ -78,6 +109,28 @@
         "level_above_caller": "The level {level} is above your own",
         "level_account": "A principal of level {level} cannot belong to an account of kind {kind}",
         "level_unknown": "The stored level {level} of principal {id} is not on the ladder"
+      }
+    },
+    "product": {
+      "list": { "title": "Products" },
+      "empty": "No products are compiled into this installation",
+      "state": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+      },
+      "column": {
+        "id": "Product",
+        "name": "Name",
+        "version": "Version",
+        "state": "State"
+      },
+      "action": {
+        "enable": "Enable",
+        "disable": "Disable"
+      },
+      "error": {
+        "unknown": "The product {id} is not carried by this installation",
+        "stored": "The stored product set cannot be read: {reason}"
       }
     },
     "error": {

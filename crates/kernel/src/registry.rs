@@ -5,13 +5,16 @@ use std::sync::Arc;
 use keel_sdk::runtime::{
     BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, WithinHook,
 };
-use keel_sdk::{FunctionDef, MenuNode};
-use keel_types::Descriptor;
+use keel_sdk::{FunctionDef, MenuNode, ProductBundle};
+use keel_types::{Descriptor, Platform};
 use serde_json::{Map, Value};
 
 pub struct Registry {
+    pub(crate) platform: Platform,
     pub(crate) modules: Vec<ModuleInfo>,
+    pub(crate) products: Vec<&'static ProductBundle>,
     pub(crate) functions: BTreeMap<String, Function>,
+    pub(crate) groups: Vec<Group>,
     pub(crate) menu: Vec<MenuNode>,
     pub(crate) permissions: BTreeMap<String, PermissionDef>,
     pub(crate) guards: Vec<Hook<Arc<dyn Guard>>>,
@@ -25,6 +28,14 @@ pub struct Registry {
 pub struct ModuleInfo {
     pub id: String,
     pub version: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Group {
+    pub id: String,
+    pub label: String,
+    pub icon: String,
+    pub product: Option<String>,
 }
 
 pub struct Function {
@@ -49,8 +60,24 @@ pub struct PatchedField {
 }
 
 impl Registry {
+    pub fn platform(&self) -> &Platform {
+        &self.platform
+    }
+
     pub fn modules(&self) -> &[ModuleInfo] {
         &self.modules
+    }
+
+    pub fn products(&self) -> &[&'static ProductBundle] {
+        &self.products
+    }
+
+    pub fn product_ids(&self) -> Vec<&'static str> {
+        self.products.iter().map(|bundle| bundle.id).collect()
+    }
+
+    pub fn groups(&self) -> &[Group] {
+        &self.groups
     }
 
     pub fn functions(&self) -> impl Iterator<Item = &Function> {
@@ -131,8 +158,11 @@ impl Function {
 impl fmt::Debug for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Registry")
+            .field("platform", &self.platform)
             .field("modules", &self.modules)
+            .field("products", &self.product_ids())
             .field("functions", &self.functions.keys().collect::<Vec<_>>())
+            .field("groups", &self.groups)
             .field("menu", &self.menu)
             .field("permissions", &self.permissions.keys().collect::<Vec<_>>())
             .field("guards", &self.guards)

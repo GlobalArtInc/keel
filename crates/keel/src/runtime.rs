@@ -68,8 +68,6 @@ impl Runtime {
             storage.db().clone(),
             readiness.clone(),
             HttpOptions {
-                build: VERSION.to_owned(),
-                products: enabled.clone(),
                 body_limit: BODY_LIMIT,
             },
         );

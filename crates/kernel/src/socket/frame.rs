@@ -21,6 +21,7 @@ pub enum Frame {
     I18n {
         lang: String,
     },
+    Boot,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -38,6 +39,8 @@ struct Wire {
     describe: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     i18n: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boot: Option<bool>,
 }
 
 impl Frame {
@@ -69,6 +72,7 @@ impl Frame {
                 idempotency_key,
                 describe: None,
                 i18n: None,
+                boot: None,
             } => Ok(Frame::Call {
                 func,
                 params: params.unwrap_or_else(|| Value::Object(Map::new())),
@@ -84,6 +88,7 @@ impl Frame {
                 idempotency_key: None,
                 describe: Some(name),
                 i18n: None,
+                boot: None,
             } => Ok(Frame::Describe { name }),
             Wire {
                 func: None,
@@ -92,9 +97,19 @@ impl Frame {
                 idempotency_key: None,
                 describe: None,
                 i18n: Some(lang),
+                boot: None,
             } => Ok(Frame::I18n {
                 lang: lang.trim().to_ascii_lowercase(),
             }),
+            Wire {
+                func: None,
+                params: None,
+                request_id: None,
+                idempotency_key: None,
+                describe: None,
+                i18n: None,
+                boot: Some(true),
+            } => Ok(Frame::Boot),
             _ => Err(KeelError::validation("keel.error.frame_unknown")),
         }
     }
@@ -119,6 +134,10 @@ impl Frame {
             },
             Frame::I18n { lang } => Wire {
                 i18n: Some(lang.clone()),
+                ..Wire::default()
+            },
+            Frame::Boot => Wire {
+                boot: Some(true),
                 ..Wire::default()
             },
         };
@@ -168,6 +187,7 @@ mod tests {
             Frame::parse(br#"{"i18n":" RU "}"#).unwrap(),
             Frame::i18n("ru")
         );
+        assert_eq!(Frame::parse(br#"{"boot":true}"#).unwrap(), Frame::Boot);
     }
 
     #[test]
@@ -181,6 +201,7 @@ mod tests {
             },
             Frame::describe("probe.ping"),
             Frame::i18n("en"),
+            Frame::Boot,
         ] {
             let line = frame.to_line().unwrap();
             assert!(line.ends_with('\n'), "{line:?}");
@@ -202,6 +223,8 @@ mod tests {
             br#"{"func":"a.b.c","describe":"a.b.c"}"#,
             br#"{"describe":"a.b.c","i18n":"en"}"#,
             br#"{"i18n":"en","params":{}}"#,
+            br#"{"boot":false}"#,
+            br#"{"boot":true,"i18n":"en"}"#,
             br#"{"func":"a.b.c","extra":1}"#,
             br#"{"func":1}"#,
             br#"[1,2]"#,

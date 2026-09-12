@@ -194,7 +194,10 @@ static SHELF: ModuleDef = ModuleDef {
     init,
 };
 
-const EN: &str = r#"{ "shelf": { "book": { "list": { "title": "Books" }, "edit": { "title": "Book" }, "empty": "No books" } } }"#;
+const EN: &str = r#"{ "shelf": { "book": {
+    "list": { "title": "Books" }, "edit": { "title": "Book" }, "empty": "No books",
+    "pages": "Pages", "account": "Account", "note": "Note", "site": "Site", "token": "Token",
+    "column": { "pages": "Pages", "account_id": "Account" } } } }"#;
 
 fn init(r: &mut Registrar) -> Result<()> {
     r.function(list())

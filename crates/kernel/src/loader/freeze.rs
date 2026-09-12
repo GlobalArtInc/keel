@@ -6,18 +6,22 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
-use keel_sdk::{FunctionDef, MenuNode};
+use keel_sdk::{FunctionDef, MenuNode, ProductBundle};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
-use keel_types::{Access, Descriptor, Kind};
+use keel_types::{Access, Descriptor, Kind, Platform};
 use schemars::Schema;
 use serde_json::Value;
 
-use super::composition::Graph;
-use super::i18n::{Catalogue, REQUIRED_LANGUAGE};
+use super::composition::{API, Graph};
+use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
 use super::init::Initialised;
-use super::patch;
-use crate::registry::{Function, Hook, ModuleInfo, Registry};
+use super::{keys, patch};
+use crate::menu::{SYSTEM_GROUP, group_of, label_of};
+use crate::products::Composed;
+use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
+
+const PLATFORM: &str = "the platform";
 
 pub struct Frozen {
     pub(super) graph: Graph,
@@ -169,14 +173,59 @@ pub enum FreezeProblem {
         first: String,
         second: String,
     },
+    #[error(
+        "module {module}: menu node {path} names the group {group}, which no enabled product declares"
+    )]
+    MenuGroupUnknown {
+        module: String,
+        path: String,
+        group: String,
+    },
+    #[error("the menu group {group} is declared by both {first} and {second}")]
+    MenuGroupTwice {
+        group: String,
+        first: String,
+        second: String,
+    },
+    #[error(
+        "module {module}: menu node {path} has no label and {function} has no screen title to use instead"
+    )]
+    MenuLabel {
+        module: String,
+        path: String,
+        function: String,
+    },
+    #[error("product {product}: the {lang} dictionary is not a JSON object: {reason}")]
+    BundleDictionary {
+        product: String,
+        lang: String,
+        reason: String,
+    },
     #[error("{owner}: the {REQUIRED_LANGUAGE} dictionary has no entry for {key}")]
     Translation { owner: String, key: String },
+    #[error(
+        "{owner}: the {REQUIRED_LANGUAGE} dictionary has no entry for {key} nor for the shared {shared}"
+    )]
+    TranslationInherited {
+        owner: String,
+        key: String,
+        shared: String,
+    },
     #[error("the {lang} dictionaries of {first} and {second} both define {key}")]
     TranslationConflict {
         lang: String,
         key: String,
         first: String,
         second: String,
+    },
+    #[error(
+        "{owner}: the {lang} entry {key} carries the placeholder {found:?}; placeholders are written {{name}}"
+    )]
+    Placeholder {
+        owner: String,
+        lang: String,
+        key: String,
+        found: String,
     },
 }
 
@@ -215,6 +264,8 @@ struct Freezer {
     guards: Vec<Hook<Arc<dyn Guard>>>,
     menu: Vec<MenuNode>,
     menu_owners: BTreeMap<String, String>,
+    groups: Vec<Group>,
+    group_owners: BTreeMap<String, String>,
     catalogue: Catalogue,
     dictionary_owners: BTreeMap<(String, String), String>,
     contributions: Contributions,
@@ -236,6 +287,8 @@ impl Initialised {
             guards: Vec::new(),
             menu: Vec::new(),
             menu_owners: BTreeMap::new(),
+            groups: Vec::new(),
+            group_owners: BTreeMap::new(),
             catalogue: Catalogue::default(),
             dictionary_owners: BTreeMap::new(),
             contributions: Contributions::default(),
@@ -267,7 +320,7 @@ impl Initialised {
                 freezer.menu(&module, node);
             }
             for bundle in registrations.i18n {
-                freezer.dictionary(&module, &bundle.lang, &bundle.messages);
+                freezer.dictionary(&format!("module {module}"), &bundle.lang, &bundle.messages);
             }
             hooks.push((module.clone(), registrations.before, registrations.within));
             patches.push((module.clone(), registrations.patches));
@@ -289,8 +342,12 @@ impl Initialised {
                 freezer.patch(&module, &patch);
             }
         }
+        for bundle in self.graph.products() {
+            freezer.bundle(bundle);
+        }
+        freezer.group(PLATFORM, None, &SYSTEM_GROUP);
         freezer.references();
-        freezer.translations();
+        freezer.translations(self.graph.products());
         freezer.finish(self.graph)
     }
 }
@@ -394,7 +451,7 @@ impl Freezer {
         self.menu.push(node);
     }
 
-    fn dictionary(&mut self, module: &str, lang: &str, messages: &Value) {
+    fn dictionary(&mut self, owner: &str, lang: &str, messages: &Value) {
         for conflict in self.catalogue.merge(lang, messages) {
             let first = self
                 .dictionary_owners
@@ -405,18 +462,67 @@ impl Freezer {
                 lang: conflict.lang,
                 key: conflict.key,
                 first,
-                second: module.to_owned(),
+                second: owner.to_owned(),
             });
         }
         if let Value::Object(messages) = messages {
-            let mut keys = Vec::new();
-            leaves(messages, &mut Vec::new(), &mut keys);
-            for key in keys {
+            for (key, value) in leaves(messages) {
+                if let Some(found) = value.as_str().and_then(placeholder_fault) {
+                    self.problems.push(FreezeProblem::Placeholder {
+                        owner: owner.to_owned(),
+                        lang: lang.to_owned(),
+                        key: key.clone(),
+                        found,
+                    });
+                }
                 self.dictionary_owners
                     .entry((lang.to_owned(), key))
-                    .or_insert_with(|| module.to_owned());
+                    .or_insert_with(|| owner.to_owned());
             }
         }
+    }
+
+    fn bundle(&mut self, bundle: &'static ProductBundle) {
+        let owner = format!("product {}", bundle.id);
+        for (lang, json) in bundle.i18n {
+            match serde_json::from_str::<Value>(json) {
+                Ok(messages) if messages.is_object() => self.dictionary(&owner, lang, &messages),
+                Ok(_) => self.problems.push(FreezeProblem::BundleDictionary {
+                    product: bundle.id.to_owned(),
+                    lang: (*lang).to_owned(),
+                    reason: "the document is not an object".to_owned(),
+                }),
+                Err(error) => self.problems.push(FreezeProblem::BundleDictionary {
+                    product: bundle.id.to_owned(),
+                    lang: (*lang).to_owned(),
+                    reason: error.to_string(),
+                }),
+            }
+        }
+        let mut groups: Vec<&keel_sdk::MenuGroup> = bundle.menu.iter().collect();
+        groups.sort_by_key(|group| group.order);
+        for group in groups {
+            self.group(&owner, Some(bundle.id), group);
+        }
+    }
+
+    fn group(&mut self, owner: &str, product: Option<&str>, group: &keel_sdk::MenuGroup) {
+        if let Some(first) = self.group_owners.get(group.id) {
+            self.problems.push(FreezeProblem::MenuGroupTwice {
+                group: group.id.to_owned(),
+                first: first.clone(),
+                second: owner.to_owned(),
+            });
+            return;
+        }
+        self.group_owners
+            .insert(group.id.to_owned(), owner.to_owned());
+        self.groups.push(Group {
+            id: group.id.to_owned(),
+            label: group.label.to_owned(),
+            icon: group.icon.to_owned(),
+            product: product.map(str::to_owned),
+        });
     }
 
     fn hooks(
@@ -482,8 +588,57 @@ impl Freezer {
             checker.descriptor(&function.descriptor);
         }
         for node in &self.menu {
+            let module = self
+                .menu_owners
+                .get(node.path())
+                .cloned()
+                .unwrap_or_default();
             if !self.known.contains_key(node.func()) {
                 problems.push(FreezeProblem::MenuFunction {
+                    module: module.clone(),
+                    path: node.path().to_owned(),
+                    function: node.func().to_owned(),
+                });
+            }
+            let group = group_of(node.path());
+            if !self.group_owners.contains_key(group) {
+                problems.push(FreezeProblem::MenuGroupUnknown {
+                    module,
+                    path: node.path().to_owned(),
+                    group: group.to_owned(),
+                });
+            }
+        }
+        self.problems.extend(problems);
+    }
+
+    fn translations(&mut self, products: &[&'static ProductBundle]) {
+        let mut required: Vec<(String, String, Option<String>)> = Vec::new();
+        for function in self.functions.values() {
+            let owner = format!("function {}", function.name());
+            if let Some(ui) = &function.descriptor.ui {
+                required.push((owner.clone(), ui.title.clone(), None));
+                if let Some(empty) = &ui.empty {
+                    required.push((owner.clone(), empty.title.clone(), None));
+                }
+            }
+            for derived in keys::of(&function.descriptor) {
+                required.push((
+                    format!("{owner} {}", derived.member),
+                    derived.key,
+                    derived.shared,
+                ));
+            }
+        }
+        for node in &self.menu {
+            let owner = format!("menu node {}", node.path());
+            match self
+                .functions
+                .get(node.func())
+                .map(|function| label_of(node, function))
+            {
+                Some(Some(label)) => required.push((owner, label.to_owned(), None)),
+                Some(None) => self.problems.push(FreezeProblem::MenuLabel {
                     module: self
                         .menu_owners
                         .get(node.path())
@@ -491,32 +646,44 @@ impl Freezer {
                         .unwrap_or_default(),
                     path: node.path().to_owned(),
                     function: node.func().to_owned(),
-                });
+                }),
+                None => {}
             }
         }
-        self.problems.extend(problems);
-    }
-
-    fn translations(&mut self) {
-        let mut required: Vec<(String, String)> = Vec::new();
-        for function in self.functions.values() {
-            let owner = format!("function {}", function.name());
-            if let Some(ui) = &function.descriptor.ui {
-                required.push((owner.clone(), ui.title.clone()));
-                if let Some(empty) = &ui.empty {
-                    required.push((owner.clone(), empty.title.clone()));
+        for group in &self.groups {
+            let owner = match &group.product {
+                Some(product) => format!("product {product} group {}", group.id),
+                None => format!("{PLATFORM} group {}", group.id),
+            };
+            required.push((owner, group.label.clone(), None));
+        }
+        for bundle in products {
+            required.push((
+                format!("product {}", bundle.id),
+                bundle.name.to_owned(),
+                None,
+            ));
+            for (level, key) in bundle.levels.labels {
+                required.push((
+                    format!("product {} level {level}", bundle.id),
+                    (*key).to_owned(),
+                    None,
+                ));
+            }
+        }
+        for (owner, key, shared) in required {
+            if self.catalogue.has(REQUIRED_LANGUAGE, &key) {
+                continue;
+            }
+            match shared {
+                Some(shared) if self.catalogue.has(REQUIRED_LANGUAGE, &shared) => {}
+                Some(shared) => {
+                    self.problems
+                        .push(FreezeProblem::TranslationInherited { owner, key, shared })
                 }
-            }
-        }
-        for node in &self.menu {
-            if let Some(label) = node.label_key() {
-                required.push((format!("menu node {}", node.path()), label.to_owned()));
-            }
-        }
-        for (owner, key) in required {
-            if !self.catalogue.has(REQUIRED_LANGUAGE, &key) {
-                self.problems
-                    .push(FreezeProblem::Translation { owner, key });
+                None => self
+                    .problems
+                    .push(FreezeProblem::Translation { owner, key }),
             }
         }
     }
@@ -535,19 +702,28 @@ impl Freezer {
                 version: def.version.to_owned(),
             })
             .collect();
+        let mut services = self.services;
+        services.provide(Arc::new(Composed::new(graph.products())));
         let registry = Registry {
+            platform: Platform {
+                version: graph.version().to_owned(),
+                api: API,
+            },
             modules,
+            products: graph.products().to_vec(),
             functions: self.functions,
+            groups: self.groups,
             menu: self.menu,
             permissions: self.permissions,
             guards: self.guards,
             i18n: self.catalogue.into_languages(),
-            services: Arc::new(self.services),
+            services: Arc::new(services),
             contributions: Arc::new(self.contributions),
             invoker: self.invoker.map(|(_, invoker)| invoker),
         };
         tracing::info!(
             modules = ?graph.ids(),
+            products = ?graph.product_ids(),
             functions = registry.functions.len(),
             "registries frozen"
         );
@@ -556,21 +732,6 @@ impl Freezer {
             registry: Arc::new(registry),
             lifecycle: self.lifecycle,
         })
-    }
-}
-
-fn leaves(
-    messages: &serde_json::Map<String, Value>,
-    path: &mut Vec<String>,
-    into: &mut Vec<String>,
-) {
-    for (key, value) in messages {
-        path.push(key.clone());
-        match value {
-            Value::Object(nested) => leaves(nested, path, into),
-            _ => into.push(path.join(".")),
-        }
-        path.pop();
     }
 }
 
@@ -802,9 +963,42 @@ mod tests {
     }
 
     const EN: &str = r#"{
-        "base": { "item": { "edit": { "title": "Item" }, "list": { "title": "Items" }, "empty": "Nothing" } },
+        "base": { "item": { "edit": { "title": "Item" }, "list": { "title": "Items" }, "empty": "Nothing",
+                            "weight": "Weight", "page": { "more": "More" } } },
         "menu": { "base": "Base" }
     }"#;
+
+    static BASE_BUNDLE: ProductBundle = ProductBundle {
+        id: "base",
+        name: "product.base.brand",
+        version: "0.1.0",
+        api: API,
+        brand: Brand {
+            logo: "product.base.logo",
+            hue: 30,
+            chroma: 0.1,
+        },
+        modules: &[&BASE],
+        menu: &[MenuGroup {
+            id: "base",
+            label: "menu.base",
+            icon: "box",
+            order: 10,
+        }],
+        levels: LevelLabels {
+            labels: &[(Level::User, "product.base.level.user")],
+            disabled: &[],
+        },
+        account_kinds: &["user"],
+        editions: &[],
+        i18n: &[
+            (
+                "en",
+                r#"{ "product": { "base": { "brand": "Base", "level": { "user": "Customer" } } } }"#,
+            ),
+            ("ru", r#"{ "product": { "base": { "brand": "База" } } }"#),
+        ],
+    };
 
     fn base_init(r: &mut Registrar) -> Result<()> {
         r.function(form(
@@ -843,10 +1037,16 @@ mod tests {
 
     module!(BASE, "base", [], base_init);
 
-    fn freeze(modules: &[&'static keel_sdk::ModuleDef]) -> Result<Frozen, FreezeError> {
+    fn freeze(
+        modules: &[&'static keel_sdk::ModuleDef],
+        products: &[&'static ProductBundle],
+    ) -> Result<Frozen, FreezeError> {
         let mut composition = Composition::new();
         for module in modules {
             composition = composition.module(module);
+        }
+        for bundle in products {
+            composition = composition.product(bundle);
         }
         composition
             .resolve()
@@ -856,8 +1056,11 @@ mod tests {
             .freeze()
     }
 
-    fn problems(modules: &[&'static keel_sdk::ModuleDef]) -> Vec<String> {
-        freeze(modules)
+    fn problems(
+        modules: &[&'static keel_sdk::ModuleDef],
+        products: &[&'static ProductBundle],
+    ) -> Vec<String> {
+        freeze(modules, products)
             .expect_err("the freeze fails")
             .problems()
             .iter()
@@ -867,7 +1070,7 @@ mod tests {
 
     #[test]
     fn init_and_freeze_run_without_a_database_so_init_cannot_do_io() {
-        let frozen = freeze(&[&BASE]).unwrap();
+        let frozen = freeze(&[&BASE], &[&BASE_BUNDLE]).unwrap();
         let registry = frozen.registry();
         let kernel = crate::keel::FUNCTIONS.len();
         assert_eq!(registry.modules().len(), 2);
@@ -889,13 +1092,241 @@ mod tests {
         assert_eq!(registry.contributions().of::<Widget>().count(), 1);
         assert!(registry.invoker().is_some());
         assert_eq!(frozen.graph().ids(), ["keel", "base"]);
+        assert_eq!(frozen.graph().product_ids(), ["base"]);
+        assert_eq!(registry.product_ids(), ["base"]);
+        assert_eq!(registry.platform().version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(registry.platform().api, API);
+        let groups: Vec<(&str, Option<&str>)> = registry
+            .groups()
+            .iter()
+            .map(|group| (group.id.as_str(), group.product.as_deref()))
+            .collect();
+        assert_eq!(groups, [("base", Some("base")), ("system", None)]);
+        assert!(registry.i18n("en").unwrap()["product"]["base"]["brand"].is_string());
+        assert!(registry.i18n("ru").unwrap()["product"]["base"]["brand"].is_string());
         assert!(format!("{frozen:?}").contains("Registry"));
         assert!(format!("{registry:?}").contains("\"base.item.edit\""));
     }
 
+    static ORDERED_BUNDLE: ProductBundle = ProductBundle {
+        id: "ordered",
+        name: "product.ordered.brand",
+        version: "0.1.0",
+        api: API,
+        brand: Brand {
+            logo: "product.ordered.logo",
+            hue: 90,
+            chroma: 0.1,
+        },
+        modules: &[],
+        menu: &[
+            MenuGroup {
+                id: "late",
+                label: "menu.late",
+                icon: "clock",
+                order: 50,
+            },
+            MenuGroup {
+                id: "early",
+                label: "menu.early",
+                icon: "sun",
+                order: 5,
+            },
+        ],
+        levels: LevelLabels {
+            labels: &[],
+            disabled: &[],
+        },
+        account_kinds: &[],
+        editions: &[],
+        i18n: &[(
+            "en",
+            r#"{ "product": { "ordered": { "brand": "Ordered" } }, "menu": { "late": "Late", "early": "Early" } }"#,
+        )],
+    };
+
+    #[test]
+    fn groups_follow_the_products_in_composition_order_and_their_own_order_with_the_platform_last()
+    {
+        let frozen = freeze(&[], &[&ORDERED_BUNDLE, &BASE_BUNDLE]).unwrap();
+        let ids: Vec<&str> = frozen
+            .registry()
+            .groups()
+            .iter()
+            .map(|group| group.id.as_str())
+            .collect();
+        assert_eq!(ids, ["early", "late", "base", "system"]);
+        assert_eq!(frozen.registry().product_ids(), ["ordered", "base"]);
+        assert_eq!(frozen.graph().ids(), ["keel", "base"]);
+    }
+
+    static SYSTEM_AGAIN: ProductBundle = ProductBundle {
+        id: "again",
+        name: "product.again.brand",
+        version: "0.1.0",
+        api: API,
+        brand: Brand {
+            logo: "product.again.logo",
+            hue: 0,
+            chroma: 0.0,
+        },
+        modules: &[],
+        menu: &[
+            MenuGroup {
+                id: "system",
+                label: "menu.system",
+                icon: "cog",
+                order: 1,
+            },
+            MenuGroup {
+                id: "base",
+                label: "menu.base",
+                icon: "box",
+                order: 2,
+            },
+        ],
+        levels: LevelLabels {
+            labels: &[(Level::Reseller, "product.again.level.reseller")],
+            disabled: &[],
+        },
+        account_kinds: &[],
+        editions: &[],
+        i18n: &[("ru", r#"{ "product": { "again": { "brand": "Снова" } } }"#)],
+    };
+
+    #[test]
+    fn a_group_declared_twice_and_bundle_keys_without_en_fail_freeze_in_one_error() {
+        assert_eq!(
+            problems(&[], &[&BASE_BUNDLE, &SYSTEM_AGAIN]),
+            [
+                "the menu group base is declared by both product base and product again",
+                "the menu group system is declared by both product again and the platform",
+                "product again: the en dictionary has no entry for product.again.brand",
+                "product again level reseller: the en dictionary has no entry for product.again.level.reseller",
+            ]
+        );
+    }
+
+    fn homeless_init(r: &mut Registrar) -> Result<()> {
+        r.function(get("homeless.item.get"))
+            .menu(MenuNode::new("nowhere/items", "homeless.item.get"))
+            .menu(MenuNode::new("system/homeless", "homeless.item.get"));
+        Ok(())
+    }
+
+    module!(HOMELESS, "homeless", [], homeless_init);
+
+    #[test]
+    fn a_menu_node_needs_a_declared_group_and_a_label_or_a_screen_title() {
+        assert_eq!(
+            problems(&[&HOMELESS], &[]),
+            [
+                "module homeless: menu node nowhere/items names the group nowhere, which no enabled product declares",
+                "module homeless: menu node nowhere/items has no label and homeless.item.get has no screen title to use instead",
+                "module homeless: menu node system/homeless has no label and homeless.item.get has no screen title to use instead",
+            ]
+        );
+    }
+
+    fn sparse_init(r: &mut Registrar) -> Result<()> {
+        r.function(form(
+            "sparse.item.edit",
+            Form::new("sparse.item.edit.title").page("main", ["title", "kind", "weight"]),
+        ))
+        .function(
+            function::<ListQuery, Page<Item>>("sparse.item.list")
+                .kind(Kind::List)
+                .unowned()
+                .ui(List::new("sparse.item.list.title")
+                    .column(Column::new("title", ColumnType::Text))
+                    .column(
+                        Column::new("kind", ColumnType::Status)
+                            .map([("heavy", Tone::Warning)])
+                            .filter_options(["heavy", "light"]),
+                    )
+                    .action(Action::new("edit", ActionRole::Edit).screen("sparse.item.edit"))
+                    .action(Action::new("weigh", ActionRole::Button).function("sparse.item.edit")))
+                .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
+        )
+        .i18n(
+            "en",
+            r#"{ "sparse": { "item": { "edit": { "title": "Item" }, "list": { "title": "Items" }, "kind": { "heavy": "Heavy" } } } }"#,
+        );
+        Ok(())
+    }
+
+    module!(SPARSE, "sparse", [], sparse_init);
+
+    #[test]
+    fn derived_keys_fall_back_to_the_shared_keel_keys_and_name_both_when_missing() {
+        assert_eq!(
+            problems(&[&SPARSE], &[]),
+            [
+                "function sparse.item.edit field weight: the en dictionary has no entry for sparse.item.weight nor for the shared keel.weight",
+                "function sparse.item.list action weigh: the en dictionary has no entry for sparse.item.action.weigh nor for the shared keel.action.weigh",
+                "function sparse.item.list column kind value light: the en dictionary has no entry for sparse.item.kind.light nor for the shared keel.kind.light",
+            ]
+        );
+    }
+
+    fn shouting_init(r: &mut Registrar) -> Result<()> {
+        r.i18n(
+            "en",
+            r#"{ "shouting": { "a": "Hello %s", "b": "Hello {{name}}", "c": "Hello {name}", "nested": { "d": "Item {0}" } } }"#,
+        )
+        .i18n("ru", r#"{ "shouting": { "a": "Привет { name }" } }"#);
+        Ok(())
+    }
+
+    module!(SHOUTING, "shouting", [], shouting_init);
+
+    static SHOUTING_BUNDLE: ProductBundle = ProductBundle {
+        id: "shout",
+        name: "product.shout.brand",
+        version: "0.1.0",
+        api: API,
+        brand: Brand {
+            logo: "product.shout.logo",
+            hue: 0,
+            chroma: 0.0,
+        },
+        modules: &[&SHOUTING],
+        menu: &[],
+        levels: LevelLabels {
+            labels: &[],
+            disabled: &[],
+        },
+        account_kinds: &[],
+        editions: &[],
+        i18n: &[
+            (
+                "en",
+                r#"{ "product": { "shout": { "brand": "%d shouts" } } }"#,
+            ),
+            ("ru", r#"[1, 2]"#),
+            ("de", r#"{ not json"#),
+        ],
+    };
+
+    #[test]
+    fn placeholders_outside_the_single_brace_form_fail_freeze_in_every_dictionary() {
+        assert_eq!(
+            problems(&[], &[&SHOUTING_BUNDLE]),
+            [
+                "module shouting: the en entry shouting.a carries the placeholder \"%s\"; placeholders are written {name}",
+                "module shouting: the en entry shouting.b carries the placeholder \"{{\"; placeholders are written {name}",
+                "module shouting: the en entry shouting.nested.d carries the placeholder \"{0}\"; placeholders are written {name}",
+                "module shouting: the ru entry shouting.a carries the placeholder \"{ name }\"; placeholders are written {name}",
+                "product shout: the en entry product.shout.brand carries the placeholder \"%d\"; placeholders are written {name}",
+                "product shout: the ru dictionary is not a JSON object: the document is not an object",
+                "product shout: the de dictionary is not a JSON object: key must be a string at line 1 column 3",
+            ]
+        );
+    }
+
     #[test]
     fn a_compiled_descriptor_carries_the_conditions_as_ast() {
-        let frozen = freeze(&[&BASE]).unwrap();
+        let frozen = freeze(&[&BASE], &[&BASE_BUNDLE]).unwrap();
         let function = frozen.registry().function("base.item.edit").unwrap();
         assert_eq!(function.name(), "base.item.edit");
         assert_eq!(function.module(), "base");
@@ -920,7 +1351,7 @@ mod tests {
 
     #[test]
     fn require_of_a_service_nobody_provides_fails_at_freeze_not_at_the_first_call() {
-        let listed = problems(&[&NEEDY]);
+        let listed = problems(&[&NEEDY], &[]);
         assert_eq!(listed.len(), 1);
         assert!(
             listed[0].starts_with("module needy requires the service "),
@@ -930,7 +1361,7 @@ mod tests {
             listed[0].ends_with("Clock, which no module provides"),
             "{listed:?}"
         );
-        let frozen = freeze(&[&NEEDY, &BASE]).unwrap();
+        let frozen = freeze(&[&NEEDY, &BASE], &[&BASE_BUNDLE]).unwrap();
         assert!(frozen.registry().services().get::<dyn Clock>().is_some());
     }
 
@@ -944,7 +1375,7 @@ mod tests {
 
     #[test]
     fn a_service_and_the_invoker_can_have_one_provider_only() {
-        let listed = problems(&[&BASE, &SECOND_CLOCK]);
+        let listed = problems(&[&BASE, &SECOND_CLOCK], &[&BASE_BUNDLE]);
         assert_eq!(listed.len(), 2, "{listed:?}");
         assert!(listed[0].starts_with("the service "), "{listed:?}");
         assert!(
@@ -976,7 +1407,7 @@ mod tests {
 
     #[test]
     fn a_condition_naming_an_unknown_field_fails_start_with_the_function_and_field_named() {
-        let error = freeze(&[&TYPO]).unwrap_err();
+        let error = freeze(&[&TYPO], &[]).unwrap_err();
         assert!(matches!(
             error.problems(),
             [FreezeProblem::Descriptor {
@@ -1011,7 +1442,7 @@ mod tests {
     #[test]
     fn a_function_whose_title_key_has_no_en_entry_fails_start() {
         assert_eq!(
-            problems(&[&UNTITLED]),
+            problems(&[&UNTITLED], &[]),
             [
                 "function untitled.item.edit: the en dictionary has no entry for untitled.item.edit.title"
             ]
@@ -1033,7 +1464,7 @@ mod tests {
     #[test]
     fn a_patch_that_lowers_access_is_rejected() {
         assert_eq!(
-            problems(&[&BASE, &LOWERING]),
+            problems(&[&BASE, &LOWERING], &[&BASE_BUNDLE]),
             [
                 "module lowering: patch on base.item.list weakens access from level user, permission base.item.read to level guest",
                 "module lowering: patch on base.item.list weakens access from level user, permission base.item.read to level admin, permission base.item.manage",
@@ -1054,7 +1485,7 @@ mod tests {
 
     #[test]
     fn a_patch_may_raise_the_level_and_add_a_permission_where_there_was_none() {
-        let frozen = freeze(&[&BASE, &RAISING]).unwrap();
+        let frozen = freeze(&[&BASE, &RAISING], &[&BASE_BUNDLE]).unwrap();
         let list = frozen.registry().function("base.item.list").unwrap();
         assert_eq!(
             list.descriptor().access,
@@ -1088,7 +1519,7 @@ mod tests {
     #[test]
     fn a_patch_that_adds_a_field_without_store_is_rejected() {
         assert_eq!(
-            problems(&[&BASE, &STORELESS]),
+            problems(&[&BASE, &STORELESS], &[&BASE_BUNDLE]),
             ["module storeless: patch on base.item.edit adds the field extra without a store hook"]
         );
     }
@@ -1101,6 +1532,10 @@ mod tests {
                 .store(|_, _| async { Ok(()) })
                 .field("note", json_schema!({ "type": "string" }))
                 .store(|_, _| async { Ok(()) }),
+        )
+        .i18n(
+            "en",
+            r#"{ "base": { "item": { "sync": "Synchronise", "note": "Note" } } }"#,
         );
         Ok(())
     }
@@ -1109,7 +1544,7 @@ mod tests {
 
     #[test]
     fn a_patch_inserts_its_field_after_the_named_one_and_records_the_store_hook() {
-        let frozen = freeze(&[&BASE, &STORING]).unwrap();
+        let frozen = freeze(&[&BASE, &STORING], &[&BASE_BUNDLE]).unwrap();
         let edit = frozen.registry().function("base.item.edit").unwrap();
         let properties: Vec<&String> = edit.descriptor().params.as_value()["properties"]
             .as_object()
@@ -1167,7 +1602,7 @@ mod tests {
     #[test]
     fn a_patch_must_name_a_registered_function_a_new_field_and_an_existing_anchor() {
         assert_eq!(
-            problems(&[&BASE, &MISPLACED]),
+            problems(&[&BASE, &MISPLACED], &[&BASE_BUNDLE]),
             [
                 "module misplaced: patch on base.item.edit adds the field title, which the function already has",
                 "module misplaced: patch on base.item.edit places late after nowhere, which the function does not have",
@@ -1194,7 +1629,7 @@ mod tests {
     #[test]
     fn hooks_attach_to_registered_functions_and_fail_on_unknown_ones() {
         assert_eq!(
-            problems(&[&BASE, &HOOKED]),
+            problems(&[&BASE, &HOOKED], &[&BASE_BUNDLE]),
             [
                 "module hooked: before hook on base.item.vanish, which is not registered",
                 "module hooked: within hook on base.item.vanish, which is not registered",
@@ -1214,7 +1649,7 @@ mod tests {
 
     #[test]
     fn attached_hooks_remember_the_module_that_registered_them() {
-        let frozen = freeze(&[&BASE, &WELL_HOOKED]).unwrap();
+        let frozen = freeze(&[&BASE, &WELL_HOOKED], &[&BASE_BUNDLE]).unwrap();
         let edit = frozen.registry().function("base.item.edit").unwrap();
         assert_eq!(edit.before().len(), 1);
         assert_eq!(edit.before()[0].module, "well_hooked");
@@ -1256,8 +1691,9 @@ mod tests {
                 .ui(Form::new("dangling.item.wrong.title").read("dangling.item.list"))
                 .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
         )
-        .menu(MenuNode::new("dangling/items", "dangling.item.nowhere"))
-        .i18n("en", r#"{ "dangling": { "item": { "edit": { "title": "E" }, "list": { "title": "L" }, "wrong": { "title": "W" }, "empty": "N" } } }"#);
+        .menu(MenuNode::new("system/dangling", "dangling.item.nowhere"))
+        .i18n("en", r#"{ "dangling": { "item": { "edit": { "title": "E" }, "list": { "title": "L" }, "wrong": { "title": "W" }, "empty": "N",
+                                          "action": { "new": "New", "drop": "Drop" }, "column": { "weight": "Weight" } } } }"#);
         Ok(())
     }
 
@@ -1266,7 +1702,7 @@ mod tests {
     #[test]
     fn every_function_action_and_permission_a_descriptor_names_must_exist() {
         assert_eq!(
-            problems(&[&DANGLING]),
+            problems(&[&DANGLING], &[]),
             [
                 "function dangling.item.edit: ui.read names dangling.item.fetch, which is not registered",
                 "function dangling.item.edit: page main validate names dangling.item.check, which is not registered",
@@ -1281,7 +1717,7 @@ mod tests {
                 "function dangling.item.list: ui.empty.action names the action phantom, which the screen does not have",
                 "function dangling.item.list: ui.row_actions names the action ghost, which the screen does not have",
                 "function dangling.item.wrong: ui.read names dangling.item.list, which is a list function, not get",
-                "module dangling: menu node dangling/items points at dangling.item.nowhere, which is not registered",
+                "module dangling: menu node system/dangling points at dangling.item.nowhere, which is not registered",
             ]
         );
     }
@@ -1311,7 +1747,7 @@ mod tests {
 
     #[test]
     fn field_attributes_are_checked_for_membership_and_the_options_function_for_its_kind() {
-        let listed = problems(&[&BASE, &ATTRIBUTED]);
+        let listed = problems(&[&BASE, &ATTRIBUTED], &[&BASE_BUNDLE]);
         assert_eq!(listed.len(), 3, "{listed:?}");
         assert!(listed[0].starts_with("function attributed.item.edit: field broken carries an invalid x-keel attribute: unknown variant `boss`"), "{listed:?}");
         assert!(listed[1].starts_with("function attributed.item.edit: field knob carries an invalid x-ui attribute: unknown variant `knob`"), "{listed:?}");
@@ -1336,10 +1772,11 @@ mod tests {
     #[test]
     fn menu_paths_and_dictionary_leaves_are_owned_by_one_module_and_labels_need_en() {
         assert_eq!(
-            problems(&[&BASE, &CLASHING]),
+            problems(&[&BASE, &CLASHING], &[&BASE_BUNDLE]),
             [
                 "the menu path base/items is registered by both base and clashing",
-                "the en dictionaries of base and clashing both define menu.base",
+                "the en dictionaries of module base and module clashing both define menu.base",
+                "module clashing: menu node clashing/items names the group clashing, which no enabled product declares",
                 "menu node clashing/items: the en dictionary has no entry for clashing.menu",
             ]
         );
@@ -1354,7 +1791,7 @@ mod tests {
 
     #[test]
     fn contributions_of_every_module_land_in_one_typed_bag_in_graph_order() {
-        let frozen = freeze(&[&CONTRIBUTING, &BASE]).unwrap();
+        let frozen = freeze(&[&CONTRIBUTING, &BASE], &[&BASE_BUNDLE]).unwrap();
         let widgets: Vec<&str> = frozen
             .registry()
             .contributions()

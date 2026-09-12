@@ -1,5 +1,5 @@
 { "id": "01J9EV5K00000000000000000A", "seq": 8812, "type": "dns.zone.created", "at": "2026-09-12T10:00:00.000Z",
-  "instanceId": "01J9B0000000000000000000A1", "product": "dns",
+  "instanceId": "01J9B0000000000000000000A1", "module": "dns",
   "actor": { "kind": "peer", "id": "01J9A0000000000000000000A1" },
   "subject": { "kind": "dns.zone", "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3", "accountId": "01J8A0000000000000000000A1" },
   "data": { "name": "a.org" } }

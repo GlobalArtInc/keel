@@ -20,6 +20,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
 use tokio::task::{JoinHandle, JoinSet};
 
+use crate::boot;
 use crate::dispatcher::{CallOptions, Dispatcher, generate_request_id};
 use crate::http::{Projection, acceptable_request_id, catalogue};
 
@@ -271,6 +272,15 @@ impl Socket {
                 let request_id = generate_request_id();
                 let catalogue = catalogue(self.dispatcher.registry(), &lang);
                 ok_envelope(&catalogue, &request_id, &principal)
+            }
+            Frame::Boot => {
+                let request_id = generate_request_id();
+                match boot::payload(self.dispatcher.registry(), self.dispatcher.db(), &principal)
+                    .await
+                {
+                    Ok(payload) => ok_envelope(&payload, &request_id, &principal),
+                    Err(error) => error_envelope(error, &request_id),
+                }
             }
         }
     }
