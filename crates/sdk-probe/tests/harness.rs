@@ -4,7 +4,7 @@ use keel_sdk::prelude::*;
 use keel_sdk_probe::MODULE;
 use keel_testkit::{ErrorCode, Fixture, Harness, Who, tokio};
 
-static PRODUCT: ProductBundle = ProductBundle {
+static MANIFEST: ProductManifest = ProductManifest {
     id: "probe",
     name: "product.probe.brand",
     version: "0.1.0",
@@ -64,7 +64,7 @@ fn titles(page: &Value) -> Vec<&str> {
 
 #[tokio::test]
 async fn the_probe_bundle_boots_on_the_harness_and_scopes_its_items_by_account() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     assert_eq!(harness.registry().product_ids(), ["probe"]);
     assert_eq!(harness.modules(), ["keel", "probe", "testkit"]);
 
@@ -112,7 +112,7 @@ async fn the_probe_bundle_boots_on_the_harness_and_scopes_its_items_by_account()
 
 #[tokio::test]
 async fn the_standard_invariants_hold_for_the_probe_items() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     harness
         .assert_reseller_sees_only_subtree("probe.item.list", &ItemFixture)
         .await;
@@ -124,7 +124,7 @@ async fn the_standard_invariants_hold_for_the_probe_items() {
 
 #[tokio::test]
 async fn the_descriptors_of_the_probe_match_their_snapshots_per_level() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     for level in Level::ALL {
         let names = harness.snapshot_descriptors(level, snapshots_dir());
         let expected: &[&str] = if level < Level::User {
@@ -139,7 +139,7 @@ async fn the_descriptors_of_the_probe_match_their_snapshots_per_level() {
 
 #[tokio::test]
 async fn the_probe_answers_over_http_for_the_principal_named_in_the_test_header() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let server = harness.http().await;
     let saved = server
         .post(

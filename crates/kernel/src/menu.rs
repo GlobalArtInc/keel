@@ -4,7 +4,7 @@ use keel_types::{Badge, BootMenuGroup, BootMenuItem, Principal};
 use crate::http::Projection;
 use crate::registry::{Function, Registry};
 
-pub const SYSTEM_GROUP: MenuGroup = MenuGroup {
+pub(crate) const SYSTEM_GROUP: MenuGroup = MenuGroup {
     id: "system",
     label: "menu.system",
     icon: "settings",
@@ -25,7 +25,7 @@ pub(crate) fn label_of<'a>(node: &'a MenuNode, function: &'a Function) -> Option
     })
 }
 
-pub fn project(registry: &Registry, principal: &Principal) -> Vec<BootMenuGroup> {
+pub(crate) fn project(registry: &Registry, principal: &Principal) -> Vec<BootMenuGroup> {
     let projection = Projection::new(registry, principal);
     let mut nodes: Vec<&MenuNode> = registry.menu().iter().collect();
     nodes.sort_by(|a, b| {

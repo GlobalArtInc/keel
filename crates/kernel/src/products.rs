@@ -1,29 +1,46 @@
-use keel_sdk::ProductBundle;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, TransactionTrait};
+use std::collections::BTreeMap;
+
+use chrono::{DateTime, Utc};
+use keel_sdk::ProductManifest;
+use sea_orm::{ConnectionTrait, DbErr};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::kv;
 use crate::storage::lock;
 
-pub const KEY: &str = "products.enabled";
+pub(crate) const KEY: &str = "products";
+pub const INSTALL: &str = "install";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Enabled {
+    pub enabled_at: DateTime<Utc>,
+    pub by: String,
+}
+
+pub type EnabledSet = BTreeMap<String, Enabled>;
 
 pub(crate) struct Composed {
-    bundles: Vec<&'static ProductBundle>,
+    manifests: Vec<&'static ProductManifest>,
 }
 
 impl Composed {
-    pub(crate) fn new(bundles: &[&'static ProductBundle]) -> Self {
+    pub(crate) fn new(manifests: &[&'static ProductManifest]) -> Self {
         Self {
-            bundles: bundles.to_vec(),
+            manifests: manifests.to_vec(),
         }
     }
 
-    pub(crate) fn bundles(&self) -> &[&'static ProductBundle] {
-        &self.bundles
+    pub(crate) fn manifests(&self) -> &[&'static ProductManifest] {
+        &self.manifests
     }
 
-    pub(crate) fn bundle(&self, id: &str) -> Option<&'static ProductBundle> {
-        self.bundles.iter().copied().find(|bundle| bundle.id == id)
+    pub(crate) fn manifest(&self, id: &str) -> Option<&'static ProductManifest> {
+        self.manifests
+            .iter()
+            .copied()
+            .find(|manifest| manifest.id == id)
     }
 }
 
@@ -35,46 +52,66 @@ pub enum ProductsError {
     Database(#[from] DbErr),
 }
 
-pub async fn enabled<C: ConnectionTrait>(db: &C) -> Result<Vec<String>, ProductsError> {
+pub async fn enabled<C: ConnectionTrait>(db: &C) -> Result<EnabledSet, ProductsError> {
     let Some(value) = kv::get(db, KEY).await? else {
-        return Ok(Vec::new());
+        return Ok(EnabledSet::new());
     };
     parse(&value)
 }
 
-pub async fn set_enabled(db: &DatabaseConnection, ids: &[String]) -> Result<(), ProductsError> {
-    let txn = db.begin().await?;
-    write(&txn, ids).await?;
-    txn.commit().await?;
+pub async fn enable<C: ConnectionTrait>(
+    tx: &C,
+    id: &str,
+    by: &str,
+    now: DateTime<Utc>,
+) -> Result<bool, ProductsError> {
+    let mut set = locked(tx).await?;
+    if set.contains_key(id) {
+        return Ok(false);
+    }
+    set.insert(
+        id.to_owned(),
+        Enabled {
+            enabled_at: now,
+            by: by.to_owned(),
+        },
+    );
+    write(tx, &set).await?;
+    Ok(true)
+}
+
+pub async fn disable<C: ConnectionTrait>(tx: &C, id: &str) -> Result<bool, ProductsError> {
+    let mut set = locked(tx).await?;
+    if set.remove(id).is_none() {
+        return Ok(false);
+    }
+    write(tx, &set).await?;
+    Ok(true)
+}
+
+async fn locked<C: ConnectionTrait>(tx: &C) -> Result<EnabledSet, ProductsError> {
+    tx.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({})", lock::INSTANCE))
+        .await?;
+    enabled(tx).await
+}
+
+async fn write<C: ConnectionTrait>(tx: &C, set: &EnabledSet) -> Result<(), ProductsError> {
+    let value = serde_json::to_value(set).map_err(|error| ProductsError::Stored {
+        reason: error.to_string(),
+    })?;
+    kv::set(tx, KEY, &value).await?;
     Ok(())
 }
 
-pub async fn write<C: ConnectionTrait>(tx: &C, ids: &[String]) -> Result<(), DbErr> {
-    tx.execute_unprepared(&format!("SELECT pg_advisory_xact_lock({})", lock::INSTANCE))
-        .await?;
-    let value = Value::Array(ids.iter().map(|id| Value::String(id.clone())).collect());
-    kv::set(tx, KEY, &value).await
-}
-
-fn parse(value: &Value) -> Result<Vec<String>, ProductsError> {
-    let Value::Array(items) = value else {
+fn parse(value: &Value) -> Result<EnabledSet, ProductsError> {
+    if !value.is_object() {
         return Err(ProductsError::Stored {
-            reason: "not an array".to_owned(),
+            reason: "not an object".to_owned(),
         });
-    };
-    let mut ids = Vec::with_capacity(items.len());
-    for item in items {
-        match item.as_str() {
-            Some(id) if !ids.iter().any(|known: &String| known == id) => ids.push(id.to_owned()),
-            Some(_) => {}
-            None => {
-                return Err(ProductsError::Stored {
-                    reason: format!("{item} is not a product id"),
-                });
-            }
-        }
     }
-    Ok(ids)
+    serde_json::from_value(value.clone()).map_err(|error| ProductsError::Stored {
+        reason: error.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -84,21 +121,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_stored_value_is_a_list_of_ids_without_repeats() {
+    fn the_stored_value_maps_product_ids_to_when_and_by_whom_they_were_enabled() {
+        let set = parse(&json!({
+            "demo": { "enabledAt": "2026-09-12T10:00:00Z", "by": "install" },
+            "dns": { "enabledAt": "2026-09-13T08:30:00+02:00", "by": "alice" }
+        }))
+        .unwrap();
+        assert_eq!(set.keys().collect::<Vec<_>>(), ["demo", "dns"]);
+        assert_eq!(set["demo"].by, INSTALL);
         assert_eq!(
-            parse(&json!(["demo", "dns", "demo"])).unwrap(),
-            ["demo", "dns"]
+            set["demo"].enabled_at.to_rfc3339(),
+            "2026-09-12T10:00:00+00:00"
         );
-        assert!(parse(&json!([])).unwrap().is_empty());
-        let error = parse(&json!({ "demo": true })).unwrap_err();
+        assert_eq!(
+            set["dns"].enabled_at.to_rfc3339(),
+            "2026-09-13T06:30:00+00:00"
+        );
+        assert!(parse(&json!({})).unwrap().is_empty());
+        let error = parse(&json!(["demo"])).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "keel_kv holds an unreadable products.enabled value: not an array"
+            "keel_kv holds an unreadable products value: not an object"
         );
-        let error = parse(&json!(["demo", 7])).unwrap_err();
+        let error = parse(&json!({ "demo": { "by": "install" } })).unwrap_err();
+        assert!(error.to_string().contains("enabledAt"), "{error}");
+        let error = parse(&json!({ "demo": { "enabledAt": "yesterday", "by": "x" } })).unwrap_err();
         assert!(
-            error.to_string().contains("7 is not a product id"),
+            error
+                .to_string()
+                .starts_with("keel_kv holds an unreadable products value: "),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn a_record_serialises_with_camel_case_members_and_an_rfc3339_time() {
+        let record = Enabled {
+            enabled_at: "2026-09-12T10:00:00Z".parse().unwrap(),
+            by: "alice".to_owned(),
+        };
+        assert_eq!(
+            serde_json::to_value(&record).unwrap(),
+            json!({ "enabledAt": "2026-09-12T10:00:00Z", "by": "alice" })
         );
     }
 }

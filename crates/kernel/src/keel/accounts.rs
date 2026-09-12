@@ -57,11 +57,11 @@ pub fn list() -> FunctionDef {
                     .filter_options(["active", "suspended", "deleting"]),
             )
             .column(
-                Column::new("parent", ColumnType::Text)
+                Column::new("parentId", ColumnType::Text)
                     .level(Level::Reseller)
                     .filter_remote("keel.account.options"),
             )
-            .column(Column::new("created_at", ColumnType::Datetime).sortable())
+            .column(Column::new("createdAt", ColumnType::Datetime).sortable())
             .column(Column::new("origin", ColumnType::Text).level(Level::Admin))
             .action(
                 Action::new("create", ActionRole::New)
@@ -109,7 +109,7 @@ pub fn create() -> FunctionDef {
             account::ActiveModel {
                 id: Set(id.to_string()),
                 kind: Set(params.kind.clone()),
-                parent: Set(Some(parent.id.clone())),
+                parent_id: Set(Some(parent.id.clone())),
                 path: Set(acl::child_path(&parent.path, &id.to_string())),
                 state: Set(state(AccountState::Active)),
                 external_id: Set(None),
@@ -136,7 +136,7 @@ pub fn update() -> FunctionDef {
             let id = params.id;
             let tx = call.tx()?;
             let current = load(tx, &id.to_string()).await?;
-            if current.parent.is_none() {
+            if current.parent_id.is_none() {
                 return Err(KeelError::conflict("keel.account.error.root_immutable"));
             }
             let kind = match &params.kind {
@@ -149,7 +149,7 @@ pub fn update() -> FunctionDef {
             let mut new_parent = None;
             if let Some(requested) = params.parent {
                 let parent = resolve_parent(&call, Some(requested)).await?;
-                if Some(parent.to_string()) != current.parent {
+                if Some(parent.to_string()) != current.parent_id {
                     let parent = load(tx, &parent.to_string())
                         .await
                         .map_err(|error| on_field(error, "parent"))?;
@@ -174,7 +174,7 @@ pub fn update() -> FunctionDef {
                 ..Default::default()
             };
             if let Some(parent) = &new_parent {
-                row.parent = Set(Some(parent.id.clone()));
+                row.parent_id = Set(Some(parent.id.clone()));
                 row.path = Set(path.clone());
             }
             row.update(tx).await?;

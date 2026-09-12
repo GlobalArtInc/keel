@@ -4,12 +4,9 @@ use keel::prelude::*;
 use keel::sdk::serde_json;
 use keel::types::{Envelope, ErrorCode};
 use keel::{Change, Config, Runtime};
-use keel_demo::PRODUCT;
+use keel_demo::MANIFEST;
 use keel_demo::note::FUNCTIONS;
-use keel_testkit::kernel::config::{DATA_DIR, DEFAULT_LISTEN, SOCKET};
-use keel_testkit::kernel::ctl::{self, Out};
-use keel_testkit::kernel::socket::{Client, OWNER_LOGIN};
-use keel_testkit::{CallOptions, TestDatabase, tokio};
+use keel_testkit::{TestDatabase, TestSocket, Who, tokio};
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -23,9 +20,12 @@ struct Site {
 async fn site() -> Site {
     let database = TestDatabase::create().await;
     let mut config = Config::parse(None, |_| None).expect("the platform defaults");
-    assert_eq!(config.listen, DEFAULT_LISTEN);
-    assert_eq!(config.socket.as_os_str(), SOCKET);
-    assert_eq!(config.data_dir.as_os_str(), DATA_DIR);
+    assert_eq!(config.socket.as_os_str(), "/run/keel/core.sock");
+    assert_eq!(config.data_dir.as_os_str(), "/var/lib/keel");
+    assert_eq!(
+        config.database.expose(),
+        "postgres:///keel?host=/run/postgresql"
+    );
     let dir = tempfile::tempdir().expect("a temporary directory");
     config.listen = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
     config.socket = dir.path().join("run").join("core.sock");
@@ -84,7 +84,7 @@ async fn http(addr: SocketAddr, method: &str, path: &str, body: &str) -> (u16, V
 async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_on_the_socket_and_over_http()
  {
     let site = site().await;
-    let runtime = Runtime::new().product(&PRODUCT);
+    let runtime = Runtime::new().product(&MANIFEST);
     assert_eq!(
         runtime
             .enable_product(&site.config, "demo")
@@ -109,61 +109,46 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
         .expect("the runtime starts");
     assert_eq!(running.products(), ["demo"]);
     assert_eq!(running.modules(), ["keel", "note"]);
-    let mut client = Client::connect(running.socket())
-        .await
-        .expect("the socket accepts the kernel's own uid");
-    let listed = client
-        .call("note.list", json!({}), CallOptions::default())
-        .await
-        .expect("the socket answers");
+    let socket = TestSocket::at(running.socket());
+    let listed = socket.call("note.list", json!({})).await;
     let Envelope::Ok { data, meta } = listed else {
         panic!("expected an ok envelope: {listed:?}");
     };
     assert_eq!(data["total"], json!(0));
     assert_eq!(
         meta.principal.map(|principal| principal.login),
-        Some(OWNER_LOGIN.to_owned())
+        Some(Who::Owner.login().to_owned())
     );
-    let boot = client.boot().await.expect("the socket answers boot");
+    let boot = socket.boot().await;
     let Envelope::Ok { data: boot, .. } = boot else {
         panic!("expected an ok envelope: {boot:?}");
     };
     assert_eq!(boot.products[0].id, "demo");
+    assert_eq!(boot.products[0].brand.hue, 150);
     assert_eq!(boot.brand.name, "product.demo.brand");
     assert_eq!(boot.menu[0].id, "demo");
 
-    let edited = ctl::run(
-        running.socket(),
-        &ctl::Request {
-            func: "note.edit".into(),
-            params: ctl::params(["title=x"]).expect("a pair"),
-            out: Out::Json,
-            lang: "en".into(),
-        },
-    )
-    .await
-    .expect("ctl answers");
+    let edited = socket.ctl_json("note.edit", &["title=x"], "en").await;
     assert!(edited.ok, "{}", edited.text);
     let envelope: Value = serde_json::from_str(&edited.text).expect("an envelope");
     assert_eq!(envelope["ok"], json!(true));
     assert_eq!(envelope["data"]["title"], json!("x"));
-    assert_eq!(envelope["meta"]["principal"]["login"], json!(OWNER_LOGIN));
-    let table = ctl::run(
-        running.socket(),
-        &ctl::Request {
-            func: "note.list".into(),
-            params: json!({}),
-            out: Out::Table,
-            lang: "ru".into(),
-        },
-    )
-    .await
-    .expect("ctl answers");
+    assert_eq!(
+        envelope["meta"]["principal"]["login"],
+        json!(Who::Owner.login())
+    );
+    let table = socket.ctl_table("note.list", &[], "ru").await;
     assert!(table.ok, "{}", table.text);
+    let ru: Value = serde_json::from_str(include_str!("../i18n/note/ru.json")).expect("ru");
     let lines: Vec<&str> = table.text.lines().collect();
     assert_eq!(
         lines[0].split_whitespace().collect::<Vec<_>>(),
-        ["Заголовок", "Обновлена"],
+        [
+            ru["note"]["column"]["title"].as_str().expect("a label"),
+            ru["note"]["column"]["updated_at"]
+                .as_str()
+                .expect("a label"),
+        ],
         "{}",
         table.text
     );
@@ -181,7 +166,6 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     assert_eq!(body["products"][0]["id"], json!("demo"));
     assert_eq!(body["brand"]["name"], json!("product.demo.brand"));
     assert_eq!(body["principal"], Value::Null);
-    drop(client);
     running.stop().await.expect("the runtime stops");
     assert!(!site.config.socket.exists());
     site.finish().await;
@@ -190,7 +174,7 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
 #[tokio::test]
 async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_created() {
     let site = site().await;
-    let runtime = Runtime::new().product(&PRODUCT);
+    let runtime = Runtime::new().product(&MANIFEST);
     let states = runtime
         .list_products(&site.config)
         .await
@@ -209,14 +193,9 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
         .expect("the runtime starts without the bundle");
     assert_eq!(running.products(), &[] as &[String]);
     assert_eq!(running.modules(), ["keel"]);
-    let mut client = Client::connect(running.socket())
-        .await
-        .expect("the socket answers");
+    let socket = TestSocket::at(running.socket());
     for function in FUNCTIONS {
-        let answer = client
-            .call(function, json!({}), CallOptions::default())
-            .await
-            .expect("the socket answers");
+        let answer = socket.call(function, json!({})).await;
         let Envelope::Err { error } = answer else {
             panic!("{function} is known although demo is disabled: {answer:?}");
         };
@@ -227,7 +206,6 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["products"], json!([]));
     assert_eq!(body["brand"]["name"], json!("keel.brand"));
-    drop(client);
     running.stop().await.expect("the runtime stops");
     assert!(site.tables().await.is_empty());
     assert_eq!(

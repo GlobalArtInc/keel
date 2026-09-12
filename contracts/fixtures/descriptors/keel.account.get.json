@@ -39,7 +39,7 @@
       "kind": {
         "type": "string"
       },
-      "parent": {
+      "parentId": {
         "type": [
           "string",
           "null"
@@ -57,7 +57,7 @@
       "state": {
         "type": "string"
       },
-      "external_id": {
+      "externalId": {
         "type": [
           "string",
           "null"
@@ -75,11 +75,11 @@
           "level": "admin"
         }
       },
-      "created_at": {
+      "createdAt": {
         "type": "string",
         "format": "date-time"
       },
-      "updated_at": {
+      "updatedAt": {
         "type": "string",
         "format": "date-time"
       }
@@ -89,8 +89,8 @@
       "kind",
       "path",
       "state",
-      "created_at",
-      "updated_at"
+      "createdAt",
+      "updatedAt"
     ]
   }
 }

@@ -1,7 +1,9 @@
 use std::fmt;
 
 use keel_kernel::{Composition, Config, Storage, products};
-use keel_sdk::ProductBundle;
+use keel_sdk::ProductManifest;
+use keel_sdk::chrono::Utc;
+use keel_sdk::sea_orm::TransactionTrait;
 use tokio::net::UnixStream;
 
 use crate::VERSION;
@@ -15,7 +17,7 @@ pub struct ProductState {
     pub enabled: bool,
 }
 
-pub(crate) struct Enabled {
+pub(crate) struct Stored {
     pub(crate) kernel: Vec<String>,
     pub(crate) ids: Vec<String>,
 }
@@ -50,7 +52,7 @@ impl fmt::Display for Change {
 }
 
 impl Runtime {
-    pub(crate) fn bundle(&self, id: &str) -> Option<&'static ProductBundle> {
+    pub(crate) fn bundle(&self, id: &str) -> Option<&'static ProductManifest> {
         self.products.iter().copied().find(|bundle| bundle.id == id)
     }
 
@@ -66,14 +68,18 @@ impl Runtime {
         for module in &self.modules {
             composition = composition.module(module);
         }
-        for id in enabled {
-            let bundle = self.bundle(id).ok_or_else(|| Error::UnknownProduct {
-                id: id.clone(),
-                known: self.known_ids(),
-            })?;
-            composition = composition.product(bundle);
+        for manifest in &self.products {
+            composition = composition.product(manifest);
         }
-        Ok(composition)
+        for id in enabled {
+            if self.bundle(id).is_none() {
+                return Err(Error::UnknownProduct {
+                    id: id.clone(),
+                    known: self.known_ids(),
+                });
+            }
+        }
+        Ok(composition.enabled(enabled.iter().cloned()))
     }
 
     pub async fn list_products(&self, config: &Config) -> Result<Vec<ProductState>, Error> {
@@ -93,13 +99,19 @@ impl Runtime {
         refuse_while_running(config).await?;
         let storage = Storage::connect(config).await?;
         let outcome = async {
-            let mut enabled = self.enabled(&storage).await?.ids;
-            if enabled.iter().any(|known| known == id) {
-                return Ok(Change::AlreadyEnabled);
-            }
-            enabled.push(id.to_owned());
-            products::set_enabled(storage.db(), &enabled).await?;
-            Ok(Change::Enabled)
+            storage.migrate().await?;
+            let txn = storage
+                .db()
+                .begin()
+                .await
+                .map_err(products::ProductsError::from)?;
+            let changed = products::enable(&txn, id, products::INSTALL, Utc::now()).await?;
+            txn.commit().await.map_err(products::ProductsError::from)?;
+            Ok(if changed {
+                Change::Enabled
+            } else {
+                Change::AlreadyEnabled
+            })
         }
         .await;
         storage.close().await?;
@@ -110,30 +122,34 @@ impl Runtime {
         refuse_while_running(config).await?;
         let storage = Storage::connect(config).await?;
         let outcome = async {
-            let mut enabled = self.enabled(&storage).await?.ids;
-            let before = enabled.len();
-            enabled.retain(|known| known != id);
-            if enabled.len() == before {
-                if self.bundle(id).is_none() {
-                    return Err(Error::UnknownProduct {
-                        id: id.to_owned(),
-                        known: self.known_ids(),
-                    });
-                }
-                return Ok(Change::AlreadyDisabled);
+            storage.migrate().await?;
+            let txn = storage
+                .db()
+                .begin()
+                .await
+                .map_err(products::ProductsError::from)?;
+            let changed = products::disable(&txn, id).await?;
+            txn.commit().await.map_err(products::ProductsError::from)?;
+            if changed {
+                return Ok(Change::Disabled);
             }
-            products::set_enabled(storage.db(), &enabled).await?;
-            Ok(Change::Disabled)
+            if self.bundle(id).is_none() {
+                return Err(Error::UnknownProduct {
+                    id: id.to_owned(),
+                    known: self.known_ids(),
+                });
+            }
+            Ok(Change::AlreadyDisabled)
         }
         .await;
         storage.close().await?;
         outcome
     }
 
-    pub(crate) async fn enabled(&self, storage: &Storage) -> Result<Enabled, Error> {
+    pub(crate) async fn enabled(&self, storage: &Storage) -> Result<Stored, Error> {
         let kernel = storage.migrate().await?;
-        let ids = products::enabled(storage.db()).await?;
-        Ok(Enabled { kernel, ids })
+        let ids = products::enabled(storage.db()).await?.into_keys().collect();
+        Ok(Stored { kernel, ids })
     }
 
     async fn states(&self, storage: &Storage) -> Result<Vec<ProductState>, Error> {

@@ -202,14 +202,14 @@ async fn a_bare_harness_seeds_the_fixture_tree_and_answers_by_level() {
         .call(Who::Owner, "keel.account.get", json!({ "id": accounts.a1 }))
         .await;
     let a1 = a1.data().expect("the account a1");
-    assert_eq!(a1["parent"], json!(accounts.reseller.to_string()));
+    assert_eq!(a1["parentId"], json!(accounts.reseller.to_string()));
     assert_eq!(a1["kind"], json!("user"));
     assert_eq!(
         a1["path"],
         json!(format!("/{}/{}/", accounts.reseller, accounts.a1))
     );
     assert_eq!(
-        a1["created_at"],
+        a1["createdAt"],
         json!(
             harness
                 .clock()
@@ -225,7 +225,7 @@ async fn a_bare_harness_seeds_the_fixture_tree_and_answers_by_level() {
         )
         .await;
     assert_eq!(
-        unrelated.data().expect("the account u")["parent"],
+        unrelated.data().expect("the account u")["parentId"],
         json!(Id::ROOT_ACCOUNT.to_string())
     );
 
@@ -307,7 +307,7 @@ async fn a_bare_harness_seeds_the_fixture_tree_and_answers_by_level() {
         )
         .await;
     assert_eq!(
-        later.data().expect("the account")["created_at"],
+        later.data().expect("the account")["createdAt"],
         json!(
             harness
                 .clock()
@@ -434,11 +434,7 @@ async fn the_http_server_maps_the_test_header_to_the_fixture_principals() {
         .await;
     assert_eq!(nobody.status, 401, "{}", nobody.body);
     assert_eq!(nobody.json()["error"]["code"], json!("unauthenticated"));
-    let cookie = format!(
-        "{}={}",
-        keel_testkit::kernel::http::SESSION_COOKIE,
-        Who::Admin
-    );
+    let cookie = format!("{}={}", keel_testkit::SESSION_COOKIE, Who::Admin);
     let session = server
         .request(
             "GET",

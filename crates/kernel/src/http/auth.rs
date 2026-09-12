@@ -52,7 +52,7 @@ pub(super) async fn authenticate(
         .uri()
         .authority()
         .map(|authority| authority.as_str());
-    if !matches!(credential, Some(Credential::Bearer(_))) && cross_site(headers, authority) {
+    if matches!(credential, Some(Credential::Session(_))) && cross_site(headers, authority) {
         return reply::error(KeelError::forbidden("keel.error.cross_site"), &request_id);
     }
     let principal = match (credential, &live.authenticator) {
@@ -105,9 +105,6 @@ fn session_cookie(headers: &HeaderMap) -> Option<&str> {
 }
 
 pub(super) fn cross_site(headers: &HeaderMap, authority: Option<&str>) -> bool {
-    if headers.get(COOKIE).is_none() {
-        return false;
-    }
     if headers
         .get(SEC_FETCH_SITE)
         .and_then(|value| value.to_str().ok())
@@ -187,39 +184,25 @@ mod tests {
     }
 
     #[test]
-    fn cookie_requests_are_refused_cross_site_or_from_a_foreign_origin() {
+    fn a_request_is_cross_site_when_the_browser_says_so_or_the_origin_is_foreign() {
         let refused = |pairs: &[(&'static str, &'static str)]| cross_site(&headers(pairs), None);
-        assert!(!refused(&[("origin", "https://evil.example")]));
+        assert!(refused(&[("origin", "https://evil.example")]));
+        assert!(refused(&[("sec-fetch-site", "cross-site")]));
+        assert!(!refused(&[("sec-fetch-site", "same-origin")]));
         assert!(refused(&[
-            ("cookie", "a=b"),
-            ("sec-fetch-site", "cross-site")
-        ]));
-        assert!(!refused(&[
-            ("cookie", "a=b"),
-            ("sec-fetch-site", "same-origin")
-        ]));
-        assert!(refused(&[
-            ("cookie", "a=b"),
             ("host", "panel.example:8443"),
             ("origin", "https://evil.example")
         ]));
         assert!(!refused(&[
-            ("cookie", "a=b"),
             ("host", "panel.example:8443"),
             ("origin", "https://PANEL.example:8443")
         ]));
-        assert!(refused(&[
-            ("cookie", "a=b"),
-            ("host", "panel.example"),
-            ("origin", "null")
-        ]));
-        assert!(refused(&[
-            ("cookie", "a=b"),
-            ("origin", "https://panel.example")
-        ]));
-        assert!(!refused(&[("cookie", "a=b"), ("host", "panel.example")]));
+        assert!(refused(&[("host", "panel.example"), ("origin", "null")]));
+        assert!(refused(&[("origin", "https://panel.example")]));
+        assert!(!refused(&[("host", "panel.example")]));
+        assert!(!refused(&[]));
         assert!(!cross_site(
-            &headers(&[("cookie", "a=b"), ("origin", "https://panel.example")]),
+            &headers(&[("origin", "https://panel.example")]),
             Some("panel.example")
         ));
     }

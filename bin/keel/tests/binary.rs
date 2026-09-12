@@ -185,9 +185,17 @@ mod demo {
         assert_eq!(envelope["meta"]["principal"]["login"], json!("owner"));
         let table = site.ok(&["ctl", "note.list", "--out", "table", "--lang", "ru"]);
         let lines: Vec<&str> = table.lines().collect();
+        let ru: Value =
+            serde_json::from_str(include_str!("../../../products/demo/i18n/note/ru.json"))
+                .expect("the note ru dictionary");
         assert_eq!(
             lines[0].split_whitespace().collect::<Vec<_>>(),
-            ["Заголовок", "Обновлена"],
+            [
+                ru["note"]["column"]["title"].as_str().expect("a label"),
+                ru["note"]["column"]["updated_at"]
+                    .as_str()
+                    .expect("a label"),
+            ],
             "{table}"
         );
         assert!(lines[1].starts_with("x "), "{table}");

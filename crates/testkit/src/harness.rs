@@ -10,7 +10,7 @@ use keel_kernel::{
     CallOptions, Composition, Dispatcher, Http, HttpOptions, Kernel, Readiness, Registry, Reply,
     Storage,
 };
-use keel_sdk::{ModuleDef, ProductBundle};
+use keel_sdk::{ModuleDef, ProductManifest};
 use keel_types::{Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -25,7 +25,7 @@ use crate::snapshots;
 #[derive(Default)]
 pub struct Builder {
     modules: Vec<&'static ModuleDef>,
-    products: Vec<&'static ProductBundle>,
+    products: Vec<&'static ProductManifest>,
     clock: Option<DateTime<Utc>>,
 }
 
@@ -70,7 +70,7 @@ impl Builder {
         self
     }
 
-    pub fn product(mut self, bundle: &'static ProductBundle) -> Self {
+    pub fn product(mut self, bundle: &'static ProductManifest) -> Self {
         self.products.push(bundle);
         self
     }

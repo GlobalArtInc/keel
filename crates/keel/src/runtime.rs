@@ -10,7 +10,7 @@ use keel_kernel::socket::Serving;
 use keel_kernel::{
     Config, Dispatcher, Http, HttpOptions, Instance, Kernel, Readiness, Served, Socket, Storage,
 };
-use keel_sdk::{ModuleDef, ProductBundle};
+use keel_sdk::{ModuleDef, ProductManifest};
 
 use crate::VERSION;
 use crate::error::Error;
@@ -18,7 +18,7 @@ use crate::error::Error;
 #[derive(Clone, Debug, Default)]
 pub struct Runtime {
     pub(crate) modules: Vec<&'static ModuleDef>,
-    pub(crate) products: Vec<&'static ProductBundle>,
+    pub(crate) products: Vec<&'static ProductManifest>,
 }
 
 pub struct Running {
@@ -41,7 +41,7 @@ impl Runtime {
         self
     }
 
-    pub fn product(mut self, bundle: &'static ProductBundle) -> Self {
+    pub fn product(mut self, bundle: &'static ProductManifest) -> Self {
         self.products.push(bundle);
         self
     }

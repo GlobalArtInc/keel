@@ -36,7 +36,7 @@
       "id": {
         "type": "string"
       },
-      "account": {
+      "accountId": {
         "type": "string"
       },
       "login": {
@@ -54,7 +54,7 @@
       "lang": {
         "type": "string"
       },
-      "external_id": {
+      "externalId": {
         "type": [
           "string",
           "null"
@@ -72,30 +72,30 @@
           "level": "admin"
         }
       },
-      "acl_gen": {
+      "aclGen": {
         "type": "integer",
         "format": "int32"
       },
-      "created_at": {
+      "createdAt": {
         "type": "string",
         "format": "date-time"
       },
-      "updated_at": {
+      "updatedAt": {
         "type": "string",
         "format": "date-time"
       }
     },
     "required": [
       "id",
-      "account",
+      "accountId",
       "login",
       "level",
       "role",
       "state",
       "lang",
-      "acl_gen",
-      "created_at",
-      "updated_at"
+      "aclGen",
+      "createdAt",
+      "updatedAt"
     ]
   }
 }

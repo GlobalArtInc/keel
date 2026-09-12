@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
-use keel_sdk::{ModuleDef, ProductBundle};
+use keel_sdk::{ModuleDef, ProductManifest};
 
 use crate::clock::{Clock, SystemClock};
 use crate::keel;
@@ -13,7 +13,8 @@ pub const API: u32 = keel_types::DESCRIPTOR_VERSION;
 
 pub struct Composition {
     modules: Vec<&'static ModuleDef>,
-    products: Vec<&'static ProductBundle>,
+    manifests: Vec<&'static ProductManifest>,
+    enabled: Option<Vec<String>>,
     version: String,
     clock: Arc<dyn Clock>,
 }
@@ -21,7 +22,8 @@ pub struct Composition {
 #[derive(Clone)]
 pub struct Graph {
     modules: Vec<&'static ModuleDef>,
-    products: Vec<&'static ProductBundle>,
+    manifests: Vec<&'static ProductManifest>,
+    products: Vec<&'static ProductManifest>,
     version: String,
     clock: Arc<dyn Clock>,
 }
@@ -64,6 +66,8 @@ pub enum Problem {
     },
     #[error("product {id} is composed twice")]
     DuplicateProduct { id: String },
+    #[error("product {id} is enabled but not carried by this binary; it carries {}", carried(.known))]
+    ProductUnknown { id: String, known: Vec<String> },
     #[error("product id {id:?} is not a valid identifier: {reason}")]
     ProductId { id: String, reason: &'static str },
     #[error("product {product} was built for api {found}; this kernel serves api {expected}")]
@@ -84,7 +88,8 @@ impl Default for Composition {
     fn default() -> Self {
         Self {
             modules: Vec::new(),
-            products: Vec::new(),
+            manifests: Vec::new(),
+            enabled: None,
             version: env!("CARGO_PKG_VERSION").to_owned(),
             clock: Arc::new(SystemClock),
         }
@@ -101,8 +106,17 @@ impl Composition {
         self
     }
 
-    pub fn product(mut self, bundle: &'static ProductBundle) -> Self {
-        self.products.push(bundle);
+    pub fn product(mut self, manifest: &'static ProductManifest) -> Self {
+        self.manifests.push(manifest);
+        self
+    }
+
+    pub fn enabled<I, S>(mut self, ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.enabled = Some(ids.into_iter().map(Into::into).collect());
         self
     }
 
@@ -118,8 +132,8 @@ impl Composition {
 
     pub fn resolve(self) -> Result<Graph, CompositionError> {
         let mut problems = Vec::new();
-        let mut products: Vec<&'static ProductBundle> = Vec::new();
-        for bundle in &self.products {
+        let mut manifests: Vec<&'static ProductManifest> = Vec::new();
+        for bundle in &self.manifests {
             if let Err(reason) = check_id(bundle.id) {
                 problems.push(Problem::ProductId {
                     id: bundle.id.to_owned(),
@@ -147,14 +161,35 @@ impl Composition {
                     });
                 }
             }
-            if products.iter().any(|known| known.id == bundle.id) {
+            if manifests.iter().any(|known| known.id == bundle.id) {
                 problems.push(Problem::DuplicateProduct {
                     id: bundle.id.to_owned(),
                 });
                 continue;
             }
-            products.push(bundle);
+            manifests.push(bundle);
         }
+        let products: Vec<&'static ProductManifest> = match &self.enabled {
+            None => manifests.clone(),
+            Some(enabled) => {
+                for id in enabled {
+                    if !manifests.iter().any(|manifest| manifest.id == id) {
+                        problems.push(Problem::ProductUnknown {
+                            id: id.clone(),
+                            known: manifests
+                                .iter()
+                                .map(|manifest| manifest.id.to_owned())
+                                .collect(),
+                        });
+                    }
+                }
+                manifests
+                    .iter()
+                    .copied()
+                    .filter(|manifest| enabled.iter().any(|id| id == manifest.id))
+                    .collect()
+            }
+        };
         let mut modules = self.modules.clone();
         let mut origin: BTreeMap<&'static str, &'static str> = BTreeMap::new();
         for bundle in &products {
@@ -215,6 +250,7 @@ impl Composition {
         if problems.is_empty() {
             Ok(Graph {
                 modules: ordered,
+                manifests,
                 products,
                 version: self.version,
                 clock: self.clock,
@@ -222,6 +258,14 @@ impl Composition {
         } else {
             Err(CompositionError { problems })
         }
+    }
+}
+
+fn carried(known: &[String]) -> String {
+    if known.is_empty() {
+        "no product".to_owned()
+    } else {
+        known.join(", ")
     }
 }
 
@@ -355,7 +399,11 @@ impl Graph {
         self.modules.iter().map(|def| def.id).collect()
     }
 
-    pub fn products(&self) -> &[&'static ProductBundle] {
+    pub fn manifests(&self) -> &[&'static ProductManifest] {
+        &self.manifests
+    }
+
+    pub fn products(&self) -> &[&'static ProductManifest] {
         &self.products
     }
 
@@ -606,7 +654,7 @@ mod tests {
 
     macro_rules! bundle {
         ($name:ident, $id:literal, $api:expr, [$($module:expr),*], [$($kind:literal),*]) => {
-            static $name: ProductBundle = ProductBundle {
+            static $name: ProductManifest = ProductManifest {
                 id: $id,
                 name: "product.x.brand",
                 version: "0.1.0",

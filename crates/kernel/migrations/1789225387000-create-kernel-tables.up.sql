@@ -56,6 +56,7 @@ CREATE TABLE keel_outbox (
     seq          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id           TEXT NOT NULL UNIQUE,
     type         TEXT NOT NULL,
+    module       TEXT NOT NULL,
     at           TIMESTAMPTZ NOT NULL,
     actor_json   JSONB,
     subject_json JSONB,

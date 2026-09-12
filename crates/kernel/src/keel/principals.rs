@@ -60,12 +60,12 @@ pub fn list() -> FunctionDef {
                     .filter_options(["active", "suspended"]),
             )
             .column(
-                Column::new("account", ColumnType::Text)
+                Column::new("accountId", ColumnType::Text)
                     .level(Level::Reseller)
                     .filter_remote("keel.account.options"),
             )
             .column(Column::new("lang", ColumnType::Text))
-            .column(Column::new("created_at", ColumnType::Datetime).sortable())
+            .column(Column::new("createdAt", ColumnType::Datetime).sortable())
             .column(Column::new("origin", ColumnType::Text).level(Level::Admin))
             .action(
                 Action::new("create", ActionRole::New)
@@ -111,7 +111,7 @@ pub fn create() -> FunctionDef {
             let now = call.require::<dyn Clock>()?.now();
             principal::ActiveModel {
                 id: Set(id.to_string()),
-                account: Set(account.id),
+                account_id: Set(account.id),
                 login: Set(params.login.clone()),
                 level: Set(params.level.as_str().to_owned()),
                 role: Set(params
@@ -159,19 +159,19 @@ pub fn update() -> FunctionDef {
             let level = params.level.unwrap_or(current_level);
             let account_id = match params.account {
                 Some(requested) => call.resolve_account(Some(requested)).await?.to_string(),
-                None => current.account.clone(),
+                None => current.account_id.clone(),
             };
-            if level != current_level || account_id != current.account {
+            if level != current_level || account_id != current.account_id {
                 let account = accounts::load(tx, &account_id).await?;
                 check_level(call.principal(), level, &account)?;
             }
             let role = params.role.clone().unwrap_or_else(|| current.role.clone());
             let rights_changed =
-                level != current_level || role != current.role || account_id != current.account;
+                level != current_level || role != current.role || account_id != current.account_id;
             let mut update = principal::Entity::update_many()
                 .col_expr(principal::Column::Level, Expr::value(level.as_str()))
                 .col_expr(principal::Column::Role, Expr::value(role))
-                .col_expr(principal::Column::Account, Expr::value(account_id))
+                .col_expr(principal::Column::AccountId, Expr::value(account_id))
                 .col_expr(
                     principal::Column::UpdatedAt,
                     Expr::value(call.require::<dyn Clock>()?.now()),

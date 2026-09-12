@@ -12,8 +12,8 @@
     "login": "Login",
     "role": "Role",
     "lang": "Language",
-    "created_at": "Created",
-    "updated_at": "Updated",
+    "createdAt": "Created",
+    "updatedAt": "Updated",
     "column": {
       "id": "Id",
       "name": "Name",
@@ -23,8 +23,8 @@
       "login": "Login",
       "role": "Role",
       "lang": "Language",
-      "created_at": "Created",
-      "updated_at": "Updated"
+      "createdAt": "Created",
+      "updatedAt": "Updated"
     },
     "action": {
       "create": "New",
@@ -59,8 +59,8 @@
         "id": "Account",
         "kind": "Kind",
         "state": "State",
-        "parent": "Parent",
-        "created_at": "Created",
+        "parentId": "Parent",
+        "createdAt": "Created",
         "origin": "Origin"
       },
       "action": {
@@ -93,9 +93,9 @@
         "level": "Level",
         "role": "Role",
         "state": "State",
-        "account": "Account",
+        "accountId": "Account",
         "lang": "Language",
-        "created_at": "Created",
+        "createdAt": "Created",
         "origin": "Origin"
       },
       "action": {
@@ -122,7 +122,9 @@
         "id": "Product",
         "name": "Name",
         "version": "Version",
-        "state": "State"
+        "state": "State",
+        "enabledAt": "Enabled at",
+        "enabledBy": "Enabled by"
       },
       "action": {
         "enable": "Enable",

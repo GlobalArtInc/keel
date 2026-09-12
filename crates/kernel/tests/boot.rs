@@ -4,7 +4,6 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, ETAG, IF_NONE_MATCH};
 use axum::http::{Request, StatusCode};
-use keel_kernel::boot::{PLATFORM_BRAND, PLATFORM_CHROMA, PLATFORM_HUE};
 use keel_kernel::dispatcher::{CallOptions, Dispatcher, Reply};
 use keel_kernel::loader::{BootError, FreezeProblem};
 use keel_kernel::socket::{Client, OWNER_LOGIN, Socket, owner};
@@ -25,11 +24,11 @@ const EN: &str = r#"{
     "probe": { "item": { "list": { "title": "Items" }, "empty": "No items", "public": { "title": "Public" } } },
     "menu": { "probe": "Probe" }
 }"#;
-const RU: &str =
-    r#"{ "probe": { "item": { "list": { "title": "Записи" } } }, "menu": { "probe": "Проба" } }"#;
+const RU: &str = r#"{ "probe": { "item": { "list": { "title": "ru:Items" } } }, "menu": { "probe": "ru:Probe" } }"#;
 const BUNDLE_EN: &str =
     r#"{ "product": { "probe": { "brand": "Probe", "level": { "user": "Customer" } } } }"#;
-const BUNDLE_RU: &str = r#"{ "product": { "probe": { "brand": "Проба" } } }"#;
+const BUNDLE_RU: &str = r#"{ "product": { "probe": { "brand": "ru:Probe" } } }"#;
+const KERNEL_RU: &str = include_str!("../i18n/ru.json");
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Item {
@@ -155,7 +154,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     Ok(())
 }
 
-static PROBE_BUNDLE: ProductBundle = ProductBundle {
+static PROBE_BUNDLE: ProductManifest = ProductManifest {
     id: "probe",
     name: "product.probe.brand",
     version: "0.1.0",
@@ -177,10 +176,16 @@ static PROBE_BUNDLE: ProductBundle = ProductBundle {
         disabled: &[],
     },
     account_kinds: &["user"],
-    editions: &[Edition {
-        id: "lite",
-        features: &[],
-    }],
+    editions: &[
+        Edition {
+            id: "lite",
+            features: &["probe.items"],
+        },
+        Edition {
+            id: "pro",
+            features: &["probe.items", "probe.export"],
+        },
+    ],
     i18n: &[("en", BUNDLE_EN), ("ru", BUNDLE_RU)],
 };
 
@@ -320,7 +325,7 @@ impl Bench {
             .db()
             .query_one(Statement::from_string(
                 DbBackend::Postgres,
-                "SELECT value FROM keel_kv WHERE key = 'products.enabled'",
+                "SELECT value FROM keel_kv WHERE key = 'products'",
             ))
             .await
             .expect("the kv row is read");
@@ -353,12 +358,18 @@ fn paths(boot: &Boot) -> Vec<(Option<&str>, Vec<&str>)> {
 async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand_and_both_groups() {
     let bench = start(Composition::new().version("7.7.7").product(&PROBE_BUNDLE)).await;
     let boot = bench.over_socket().await;
-    assert_eq!(boot.platform.version, "7.7.7");
-    assert_eq!(boot.platform.api, keel_types::DESCRIPTOR_VERSION);
+    assert_eq!(boot.keel.version, "7.7.7");
+    assert_eq!(boot.keel.api, keel_types::DESCRIPTOR_VERSION);
     assert_eq!(boot.products.len(), 1);
     assert_eq!(boot.products[0].id, "probe");
     assert_eq!(boot.products[0].name, "product.probe.brand");
-    assert!(boot.products[0].edition.is_none());
+    assert_eq!(boot.products[0].edition.as_deref(), Some("lite"));
+    assert_eq!(boot.products[0].brand.name, "product.probe.brand");
+    assert_eq!(
+        boot.products[0].brand.logo.as_deref(),
+        Some("/brand/probe/logo.svg")
+    );
+    assert_eq!(boot.products[0].brand.hue, 30);
     assert_eq!(boot.brand.name, "product.probe.brand");
     assert_eq!(boot.brand.logo.as_deref(), Some("/brand/logo.svg"));
     assert_eq!(boot.brand.hue, 30);
@@ -375,7 +386,10 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
         paths(&boot),
         [
             (Some("probe"), vec!["probe/public", "probe/items"]),
-            (None, vec!["system/accounts", "system/principals"]),
+            (
+                None,
+                vec!["system/accounts", "system/principals", "system/products"]
+            ),
         ]
     );
     let probe = &boot.menu[0];
@@ -400,7 +414,7 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
     assert_eq!(system.items[0].label, "keel.account.list.title");
     assert_eq!(system.items[0].func, "keel.account.list");
     assert!(boot.meta.starts_with("m-"), "{}", boot.meta);
-    assert!(boot.features.is_empty());
+    assert_eq!(boot.features, ["probe.items"]);
     assert!(boot.views.is_empty());
     assert!(boot.dashboard.is_empty());
     assert!(boot.license.is_none());
@@ -418,15 +432,18 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
     let bench = start(Composition::new()).await;
     let boot = bench.over_socket().await;
     assert!(boot.products.is_empty());
-    assert_eq!(boot.brand.name, PLATFORM_BRAND);
+    assert_eq!(boot.brand.name, "keel.brand");
     assert!(boot.brand.logo.is_none());
-    assert_eq!(boot.brand.hue, PLATFORM_HUE);
-    assert_eq!(boot.brand.chroma, PLATFORM_CHROMA);
+    assert_eq!(boot.brand.hue, 220);
+    assert_eq!(boot.brand.chroma, 0.08);
     assert_eq!(
         paths(&boot),
-        [(None, vec!["system/accounts", "system/principals"])]
+        [(
+            None,
+            vec!["system/accounts", "system/principals", "system/products"]
+        )]
     );
-    assert_eq!(boot.platform.version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(boot.keel.version, env!("CARGO_PKG_VERSION"));
     bench.finish().await;
 }
 
@@ -528,14 +545,19 @@ async fn the_catalogue_merges_the_bundle_dictionaries_and_ru_falls_back_to_en_pe
     let ru = bench.get("/api/v1/i18n?lang=ru", None, None).await;
     assert_eq!(ru.body["data"]["lang"], json!("ru"));
     let messages = &ru.body["data"]["messages"];
-    assert_eq!(messages["product"]["probe"]["brand"], json!("Проба"));
+    assert_eq!(messages["product"]["probe"]["brand"], json!("ru:Probe"));
     assert_eq!(
         messages["product"]["probe"]["level"]["user"],
         json!("Customer")
     );
-    assert_eq!(messages["probe"]["item"]["list"]["title"], json!("Записи"));
+    assert_eq!(
+        messages["probe"]["item"]["list"]["title"],
+        json!("ru:Items")
+    );
     assert_eq!(messages["probe"]["item"]["empty"], json!("No items"));
-    assert_eq!(messages["menu"]["system"], json!("Система"));
+    let kernel_ru: Value = serde_json::from_str(KERNEL_RU).expect("the kernel ru dictionary");
+    assert_eq!(messages["menu"]["system"], kernel_ru["menu"]["system"]);
+    assert_ne!(messages["menu"]["system"], json!("System"));
     assert_ne!(ru.etag, en.etag);
     let again = bench
         .get("/api/v1/i18n?lang=ru", None, ru.etag.as_deref())
@@ -552,42 +574,69 @@ async fn the_catalogue_merges_the_bundle_dictionaries_and_ru_falls_back_to_en_pe
 }
 
 #[tokio::test]
-async fn keel_product_functions_list_the_composed_bundles_and_edit_the_enabled_set() {
-    let bench = start(Composition::new().product(&PROBE_BUNDLE)).await;
+async fn keel_product_functions_list_every_manifest_and_edit_the_enabled_set() {
+    let bench = start(
+        Composition::new()
+            .product(&PROBE_BUNDLE)
+            .enabled(Vec::<String>::new()),
+    )
+    .await;
+    assert!(bench.kernel.registry().products().is_empty());
+    assert_eq!(bench.kernel.registry().manifests().len(), 1);
+    assert!(
+        bench
+            .kernel
+            .registry()
+            .function("probe.item.list")
+            .is_none()
+    );
     assert_eq!(bench.enabled_row().await, Value::Null);
     let listed = bench.as_owner("keel.product.list", json!({})).await;
     assert_eq!(listed["total"], json!(1));
     assert_eq!(
         listed["data"],
-        json!([{ "id": "probe", "name": "product.probe.brand", "version": "0.1.0", "state": "disabled" }])
+        json!([{ "id": "probe", "name": "product.probe.brand", "version": "0.1.0", "state": "disabled",
+                 "enabledAt": null, "enabledBy": null }])
     );
     assert_eq!(
         bench
             .as_owner("keel.product.enable", json!({ "id": "probe" }))
             .await,
-        json!({ "id": "probe", "state": "enabled", "changed": true })
+        json!({ "id": "probe", "state": "enabled", "changed": true, "restart": true })
     );
-    assert_eq!(bench.enabled_row().await, json!(["probe"]));
+    let stored = bench.enabled_row().await;
+    assert_eq!(stored["probe"]["by"], json!(OWNER_LOGIN));
+    let enabled_at = stored["probe"]["enabledAt"]
+        .as_str()
+        .expect("an RFC 3339 time");
+    assert!(
+        keel_sdk::chrono::DateTime::parse_from_rfc3339(enabled_at).is_ok(),
+        "{enabled_at}"
+    );
+    assert_eq!(stored.as_object().map(|set| set.len()), Some(1));
     assert_eq!(
         bench
             .as_owner("keel.product.enable", json!({ "id": "probe" }))
             .await,
-        json!({ "id": "probe", "state": "enabled", "changed": false })
+        json!({ "id": "probe", "state": "enabled", "changed": false, "restart": false })
     );
     let listed = bench.as_owner("keel.product.list", json!({})).await;
     assert_eq!(listed["data"][0]["state"], json!("enabled"));
+    assert_eq!(listed["data"][0]["enabledAt"], json!(enabled_at));
+    assert_eq!(listed["data"][0]["enabledBy"], json!(OWNER_LOGIN));
+    assert!(bench.kernel.registry().products().is_empty());
     assert_eq!(
         bench
             .as_owner("keel.product.disable", json!({ "id": "probe" }))
             .await,
-        json!({ "id": "probe", "state": "disabled", "changed": true })
+        json!({ "id": "probe", "state": "disabled", "changed": true, "restart": true })
     );
-    assert_eq!(bench.enabled_row().await, json!([]));
+    assert_eq!(bench.enabled_row().await, json!({}));
     assert_eq!(
         bench
             .as_owner("keel.product.disable", json!({ "id": "probe" }))
             .await,
-        json!({ "id": "probe", "state": "disabled", "changed": false })
+        json!({ "id": "probe", "state": "disabled", "changed": false, "restart": false })
     );
     let unknown = bench
         .call(owner(), "keel.product.enable", json!({ "id": "dns" }))
@@ -600,7 +649,7 @@ async fn keel_product_functions_list_the_composed_bundles_and_edit_the_enabled_s
         Some("keel.product.error.unknown")
     );
     assert_eq!(error.fields[0].params["id"], json!("dns"));
-    assert_eq!(bench.enabled_row().await, json!([]));
+    assert_eq!(bench.enabled_row().await, json!({}));
     let customer: Id = CUSTOMER.parse().expect("an id");
     let refused = bench
         .call(
@@ -613,7 +662,12 @@ async fn keel_product_functions_list_the_composed_bundles_and_edit_the_enabled_s
         refused.error().map(|error| error.code),
         Some(ErrorCode::Forbidden)
     );
-    let descriptor = bench
+    bench.finish().await;
+    let enabled = start(Composition::new().product(&PROBE_BUNDLE)).await;
+    assert_eq!(enabled.kernel.registry().product_ids(), ["probe"]);
+    let listed = enabled.as_owner("keel.product.list", json!({})).await;
+    assert_eq!(listed["data"][0]["state"], json!("disabled"));
+    let descriptor = enabled
         .get(
             "/api/v1/functions/keel.product.list",
             Some(&format!("owner:{}", Id::ROOT_ACCOUNT)),
@@ -631,11 +685,39 @@ async fn keel_product_functions_list_the_composed_bundles_and_edit_the_enabled_s
         descriptor.body["ui"]["row_actions"],
         json!(["enable", "disable"])
     );
-    bench.finish().await;
+    enabled.finish().await;
     let bare = start(Composition::new()).await;
     let listed = bare.as_owner("keel.product.list", json!({})).await;
     assert_eq!(listed, json!({ "data": [], "total": 0, "totals": null }));
     bare.finish().await;
+}
+
+#[tokio::test]
+async fn an_enabled_product_the_composition_does_not_carry_fails_the_composition_naming_it() {
+    let error = Composition::new()
+        .product(&PROBE_BUNDLE)
+        .enabled(["probe", "dns"])
+        .resolve()
+        .expect_err("dns is not carried");
+    assert_eq!(
+        error.to_string(),
+        "the module composition is invalid:\n  - product dns is enabled but not carried by this binary; it carries probe"
+    );
+    let graph = Composition::new()
+        .product(&PROBE_BUNDLE)
+        .enabled(["probe"])
+        .resolve()
+        .expect("probe is carried");
+    assert_eq!(graph.product_ids(), ["probe"]);
+    assert_eq!(graph.ids(), ["keel", "probe"]);
+    let disabled = Composition::new()
+        .product(&PROBE_BUNDLE)
+        .enabled(Vec::<&str>::new())
+        .resolve()
+        .expect("nothing enabled is fine");
+    assert!(disabled.product_ids().is_empty());
+    assert_eq!(disabled.ids(), ["keel"]);
+    assert_eq!(disabled.manifests().len(), 1);
 }
 
 fn untitled_init(r: &mut Registrar) -> Result<()> {
@@ -650,7 +732,7 @@ fn untitled_init(r: &mut Registrar) -> Result<()> {
     )
     .i18n(
         "ru",
-        r#"{ "untitled": { "item": { "list": { "title": "Список" } } } }"#,
+        r#"{ "untitled": { "item": { "list": { "title": "ru:Items" } } } }"#,
     );
     Ok(())
 }

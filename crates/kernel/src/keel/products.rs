@@ -1,6 +1,7 @@
+use chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 
-use crate::products::{self, Composed, ProductsError};
+use crate::products::{self, Composed, EnabledSet, ProductsError};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 pub struct ProductPick {
@@ -15,11 +16,14 @@ pub enum ProductState {
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ProductRow {
     pub id: String,
     pub name: String,
     pub version: String,
     pub state: ProductState,
+    pub enabled_at: Option<DateTime<Utc>>,
+    pub enabled_by: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -27,6 +31,7 @@ pub struct ProductChange {
     pub id: String,
     pub state: ProductState,
     pub changed: bool,
+    pub restart: bool,
 }
 
 pub fn list() -> FunctionDef {
@@ -42,6 +47,8 @@ pub fn list() -> FunctionDef {
                 Column::new("state", ColumnType::Status)
                     .map([("enabled", Tone::Success), ("disabled", Tone::Neutral)]),
             )
+            .column(Column::new("enabledAt", ColumnType::Datetime))
+            .column(Column::new("enabledBy", ColumnType::Text))
             .action(
                 Action::new("enable", ActionRole::Button)
                     .function("keel.product.enable")
@@ -61,14 +68,9 @@ pub fn list() -> FunctionDef {
             let composed = call.require::<Composed>()?;
             let enabled = products::enabled(call.db()).await.map_err(stored)?;
             let rows: Vec<ProductRow> = composed
-                .bundles()
+                .manifests()
                 .iter()
-                .map(|bundle| ProductRow {
-                    id: bundle.id.to_owned(),
-                    name: bundle.name.to_owned(),
-                    version: bundle.version.to_owned(),
-                    state: state_of(&enabled, bundle.id),
-                })
+                .map(|manifest| row(manifest, &enabled))
                 .collect();
             let total = rows.len() as u64;
             Ok(Page::new(rows, total))
@@ -95,43 +97,52 @@ pub fn disable() -> FunctionDef {
         )
 }
 
+fn row(manifest: &ProductManifest, enabled: &EnabledSet) -> ProductRow {
+    let record = enabled.get(manifest.id);
+    ProductRow {
+        id: manifest.id.to_owned(),
+        name: manifest.name.to_owned(),
+        version: manifest.version.to_owned(),
+        state: match record {
+            Some(_) => ProductState::Enabled,
+            None => ProductState::Disabled,
+        },
+        enabled_at: record.map(|record| record.enabled_at),
+        enabled_by: record.map(|record| record.by.clone()),
+    }
+}
+
 async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<ProductChange> {
     let id = call.params().id.as_str();
     let composed = call.require::<Composed>()?;
-    if composed.bundle(id).is_none() {
+    if composed.manifest(id).is_none() {
         return Err(KeelError::validation("keel.product.error.unknown")
             .field("id")
             .param("id", id));
     }
     let tx = call.tx()?;
-    let mut enabled = products::enabled(tx).await.map_err(stored)?;
     let changed = match wanted {
-        ProductState::Enabled if !enabled.iter().any(|known| known == id) => {
-            enabled.push(id.to_owned());
-            true
+        ProductState::Enabled => {
+            let now = call.require::<dyn Clock>()?.now();
+            products::enable(tx, id, &call.principal().login, now).await
         }
-        ProductState::Disabled if enabled.iter().any(|known| known == id) => {
-            enabled.retain(|known| known != id);
-            true
-        }
-        ProductState::Enabled | ProductState::Disabled => false,
-    };
+        ProductState::Disabled => products::disable(tx, id).await,
+    }
+    .map_err(stored)?;
     if changed {
-        products::write(tx, &enabled).await?;
+        tracing::info!(
+            product = id,
+            state = ?wanted,
+            by = call.principal().login,
+            "the enabled product set changed; a restart applies it"
+        );
     }
     Ok(ProductChange {
         id: id.to_owned(),
         state: wanted,
         changed,
+        restart: changed,
     })
-}
-
-fn state_of(enabled: &[String], id: &str) -> ProductState {
-    if enabled.iter().any(|known| known == id) {
-        ProductState::Enabled
-    } else {
-        ProductState::Disabled
-    }
 }
 
 fn stored(error: ProductsError) -> KeelError {

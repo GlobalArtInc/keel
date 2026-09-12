@@ -28,7 +28,8 @@ const RESELLER: &str = "01J8A0000000000000000000A1";
 const CUSTOMER: &str = "01J8A0000000000000000000A2";
 
 const EN: &str = r#"{ "probe": { "greeting": "Hello", "only_en": "English only" } }"#;
-const RU: &str = r#"{ "probe": { "greeting": "Привет" } }"#;
+const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
+const KERNEL_RU: &str = include_str!("../i18n/ru.json");
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
@@ -593,7 +594,7 @@ async fn keel_account_list_is_unauthenticated_for_a_guest_and_a_page_for_a_user(
     let page = user.data();
     assert_eq!(page["total"], json!(1));
     assert_eq!(page["data"][0]["id"], json!(CUSTOMER));
-    assert!(page["data"][0].get("parent").is_none());
+    assert!(page["data"][0].get("parentId").is_none());
     assert_eq!(page["totals"], Value::Null);
     assert_eq!(user.body["meta"]["principal"]["account"], json!(CUSTOMER));
     assert!(user.header(META_VERSION).unwrap().starts_with("m-"));
@@ -789,7 +790,7 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .get("/api/v1/functions/keel.account.list", Some(&user()))
         .await;
     let list = &as_user.body;
-    assert_eq!(columns(list), ["id", "kind", "state", "created_at"]);
+    assert_eq!(columns(list), ["id", "kind", "state", "createdAt"]);
     assert!(actions(list).is_empty(), "{}", list["ui"]);
     assert!(list["ui"].get("row_actions").is_none(), "{}", list["ui"]);
     assert!(
@@ -803,7 +804,7 @@ async fn descriptors_are_projected_by_level_and_permission() {
     let list = &as_reseller.body;
     assert_eq!(
         columns(list),
-        ["id", "kind", "state", "parent", "created_at"]
+        ["id", "kind", "state", "parentId", "createdAt"]
     );
     assert_eq!(actions(list), ["create", "edit"]);
     assert_eq!(list["ui"]["row_actions"], json!(["edit"]));
@@ -813,7 +814,7 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .await;
     assert_eq!(
         columns(&as_admin.body),
-        ["id", "kind", "state", "parent", "created_at", "origin"]
+        ["id", "kind", "state", "parentId", "createdAt", "origin"]
     );
     let form = bench
         .get("/api/v1/functions/keel.principal.create", Some(&user()))
@@ -893,7 +894,7 @@ async fn the_idempotency_key_feeds_the_call_and_a_replay_is_marked() {
 }
 
 #[tokio::test]
-async fn cookie_requests_are_checked_for_cross_site_and_bearer_requests_are_not() {
+async fn session_cookie_requests_are_checked_for_cross_site_and_other_requests_are_not() {
     let bench = bench().await;
     let cookie = format!("{SESSION_COOKIE}={}", user());
     let send = |headers: Vec<(&'static str, String)>| {
@@ -936,7 +937,8 @@ async fn cookie_requests_are_checked_for_cross_site_and_bearer_requests_are_not(
         (ORIGIN.as_str(), "https://evil.test".into()),
     ])
     .await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["level"], json!("guest"));
     let (status, body) = send(vec![
         (COOKIE.as_str(), cookie.clone()),
         (ORIGIN.as_str(), "http://keel.test:1500".into()),
@@ -1084,11 +1086,16 @@ async fn i18n_serves_the_merged_catalogue_with_english_fallback() {
     let ru = bench.get("/api/v1/i18n?lang=ru", None).await;
     assert_eq!(ru.data()["lang"], json!("ru"));
     let messages = &ru.data()["messages"];
-    assert_eq!(messages["probe"]["greeting"], json!("Привет"));
+    assert_eq!(messages["probe"]["greeting"], json!("ru:Hello"));
     assert_eq!(messages["probe"]["only_en"], json!("English only"));
+    let kernel_ru: Value = serde_json::from_str(KERNEL_RU).expect("the kernel ru dictionary");
     assert_eq!(
         messages["keel"]["error"]["validation"],
-        json!("Запрос некорректен")
+        kernel_ru["keel"]["error"]["validation"]
+    );
+    assert_ne!(
+        messages["keel"]["error"]["validation"],
+        json!("The request is not valid")
     );
     assert_ne!(ru.header(ETAG), Some(etag.as_str()));
     let unknown = bench.get("/api/v1/i18n?lang=xx", None).await;

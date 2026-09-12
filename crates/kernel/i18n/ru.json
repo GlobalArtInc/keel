@@ -12,8 +12,8 @@
     "login": "Логин",
     "role": "Роль",
     "lang": "Язык",
-    "created_at": "Создан",
-    "updated_at": "Обновлён",
+    "createdAt": "Создан",
+    "updatedAt": "Обновлён",
     "column": {
       "id": "Идентификатор",
       "name": "Название",
@@ -23,8 +23,8 @@
       "login": "Логин",
       "role": "Роль",
       "lang": "Язык",
-      "created_at": "Создан",
-      "updated_at": "Обновлён"
+      "createdAt": "Создан",
+      "updatedAt": "Обновлён"
     },
     "action": {
       "create": "Создать",
@@ -59,8 +59,8 @@
         "id": "Аккаунт",
         "kind": "Тип",
         "state": "Состояние",
-        "parent": "Родитель",
-        "created_at": "Создан",
+        "parentId": "Родитель",
+        "createdAt": "Создан",
         "origin": "Источник"
       },
       "action": {
@@ -93,9 +93,9 @@
         "level": "Уровень",
         "role": "Роль",
         "state": "Состояние",
-        "account": "Аккаунт",
+        "accountId": "Аккаунт",
         "lang": "Язык",
-        "created_at": "Создан",
+        "createdAt": "Создан",
         "origin": "Источник"
       },
       "action": {
@@ -122,7 +122,9 @@
         "id": "Продукт",
         "name": "Название",
         "version": "Версия",
-        "state": "Состояние"
+        "state": "Состояние",
+        "enabledAt": "Включён",
+        "enabledBy": "Кем включён"
       },
       "action": {
         "enable": "Включить",

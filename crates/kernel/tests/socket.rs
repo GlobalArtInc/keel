@@ -17,7 +17,12 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 const EN: &str = r#"{ "probe": { "greeting": "Hello" } }"#;
-const RU: &str = r#"{ "probe": { "greeting": "Привет" } }"#;
+const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
+const KERNEL_RU: &str = include_str!("../i18n/ru.json");
+
+fn kernel_ru() -> Value {
+    serde_json::from_str(KERNEL_RU).expect("the kernel ru dictionary")
+}
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
@@ -292,7 +297,7 @@ async fn describe_and_i18n_frames_answer_the_projected_descriptor_and_the_catalo
         .collect();
     assert_eq!(
         columns,
-        ["id", "kind", "state", "parent", "created_at", "origin"]
+        ["id", "kind", "state", "parentId", "createdAt", "origin"]
     );
     assert_eq!(meta.principal.expect("the owner").level, Level::Owner);
     let missing = client
@@ -309,10 +314,14 @@ async fn describe_and_i18n_frames_answer_the_projected_descriptor_and_the_catalo
         panic!("expected a catalogue: {catalogue:?}");
     };
     assert_eq!(data.lang, "ru");
-    assert_eq!(data.messages["probe"]["greeting"], json!("Привет"));
+    assert_eq!(data.messages["probe"]["greeting"], json!("ru:Hello"));
     assert_eq!(
         data.messages["keel"]["account"]["column"]["kind"],
-        json!("Тип")
+        kernel_ru()["keel"]["account"]["column"]["kind"]
+    );
+    assert_ne!(
+        data.messages["keel"]["account"]["column"]["kind"],
+        json!("Kind")
     );
     let fallback = client.i18n("xx").await.expect("the socket answers");
     let Envelope::Ok { data, .. } = fallback else {
@@ -482,7 +491,15 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
     )
     .await
     .expect("ctl runs");
-    assert!(russian.text.starts_with("Аккаунт"), "{}", russian.text);
+    let account_header = kernel_ru()["keel"]["account"]["column"]["id"]
+        .as_str()
+        .expect("a column label")
+        .to_owned();
+    assert!(
+        russian.text.starts_with(&account_header),
+        "{}",
+        russian.text
+    );
 
     let failed = ctl::run(
         serving.path(),

@@ -48,7 +48,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     Ok(())
 }
 
-static PROBE: ProductBundle = ProductBundle {
+static PROBE: ProductManifest = ProductManifest {
     id: "probe",
     name: "product.probe.brand",
     version: "0.2.0",
@@ -293,12 +293,21 @@ async fn product_enable_of_an_unknown_id_fails_naming_the_known_ids_and_list_pri
     let states = runtime.list_products(&site.config).await.unwrap();
     assert!(states[0].enabled);
     assert_eq!(states[0].to_string(), "probe\tenabled\t0.2.0");
-    assert_eq!(
-        site.database
-            .rows("SELECT value::text FROM keel_kv WHERE key = 'products.enabled'")
-            .await,
-        ["[\"probe\"]"]
+    let stored: Value = serde_json::from_str(
+        &site
+            .database
+            .rows("SELECT value::text FROM keel_kv WHERE key = 'products'")
+            .await[0],
+    )
+    .unwrap();
+    assert_eq!(stored["probe"]["by"], json!("install"));
+    assert!(
+        stored["probe"]["enabledAt"]
+            .as_str()
+            .is_some_and(|at| at.ends_with('Z') && at.len() >= 20),
+        "{stored}"
     );
+    assert_eq!(stored.as_object().map(|set| set.len()), Some(1));
 
     let bare_states = Runtime::new().list_products(&site.config).await.unwrap();
     assert_eq!(bare_states.len(), 1);

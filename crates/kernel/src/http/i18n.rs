@@ -20,7 +20,7 @@ pub struct Catalogue {
     pub messages: Map<String, Value>,
 }
 
-pub fn catalogue(registry: &Registry, lang: &str) -> Catalogue {
+pub(crate) fn catalogue(registry: &Registry, lang: &str) -> Catalogue {
     let mut messages = registry
         .i18n(REQUIRED_LANGUAGE)
         .cloned()
@@ -86,14 +86,14 @@ mod tests {
             .as_object()
             .cloned()
             .unwrap();
-        let overlay = json!({ "keel": { "b": "Б", "nested": { "y": "Y" } }, "extra": "E" })
+        let overlay = json!({ "keel": { "b": "B2", "nested": { "y": "Y" } }, "extra": "E" })
             .as_object()
             .cloned()
             .unwrap();
         merge_over(&mut base, &overlay);
         assert_eq!(
             Value::Object(base),
-            json!({ "keel": { "a": "A", "b": "Б", "nested": { "x": "X", "y": "Y" } }, "extra": "E" })
+            json!({ "keel": { "a": "A", "b": "B2", "nested": { "x": "X", "y": "Y" } }, "extra": "E" })
         );
     }
 }

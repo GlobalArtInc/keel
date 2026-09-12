@@ -1,4 +1,4 @@
-use keel_sdk::KeelError;
+use keel_sdk::{KeelError, ProductManifest};
 use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Principal};
 use sea_orm::DatabaseConnection;
 
@@ -7,11 +7,12 @@ use crate::menu;
 use crate::meta;
 use crate::registry::Registry;
 
-pub const PLATFORM_BRAND: &str = "keel.brand";
-pub const PLATFORM_HUE: u16 = 220;
-pub const PLATFORM_CHROMA: f64 = 0.08;
+pub(crate) const PLATFORM_BRAND: &str = "keel.brand";
+pub(crate) const PLATFORM_HUE: u16 = 220;
+pub(crate) const PLATFORM_CHROMA: f64 = 0.08;
+pub(crate) const EFFECTIVE_LOGO: &str = "/brand/logo.svg";
 
-pub fn platform_brand() -> BootBrand {
+pub(crate) fn platform_brand() -> BootBrand {
     BootBrand {
         name: PLATFORM_BRAND.to_owned(),
         logo: None,
@@ -20,11 +21,11 @@ pub fn platform_brand() -> BootBrand {
     }
 }
 
-pub fn brand(registry: &Registry) -> BootBrand {
+pub(crate) fn brand(registry: &Registry) -> BootBrand {
     match registry.products() {
         [single] => BootBrand {
             name: single.name.to_owned(),
-            logo: Some("/brand/logo.svg".to_owned()),
+            logo: Some(EFFECTIVE_LOGO.to_owned()),
             hue: single.brand.hue,
             chroma: single.brand.chroma,
         },
@@ -32,19 +33,47 @@ pub fn brand(registry: &Registry) -> BootBrand {
     }
 }
 
-pub fn products(registry: &Registry) -> Vec<BootProduct> {
+pub(crate) fn product_brand(manifest: &ProductManifest) -> BootBrand {
+    BootBrand {
+        name: manifest.name.to_owned(),
+        logo: Some(format!("/brand/{}/logo.svg", manifest.id)),
+        hue: manifest.brand.hue,
+        chroma: manifest.brand.chroma,
+    }
+}
+
+pub(crate) fn products(registry: &Registry) -> Vec<BootProduct> {
     registry
         .products()
         .iter()
-        .map(|bundle| BootProduct {
-            id: bundle.id.to_owned(),
-            name: bundle.name.to_owned(),
-            edition: None,
+        .map(|manifest| BootProduct {
+            id: manifest.id.to_owned(),
+            name: manifest.name.to_owned(),
+            edition: manifest
+                .default_edition()
+                .map(|edition| edition.id.to_owned()),
+            brand: product_brand(manifest),
         })
         .collect()
 }
 
-pub fn principal(principal: &Principal) -> Result<Option<BootPrincipal>, KeelError> {
+pub(crate) fn features(registry: &Registry) -> Vec<String> {
+    let mut features: Vec<String> = Vec::new();
+    for manifest in registry.products() {
+        for feature in manifest
+            .default_edition()
+            .map(|edition| edition.features)
+            .unwrap_or_default()
+        {
+            if !features.iter().any(|known| known == feature) {
+                features.push((*feature).to_owned());
+            }
+        }
+    }
+    features
+}
+
+pub(crate) fn principal(principal: &Principal) -> Result<Option<BootPrincipal>, KeelError> {
     let Some(meta) = dispatcher::meta_principal(principal)? else {
         return Ok(None);
     };
@@ -60,18 +89,18 @@ pub fn principal(principal: &Principal) -> Result<Option<BootPrincipal>, KeelErr
     }))
 }
 
-pub async fn payload(
+pub(crate) async fn payload(
     registry: &Registry,
     db: &DatabaseConnection,
     principal: &Principal,
 ) -> Result<Boot, KeelError> {
     let meta = meta::version(registry, db, principal).await?;
     Ok(Boot {
-        platform: registry.platform().clone(),
+        keel: registry.platform().clone(),
         products: products(registry),
         brand: brand(registry),
         principal: self::principal(principal)?,
-        features: Vec::new(),
+        features: features(registry),
         license: None,
         menu: menu::project(registry, principal),
         dashboard: Vec::new(),

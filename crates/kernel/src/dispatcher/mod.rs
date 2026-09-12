@@ -505,7 +505,14 @@ impl Inner {
             }
             let events = handle.take_events();
             if !events.is_empty() {
-                outbox::write(handle.db(), handle.principal(), events, self.clock.now()).await?;
+                outbox::write(
+                    handle.db(),
+                    function.module(),
+                    handle.principal(),
+                    events,
+                    self.clock.now(),
+                )
+                .await?;
             }
         }
         self.project(target, handle.principal().level, &mut data);

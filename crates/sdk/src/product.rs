@@ -4,7 +4,7 @@ use keel_types::Level;
 
 use crate::module::ModuleDef;
 
-pub struct ProductBundle {
+pub struct ProductManifest {
     pub id: &'static str,
     pub name: &'static str,
     pub version: &'static str,
@@ -45,7 +45,7 @@ pub struct Edition {
     pub features: &'static [&'static str],
 }
 
-impl ProductBundle {
+impl ProductManifest {
     pub fn module_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.modules.iter().map(|module| module.id)
     }
@@ -55,9 +55,9 @@ impl ProductBundle {
     }
 }
 
-impl fmt::Debug for ProductBundle {
+impl fmt::Debug for ProductManifest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ProductBundle")
+        f.debug_struct("ProductManifest")
             .field("id", &self.id)
             .field("name", &self.name)
             .field("version", &self.version)
@@ -94,7 +94,7 @@ mod tests {
         init,
     };
 
-    static DEMO: ProductBundle = ProductBundle {
+    static DEMO: ProductManifest = ProductManifest {
         id: "demo",
         name: "product.demo.brand",
         version: "0.1.0",

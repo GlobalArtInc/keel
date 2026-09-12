@@ -6,8 +6,9 @@ pub mod harness;
 pub mod http;
 pub mod invariants;
 pub mod snapshots;
+pub mod socket;
 
-pub use keel_kernel as kernel;
+pub use keel_kernel::http::SESSION_COOKIE;
 pub use keel_kernel::{CallOptions, Clock, Dispatcher, Registry, Reply};
 pub use keel_types::{CallError, ErrorCode};
 pub use tokio;
@@ -19,5 +20,6 @@ pub use fixtures::{Accounts, Fixtures, Principals, Who};
 pub use harness::{Builder, Error, Harness};
 pub use http::{Answer, TestHttp};
 pub use invariants::Fixture;
+pub use socket::{CtlOutput, SocketTestError, TestSocket};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

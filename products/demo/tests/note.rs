@@ -3,12 +3,9 @@ use std::path::{Path, PathBuf};
 use keel::prelude::*;
 use keel::sdk::sea_orm::ConnectionTrait;
 use keel::sdk::serde_json::{self, Map};
-use keel_demo::PRODUCT;
+use keel_demo::MANIFEST;
 use keel_demo::note::{LOCKED_PREFIX, MAX_PER_ACCOUNT};
-use keel_testkit::kernel::ctl::{self, Out};
-use keel_testkit::kernel::loader::derived_keys;
-use keel_testkit::kernel::{Reply, Socket};
-use keel_testkit::{ErrorCode, Fixture, Harness, Who, tokio};
+use keel_testkit::{ErrorCode, Fixture, Harness, Reply, Who, tokio};
 
 struct NoteFixture;
 
@@ -68,7 +65,7 @@ async fn counts(harness: &Harness) -> (String, String) {
 
 #[tokio::test]
 async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_account() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     assert_eq!(harness.registry().product_ids(), ["demo"]);
     assert_eq!(harness.modules(), ["keel", "note", "testkit"]);
 
@@ -144,7 +141,7 @@ async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_acco
 
 #[tokio::test]
 async fn the_standard_invariants_hold_for_notes() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     harness
         .assert_reseller_sees_only_subtree("note.list", &NoteFixture)
         .await;
@@ -158,7 +155,7 @@ async fn the_standard_invariants_hold_for_notes() {
 
 #[tokio::test]
 async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_note_is_locked() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let alpha = create(&harness, Who::A1, "alpha").await;
     let beta = create(&harness, Who::A1, "beta").await;
     let locked = create(&harness, Who::A1, &format!("{LOCKED_PREFIX} gamma")).await;
@@ -224,15 +221,15 @@ async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_n
     assert_eq!(titles(left.data().expect("a page")), ["locked gamma"]);
     let events = harness
         .database()
-        .rows("SELECT type FROM keel_outbox WHERE type = 'note.deleted'")
+        .rows("SELECT module FROM keel_outbox WHERE type = 'note.deleted'")
         .await;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events, ["note", "note"]);
     harness.finish().await;
 }
 
 #[tokio::test]
 async fn note_edit_refuses_a_note_above_the_account_limit_inside_the_transaction() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let mut first = None;
     for index in 0..MAX_PER_ACCOUNT {
         let id = create(&harness, Who::A1, &format!("note {index}")).await;
@@ -278,7 +275,7 @@ async fn note_edit_refuses_a_note_above_the_account_limit_inside_the_transaction
 
 #[tokio::test]
 async fn a_nested_invoke_reuses_the_transaction_of_the_call_on_note_edit() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let saved = harness
         .call(Who::A1, "note.edit", json!({ "title": "read back" }))
         .await;
@@ -326,7 +323,7 @@ async fn a_nested_invoke_reuses_the_transaction_of_the_call_on_note_edit() {
 
 #[tokio::test]
 async fn the_note_descriptors_match_their_snapshots_per_level() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     for level in Level::ALL {
         let names = harness.snapshot_descriptors(level, snapshots_dir());
         let expected: &[&str] = if level < Level::User {
@@ -367,62 +364,20 @@ fn leaves(messages: &Map<String, Value>, prefix: &str, into: &mut Vec<String>) {
 }
 
 #[tokio::test]
-async fn the_dictionaries_carry_every_key_the_registry_requires_in_en_and_ru() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+async fn the_ru_dictionaries_name_every_key_of_the_en_dictionaries_freeze_requires() {
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let registry = harness.registry();
-    let mut required: Vec<(String, Option<String>)> = vec![
-        (PRODUCT.name.to_owned(), None),
-        ("note.error.locked".to_owned(), None),
-        ("note.error.limit".to_owned(), None),
-        ("note.error.account_suspended".to_owned(), None),
-    ];
-    for function in registry
-        .functions()
-        .filter(|function| function.module() == "note")
-    {
-        let descriptor = function.descriptor();
-        if let Some(ui) = &descriptor.ui {
-            required.push((ui.title.clone(), None));
-            if let Some(empty) = &ui.empty {
-                required.push((empty.title.clone(), None));
-            }
-        }
-        for derived in derived_keys(descriptor) {
-            required.push((derived.key, derived.shared));
-        }
-    }
-    for node in registry
-        .menu()
-        .iter()
-        .filter(|node| node.path().starts_with("demo/"))
-    {
-        let label = node.label_key().map(str::to_owned).or_else(|| {
-            registry
-                .function(node.func())
-                .and_then(|function| function.descriptor().ui.as_ref())
-                .map(|ui| ui.title.clone())
-        });
-        required.push((label.expect("a menu label"), None));
-    }
-    for group in registry
-        .groups()
-        .iter()
-        .filter(|group| group.product.as_deref() == Some("demo"))
-    {
-        required.push((group.label.clone(), None));
-    }
-    assert!(required.len() >= 15, "{required:?}");
-    for lang in ["en", "ru"] {
-        let messages = registry.i18n(lang).expect(lang);
-        for (key, shared) in &required {
-            let found = lookup(messages, key).or_else(|| {
-                shared
-                    .as_deref()
-                    .and_then(|shared| lookup(messages, shared))
-            });
+    for key in [
+        MANIFEST.name,
+        "menu.demo",
+        "note.error.locked",
+        "note.error.limit",
+    ] {
+        for lang in ["en", "ru"] {
+            let found = lookup(registry.i18n(lang).expect(lang), key);
             assert!(
                 found.is_some_and(|text| text.as_str().is_some_and(|text| !text.is_empty())),
-                "{lang}: {key} (shared {shared:?}) is not translated"
+                "{lang}: {key} is not translated"
             );
         }
     }
@@ -435,6 +390,7 @@ async fn the_dictionaries_carry_every_key_the_registry_requires_in_en_and_ru() {
         });
         into.sort();
     }
+    assert!(en.len() >= 15, "{en:?}");
     assert_eq!(
         en, ru,
         "the en and ru dictionaries of the demo name different keys"
@@ -444,7 +400,7 @@ async fn the_dictionaries_carry_every_key_the_registry_requires_in_en_and_ru() {
 
 #[tokio::test]
 async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo_brand_and_menu() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     let server = harness.http().await;
     let saved = server
         .post(
@@ -483,8 +439,10 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
     let boot = server.get(Who::A1, "/api/v1/boot").await.json();
     assert_eq!(
         boot["products"],
-        json!([{ "id": "demo", "name": "product.demo.brand", "edition": null }])
+        json!([{ "id": "demo", "name": "product.demo.brand", "edition": null,
+                 "brand": { "name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 150, "chroma": 0.1 } }])
     );
+    assert_eq!(boot["keel"]["api"], json!(1));
     assert_eq!(boot["brand"]["name"], json!("product.demo.brand"));
     assert_eq!(boot["brand"]["hue"], json!(150));
     assert_eq!(boot["menu"][0]["id"], json!("demo"));
@@ -509,53 +467,40 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
     harness.finish().await;
 }
 
+fn column_headers(lang: &str) -> [String; 2] {
+    let messages: Value = serde_json::from_str(match lang {
+        "en" => include_str!("../i18n/note/en.json"),
+        _ => include_str!("../i18n/note/ru.json"),
+    })
+    .expect("a JSON dictionary");
+    let header = |key: &str| {
+        messages["note"]["column"][key]
+            .as_str()
+            .expect("a column label")
+            .to_owned()
+    };
+    [header("title"), header("updated_at")]
+}
+
 #[tokio::test]
 async fn ctl_note_list_out_table_shows_translated_headers_in_en_and_ru() {
-    let harness = Harness::new().product(&PRODUCT).boot().await;
+    let harness = Harness::new().product(&MANIFEST).boot().await;
     create(&harness, Who::A1, "tabled").await;
-    let dir = tempfile::tempdir().expect("a temporary directory");
-    let path = dir.path().join("core.sock");
-    let socket = Socket::new(harness.dispatcher().clone())
-        .start(&path)
-        .await
-        .expect("the socket starts");
-    for (lang, headers) in [
-        ("en", ["Title", "Updated"]),
-        ("ru", ["Заголовок", "Обновлена"]),
-    ] {
-        let output = ctl::run(
-            &path,
-            &ctl::Request {
-                func: "note.list".into(),
-                params: json!({}),
-                out: Out::Table,
-                lang: lang.into(),
-            },
-        )
-        .await
-        .expect("ctl answers");
+    let socket = harness.socket().await;
+    for lang in ["en", "ru"] {
+        let output = socket.ctl_table("note.list", &[], lang).await;
         assert!(output.ok, "{}", output.text);
         let lines: Vec<&str> = output.text.lines().collect();
         assert_eq!(lines.len(), 2, "{}", output.text);
         assert_eq!(
             lines[0].split_whitespace().collect::<Vec<_>>(),
-            headers,
+            column_headers(lang),
             "{lang}: {}",
             output.text
         );
         assert!(lines[1].starts_with("tabled"), "{lang}: {}", output.text);
     }
-    let edited = ctl::run(
-        &path,
-        &ctl::Request {
-            func: "note.edit".into(),
-            params: ctl::params(["title=x"]).expect("a pair"),
-            out: Out::Json,
-            lang: "en".into(),
-        },
-    )
-    .await
-    .expect("ctl answers");
+    let edited = socket.ctl_json("note.edit", &["title=x"], "en").await;
     assert!(edited.ok, "{}", edited.text);
     let envelope: Value = serde_json::from_str(&edited.text).expect("an envelope");
     assert_eq!(envelope["ok"], json!(true));

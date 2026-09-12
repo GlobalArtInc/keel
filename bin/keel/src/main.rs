@@ -1,6 +1,6 @@
 fn main() -> keel::ExitCode {
     let runtime = keel::Runtime::new();
     #[cfg(feature = "demo")]
-    let runtime = runtime.product(&keel_demo::PRODUCT);
+    let runtime = runtime.product(&keel_demo::MANIFEST);
     runtime.run()
 }

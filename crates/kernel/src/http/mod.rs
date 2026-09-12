@@ -32,12 +32,13 @@ use live::Live;
 
 pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
-pub use i18n::{Catalogue, catalogue};
+pub use i18n::Catalogue;
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
 
+pub(crate) use i18n::catalogue;
 pub(crate) use reply::acceptable_request_id;
 
-pub const API_PREFIX: &str = "/api/v1";
+pub(crate) const API_PREFIX: &str = "/api/v1";
 pub const BODY_LIMIT: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

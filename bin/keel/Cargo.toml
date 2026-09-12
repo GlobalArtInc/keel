@@ -11,6 +11,7 @@ name = "keel"
 path = "src/main.rs"
 
 [features]
+default = ["demo"]
 demo = ["dep:keel-demo"]
 
 [dependencies]

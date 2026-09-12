@@ -73,6 +73,12 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .order(20)
                 .label("keel.principal.list.title"),
         )
+        .menu(
+            MenuNode::new("system/products", "keel.product.list")
+                .icon("package")
+                .order(30)
+                .label("keel.product.list.title"),
+        )
         .i18n("en", include_str!("../../i18n/en.json"))
         .i18n("ru", include_str!("../../i18n/ru.json"));
     Ok(())
@@ -94,7 +100,7 @@ mod tests {
             .into_registrations()
             .expect("the registrations are valid");
         assert_eq!(registrations.permissions.len(), 4);
-        assert_eq!(registrations.menu.len(), 2);
+        assert_eq!(registrations.menu.len(), 3);
         assert!(
             registrations
                 .menu

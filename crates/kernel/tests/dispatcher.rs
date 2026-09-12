@@ -1171,13 +1171,14 @@ async fn an_outbox_row_exists_exactly_when_the_call_committed() {
         .db()
         .query_one(sea_orm::Statement::from_string(
             sea_orm::DbBackend::Postgres,
-            "SELECT seq, id, actor_json::text AS actor, data_json::text AS data FROM keel_outbox",
+            "SELECT seq, id, module, actor_json::text AS actor, data_json::text AS data FROM keel_outbox",
         ))
         .await
         .unwrap()
         .unwrap();
     assert_eq!(row.try_get::<i64>("", "seq").unwrap(), 1);
     assert_eq!(row.try_get::<String>("", "id").unwrap().len(), 26);
+    assert_eq!(row.try_get::<String>("", "module").unwrap(), "shelf");
     let actor: Value = serde_json::from_str(&row.try_get::<String>("", "actor").unwrap()).unwrap();
     assert_eq!(actor["kind"], json!("principal"));
     let data: Value = serde_json::from_str(&row.try_get::<String>("", "data").unwrap()).unwrap();

@@ -5,14 +5,15 @@ use std::sync::Arc;
 use keel_sdk::runtime::{
     BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, WithinHook,
 };
-use keel_sdk::{FunctionDef, MenuNode, ProductBundle};
+use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
 use keel_types::{Descriptor, Platform};
 use serde_json::{Map, Value};
 
 pub struct Registry {
     pub(crate) platform: Platform,
     pub(crate) modules: Vec<ModuleInfo>,
-    pub(crate) products: Vec<&'static ProductBundle>,
+    pub(crate) manifests: Vec<&'static ProductManifest>,
+    pub(crate) products: Vec<&'static ProductManifest>,
     pub(crate) functions: BTreeMap<String, Function>,
     pub(crate) groups: Vec<Group>,
     pub(crate) menu: Vec<MenuNode>,
@@ -68,7 +69,11 @@ impl Registry {
         &self.modules
     }
 
-    pub fn products(&self) -> &[&'static ProductBundle] {
+    pub fn manifests(&self) -> &[&'static ProductManifest] {
+        &self.manifests
+    }
+
+    pub fn products(&self) -> &[&'static ProductManifest] {
         &self.products
     }
 
@@ -160,6 +165,14 @@ impl fmt::Debug for Registry {
         f.debug_struct("Registry")
             .field("platform", &self.platform)
             .field("modules", &self.modules)
+            .field(
+                "manifests",
+                &self
+                    .manifests
+                    .iter()
+                    .map(|manifest| manifest.id)
+                    .collect::<Vec<_>>(),
+            )
             .field("products", &self.product_ids())
             .field("functions", &self.functions.keys().collect::<Vec<_>>())
             .field("groups", &self.groups)

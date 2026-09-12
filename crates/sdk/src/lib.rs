@@ -43,7 +43,7 @@ pub use keel_types::{
 };
 pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like};
 pub use module::ModuleDef;
-pub use product::{Brand, Edition, LevelLabels, MenuGroup, ProductBundle};
+pub use product::{Brand, Edition, LevelLabels, MenuGroup, ProductManifest};
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
 pub use ui::{Action, Column, Form, List};

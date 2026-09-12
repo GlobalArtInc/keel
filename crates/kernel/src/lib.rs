@@ -1,4 +1,3 @@
-pub mod boot;
 pub mod clock;
 pub mod config;
 pub mod ctl;
@@ -8,7 +7,6 @@ pub mod instance;
 pub mod keel;
 pub mod loader;
 pub mod logging;
-pub mod menu;
 pub mod migrations;
 pub mod products;
 pub mod registry;
@@ -16,7 +14,9 @@ pub mod secret;
 pub mod socket;
 pub mod storage;
 
+mod boot;
 mod kv;
+mod menu;
 mod meta;
 
 pub use clock::{Clock, SystemClock};

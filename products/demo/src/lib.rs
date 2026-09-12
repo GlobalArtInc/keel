@@ -2,7 +2,7 @@ use keel::prelude::*;
 
 pub mod note;
 
-pub static PRODUCT: ProductBundle = ProductBundle {
+pub static MANIFEST: ProductManifest = ProductManifest {
     id: "demo",
     name: "product.demo.brand",
     version: env!("CARGO_PKG_VERSION"),
@@ -39,18 +39,18 @@ mod tests {
 
     #[test]
     fn the_bundle_names_the_note_module_one_group_and_no_edition() {
-        assert_eq!(PRODUCT.id, "demo");
-        assert_eq!(PRODUCT.module_ids().collect::<Vec<_>>(), ["note"]);
-        assert!(std::ptr::eq(PRODUCT.modules[0], &note::MODULE));
-        assert_eq!(PRODUCT.menu.len(), 1);
-        assert_eq!(PRODUCT.menu[0].id, "demo");
-        assert_eq!(PRODUCT.menu[0].label, "menu.demo");
-        assert_eq!(PRODUCT.account_kinds, ["user"]);
-        assert!(PRODUCT.default_edition().is_none());
-        assert_eq!(PRODUCT.levels, LevelLabels::default());
-        let languages: Vec<&str> = PRODUCT.i18n.iter().map(|(lang, _)| *lang).collect();
+        assert_eq!(MANIFEST.id, "demo");
+        assert_eq!(MANIFEST.module_ids().collect::<Vec<_>>(), ["note"]);
+        assert!(std::ptr::eq(MANIFEST.modules[0], &note::MODULE));
+        assert_eq!(MANIFEST.menu.len(), 1);
+        assert_eq!(MANIFEST.menu[0].id, "demo");
+        assert_eq!(MANIFEST.menu[0].label, "menu.demo");
+        assert_eq!(MANIFEST.account_kinds, ["user"]);
+        assert!(MANIFEST.default_edition().is_none());
+        assert_eq!(MANIFEST.levels, LevelLabels::default());
+        let languages: Vec<&str> = MANIFEST.i18n.iter().map(|(lang, _)| *lang).collect();
         assert_eq!(languages, ["en", "ru"]);
-        for (_, json) in PRODUCT.i18n {
+        for (_, json) in MANIFEST.i18n {
             let messages: Value = serde_json::from_str(json).expect("a JSON dictionary");
             assert_eq!(
                 messages["product"]["demo"]["brand"]

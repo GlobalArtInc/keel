@@ -7,14 +7,14 @@ pub mod account {
 
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, JsonSchema)]
     #[sea_orm(table_name = "keel_account")]
-    #[schemars(rename = "Account")]
+    #[serde(rename_all = "camelCase")]
+    #[schemars(rename = "Account", rename_all = "camelCase")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: String,
         pub kind: String,
-        #[sea_orm(column_name = "parent_id")]
         #[schemars(extend("x-keel" = json!({ "level": "reseller" })))]
-        pub parent: Option<String>,
+        pub parent_id: Option<String>,
         #[schemars(extend("x-keel" = json!({ "level": "reseller" })))]
         pub path: String,
         pub state: String,
@@ -47,12 +47,12 @@ pub mod principal {
 
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, JsonSchema)]
     #[sea_orm(table_name = "keel_principal")]
-    #[schemars(rename = "Principal")]
+    #[serde(rename_all = "camelCase")]
+    #[schemars(rename = "Principal", rename_all = "camelCase")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: String,
-        #[sea_orm(column_name = "account_id")]
-        pub account: String,
+        pub account_id: String,
         pub login: String,
         pub level: String,
         pub role: String,
@@ -74,7 +74,7 @@ pub mod principal {
 
     impl Owned for Entity {
         fn account_column() -> Self::Column {
-            Column::Account
+            Column::AccountId
         }
     }
 }

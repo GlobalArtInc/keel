@@ -9,7 +9,7 @@ use crate::level::Level;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Boot {
-    pub platform: Platform,
+    pub keel: Platform,
     pub products: Vec<BootProduct>,
     pub brand: BootBrand,
     pub principal: Option<BootPrincipal>,
@@ -28,11 +28,12 @@ pub struct Platform {
     pub api: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BootProduct {
     pub id: String,
     pub name: String,
     pub edition: Option<String>,
+    pub brand: BootBrand,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -89,14 +90,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_boot_payload_serialises_the_platform_brand_without_a_logo_and_the_guest_without_a_principal()
-     {
+    fn a_boot_payload_names_keel_the_products_with_their_brands_and_the_guest_without_a_principal()
+    {
         let boot = Boot {
-            platform: Platform {
+            keel: Platform {
                 version: "0.1.0".into(),
                 api: 1,
             },
-            products: Vec::new(),
+            products: vec![BootProduct {
+                id: "dns".into(),
+                name: "product.dns.brand".into(),
+                edition: None,
+                brand: BootBrand {
+                    name: "product.dns.brand".into(),
+                    logo: Some("/brand/dns/logo.svg".into()),
+                    hue: 264,
+                    chroma: 0.12,
+                },
+            }],
             brand: BootBrand {
                 name: "keel.brand".into(),
                 logo: None,
@@ -129,8 +140,11 @@ mod tests {
         assert_eq!(
             wire,
             json!({
-                "platform": { "version": "0.1.0", "api": 1 },
-                "products": [],
+                "keel": { "version": "0.1.0", "api": 1 },
+                "products": [
+                    { "id": "dns", "name": "product.dns.brand", "edition": null,
+                      "brand": { "name": "product.dns.brand", "logo": "/brand/dns/logo.svg", "hue": 264, "chroma": 0.12 } }
+                ],
                 "brand": { "name": "keel.brand", "hue": 220, "chroma": 0.08 },
                 "principal": null,
                 "features": [],

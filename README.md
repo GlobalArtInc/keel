@@ -30,7 +30,10 @@ Designed, not yet built. The design is in `docs/design/`, the order of work in `
 ```
 crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-host, ... (from M0)
 products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
-crates/bin/  keel — the binary: the runtime composed with every bundle of the workspace
+bin/keel/    keel-bin — the binary keel: the composition of every module and every bundle of
+             the workspace; the only crate that depends on product crates. Its cargo feature
+             demo is on by default so the workspace, CI and hack/prove-binary.sh carry the
+             demo bundle; release builds pass --no-default-features and carry no demo
 frontend/    pnpm workspace: @globalart/keel, the shell application and the product view
              libraries (from M2)
 contracts/   protocol.md, golden fixtures, generated openapi.json

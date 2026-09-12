@@ -31,12 +31,16 @@
       },
       "changed": {
         "type": "boolean"
+      },
+      "restart": {
+        "type": "boolean"
       }
     },
     "required": [
       "id",
       "state",
-      "changed"
+      "changed",
+      "restart"
     ],
     "$defs": {
       "ProductState": {

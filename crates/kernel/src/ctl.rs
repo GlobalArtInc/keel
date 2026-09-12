@@ -283,7 +283,7 @@ mod tests {
         }))
         .unwrap();
         let catalogue =
-            json!({ "probe": { "item": { "column": { "id": "Id", "title": "Название" } } } })
+            json!({ "probe": { "item": { "column": { "id": "Id", "title": "Headline" } } } })
                 .as_object()
                 .cloned()
                 .unwrap();
@@ -296,7 +296,7 @@ mod tests {
         });
         assert_eq!(
             table(Some(&descriptor), &catalogue, &data),
-            "Id   Название  weight\na1   first     10\nb22            2.5\n"
+            "Id   Headline  weight\na1   first     10\nb22            2.5\n"
         );
         assert_eq!(
             table(
@@ -304,7 +304,7 @@ mod tests {
                 &catalogue,
                 &json!({ "data": [], "total": 0 })
             ),
-            "Id  Название  weight\n"
+            "Id  Headline  weight\n"
         );
     }
 

@@ -6,6 +6,7 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 
 pub async fn write<C: ConnectionTrait>(
     db: &C,
+    module: &str,
     principal: &Principal,
     events: Vec<Emitted>,
     now: DateTime<Utc>,
@@ -19,10 +20,11 @@ pub async fn write<C: ConnectionTrait>(
     for event in events {
         db.execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "INSERT INTO keel_outbox (id, type, at, actor_json, subject_json, data_json, created_at) VALUES ($1, $2, $3, $4, NULL, $5, $6)",
+            "INSERT INTO keel_outbox (id, type, module, at, actor_json, subject_json, data_json, created_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)",
             [
                 DbValue::from(Id::generate().to_string()),
                 DbValue::from(event.kind),
+                DbValue::from(module),
                 DbValue::from(now),
                 DbValue::Json(actor_json.clone().map(Box::new)),
                 DbValue::Json(Some(Box::new(event.data))),

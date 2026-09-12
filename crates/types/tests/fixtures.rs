@@ -276,13 +276,19 @@ fn event_fixture_round_trips() {
 #[test]
 fn boot_fixture_round_trips_with_the_platform_brand_and_a_product_on_every_group() {
     let boot: Boot = round_trip(load("boot.json"));
-    assert_eq!(boot.platform.api, keel_types::DESCRIPTOR_VERSION);
+    assert_eq!(boot.keel.api, keel_types::DESCRIPTOR_VERSION);
     assert_eq!(boot.products.len(), 2);
     assert!(
         boot.products
             .iter()
             .all(|product| product.edition.is_none())
     );
+    assert_eq!(boot.products[0].brand.name, boot.products[0].name);
+    assert_eq!(
+        boot.products[0].brand.logo.as_deref(),
+        Some("/brand/dns/logo.svg")
+    );
+    assert_eq!(boot.products[1].brand.hue, 200);
     assert_eq!(boot.brand.name, "keel.brand");
     assert!(boot.brand.logo.is_none());
     let principal = boot.principal.expect("a signed-in principal");

@@ -13,7 +13,7 @@ serve_log=""
 usage() {
   echo "usage: hack/prove-binary.sh [path/to/keel]" >&2
   echo "  KEEL_TEST_DATABASE_URL must point at a Postgres superuser connection;" >&2
-  echo "  without a path the binary is built with cargo build -p keel-bin --features demo" >&2
+  echo "  without a path the binary is built with cargo build -p keel-bin" >&2
 }
 
 fail() {
@@ -219,7 +219,7 @@ for tool in psql curl python3; do
 done
 
 if [ -z "$keel" ]; then
-  cargo build -p keel-bin --features demo
+  cargo build -p keel-bin
   keel="${CARGO_TARGET_DIR:-target}/debug/keel"
 fi
 case "$keel" in
@@ -265,7 +265,8 @@ check "healthz reports ok" json_is "$site/healthz.json" 'doc == {"status": "ok"}
 check "GET /api/v1/boot is 200" http_is "$site/boot.json" 200 GET /api/v1/boot
 check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "demo" for p in doc["products"])'
 check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150 and doc["brand"]["chroma"] == 0.1'
-check "boot names the platform version" json_is "$site/boot.json" "doc['platform']['version'] == '$version' and doc['platform']['api'] == 1"
+check "boot names the keel version" json_is "$site/boot.json" "doc['keel']['version'] == '$version' and doc['keel']['api'] == 1"
+check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": None, "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 150, "chroma": 0.1}}'
 check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x
 check "note.edit answers the saved note" json_is "$site/edit.json" 'doc["ok"] is True and doc["data"]["title"] == "x" and doc["meta"]["principal"]["login"] == "owner"'
 check "ctl note.list --out json" keel_ok "$site/notes.json" ctl note.list --out json

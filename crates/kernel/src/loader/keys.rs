@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use keel_types::descriptor::UiAttrs;
 use keel_types::ui::ColumnFilter;
@@ -17,25 +17,29 @@ pub struct DerivedKey {
     pub shared: Option<String>,
 }
 
-pub fn of(descriptor: &Descriptor) -> Vec<DerivedKey> {
+pub fn of(descriptor: &Descriptor, patched: &BTreeMap<String, String>) -> Vec<DerivedKey> {
     let Some(ui) = &descriptor.ui else {
         return Vec::new();
     };
     let prefix = entity_prefix(&descriptor.name);
     let mut keys = Keys {
-        prefix,
+        prefix: prefix.clone(),
         seen: BTreeSet::new(),
         derived: Vec::new(),
     };
     let properties = properties(&descriptor.params);
     let defs = descriptor.params.get("$defs").and_then(Value::as_object);
     for field in fields(descriptor, properties) {
-        keys.push(&format!("field {field}"), &field);
+        let owner = patched
+            .get(&field)
+            .map(|module| patched_prefix(&prefix, module));
+        keys.push_under(owner.as_deref(), &format!("field {field}"), &field);
         let Some(schema) = properties.and_then(|properties| properties.get(&field)) else {
             continue;
         };
         for value in enum_values(schema, defs, 0) {
-            keys.push(
+            keys.push_under(
+                owner.as_deref(),
                 &format!("field {field} value {value}"),
                 &format!("{field}.{value}"),
             );
@@ -91,7 +95,11 @@ struct Keys {
 
 impl Keys {
     fn push(&mut self, member: &str, tail: &str) {
-        let key = format!("{}.{tail}", self.prefix);
+        self.push_under(None, member, tail);
+    }
+
+    fn push_under(&mut self, prefix: Option<&str>, member: &str, tail: &str) {
+        let key = format!("{}.{tail}", prefix.unwrap_or(&self.prefix));
         if !self.seen.insert(key.clone()) {
             return;
         }
@@ -119,6 +127,13 @@ pub fn entity_prefix(function: &str) -> String {
         .rsplit_once('.')
         .map_or(function, |(prefix, _)| prefix)
         .to_owned()
+}
+
+fn patched_prefix(prefix: &str, module: &str) -> String {
+    match prefix.split_once('.') {
+        Some((_, entity)) => format!("{module}.{entity}"),
+        None => module.to_owned(),
+    }
 }
 
 fn properties(schema: &Schema) -> Option<&Map<String, Value>> {
@@ -234,7 +249,7 @@ mod tests {
             .handler(|_: Call<Recipe>| async { Ok(Nothing {}) })
             .descriptor()
             .unwrap();
-        let keys = of(&descriptor);
+        let keys = of(&descriptor, &BTreeMap::new());
         assert_eq!(
             pairs(&keys),
             [
@@ -271,7 +286,10 @@ mod tests {
             .handler(|_: Call<Item>| async { Ok(Nothing {}) })
             .descriptor()
             .unwrap();
-        let listed: Vec<String> = of(&descriptor).into_iter().map(|key| key.key).collect();
+        let listed: Vec<String> = of(&descriptor, &BTreeMap::new())
+            .into_iter()
+            .map(|key| key.key)
+            .collect();
         assert_eq!(
             listed,
             ["base.item.title", "base.item.kind", "base.item.weight"]
@@ -295,7 +313,10 @@ mod tests {
             .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) })
             .descriptor()
             .unwrap();
-        let listed: Vec<String> = of(&descriptor).into_iter().map(|key| key.key).collect();
+        let listed: Vec<String> = of(&descriptor, &BTreeMap::new())
+            .into_iter()
+            .map(|key| key.key)
+            .collect();
         assert_eq!(
             listed,
             [
@@ -313,8 +334,38 @@ mod tests {
             .handler(|_: Call<Nothing>| async { Ok(Nothing {}) })
             .descriptor()
             .unwrap();
-        assert!(of(&bare).is_empty());
+        assert!(of(&bare, &BTreeMap::new()).is_empty());
         assert_eq!(entity_prefix("base.item.get"), "base.item");
         assert_eq!(entity_prefix("bare"), "bare");
+    }
+
+    #[test]
+    fn a_patched_field_derives_its_key_under_the_patching_module_with_the_shared_fallback() {
+        let mut descriptor = function::<Recipe, Nothing>("cook.recipe.edit")
+            .kind(Kind::Form)
+            .unowned()
+            .ui(Form::new("cook.recipe.edit.title").page("main", ["name", "flavour"]))
+            .handler(|_: Call<Recipe>| async { Ok(Nothing {}) })
+            .descriptor()
+            .unwrap();
+        descriptor.ui.as_mut().unwrap().pages[0]
+            .fields
+            .push("rating".to_owned());
+        let patched = BTreeMap::from([("rating".to_owned(), "critic".to_owned())]);
+        let keys = of(&descriptor, &patched);
+        assert_eq!(
+            pairs(&keys),
+            [
+                ("cook.recipe.name", Some("keel.name")),
+                ("cook.recipe.flavour", Some("keel.flavour")),
+                ("cook.recipe.flavour.sweet", Some("keel.flavour.sweet")),
+                ("cook.recipe.flavour.sour", Some("keel.flavour.sour")),
+                ("critic.recipe.rating", Some("keel.rating")),
+                ("cook.recipe.page.main", Some("keel.page.main")),
+            ]
+        );
+        assert_eq!(keys[4].member, "field rating");
+        assert_eq!(patched_prefix("cook.recipe", "critic"), "critic.recipe");
+        assert_eq!(patched_prefix("cook", "critic"), "critic");
     }
 }

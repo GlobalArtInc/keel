@@ -6,7 +6,7 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
-use keel_sdk::{FunctionDef, MenuNode, ProductBundle};
+use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
 use keel_types::{Access, Descriptor, Kind, Platform};
@@ -483,7 +483,7 @@ impl Freezer {
         }
     }
 
-    fn bundle(&mut self, bundle: &'static ProductBundle) {
+    fn bundle(&mut self, bundle: &'static ProductManifest) {
         let owner = format!("product {}", bundle.id);
         for (lang, json) in bundle.i18n {
             match serde_json::from_str::<Value>(json) {
@@ -613,7 +613,7 @@ impl Freezer {
         self.problems.extend(problems);
     }
 
-    fn translations(&mut self, products: &[&'static ProductBundle]) {
+    fn translations(&mut self, products: &[&'static ProductManifest]) {
         let mut required: Vec<(String, String, Option<String>)> = Vec::new();
         for function in self.functions.values() {
             let owner = format!("function {}", function.name());
@@ -623,7 +623,12 @@ impl Freezer {
                     required.push((owner.clone(), empty.title.clone(), None));
                 }
             }
-            for derived in keys::of(&function.descriptor) {
+            let patched: BTreeMap<String, String> = function
+                .patched
+                .iter()
+                .map(|field| (field.name.clone(), field.module.clone()))
+                .collect();
+            for derived in keys::of(&function.descriptor, &patched) {
                 required.push((
                     format!("{owner} {}", derived.member),
                     derived.key,
@@ -704,7 +709,7 @@ impl Freezer {
             })
             .collect();
         let mut services = self.services;
-        services.provide(Arc::new(Composed::new(graph.products())));
+        services.provide(Arc::new(Composed::new(graph.manifests())));
         services.provide::<dyn Clock>(graph.clock().clone());
         let registry = Registry {
             platform: Platform {
@@ -712,6 +717,7 @@ impl Freezer {
                 api: API,
             },
             modules,
+            manifests: graph.manifests().to_vec(),
             products: graph.products().to_vec(),
             functions: self.functions,
             groups: self.groups,
@@ -970,7 +976,7 @@ mod tests {
         "menu": { "base": "Base" }
     }"#;
 
-    static BASE_BUNDLE: ProductBundle = ProductBundle {
+    static BASE_BUNDLE: ProductManifest = ProductManifest {
         id: "base",
         name: "product.base.brand",
         version: "0.1.0",
@@ -998,7 +1004,7 @@ mod tests {
                 "en",
                 r#"{ "product": { "base": { "brand": "Base", "level": { "user": "Customer" } } } }"#,
             ),
-            ("ru", r#"{ "product": { "base": { "brand": "База" } } }"#),
+            ("ru", r#"{ "product": { "base": { "brand": "ru:Base" } } }"#),
         ],
     };
 
@@ -1041,7 +1047,7 @@ mod tests {
 
     fn freeze(
         modules: &[&'static keel_sdk::ModuleDef],
-        products: &[&'static ProductBundle],
+        products: &[&'static ProductManifest],
     ) -> Result<Frozen, FreezeError> {
         let mut composition = Composition::new();
         for module in modules {
@@ -1060,7 +1066,7 @@ mod tests {
 
     fn problems(
         modules: &[&'static keel_sdk::ModuleDef],
-        products: &[&'static ProductBundle],
+        products: &[&'static ProductManifest],
     ) -> Vec<String> {
         freeze(modules, products)
             .expect_err("the freeze fails")
@@ -1082,7 +1088,7 @@ mod tests {
         assert!(registry.function("base.item.edit").is_some());
         assert!(registry.function("base.item.delete").is_none());
         assert!(registry.function("keel.account.list").is_some());
-        assert_eq!(registry.menu().len(), 3);
+        assert_eq!(registry.menu().len(), 4);
         assert_eq!(registry.permissions().len(), 6);
         assert!(registry.permission("base.item.read").is_some());
         assert!(registry.permission("keel.account.manage").is_some());
@@ -1110,7 +1116,7 @@ mod tests {
         assert!(format!("{registry:?}").contains("\"base.item.edit\""));
     }
 
-    static ORDERED_BUNDLE: ProductBundle = ProductBundle {
+    static ORDERED_BUNDLE: ProductManifest = ProductManifest {
         id: "ordered",
         name: "product.ordered.brand",
         version: "0.1.0",
@@ -1162,7 +1168,7 @@ mod tests {
         assert_eq!(frozen.graph().ids(), ["keel", "base"]);
     }
 
-    static SYSTEM_AGAIN: ProductBundle = ProductBundle {
+    static SYSTEM_AGAIN: ProductManifest = ProductManifest {
         id: "again",
         name: "product.again.brand",
         version: "0.1.0",
@@ -1193,7 +1199,10 @@ mod tests {
         },
         account_kinds: &[],
         editions: &[],
-        i18n: &[("ru", r#"{ "product": { "again": { "brand": "Снова" } } }"#)],
+        i18n: &[(
+            "ru",
+            r#"{ "product": { "again": { "brand": "ru:Again" } } }"#,
+        )],
     };
 
     #[test]
@@ -1276,13 +1285,13 @@ mod tests {
             "en",
             r#"{ "shouting": { "a": "Hello %s", "b": "Hello {{name}}", "c": "Hello {name}", "nested": { "d": "Item {0}" } } }"#,
         )
-        .i18n("ru", r#"{ "shouting": { "a": "Привет { name }" } }"#);
+        .i18n("ru", r#"{ "shouting": { "a": "ru:Hello { name }" } }"#);
         Ok(())
     }
 
     module!(SHOUTING, "shouting", [], shouting_init);
 
-    static SHOUTING_BUNDLE: ProductBundle = ProductBundle {
+    static SHOUTING_BUNDLE: ProductManifest = ProductManifest {
         id: "shout",
         name: "product.shout.brand",
         version: "0.1.0",
@@ -1537,7 +1546,7 @@ mod tests {
         )
         .i18n(
             "en",
-            r#"{ "base": { "item": { "sync": "Synchronise", "note": "Note" } } }"#,
+            r#"{ "storing": { "item": { "sync": "Synchronise", "note": "Note" } } }"#,
         );
         Ok(())
     }
