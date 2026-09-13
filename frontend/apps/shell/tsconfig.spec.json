@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc/shell-spec",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "isolatedModules": false,
+    "types": ["jest"]
+  },
+  "include": ["src/**/*.ts"]
+}
