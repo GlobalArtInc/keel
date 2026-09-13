@@ -12,4 +12,9 @@ The wire contract of the platform, in a form both sides can check against.
   `the_descriptors_of_the_kernel_module_match_the_committed_snapshots` in `keel-kernel` compares
   the registry against them and fails on a difference or a file no function owns; after
   reviewing the diff, `KEEL_UPDATE_SNAPSHOTS=1 cargo test -p keel-kernel` rewrites them.
+- `schema/` — the JSON Schema of `keel-types`, written by `keel-dev types --out contracts/schema`
+  and checked by CI with `--check`: `keel.json` is one draft 2020-12 document whose `$defs` hold
+  every wire type, and `<Type>.json` beside it is one `$ref` into it per root type, which the
+  frontend compiles with Ajv and `pnpm generate` turns into the TypeScript types of
+  `@globalart/keel/meta`.
 - `openapi.json` — generated from the function registry, committed for diffs (from M2).

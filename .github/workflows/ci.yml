@@ -85,6 +85,9 @@ jobs:
       - name: The testkit against the Postgres it starts itself
         run: env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit
 
+      - name: The schema of the wire contract is committed
+        run: cargo run -p keel-dev -- types --out contracts/schema --check
+
       - name: The binary without the demo bundle
         run: cargo test -p keel-bin --no-default-features
 
@@ -237,6 +240,12 @@ jobs:
         env:
           NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
+
+      - name: Generate the wire types
+        run: pnpm generate
+
+      - name: The generated wire types are committed
+        run: git diff --exit-code
 
       - name: Lint
         run: pnpm lint

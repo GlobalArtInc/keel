@@ -1965,6 +1965,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-dev"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "keel-types",
+ "schemars 1.2.2",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "keel-kernel"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,1934 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "keel.json",
+  "$defs": {
+    "Access": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "permission": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "feature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "level"
+      ]
+    },
+    "Account": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "parentId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/AccountState"
+        },
+        "externalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "path",
+        "state"
+      ]
+    },
+    "AccountState": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "deleting"
+      ]
+    },
+    "Action": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/ActionRole"
+        },
+        "screen": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "function": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "confirm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Confirm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hidden_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "formats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExportFormat"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "role"
+      ]
+    },
+    "ActionRole": {
+      "type": "string",
+      "enum": [
+        "new",
+        "edit",
+        "delete",
+        "group",
+        "button",
+        "child",
+        "external",
+        "export",
+        "upload",
+        "download",
+        "refresh"
+      ]
+    },
+    "ActorVia": {
+      "type": "string",
+      "enum": [
+        "su",
+        "socket",
+        "peer"
+      ]
+    },
+    "Badge": {
+      "type": "object",
+      "properties": {
+        "problem": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "problem"
+      ]
+    },
+    "Boot": {
+      "type": "object",
+      "properties": {
+        "keel": {
+          "$ref": "#/$defs/Platform"
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BootProduct"
+          }
+        },
+        "brand": {
+          "$ref": "#/$defs/BootBrand"
+        },
+        "principal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BootPrincipal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "license": true,
+        "menu": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BootMenuGroup"
+          }
+        },
+        "dashboard": {
+          "type": "array",
+          "items": true
+        },
+        "views": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "meta": {
+          "type": "string"
+        },
+        "problems": true
+      },
+      "required": [
+        "keel",
+        "products",
+        "brand",
+        "features",
+        "menu",
+        "dashboard",
+        "views",
+        "meta"
+      ]
+    },
+    "BootBrand": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "logo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hue": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "chroma": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "name",
+        "hue",
+        "chroma"
+      ]
+    },
+    "BootMenuGroup": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "product": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BootMenuItem"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "icon",
+        "items"
+      ]
+    },
+    "BootMenuItem": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "func": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Badge"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "label",
+        "func",
+        "kind"
+      ]
+    },
+    "BootPrincipal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "login": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "account": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetaActor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lang": {
+          "type": "string"
+        },
+        "tz": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totp": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "level",
+        "account",
+        "lang",
+        "totp"
+      ]
+    },
+    "BootProduct": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "edition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "brand": {
+          "$ref": "#/$defs/BootBrand"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "brand"
+      ]
+    },
+    "CallError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "key": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "requestId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldError"
+          }
+        }
+      },
+      "required": [
+        "code",
+        "key"
+      ]
+    },
+    "Check": {
+      "type": "string",
+      "enum": [
+        "domain",
+        "ip",
+        "cidr",
+        "email",
+        "int",
+        "name",
+        "port",
+        "path"
+      ]
+    },
+    "Choice": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "group": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "label"
+      ]
+    },
+    "Choices": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Choice"
+          }
+        },
+        "more": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "data",
+        "more"
+      ]
+    },
+    "Column": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/ColumnType"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Link"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortable": {
+          "type": "boolean"
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Total"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "map": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/Tone"
+          }
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColumnFilter"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InlineEdit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "access": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemberAccess"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "type"
+      ]
+    },
+    "ColumnFilter": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "remote": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "remote"
+          ]
+        }
+      ]
+    },
+    "ColumnType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "number",
+        "link",
+        "status",
+        "toggle",
+        "date",
+        "datetime",
+        "boolean"
+      ]
+    },
+    "Confirm": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/ConfirmDetails"
+        }
+      ]
+    },
+    "ConfirmDetails": {
+      "type": "object",
+      "properties": {
+        "destructive": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfirmInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ConfirmInput": {
+      "type": "string",
+      "enum": [
+        "count"
+      ]
+    },
+    "Context": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "principal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextPrincipal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "screen": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextScreen"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ContextPrincipal": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/Level"
+        }
+      },
+      "required": [
+        "level"
+      ]
+    },
+    "ContextScreen": {
+      "type": "object",
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Control": {
+      "type": "string",
+      "enum": [
+        "input",
+        "password",
+        "select",
+        "toggle",
+        "switcher",
+        "slider",
+        "date",
+        "time",
+        "file",
+        "list",
+        "code",
+        "tags"
+      ]
+    },
+    "Descriptor": {
+      "type": "object",
+      "properties": {
+        "keel": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "mode": {
+          "$ref": "#/$defs/Mode"
+        },
+        "access": {
+          "$ref": "#/$defs/Access"
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "type": [
+            "object",
+            "boolean"
+          ]
+        },
+        "result": {
+          "type": [
+            "object",
+            "boolean"
+          ]
+        },
+        "ui": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScreenUi"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "keel",
+        "name",
+        "module",
+        "kind",
+        "mode",
+        "access",
+        "params",
+        "result"
+      ]
+    },
+    "Empty": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ]
+    },
+    "Envelope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "data": true,
+            "meta": {
+              "$ref": "#/$defs/Meta"
+            }
+          },
+          "required": [
+            "ok",
+            "data",
+            "meta"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ok": {
+              "const": false
+            },
+            "error": {
+              "$ref": "#/$defs/CallError"
+            }
+          },
+          "required": [
+            "ok",
+            "error"
+          ]
+        }
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "validation",
+        "forbidden",
+        "forbidden_field",
+        "unauthenticated",
+        "not_found",
+        "conflict",
+        "idempotency_mismatch",
+        "limit_exceeded",
+        "license",
+        "rate_limited",
+        "unavailable",
+        "peer",
+        "internal"
+      ]
+    },
+    "Event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "seq": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "instanceId": {
+          "$ref": "#/$defs/Id"
+        },
+        "module": {
+          "type": "string"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventActor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventSubject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "seq",
+        "type",
+        "at",
+        "instanceId",
+        "module"
+      ]
+    },
+    "EventActor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EventActorKind"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ]
+    },
+    "EventActorKind": {
+      "type": "string",
+      "enum": [
+        "principal",
+        "peer",
+        "system"
+      ]
+    },
+    "EventSubject": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "accountId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ]
+    },
+    "ExportFormat": {
+      "type": "string",
+      "enum": [
+        "csv",
+        "json"
+      ]
+    },
+    "Expr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "eq": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                true
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "eq"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ne": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                true
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "ne"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "gt": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                true
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "gt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "lt": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                true
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "lt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "in": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": true
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "in"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "matches": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "matches"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "truthy": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "truthy"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "empty": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "empty"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "and": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "required": [
+            "and"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "or": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "required": [
+            "or"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FieldError": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "FieldUi": {
+      "type": "object",
+      "properties": {
+        "show_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "required_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readonly_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recompute": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Filter": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FilterOp"
+        },
+        "value": {
+          "$ref": "#/$defs/FilterValue"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ]
+    },
+    "FilterOp": {
+      "type": "string",
+      "enum": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte"
+      ]
+    },
+    "FilterValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "Id": {
+      "type": "string",
+      "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "minLength": 26,
+      "maxLength": 26
+    },
+    "InlineEdit": {
+      "type": "object",
+      "properties": {
+        "function": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "function"
+      ]
+    },
+    "KeelAttrs": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secret": {
+          "type": "boolean"
+        },
+        "once": {
+          "type": "boolean"
+        },
+        "check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Kind": {
+      "type": "string",
+      "enum": [
+        "list",
+        "get",
+        "form",
+        "action",
+        "wizard",
+        "report",
+        "options",
+        "stream",
+        "download",
+        "upload"
+      ]
+    },
+    "Level": {
+      "type": "string",
+      "enum": [
+        "guest",
+        "service",
+        "user",
+        "reseller",
+        "admin",
+        "owner"
+      ]
+    },
+    "Link": {
+      "type": "object",
+      "properties": {
+        "screen": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "screen"
+      ]
+    },
+    "ListQuery": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 1
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 25
+        },
+        "search": {
+          "type": "string"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Filter"
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "MemberAccess": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "permission": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "principal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetaPrincipal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "requestId"
+      ]
+    },
+    "MetaActor": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "login": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "via": {
+          "$ref": "#/$defs/ActorVia"
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "level",
+        "via"
+      ]
+    },
+    "MetaPrincipal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "login": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "account": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetaActor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "level",
+        "account"
+      ]
+    },
+    "Mode": {
+      "type": "string",
+      "enum": [
+        "read",
+        "write"
+      ]
+    },
+    "OptionsQuery": {
+      "type": "object",
+      "properties": {
+        "search": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "limit": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 20
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Page": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": true
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "totals": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "data",
+        "total"
+      ]
+    },
+    "Platform": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "api": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "version",
+        "api"
+      ]
+    },
+    "Principal": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "login": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "accountId": {
+          "$ref": "#/$defs/Id"
+        },
+        "role": {
+          "type": "string"
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Principal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "via": {
+          "$ref": "#/$defs/Via"
+        },
+        "externalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lang": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "level",
+        "accountId",
+        "role",
+        "scope",
+        "via",
+        "lang"
+      ]
+    },
+    "Scope": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "full",
+            "read_only"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "functions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "functions"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ScreenPage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "show_if": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "ScreenResult": {
+      "type": "string",
+      "enum": [
+        "redirect",
+        "task",
+        "download"
+      ]
+    },
+    "ScreenUi": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "search": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Column"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          }
+        },
+        "row_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "empty": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Empty"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invalidate_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "read": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ScreenPage"
+          }
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldUi"
+          }
+        },
+        "multi": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScreenResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "title"
+      ]
+    },
+    "Sort": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "dir": {
+          "$ref": "#/$defs/SortDir"
+        }
+      },
+      "required": [
+        "key",
+        "dir"
+      ]
+    },
+    "SortDir": {
+      "type": "string",
+      "enum": [
+        "asc",
+        "desc"
+      ]
+    },
+    "Tone": {
+      "type": "string",
+      "enum": [
+        "success",
+        "warning",
+        "danger",
+        "info",
+        "neutral"
+      ]
+    },
+    "Total": {
+      "type": "string",
+      "enum": [
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count"
+      ]
+    },
+    "UiAttrs": {
+      "type": "object",
+      "properties": {
+        "control": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Control"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "help": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "generate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Via": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "http",
+            "socket",
+            "internal",
+            "su"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "plugin": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "peer": {
+              "$ref": "#/$defs/Id"
+            }
+          },
+          "required": [
+            "peer"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

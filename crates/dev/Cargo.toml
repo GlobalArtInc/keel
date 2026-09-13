@@ -1,0 +1,21 @@
+[package]
+name = "keel-dev"
+description = "The developer CLI: the JSON Schema of the wire contract for the TypeScript side, typed with keel-types alone"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "keel-dev"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+keel-types = { workspace = true }
+schemars = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
