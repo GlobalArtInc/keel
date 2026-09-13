@@ -141,6 +141,18 @@ stdout_has_line() {
   fi
 }
 
+table_is() {
+  local file=$1 expected=$2
+  python3 - "$file" "$expected" <<'EOF'
+import json, sys
+with open(sys.argv[1]) as handle:
+    rows = [line.split() for line in handle.read().splitlines()]
+if rows != json.loads(sys.argv[2]):
+    print("  " + json.dumps(rows, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+EOF
+}
+
 http() {
   local out=$1 method=$2 path=$3 body=${4:-} credential=${5:-} extra=${6:-}
   local status
@@ -324,6 +336,17 @@ check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x
 check "note.edit answers the saved note" json_is "$site/edit.json" 'doc["ok"] is True and doc["data"]["title"] == "x" and doc["meta"]["principal"]["login"] == "owner"'
 check "ctl note.list --out json" keel_ok "$site/notes.json" ctl note.list --out json
 check "note.list answers the page with the note" json_is "$site/notes.json" 'doc["ok"] is True and [row["title"] for row in doc["data"]["data"]] == ["x"]'
+check "ctl note.import.check with an empty source is refused" keel_fails "$site/import-check.json" ctl note.import.check text=
+check "note.import.check answers note.error.empty on text" json_is "$site/import-check.json" 'doc["ok"] is False and doc["error"]["code"] == "validation" and doc["error"]["fields"][0]["path"] == "text" and doc["error"]["fields"][0]["key"] == "note.error.empty"'
+check "ctl note.import with two lines" keel_ok "$site/import.json" ctl note.import "text=$(printf 'alpha\nbeta')" 'tags=["proven"]' kind=todo
+check "note.import answers two imported notes" json_is "$site/import.json" 'doc["ok"] is True and doc["data"]["imported"] == 2 and len(doc["data"]["ids"]) == 2'
+check "ctl note.list --out json after the import" keel_ok "$site/notes-imported.json" ctl note.list --out json 'sort={"key":"title","dir":"asc"}'
+check "note.list answers the imported todos with their tags" json_is "$site/notes-imported.json" 'doc["ok"] is True and [(row["title"], row["kind"], row["tags"]) for row in doc["data"]["data"]] == [("alpha", "todo", ["proven"]), ("beta", "todo", ["proven"]), ("x", "memo", [])]'
+check "ctl note.tag.list --out table" keel_ok "$site/tags.out" ctl note.tag.list --out table
+check "note.tag.list renders the tag table with translated headers" table_is "$site/tags.out" '[["Tag", "Count"], ["proven", "2"]]'
+check "ctl note.tag.list --out table --lang ru" keel_ok "$site/tags-ru.out" ctl note.tag.list --out table --lang ru
+ru_tag_headers=$(python3 -c 'import json; c = json.load(open("products/demo/i18n/note/ru.json"))["note"]["tag"]["column"]; print(json.dumps([[c["tag"], c["count"]], ["proven", "2"]], ensure_ascii=False))')
+check "note.tag.list renders the Russian headers" table_is "$site/tags-ru.out" "$ru_tag_headers"
 check "POST /api/v1/call/note.list without a credential is 401" http_is "$site/call.json" 401 POST /api/v1/call/note.list '{}'
 check "the call answers the unauthenticated envelope" json_is "$site/call.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "keel.error.unauthenticated"'
 account_id=$(json_get "$site/account.json" 'doc["data"]["id"]')

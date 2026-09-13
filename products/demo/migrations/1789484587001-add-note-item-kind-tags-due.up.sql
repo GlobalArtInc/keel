@@ -1,0 +1,4 @@
+ALTER TABLE note_item
+    ADD COLUMN kind TEXT NOT NULL DEFAULT 'memo',
+    ADD COLUMN tags TEXT[] NOT NULL DEFAULT '{}',
+    ADD COLUMN due DATE;

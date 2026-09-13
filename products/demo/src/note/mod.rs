@@ -1,12 +1,25 @@
 mod functions;
 mod hooks;
+mod import;
 mod item;
+mod tags;
 
 use keel::prelude::*;
+use keel::sdk::chrono::NaiveDate;
 
 pub const MAX_PER_ACCOUNT: u64 = 20;
+pub const MAX_LINE: usize = 200;
 pub const LOCKED_PREFIX: &str = "locked";
-pub const FUNCTIONS: [&str; 4] = ["note.list", "note.get", "note.edit", "note.delete"];
+pub const FUNCTIONS: [&str; 8] = [
+    "note.list",
+    "note.get",
+    "note.edit",
+    "note.delete",
+    "note.recompute",
+    "note.import",
+    "note.import.check",
+    "note.tag.list",
+];
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations").table("keel_migration_note");
@@ -19,6 +32,24 @@ pub static MODULE: ModuleDef = ModuleDef {
     migrations: Some(&MIGRATIONS),
     init,
 };
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde", rename_all = "lowercase")]
+#[schemars(crate = "keel::sdk::schemars")]
+pub enum NoteKind {
+    #[default]
+    Memo,
+    Todo,
+}
+
+impl NoteKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            NoteKind::Memo => "memo",
+            NoteKind::Todo => "todo",
+        }
+    }
+}
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel::sdk::serde")]
@@ -36,6 +67,13 @@ struct NoteEdit {
     pub title: String,
     #[serde(default)]
     pub body: String,
+    #[serde(default)]
+    pub kind: NoteKind,
+    #[serde(default)]
+    #[schemars(extend("x-keel" = json!({ "check": "name" }), "x-ui" = json!({ "control": "tags" })))]
+    pub tags: Vec<String>,
+    #[schemars(extend("x-ui" = json!({ "control": "date" })))]
+    pub due: Option<NaiveDate>,
     #[schemars(extend("x-keel" = json!({ "level": "reseller", "options": "keel.account.options" })))]
     pub account: Option<Id>,
 }
@@ -60,12 +98,21 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::get())
         .function(functions::edit())
         .function(functions::delete())
+        .function(functions::recompute())
+        .function(import::import())
+        .function(import::check())
+        .function(tags::list())
         .permission("note.read", &[Level::User, Level::Reseller])
         .permission("note.manage", &[Level::User, Level::Reseller])
         .menu(
             MenuNode::new("demo/notes", "note.list")
                 .icon("notebook")
                 .order(10),
+        )
+        .menu(
+            MenuNode::new("demo/tags", "note.tag.list")
+                .icon("tag")
+                .order(20),
         )
         .i18n("en", include_str!("../../i18n/note/en.json"))
         .i18n("ru", include_str!("../../i18n/note/ru.json"))
@@ -97,12 +144,26 @@ mod tests {
                 ("note.get", Kind::Get, Mode::Read),
                 ("note.edit", Kind::Form, Mode::Write),
                 ("note.delete", Kind::Action, Mode::Write),
+                ("note.recompute", Kind::Action, Mode::Read),
+                ("note.import", Kind::Wizard, Mode::Write),
+                ("note.import.check", Kind::Action, Mode::Read),
+                ("note.tag.list", Kind::List, Mode::Read),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, _, _)| *name).collect();
         assert_eq!(names, FUNCTIONS);
         for def in &registrations.functions {
-            assert!(def.owned().is_some(), "{} is owned", def.name());
+            let owned = matches!(
+                def.name(),
+                "note.list" | "note.get" | "note.edit" | "note.delete"
+            );
+            assert_eq!(def.owned().is_some(), owned, "{} ownership", def.name());
+            assert_ne!(
+                *def.ownership(),
+                keel::sdk::function::Ownership::Undeclared,
+                "{} declares its ownership",
+                def.name()
+            );
             let descriptor = def.descriptor().expect("the descriptor compiles");
             assert_eq!(descriptor.module, "note");
         }
@@ -112,9 +173,11 @@ mod tests {
             .map(|permission| permission.key.as_str())
             .collect();
         assert_eq!(keys, ["note.read", "note.manage"]);
-        assert_eq!(registrations.menu.len(), 1);
+        assert_eq!(registrations.menu.len(), 2);
         assert_eq!(registrations.menu[0].path(), "demo/notes");
         assert_eq!(registrations.menu[0].func(), "note.list");
+        assert_eq!(registrations.menu[1].path(), "demo/tags");
+        assert_eq!(registrations.menu[1].func(), "note.tag.list");
         let languages: Vec<&str> = registrations
             .i18n
             .iter()
@@ -127,6 +190,17 @@ mod tests {
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),
             Some("keel_migration_note")
+        );
+    }
+
+    #[test]
+    fn a_note_kind_names_itself_and_defaults_to_memo() {
+        assert_eq!(NoteKind::default(), NoteKind::Memo);
+        assert_eq!(NoteKind::Memo.as_str(), "memo");
+        assert_eq!(NoteKind::Todo.as_str(), "todo");
+        assert_eq!(
+            keel::sdk::serde_json::to_value(NoteKind::Todo).expect("serialises"),
+            json!("todo")
         );
     }
 }

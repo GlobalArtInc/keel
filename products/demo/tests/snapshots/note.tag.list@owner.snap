@@ -1,0 +1,87 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.tag.list
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "note.tag.list",
+  "module": "note",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.read"
+  },
+  "key": "tag",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_TagCount",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/TagCount"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "TagCount": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "note.tag.list.title",
+    "search": [
+      "tag"
+    ],
+    "columns": [
+      {
+        "key": "tag",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "count",
+        "type": "number",
+        "sortable": true,
+        "total": "sum"
+      }
+    ]
+  }
+}

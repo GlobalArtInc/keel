@@ -52,7 +52,7 @@ async fn a_token_scoped_to_note_edit_alone_edits_a_note_through_its_nested_invok
     let note = saved.json();
     assert_eq!(note["data"]["title"], json!("by token"));
     assert_eq!(
-        note["data"]["account_id"],
+        note["data"]["accountId"],
         json!(harness.fixtures().accounts.a1.to_string())
     );
     assert_eq!(note["meta"]["principal"]["login"], json!("a1"));

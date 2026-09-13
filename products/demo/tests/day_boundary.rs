@@ -54,39 +54,39 @@ async fn a_bare_date_filter_takes_the_day_boundary_in_the_callers_zone_and_utc_w
 
     let http = harness.http().await;
     assert_eq!(
-        list(&http, Who::A1, "updated_at", "gte", "2026-09-14").await,
+        list(&http, Who::A1, "updatedAt", "gte", "2026-09-14").await,
         ["late"]
     );
     assert!(
-        list(&http, Who::A2, "updated_at", "gte", "2026-09-14")
+        list(&http, Who::A2, "updatedAt", "gte", "2026-09-14")
             .await
             .is_empty()
     );
     assert!(
-        list(&http, Who::A1, "updated_at", "lte", "2026-09-13")
+        list(&http, Who::A1, "updatedAt", "lte", "2026-09-13")
             .await
             .is_empty()
     );
     assert_eq!(
-        list(&http, Who::A2, "updated_at", "lte", "2026-09-13").await,
+        list(&http, Who::A2, "updatedAt", "lte", "2026-09-13").await,
         ["late"]
     );
     assert_eq!(
-        list(&http, Who::A1, "updated_at", "eq", "2026-09-14").await,
+        list(&http, Who::A1, "updatedAt", "eq", "2026-09-14").await,
         ["late"]
     );
     assert_eq!(
-        list(&http, Who::A2, "updated_at", "eq", "2026-09-13").await,
+        list(&http, Who::A2, "updatedAt", "eq", "2026-09-13").await,
         ["late"]
     );
     for who in [Who::A1, Who::A2] {
         assert_eq!(
-            list(&http, who, "updated_at", "gte", "2026-09-13T20:00:00Z").await,
+            list(&http, who, "updatedAt", "gte", "2026-09-13T20:00:00Z").await,
             ["late"],
             "{who}"
         );
         assert!(
-            list(&http, who, "updated_at", "gt", "2026-09-13T20:00:00Z")
+            list(&http, who, "updatedAt", "gt", "2026-09-13T20:00:00Z")
                 .await
                 .is_empty(),
             "{who}"
@@ -97,9 +97,7 @@ async fn a_bare_date_filter_takes_the_day_boundary_in_the_callers_zone_and_utc_w
             "POST",
             "/api/v1/call/note.list",
             &[("authorization", "Bearer a1"), JSON],
-            Some(
-                &json!({ "filters": [{ "key": "updated_at", "value": "yesterday" }] }).to_string(),
-            ),
+            Some(&json!({ "filters": [{ "key": "updatedAt", "value": "yesterday" }] }).to_string()),
         )
         .await;
     assert_eq!(vague.status, 422, "{}", vague.body);

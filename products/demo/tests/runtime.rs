@@ -94,13 +94,13 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     );
     let migrated = runtime.migrate(&site.config).await.expect("migrate runs");
     assert_eq!(migrated.modules[1].0, "note");
-    assert_eq!(migrated.modules[1].1.len(), 1, "{migrated:?}");
+    assert_eq!(migrated.modules[1].1.len(), 2, "{migrated:?}");
     assert_eq!(site.tables().await, ["note_item"]);
     assert_eq!(
         site.database
             .rows("SELECT count(*)::text FROM keel_migration_note")
             .await,
-        ["1"]
+        ["2"]
     );
 
     let running = runtime
@@ -141,13 +141,16 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     assert!(table.ok, "{}", table.text);
     let ru: Value = serde_json::from_str(include_str!("../i18n/note/ru.json")).expect("ru");
     let lines: Vec<&str> = table.text.lines().collect();
+    let header = |key: &str| ru["note"]["column"][key].as_str().expect("a label");
     assert_eq!(
         lines[0].split_whitespace().collect::<Vec<_>>(),
         [
-            ru["note"]["column"]["title"].as_str().expect("a label"),
-            ru["note"]["column"]["updated_at"]
-                .as_str()
-                .expect("a label"),
+            header("title"),
+            header("kind"),
+            header("tags"),
+            header("due"),
+            header("updatedAt"),
+            header("accountId"),
         ],
         "{}",
         table.text

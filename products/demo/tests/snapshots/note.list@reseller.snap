@@ -52,7 +52,7 @@ info:
           "id": {
             "type": "string"
           },
-          "account_id": {
+          "accountId": {
             "type": "string"
           },
           "title": {
@@ -61,22 +61,40 @@ info:
           "body": {
             "type": "string"
           },
-          "created_at": {
+          "kind": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "createdAt": {
             "type": "string",
             "format": "date-time"
           },
-          "updated_at": {
+          "updatedAt": {
             "type": "string",
             "format": "date-time"
           }
         },
         "required": [
           "id",
-          "account_id",
+          "accountId",
           "title",
           "body",
-          "created_at",
-          "updated_at"
+          "kind",
+          "tags",
+          "createdAt",
+          "updatedAt"
         ]
       }
     }
@@ -100,9 +118,42 @@ info:
         "primary": true
       },
       {
-        "key": "updated_at",
+        "key": "kind",
+        "type": "status",
+        "map": {
+          "memo": "neutral",
+          "todo": "warning"
+        },
+        "filter": {
+          "options": [
+            "memo",
+            "todo"
+          ]
+        }
+      },
+      {
+        "key": "tags",
+        "type": "text"
+      },
+      {
+        "key": "due",
+        "type": "date",
+        "sortable": true
+      },
+      {
+        "key": "updatedAt",
         "type": "datetime",
         "sortable": true
+      },
+      {
+        "key": "accountId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
       }
     ],
     "actions": [
@@ -124,7 +175,8 @@ info:
         "function": "note.delete",
         "confirm": {
           "destructive": true,
-          "items": "title"
+          "items": "title",
+          "input": "count"
         }
       }
     ],

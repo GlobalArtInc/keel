@@ -37,6 +37,33 @@ info:
       "body": {
         "type": "string",
         "default": ""
+      },
+      "kind": {
+        "$ref": "#/$defs/NoteKind",
+        "default": "memo"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "x-keel": {
+          "check": "name"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "due": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date",
+        "x-ui": {
+          "control": "date"
+        }
       }
     },
     "required": [
@@ -48,6 +75,13 @@ info:
         "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
         "minLength": 26,
         "maxLength": 26
+      },
+      "NoteKind": {
+        "type": "string",
+        "enum": [
+          "memo",
+          "todo"
+        ]
       }
     }
   },
@@ -58,7 +92,7 @@ info:
       "id": {
         "type": "string"
       },
-      "account_id": {
+      "accountId": {
         "type": "string"
       },
       "title": {
@@ -67,22 +101,40 @@ info:
       "body": {
         "type": "string"
       },
-      "created_at": {
+      "kind": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "due": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "createdAt": {
         "type": "string",
         "format": "date-time"
       },
-      "updated_at": {
+      "updatedAt": {
         "type": "string",
         "format": "date-time"
       }
     },
     "required": [
       "id",
-      "account_id",
+      "accountId",
       "title",
       "body",
-      "created_at",
-      "updated_at"
+      "kind",
+      "tags",
+      "createdAt",
+      "updatedAt"
     ]
   },
   "ui": {
@@ -93,7 +145,10 @@ info:
         "id": "main",
         "fields": [
           "title",
-          "body"
+          "body",
+          "kind",
+          "due",
+          "tags"
         ]
       },
       {
@@ -105,6 +160,25 @@ info:
           ]
         }
       }
-    ]
+    ],
+    "fields": {
+      "due": {
+        "show_if": {
+          "eq": [
+            "kind",
+            "todo"
+          ]
+        },
+        "required_if": {
+          "eq": [
+            "kind",
+            "todo"
+          ]
+        }
+      },
+      "kind": {
+        "recompute": "note.recompute"
+      }
+    }
   }
 }

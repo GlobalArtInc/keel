@@ -1,0 +1,44 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.import.check
+  level: user
+---
+{
+  "keel": 1,
+  "name": "note.import.check",
+  "module": "note",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.manage"
+  },
+  "params": {
+    "title": "ImportSource",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": null
+      }
+    }
+  },
+  "result": {
+    "title": "Checked",
+    "type": "object",
+    "properties": {
+      "lines": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "lines"
+    ]
+  }
+}

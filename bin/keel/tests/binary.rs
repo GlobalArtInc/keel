@@ -188,13 +188,16 @@ mod demo {
         let ru: Value =
             serde_json::from_str(include_str!("../../../products/demo/i18n/note/ru.json"))
                 .expect("the note ru dictionary");
+        let header = |key: &str| ru["note"]["column"][key].as_str().expect("a label");
         assert_eq!(
             lines[0].split_whitespace().collect::<Vec<_>>(),
             [
-                ru["note"]["column"]["title"].as_str().expect("a label"),
-                ru["note"]["column"]["updated_at"]
-                    .as_str()
-                    .expect("a label"),
+                header("title"),
+                header("kind"),
+                header("tags"),
+                header("due"),
+                header("updatedAt"),
+                header("accountId"),
             ],
             "{table}"
         );

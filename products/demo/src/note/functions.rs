@@ -1,11 +1,37 @@
 use keel::prelude::*;
+use keel::sdk::chrono::{Days, NaiveDate};
 use keel::sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
 };
-use keel::sdk::serde_json;
-use keel::types::AccountState;
+use keel::sdk::serde_json::{self, Map};
+use keel::types::{AccountState, ErrorCode};
 
-use super::{Batch, Deleted, NoteEdit, Pick, item};
+use super::{Batch, Deleted, NoteEdit, NoteKind, Pick, item};
+
+pub const DUE_AHEAD_DAYS: u64 = 7;
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Recompute {
+    pub values: Map<String, Value>,
+    pub changed: String,
+}
+
+#[derive(Default, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct RecomputedValues {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<NaiveDate>,
+}
+
+#[derive(Default, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Recomputed {
+    pub values: RecomputedValues,
+}
 
 pub fn list() -> FunctionDef {
     function::<ListQuery, Page<item::Model>>("note.list")
@@ -20,7 +46,22 @@ pub fn list() -> FunctionDef {
                     .sortable()
                     .primary(),
             )
-            .column(Column::new("updated_at", ColumnType::Datetime).sortable())
+            .column(
+                Column::new("kind", ColumnType::Status)
+                    .map([
+                        (NoteKind::Memo.as_str(), Tone::Neutral),
+                        (NoteKind::Todo.as_str(), Tone::Warning),
+                    ])
+                    .filter_options([NoteKind::Memo.as_str(), NoteKind::Todo.as_str()]),
+            )
+            .column(Column::new("tags", ColumnType::Text))
+            .column(Column::new("due", ColumnType::Date).sortable())
+            .column(Column::new("updatedAt", ColumnType::Datetime).sortable())
+            .column(
+                Column::new("accountId", ColumnType::Text)
+                    .level(Level::Reseller)
+                    .filter_remote("keel.account.options"),
+            )
             .action(
                 Action::new("create", ActionRole::New)
                     .screen("note.edit")
@@ -37,13 +78,13 @@ pub fn list() -> FunctionDef {
                     .confirm_with(ConfirmDetails {
                         destructive: true,
                         items: Some("title".to_owned()),
-                        input: None,
+                        input: Some(ConfirmInput::Count),
                     }),
             )
             .row_actions(["edit", "delete"])
             .empty("note.empty", Some("create"))
             .invalidate_on(["note.*"]))
-        .default_sort("updated_at", SortDir::Desc)
+        .default_sort("updatedAt", SortDir::Desc)
         .source(entity_source::<item::Entity>())
 }
 
@@ -62,9 +103,14 @@ pub fn edit() -> FunctionDef {
         .owned::<item::Entity>()
         .ui(Form::new("note.edit.title")
             .read("note.get")
-            .page("main", ["title", "body"])
+            .page("main", ["title", "body", "kind", "due", "tags"])
             .page("owner", ["account"])
-            .show_if("$principal.level != 'user'"))
+            .show_if("$principal.level != 'user'")
+            .field("kind")
+            .recompute("note.recompute")
+            .field("due")
+            .show_if("kind == 'todo'")
+            .required_if("kind == 'todo'"))
         .handler(|call: Call<NoteEdit>| async move {
             let params = call.params();
             let tx = call.tx()?;
@@ -84,6 +130,12 @@ pub fn edit() -> FunctionDef {
                 return Err(KeelError::conflict("note.error.account_suspended")
                     .param("state", owner["state"].clone()));
             }
+            if params.kind == NoteKind::Todo && params.due.is_none() {
+                return Err(KeelError::validation("keel.schema.required")
+                    .field("due")
+                    .param("property", "due"));
+            }
+            refuse_taken_title(tx, &account, &params.title, current.as_ref()).await?;
             let now = call.require::<dyn Clock>()?.now();
             let id = match &current {
                 Some(row) => {
@@ -92,6 +144,9 @@ pub fn edit() -> FunctionDef {
                         account_id: Set(account.clone()),
                         title: Set(params.title.clone()),
                         body: Set(params.body.clone()),
+                        kind: Set(params.kind.as_str().to_owned()),
+                        tags: Set(params.tags.clone()),
+                        due: Set(params.due),
                         updated_at: Set(now),
                         ..Default::default()
                     }
@@ -106,6 +161,9 @@ pub fn edit() -> FunctionDef {
                         account_id: Set(account.clone()),
                         title: Set(params.title.clone()),
                         body: Set(params.body.clone()),
+                        kind: Set(params.kind.as_str().to_owned()),
+                        tags: Set(params.tags.clone()),
+                        due: Set(params.due),
                         created_at: Set(now),
                         updated_at: Set(now),
                     }
@@ -138,6 +196,59 @@ pub fn delete() -> FunctionDef {
             }
             Ok(Deleted { deleted })
         })
+}
+
+pub fn recompute() -> FunctionDef {
+    function::<Recompute, Recomputed>("note.recompute")
+        .kind(Kind::Action)
+        .mode(Mode::Read)
+        .access(Level::User, "note.manage")
+        .unowned()
+        .handler(|call: Call<Recompute>| async move {
+            let params = call.params();
+            let kind: Option<NoteKind> = params
+                .values
+                .get("kind")
+                .and_then(|value| serde_json::from_value(value.clone()).ok());
+            let due_empty = params
+                .values
+                .get("due")
+                .is_none_or(|due| due.is_null() || due.as_str().is_some_and(str::is_empty));
+            if params.changed != "kind" || kind != Some(NoteKind::Todo) || !due_empty {
+                return Ok(Recomputed::default());
+            }
+            let today = call
+                .require::<dyn Clock>()?
+                .now()
+                .with_timezone(&call.tz())
+                .date_naive();
+            let due = today
+                .checked_add_days(Days::new(DUE_AHEAD_DAYS))
+                .ok_or_else(|| KeelError::new(ErrorCode::Internal))?;
+            Ok(Recomputed {
+                values: RecomputedValues { due: Some(due) },
+            })
+        })
+}
+
+async fn refuse_taken_title<C: ConnectionTrait>(
+    db: &C,
+    account: &str,
+    title: &str,
+    current: Option<&item::Model>,
+) -> Result<()> {
+    let mut taken = item::Entity::find()
+        .filter(item::Column::AccountId.eq(account))
+        .filter(item::Column::Title.eq(title));
+    if let Some(row) = current {
+        taken = taken.filter(item::Column::Id.ne(row.id.as_str()));
+    }
+    match taken.one(db).await? {
+        Some(_) => Err(KeelError::conflict("note.error.exists")
+            .field("title")
+            .param("title", title)),
+        None => Ok(()),
+    }
 }
 
 async fn load<C: ConnectionTrait>(db: &C, id: &Id) -> Result<item::Model> {

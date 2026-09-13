@@ -2,17 +2,38 @@
   "note": {
     "list": { "title": "Notes" },
     "edit": { "title": "Note" },
+    "import": { "title": "Import notes" },
+    "tag": {
+      "list": { "title": "Tags" },
+      "column": {
+        "tag": "Tag",
+        "count": "Count"
+      }
+    },
     "empty": "No notes yet",
     "title": "Title",
     "body": "Body",
+    "kind": {
+      "memo": "Memo",
+      "todo": "To do"
+    },
+    "tags": "Tags",
+    "due": "Due",
+    "text": "Lines",
     "account": "Account",
     "page": {
       "main": "Note",
-      "owner": "Owner"
+      "owner": "Owner",
+      "source": "Source",
+      "options": "Options"
     },
     "column": {
       "title": "Title",
-      "updated_at": "Updated"
+      "kind": "Kind",
+      "tags": "Tags",
+      "due": "Due",
+      "updatedAt": "Updated",
+      "accountId": "Account"
     },
     "action": {
       "create": "New note",
@@ -22,7 +43,10 @@
     "error": {
       "locked": "The note {title} is locked and cannot be deleted",
       "limit": "An account keeps at most {max} notes",
-      "account_suspended": "Notes cannot be changed while the account is suspended"
+      "account_suspended": "Notes cannot be changed while the account is suspended",
+      "exists": "A note titled {title} already exists",
+      "line_too_long": "Line {line} is longer than {max} characters",
+      "empty": "There is no line to import"
     }
   }
 }

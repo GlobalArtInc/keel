@@ -1,0 +1,128 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.import
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "note.import",
+  "module": "note",
+  "kind": "wizard",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "note.manage"
+  },
+  "params": {
+    "title": "NoteImport",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "x-ui": {
+          "control": "code"
+        }
+      },
+      "kind": {
+        "$ref": "#/$defs/NoteKind",
+        "default": "memo"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "x-keel": {
+          "check": "name"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "text"
+    ],
+    "$defs": {
+      "NoteKind": {
+        "type": "string",
+        "enum": [
+          "memo",
+          "todo"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Imported",
+    "type": "object",
+    "properties": {
+      "imported": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "ids": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Id"
+        }
+      }
+    },
+    "required": [
+      "imported",
+      "ids"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "note.import.title",
+    "pages": [
+      {
+        "id": "source",
+        "fields": [
+          "text"
+        ],
+        "validate": "note.import.check"
+      },
+      {
+        "id": "options",
+        "fields": [
+          "kind",
+          "tags",
+          "account"
+        ]
+      }
+    ],
+    "result": "redirect"
+  }
+}

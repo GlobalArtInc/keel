@@ -196,6 +196,11 @@ fn filter_expr<E: EntityTrait>(filter: &Filter, index: usize, tz: Tz) -> Result<
     let path = format!("filters[{index}].value");
     let column = column::<E>(&filter.key, &format!("filters[{index}].key"))?;
     let column_type = column.def().get_column_type().clone();
+    if matches!(column_type, ColumnType::Array(_)) {
+        return Err(KeelError::validation("keel.error.list.not_filterable")
+            .field(format!("filters[{index}].key"))
+            .param("field", filter.key.clone()));
+    }
     if is_instant(&column_type) {
         return instant_expr(column, filter, index, tz);
     }
@@ -337,6 +342,9 @@ fn typed_value(column_type: &ColumnType, text: &str, path: &str) -> Result<Value
             "false" | "0" => false,
             _ => return Err(mismatch()),
         })),
+        ColumnType::Date => Value::ChronoDate(Some(Box::new(
+            NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| mismatch())?,
+        ))),
         _ => Value::from(text),
     })
 }
@@ -366,6 +374,8 @@ mod tests {
             pub title: String,
             pub weight: i32,
             pub pinned: bool,
+            pub due: Option<Date>,
+            pub tags: Vec<String>,
             pub updated_at: DateTimeUtc,
         }
 
@@ -598,6 +608,26 @@ mod tests {
             })
             .ends_with(r#"WHERE "memo_item"."title" IN ('a', 'b')"#)
         );
+        assert!(
+            sql(Filter {
+                key: "due".into(),
+                op: FilterOp::Lte,
+                value: FilterValue::One("2026-09-20".into()),
+            })
+            .ends_with(r#"WHERE "memo_item"."due" <= '2026-09-20'"#)
+        );
+        let vague_day = filter_expr::<item::Entity>(
+            &Filter {
+                key: "due".into(),
+                op: FilterOp::Eq,
+                value: FilterValue::One("2026-09-20T00:00:00Z".into()),
+            },
+            1,
+            Tz::UTC,
+        )
+        .unwrap_err();
+        assert_eq!(vague_day.key(), "keel.error.list.filter_value");
+        assert_eq!(vague_day.field_path(), Some("filters[1].value"));
         let bad = filter_expr::<item::Entity>(
             &Filter {
                 key: "weight".into(),
@@ -609,6 +639,18 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(bad.field_path(), Some("filters[2].value"));
+        let array = filter_expr::<item::Entity>(
+            &Filter {
+                key: "tags".into(),
+                op: FilterOp::Eq,
+                value: FilterValue::One("x".into()),
+            },
+            4,
+            Tz::UTC,
+        )
+        .unwrap_err();
+        assert_eq!(array.key(), "keel.error.list.not_filterable");
+        assert_eq!(array.field_path(), Some("filters[4].key"));
         let unknown = filter_expr::<item::Entity>(
             &Filter {
                 key: "colour".into(),

@@ -1,13 +1,29 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use keel::prelude::*;
+use keel::sdk::chrono_tz;
 use keel::sdk::sea_orm::ConnectionTrait;
 use keel::sdk::serde_json::{self, Map};
 use keel_demo::MANIFEST;
-use keel_demo::note::{LOCKED_PREFIX, MAX_PER_ACCOUNT};
-use keel_testkit::{ErrorCode, Fixture, Harness, Reply, Who, tokio};
+use keel_demo::note::{LOCKED_PREFIX, MAX_LINE, MAX_PER_ACCOUNT};
+use keel_testkit::{CallOptions, ErrorCode, Fixture, Harness, Reply, Who, tokio};
 
-struct NoteFixture;
+struct NoteFixture {
+    created: AtomicU64,
+}
+
+impl NoteFixture {
+    fn new() -> Self {
+        Self {
+            created: AtomicU64::new(0),
+        }
+    }
+
+    fn next(&self) -> u64 {
+        self.created.fetch_add(1, Ordering::SeqCst) + 1
+    }
+}
 
 #[async_trait]
 impl Fixture for NoteFixture {
@@ -16,10 +32,30 @@ impl Fixture for NoteFixture {
             .call(
                 Who::Owner,
                 "note.edit",
-                json!({ "title": format!("note of {account}"), "account": account }),
+                json!({ "title": format!("note {} of {account}", self.next()), "account": account }),
             )
             .await;
         id_of(&reply).to_string()
+    }
+}
+
+struct TagFixture {
+    inner: NoteFixture,
+}
+
+#[async_trait]
+impl Fixture for TagFixture {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
+        let tag = format!("tag{}", self.inner.next());
+        let reply = harness
+            .call(
+                Who::Owner,
+                "note.edit",
+                json!({ "title": format!("tagged {tag} of {account}"), "tags": [tag], "account": account }),
+            )
+            .await;
+        id_of(&reply);
+        tag
     }
 }
 
@@ -80,10 +116,13 @@ async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_acco
     assert_eq!(note["title"], json!("mine"));
     assert_eq!(note["body"], json!("the first note"));
     assert_eq!(
-        note["account_id"],
+        note["accountId"],
         json!(harness.fixtures().accounts.a1.to_string())
     );
-    assert_eq!(note["created_at"], json!(harness.clock().now()));
+    assert_eq!(note["createdAt"], json!(harness.clock().now()));
+    assert_eq!(note["kind"], json!("memo"));
+    assert_eq!(note["tags"], json!([]));
+    assert_eq!(note["due"], Value::Null);
     let id = note["id"].as_str().expect("an id").to_owned();
     let got = harness.call(Who::A1, "note.get", json!({ "id": id })).await;
     assert_eq!(got.data(), Some(&note));
@@ -134,22 +173,29 @@ async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_acco
     let renamed = renamed.data().expect("the note is renamed");
     assert_eq!(renamed["title"], json!("renamed"));
     assert_eq!(renamed["body"], json!(""));
-    assert_eq!(renamed["created_at"], note["created_at"]);
-    assert_eq!(renamed["updated_at"], json!(harness.clock().now()));
+    assert_eq!(renamed["createdAt"], note["createdAt"]);
+    assert_eq!(renamed["updatedAt"], json!(harness.clock().now()));
     harness.finish().await;
 }
 
 #[tokio::test]
 async fn the_standard_invariants_hold_for_notes() {
     let harness = Harness::new().product(&MANIFEST).boot().await;
+    let notes = NoteFixture::new();
     harness
-        .assert_reseller_sees_only_subtree("note.list", &NoteFixture)
+        .assert_reseller_sees_only_subtree("note.list", &notes)
         .await;
     for function in ["note.get", "note.edit", "note.delete"] {
         harness
-            .assert_user_cannot_edit_foreign_row(function, &NoteFixture)
+            .assert_user_cannot_edit_foreign_row(function, &notes)
             .await;
     }
+    let tags = TagFixture {
+        inner: NoteFixture::new(),
+    };
+    harness
+        .assert_reseller_sees_only_subtree("note.tag.list", &tags)
+        .await;
     harness.finish().await;
 }
 
@@ -186,6 +232,17 @@ async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_n
     assert_eq!(
         by_body.error().map(|error| error.code),
         Some(ErrorCode::Validation)
+    );
+    let by_tags = harness
+        .call(
+            Who::A1,
+            "note.list",
+            json!({ "filters": [{ "key": "tags", "value": "x" }] }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&by_tags, "filters[0].key").key.as_deref(),
+        Some("keel.error.list.not_filterable")
     );
 
     let refused = harness
@@ -329,7 +386,16 @@ async fn the_note_descriptors_match_their_snapshots_per_level() {
         let expected: &[&str] = if level < Level::User {
             &[]
         } else {
-            &["note.delete", "note.edit", "note.get", "note.list"]
+            &[
+                "note.delete",
+                "note.edit",
+                "note.get",
+                "note.import",
+                "note.import.check",
+                "note.list",
+                "note.recompute",
+                "note.tag.list",
+            ]
         };
         assert_eq!(names, expected, "{level}");
     }
@@ -372,6 +438,18 @@ async fn the_ru_dictionaries_name_every_key_of_the_en_dictionaries_freeze_requir
         "menu.demo",
         "note.error.locked",
         "note.error.limit",
+        "note.error.exists",
+        "note.error.line_too_long",
+        "note.error.empty",
+        "note.tag.list.title",
+        "note.tag.column.tag",
+        "note.tag.column.count",
+        "note.import.title",
+        "note.page.source",
+        "note.page.options",
+        "note.kind.memo",
+        "note.kind.todo",
+        "note.column.accountId",
     ] {
         for lang in ["en", "ru"] {
             let found = lookup(registry.i18n(lang).expect(lang), key);
@@ -390,7 +468,7 @@ async fn the_ru_dictionaries_name_every_key_of_the_en_dictionaries_freeze_requir
         });
         into.sort();
     }
-    assert!(en.len() >= 15, "{en:?}");
+    assert!(en.len() >= 30, "{en:?}");
     assert_eq!(
         en, ru,
         "the en and ru dictionaries of the demo name different keys"
@@ -467,7 +545,7 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
     harness.finish().await;
 }
 
-fn column_headers(lang: &str) -> [String; 2] {
+fn column_headers(lang: &str) -> [String; 6] {
     let messages: Value = serde_json::from_str(match lang {
         "en" => include_str!("../i18n/note/en.json"),
         _ => include_str!("../i18n/note/ru.json"),
@@ -479,7 +557,14 @@ fn column_headers(lang: &str) -> [String; 2] {
             .expect("a column label")
             .to_owned()
     };
-    [header("title"), header("updated_at")]
+    [
+        header("title"),
+        header("kind"),
+        header("tags"),
+        header("due"),
+        header("updatedAt"),
+        header("accountId"),
+    ]
 }
 
 #[tokio::test]
@@ -506,9 +591,506 @@ async fn ctl_note_list_out_table_shows_translated_headers_in_en_and_ru() {
     assert_eq!(envelope["ok"], json!(true));
     assert_eq!(envelope["data"]["title"], json!("x"));
     assert_eq!(
-        envelope["data"]["account_id"],
+        envelope["data"]["accountId"],
         json!(Id::ROOT_ACCOUNT.to_string())
     );
+    socket.stop().await.expect("the socket stops");
+    harness.finish().await;
+}
+
+fn field_error(reply: &Reply, path: &str) -> keel::types::FieldError {
+    let error = reply.error().expect("an error envelope");
+    assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+    assert_eq!(reply.status(), 422, "{error:?}");
+    error
+        .fields
+        .iter()
+        .find(|field| field.path == path)
+        .unwrap_or_else(|| panic!("no field error on {path}: {error:?}"))
+        .clone()
+}
+
+#[tokio::test]
+async fn note_edit_refuses_a_second_note_with_the_same_title_as_a_field_error_on_title() {
+    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let first = create(&harness, Who::A1, "groceries").await;
+    let second = harness
+        .call(Who::A1, "note.edit", json!({ "title": "groceries" }))
+        .await;
+    let error = field_error(&second, "title");
+    assert_eq!(error.code.as_deref(), Some("note.error.exists"));
+    assert_eq!(error.key.as_deref(), Some("note.error.exists"));
+    assert_eq!(error.params["title"], json!("groceries"));
+    let elsewhere = harness
+        .call(Who::A2, "note.edit", json!({ "title": "groceries" }))
+        .await;
+    assert!(elsewhere.data().is_some(), "{:?}", elsewhere.error());
+    let kept = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "id": first, "title": "groceries", "body": "milk" }),
+        )
+        .await;
+    assert_eq!(
+        kept.data().expect("the own title stays")["body"],
+        json!("milk")
+    );
+    let other = create(&harness, Who::A1, "chores").await;
+    let renamed = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "id": other, "title": "groceries" }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&renamed, "title").key.as_deref(),
+        Some("note.error.exists")
+    );
+    let todo_without_due = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "title": "call back", "kind": "todo" }),
+        )
+        .await;
+    let error = field_error(&todo_without_due, "due");
+    assert_eq!(error.key.as_deref(), Some("keel.schema.required"));
+    let todo = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "title": "call back", "kind": "todo", "due": "2026-09-20", "tags": ["phone", "work"] }),
+        )
+        .await;
+    let todo = todo.data().expect("a todo with a due date is saved");
+    assert_eq!(todo["kind"], json!("todo"));
+    assert_eq!(todo["due"], json!("2026-09-20"));
+    assert_eq!(todo["tags"], json!(["phone", "work"]));
+    let by_due = harness
+        .call(
+            Who::A1,
+            "note.list",
+            json!({ "filters": [{ "key": "due", "op": "lte", "value": "2026-09-20" }] }),
+        )
+        .await;
+    assert_eq!(titles(by_due.data().expect("a page")), ["call back"]);
+    let by_kind = harness
+        .call(
+            Who::A1,
+            "note.list",
+            json!({ "filters": [{ "key": "kind", "value": "memo" }], "sort": { "key": "title", "dir": "asc" } }),
+        )
+        .await;
+    assert_eq!(
+        titles(by_kind.data().expect("a page")),
+        ["chores", "groceries"]
+    );
+    let bad_tag = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "title": "tagged", "tags": ["ok", "2026"] }),
+        )
+        .await;
+    let error = field_error(&bad_tag, "tags[1]");
+    assert_eq!(error.code.as_deref(), Some("check.name"));
+    assert_eq!(error.key.as_deref(), Some("keel.check.name"));
+    assert_eq!(error.params["value"], json!("2026"));
+    let (notes, _) = counts(&harness).await;
+    assert_eq!(notes, "4");
+    harness.finish().await;
+}
+
+async fn recompute(harness: &Harness, who: Who, tz: chrono_tz::Tz, params: Value) -> Value {
+    let reply = harness
+        .call_with(
+            harness.principal(who),
+            "note.recompute",
+            params,
+            CallOptions {
+                tz: Some(tz),
+                ..CallOptions::default()
+            },
+        )
+        .await;
+    reply
+        .data()
+        .unwrap_or_else(|| panic!("note.recompute failed: {:?}", reply.error()))
+        .clone()
+}
+
+#[tokio::test]
+async fn note_recompute_fills_due_a_week_ahead_when_kind_turns_todo_and_patches_nothing_otherwise()
+{
+    let harness = Harness::new()
+        .product(&MANIFEST)
+        .clock("2026-09-13T20:00:00Z".parse().expect("an instant"))
+        .boot()
+        .await;
+    let turned_todo =
+        json!({ "values": { "title": "", "kind": "todo", "due": null }, "changed": "kind" });
+    assert_eq!(
+        recompute(
+            &harness,
+            Who::A1,
+            chrono_tz::Asia::Tokyo,
+            turned_todo.clone()
+        )
+        .await,
+        json!({ "values": { "due": "2026-09-21" } })
+    );
+    assert_eq!(
+        recompute(&harness, Who::A1, chrono_tz::UTC, turned_todo.clone()).await,
+        json!({ "values": { "due": "2026-09-20" } })
+    );
+    assert_eq!(
+        recompute(
+            &harness,
+            Who::A1,
+            chrono_tz::UTC,
+            json!({ "values": { "kind": "todo" }, "changed": "kind" })
+        )
+        .await,
+        json!({ "values": { "due": "2026-09-20" } })
+    );
+    for unchanged in [
+        json!({ "values": { "kind": "todo", "due": "2026-10-01" }, "changed": "kind" }),
+        json!({ "values": { "kind": "memo", "due": null }, "changed": "kind" }),
+        json!({ "values": { "kind": "todo", "due": null }, "changed": "title" }),
+        json!({ "values": { "kind": "later", "due": null }, "changed": "kind" }),
+    ] {
+        assert_eq!(
+            recompute(&harness, Who::A1, chrono_tz::UTC, unchanged.clone()).await,
+            json!({ "values": {} }),
+            "{unchanged}"
+        );
+    }
+    let malformed = harness
+        .call(
+            Who::A1,
+            "note.recompute",
+            json!({ "values": [], "changed": "kind" }),
+        )
+        .await;
+    assert_eq!(malformed.status(), 422, "{:?}", malformed.envelope);
+    let guest = harness
+        .call(Who::Guest, "note.recompute", turned_todo)
+        .await;
+    assert_eq!(guest.status(), 401);
+    let missing = harness
+        .call_as(Level::User, "note.recompute", json!({}))
+        .await;
+    assert_eq!(missing.status(), 422, "{:?}", missing.envelope);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn note_import_checks_the_source_page_and_creates_one_note_per_line_inside_the_limit() {
+    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let empty = harness
+        .call(Who::A1, "note.import.check", json!({ "text": "\n  \n" }))
+        .await;
+    assert_eq!(
+        field_error(&empty, "text").key.as_deref(),
+        Some("note.error.empty")
+    );
+    let missing = harness.call(Who::A1, "note.import.check", json!({})).await;
+    assert_eq!(
+        field_error(&missing, "text").key.as_deref(),
+        Some("note.error.empty")
+    );
+    let long = harness
+        .call(
+            Who::A1,
+            "note.import.check",
+            json!({ "text": format!("fine\n\n{}", "x".repeat(MAX_LINE + 1)) }),
+        )
+        .await;
+    let error = field_error(&long, "text");
+    assert_eq!(error.key.as_deref(), Some("note.error.line_too_long"));
+    assert_eq!(error.params["line"], json!(3));
+    assert_eq!(error.params["max"], json!(MAX_LINE));
+    let checked = harness
+        .call(
+            Who::A1,
+            "note.import.check",
+            json!({ "text": " milk \n\neggs\r\nbread\n" }),
+        )
+        .await;
+    assert_eq!(checked.data(), Some(&json!({ "lines": 3 })));
+
+    let imported = harness
+        .call(
+            Who::A1,
+            "note.import",
+            json!({ "text": " milk \n\neggs\r\nbread\n", "kind": "todo", "tags": ["shopping"] }),
+        )
+        .await;
+    let imported = imported
+        .data()
+        .unwrap_or_else(|| panic!("note.import failed: {:?}", imported.error()));
+    assert_eq!(imported["imported"], json!(3));
+    assert_eq!(imported["ids"].as_array().map(Vec::len), Some(3));
+    let listed = harness
+        .call(
+            Who::A1,
+            "note.list",
+            json!({ "sort": { "key": "title", "dir": "asc" } }),
+        )
+        .await;
+    let page = listed.data().expect("a page");
+    assert_eq!(titles(page), ["bread", "eggs", "milk"]);
+    for row in page["data"].as_array().expect("rows") {
+        assert_eq!(row["kind"], json!("todo"));
+        assert_eq!(row["tags"], json!(["shopping"]));
+        assert_eq!(row["due"], Value::Null);
+        assert_eq!(row.get("accountId"), None, "{row}");
+    }
+    let a1 = harness.fixtures().accounts.a1.to_string();
+    let scoped = harness
+        .call(
+            Who::Reseller,
+            "note.list",
+            json!({ "filters": [{ "key": "accountId", "value": a1 }, { "key": "kind", "value": "todo" }] }),
+        )
+        .await;
+    let rows = scoped.data().expect("a page")["data"]
+        .as_array()
+        .expect("rows")
+        .clone();
+    assert_eq!(rows.len(), 3, "{rows:?}");
+    assert!(
+        rows.iter().all(|row| row["accountId"] == json!(a1)),
+        "{rows:?}"
+    );
+    let events = harness
+        .database()
+        .rows("SELECT type FROM keel_outbox WHERE type = 'note.imported'")
+        .await;
+    assert_eq!(events, ["note.imported"]);
+
+    let too_long = harness
+        .call(
+            Who::A1,
+            "note.import",
+            json!({ "text": "x".repeat(MAX_LINE + 1) }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&too_long, "text").key.as_deref(),
+        Some("note.error.line_too_long")
+    );
+    let bad_tag = harness
+        .call(
+            Who::A1,
+            "note.import",
+            json!({ "text": "one", "tags": ["1st"] }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&bad_tag, "tags[0]").code.as_deref(),
+        Some("check.name")
+    );
+    let room = MAX_PER_ACCOUNT - 3;
+    let over: Vec<String> = (0..=room).map(|index| format!("line {index}")).collect();
+    let refused = harness
+        .call(Who::A1, "note.import", json!({ "text": over.join("\n") }))
+        .await;
+    let error = refused.error().expect("the batch passes the limit");
+    assert_eq!(error.code, ErrorCode::LimitExceeded);
+    assert_eq!(error.key, "note.error.limit");
+    assert_eq!(error.params["max"], json!(MAX_PER_ACCOUNT));
+    let (notes, _) = counts(&harness).await;
+    assert_eq!(notes, "3");
+    let filled = harness
+        .call(
+            Who::A1,
+            "note.import",
+            json!({ "text": over[..room as usize].join("\n") }),
+        )
+        .await;
+    assert_eq!(
+        filled.data().map(|data| data["imported"].clone()),
+        Some(json!(room))
+    );
+    let (notes, _) = counts(&harness).await;
+    assert_eq!(notes, MAX_PER_ACCOUNT.to_string());
+
+    let foreign = harness
+        .call(
+            Who::A1,
+            "note.import",
+            json!({ "text": "theirs", "account": harness.fixtures().accounts.a2 }),
+        )
+        .await;
+    assert_eq!(
+        foreign.error().map(|error| error.code),
+        Some(ErrorCode::ForbiddenField)
+    );
+    let by_reseller = harness
+        .call(
+            Who::Reseller,
+            "note.import",
+            json!({ "text": "for a2", "account": harness.fixtures().accounts.a2 }),
+        )
+        .await;
+    assert_eq!(
+        by_reseller.data().map(|data| data["imported"].clone()),
+        Some(json!(1))
+    );
+    let a2 = harness.call(Who::A2, "note.list", json!({})).await;
+    assert_eq!(titles(a2.data().expect("a page")), ["for a2"]);
+    let outside = harness
+        .call(
+            Who::Reseller,
+            "note.import",
+            json!({ "text": "not yours", "account": harness.fixtures().accounts.unrelated }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&outside, "account").key.as_deref(),
+        Some("keel.error.account_not_found")
+    );
+    harness.finish().await;
+}
+
+fn tag_rows(page: &Value) -> Vec<(String, i64)> {
+    page["data"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|row| {
+            (
+                row["tag"].as_str().expect("a tag").to_owned(),
+                row["count"].as_i64().expect("a count"),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn note_tag_list_counts_tags_within_the_callers_scope_with_a_sum_total() {
+    let harness = Harness::new().product(&MANIFEST).boot().await;
+    for (who, title, tags) in [
+        (Who::A1, "a", vec!["work", "urgent"]),
+        (Who::A1, "b", vec!["work"]),
+        (Who::A1, "c", vec!["home", "work"]),
+        (Who::A1, "d", vec![]),
+        (Who::A2, "e", vec!["work", "travel"]),
+        (Who::Unrelated, "f", vec!["work", "secret"]),
+    ] {
+        let saved = harness
+            .call(who, "note.edit", json!({ "title": title, "tags": tags }))
+            .await;
+        assert!(saved.data().is_some(), "{who} {title}: {:?}", saved.error());
+    }
+    let mine = harness.call(Who::A1, "note.tag.list", json!({})).await;
+    let page = mine.data().expect("a page");
+    assert_eq!(
+        tag_rows(page),
+        [("work".into(), 3), ("home".into(), 1), ("urgent".into(), 1)]
+    );
+    assert_eq!(page["total"], json!(3));
+    assert_eq!(page["totals"], json!({ "count": 5 }));
+
+    let subtree = harness
+        .call(Who::Reseller, "note.tag.list", json!({}))
+        .await;
+    let page = subtree.data().expect("a page");
+    assert_eq!(
+        tag_rows(page),
+        [
+            ("work".into(), 4),
+            ("home".into(), 1),
+            ("travel".into(), 1),
+            ("urgent".into(), 1)
+        ]
+    );
+    assert_eq!(page["totals"], json!({ "count": 7 }));
+    let everything = harness.call(Who::Owner, "note.tag.list", json!({})).await;
+    let page = everything.data().expect("a page");
+    assert_eq!(tag_rows(page)[0], ("work".into(), 5));
+    assert_eq!(page["total"], json!(5));
+    assert_eq!(page["totals"], json!({ "count": 9 }));
+    let nothing = harness.call(Who::Guest, "note.tag.list", json!({})).await;
+    assert_eq!(nothing.status(), 401);
+
+    let searched = harness
+        .call(Who::A1, "note.tag.list", json!({ "search": "R" }))
+        .await;
+    assert_eq!(
+        tag_rows(searched.data().expect("a page")),
+        [("work".into(), 3), ("urgent".into(), 1)]
+    );
+    let by_tag = harness
+        .call(
+            Who::A1,
+            "note.tag.list",
+            json!({ "sort": { "key": "tag", "dir": "desc" } }),
+        )
+        .await;
+    assert_eq!(
+        tag_rows(by_tag.data().expect("a page")),
+        [("work".into(), 3), ("urgent".into(), 1), ("home".into(), 1)]
+    );
+    let paged = harness
+        .call(
+            Who::A1,
+            "note.tag.list",
+            json!({ "page": 2, "pageSize": 2 }),
+        )
+        .await;
+    let page = paged.data().expect("a page");
+    assert_eq!(tag_rows(page), [("urgent".into(), 1)]);
+    assert_eq!(page["total"], json!(3));
+    assert_eq!(page["totals"], json!({ "count": 1 }));
+    let popular = harness
+        .call(
+            Who::Reseller,
+            "note.tag.list",
+            json!({ "filters": [{ "key": "count", "op": "gte", "value": "2" }] }),
+        )
+        .await;
+    assert_eq!(
+        tag_rows(popular.data().expect("a page")),
+        [("work".into(), 4)]
+    );
+    let named = harness
+        .call(
+            Who::A1,
+            "note.tag.list",
+            json!({ "filters": [{ "key": "tag", "value": ["home", "urgent"] }] }),
+        )
+        .await;
+    assert_eq!(
+        tag_rows(named.data().expect("a page")),
+        [("home".into(), 1), ("urgent".into(), 1)]
+    );
+    let vague = harness
+        .call(
+            Who::A1,
+            "note.tag.list",
+            json!({ "filters": [{ "key": "count", "value": "many" }] }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&vague, "filters[0].value").key.as_deref(),
+        Some("keel.error.list.filter_value")
+    );
+
+    let socket = harness.socket().await;
+    let table = socket.ctl_table("note.tag.list", &[], "en").await;
+    assert!(table.ok, "{}", table.text);
+    let lines: Vec<Vec<&str>> = table
+        .text
+        .lines()
+        .map(|line| line.split_whitespace().collect())
+        .collect();
+    assert_eq!(lines[0], ["Tag", "Count"], "{}", table.text);
+    assert_eq!(lines[1], ["work", "5"], "{}", table.text);
+    assert_eq!(lines.len(), 6, "{}", table.text);
     socket.stop().await.expect("the socket stops");
     harness.finish().await;
 }
