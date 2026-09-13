@@ -51,6 +51,12 @@ impl Context {
         })
     }
 
+    pub fn config<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.services.get::<T>().ok_or_else(|| {
+            KeelError::internal("keel.error.config_missing").param("section", type_name::<T>())
+        })
+    }
+
     pub fn spawn<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
@@ -118,6 +124,13 @@ mod tests {
         assert_eq!(ctx.require::<dyn Clock>().unwrap().now(), 7);
         let missing = ctx.require::<String>().unwrap_err();
         assert_eq!(missing.key(), "keel.error.service_missing");
+        let unconfigured = ctx.config::<String>().unwrap_err();
+        assert_eq!(unconfigured.key(), "keel.error.config_missing");
+        assert!(
+            unconfigured.params()["section"]
+                .as_str()
+                .is_some_and(|section| section.ends_with("String"))
+        );
 
         let seen = Arc::new(Mutex::new(false));
         let flag = seen.clone();

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use keel_sdk::prelude::*;
-use keel_sdk_probe::MODULE;
+use keel_sdk_probe::{MODULE, ProbeConfig, SECTION};
 use keel_testkit::{ErrorCode, Fixture, Harness, Who, tokio};
 
 static MANIFEST: ProductManifest = ProductManifest {
@@ -130,7 +130,7 @@ async fn the_descriptors_of_the_probe_match_their_snapshots_per_level() {
         let expected: &[&str] = if level < Level::User {
             &[]
         } else {
-            &["probe.item.edit", "probe.item.list"]
+            &["probe.config", "probe.item.edit", "probe.item.list"]
         };
         assert_eq!(names, expected, "{level}");
     }
@@ -161,4 +161,74 @@ async fn the_probe_answers_over_http_for_the_principal_named_in_the_test_header(
     assert_eq!(boot["menu"][0]["id"], json!("probe"));
     server.stop().await.expect("the server stops");
     harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_valid_section_reaches_start_and_the_handlers_an_absent_one_yields_the_defaults() {
+    let configured = Harness::new()
+        .product(&MANIFEST)
+        .section(SECTION, json!({ "greeting": "from the file", "limit": 42 }))
+        .section("unclaimed", json!({ "anything": true }))
+        .boot()
+        .await;
+    let expected = ProbeConfig {
+        greeting: "from the file".into(),
+        limit: 42,
+    };
+    assert!(
+        keel_sdk_probe::started_with().contains(&expected),
+        "{:?}",
+        keel_sdk_probe::started_with()
+    );
+    let read = configured
+        .call_as(Level::User, "probe.config", json!({}))
+        .await;
+    assert_eq!(
+        read.data(),
+        Some(&json!({ "greeting": "from the file", "limit": 42 })),
+        "{:?}",
+        read.error()
+    );
+    configured.finish().await;
+
+    let bare = Harness::new().product(&MANIFEST).boot().await;
+    let read = bare.call_as(Level::User, "probe.config", json!({})).await;
+    assert_eq!(
+        read.data(),
+        Some(&json!({ "greeting": "hello", "limit": 10 })),
+        "{:?}",
+        read.error()
+    );
+    assert!(keel_sdk_probe::started_with().contains(&ProbeConfig::default()));
+    bare.finish().await;
+}
+
+#[tokio::test]
+async fn a_section_of_the_wrong_shape_fails_the_boot_naming_the_module_the_section_and_the_path() {
+    for (section, path, fragment) in [
+        (
+            json!({ "greeting": "x", "limit": "many" }),
+            "probe.limit",
+            "many",
+        ),
+        (json!({ "greeting": "x", "limit": 0 }), "probe.limit", "0"),
+        (json!({ "greting": "x" }), "probe", "greting"),
+        (json!("just a string"), "probe", "just a string"),
+    ] {
+        let error = Harness::new()
+            .product(&MANIFEST)
+            .section(SECTION, section.clone())
+            .try_boot()
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{section} must not boot"))
+            .to_string();
+        assert!(error.contains("module probe"), "{section}: {error}");
+        assert!(error.contains("config.yaml"), "{section}: {error}");
+        assert!(
+            error.contains(&format!("does not fit at {path}:")),
+            "{section}: {error}"
+        );
+        assert!(error.contains(fragment), "{section}: {error}");
+    }
 }

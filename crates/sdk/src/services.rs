@@ -34,10 +34,11 @@ impl Services {
     }
 
     pub fn provide<T: ?Sized + Send + Sync + 'static>(&mut self, service: Arc<T>) -> bool {
-        let key = ServiceKey::of::<T>();
-        self.entries
-            .insert(key.id, (key.name, Box::new(service)))
-            .is_none()
+        self.provide_erased(ServiceKey::of::<T>(), Box::new(service))
+    }
+
+    pub fn provide_erased(&mut self, key: ServiceKey, service: Box<dyn Any + Send + Sync>) -> bool {
+        self.entries.insert(key.id, (key.name, service)).is_none()
     }
 
     pub fn get<T: ?Sized + Send + Sync + 'static>(&self) -> Option<Arc<T>> {
@@ -108,6 +109,9 @@ mod tests {
         assert_eq!(greeter.greet(), "hello");
         assert!(services.contains(&ServiceKey::of::<dyn Greeter>()));
         assert!(services.get::<String>().is_none());
+        assert!(services.provide_erased(ServiceKey::of::<u8>(), Box::new(Arc::new(7u8))));
+        assert_eq!(services.get::<u8>().as_deref(), Some(&7));
+        assert!(!services.provide_erased(ServiceKey::of::<u8>(), Box::new(Arc::new(8u8))));
         assert!(
             ServiceKey::of::<dyn Greeter>()
                 .name()

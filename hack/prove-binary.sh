@@ -252,6 +252,11 @@ socket_is_gone() {
   [ ! -e "$site/run/core.sock" ]
 }
 
+unclaimed_section_logged() {
+  local section=$1
+  grep 'claimed by no loaded module' "$serve_log" | grep -q "\"$section\""
+}
+
 if [ -z "$admin_url" ]; then
   usage
   echo "KEEL_TEST_DATABASE_URL is not set" >&2
@@ -294,6 +299,7 @@ socket: $site/run/core.sock
 data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
+host: { socket: /nowhere/agent.sock }
 EOF
 echo "site $site, binary $keel $version"
 
@@ -303,6 +309,7 @@ check "product enable demo prints demo: enabled" stdout_is "$site/enable.out" "d
 check "product list" keel_ok "$site/list.out" product list
 check "product list shows demo enabled" stdout_has_line "$site/list.out" "$(printf 'demo\tenabled\t%s' "$version")"
 start_serve demo
+check "the unclaimed host section is logged and ignored" unclaimed_section_logged host
 
 check "ctl keel.account.create kind=user" keel_ok "$site/account.json" ctl keel.account.create kind=user
 check "keel.account.create answers ok with an id" json_is "$site/account.json" 'doc["ok"] is True and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'

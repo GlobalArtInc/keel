@@ -168,6 +168,7 @@
       "read_call_has_no_outbox": "У вызова чтения нет outbox",
       "write_call_without_transaction": "Вызов записи потерял транзакцию",
       "call_still_shared": "На вызов ещё есть ссылки, когда он должен фиксироваться",
+      "config_missing": "Секция конфигурации {section} не объявлена",
       "setting_value": "У настройки {key} нет пригодного значения",
       "service_missing": "Сервис {service} не предоставлен",
       "ownership_undeclared": "Функция {function} не объявила ни owned, ни unowned",

@@ -13,6 +13,7 @@ pub use serde_json::{Value, json};
 pub use crate::access::{AccountScope, Owned, ScopePolicy, scope_by_account};
 pub use crate::call::{AfterContext, Call};
 pub use crate::clock::Clock;
+pub use crate::config::ConfigSection;
 pub use crate::context::Context;
 pub use crate::db::Db;
 pub use crate::error::{KeelError, Result};

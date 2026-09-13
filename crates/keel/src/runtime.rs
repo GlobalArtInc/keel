@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use keel_kernel::http::BODY_LIMIT;
-use keel_kernel::loader::Migrated;
+use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::secret::Key;
 use keel_kernel::socket::Serving;
 use keel_kernel::{
@@ -113,7 +113,10 @@ impl Runtime {
         key: Key,
         http: &Http,
     ) -> Result<(Kernel, Serving), Error> {
-        let composition = self.composition(enabled)?.key(key);
+        let composition = self
+            .composition(enabled)?
+            .key(key)
+            .sections(Sections::new(&config.file, config.sections.clone()));
         let kernel = Kernel::boot(composition, storage).await?;
         let dispatcher = Arc::new(Dispatcher::new(
             kernel.registry().clone(),

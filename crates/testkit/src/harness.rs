@@ -28,6 +28,7 @@ pub struct Builder {
     modules: Vec<&'static ModuleDef>,
     products: Vec<&'static ProductManifest>,
     clock: Option<DateTime<Utc>>,
+    sections: Vec<(String, Value)>,
 }
 
 pub struct Harness {
@@ -83,6 +84,11 @@ impl Builder {
         self
     }
 
+    pub fn section(mut self, key: &str, value: Value) -> Self {
+        self.sections.push((key.to_owned(), value));
+        self
+    }
+
     pub async fn boot(self) -> Harness {
         match self.try_boot().await {
             Ok(harness) => harness,
@@ -106,6 +112,9 @@ impl Builder {
         }
         for bundle in self.products {
             composition = composition.product(bundle);
+        }
+        for (key, value) in self.sections {
+            composition = composition.section(&key, value);
         }
         let kernel = Kernel::boot(composition, &storage).await?;
         let readiness = Readiness::new();

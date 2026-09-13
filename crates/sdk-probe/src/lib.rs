@@ -1,5 +1,18 @@
+use std::sync::{Mutex, PoisonError};
+
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ActiveModelTrait, Set};
+
+pub const SECTION: &str = "probe";
+
+static STARTED: Mutex<Vec<ProbeConfig>> = Mutex::new(Vec::new());
+
+pub fn started_with() -> Vec<ProbeConfig> {
+    STARTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+}
 
 mod item {
     use keel_sdk::Owned;
@@ -48,6 +61,29 @@ pub struct Saved {
     pub id: Id,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(crate = "keel_sdk::serde", default, deny_unknown_fields)]
+#[schemars(crate = "keel_sdk::schemars")]
+pub struct ProbeConfig {
+    pub greeting: String,
+    #[schemars(range(min = 1, max = 100))]
+    pub limit: u32,
+}
+
+impl Default for ProbeConfig {
+    fn default() -> Self {
+        Self {
+            greeting: "hello".to_owned(),
+            limit: 10,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+pub struct Nothing {}
+
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations").table("keel_migration_probe");
 
@@ -61,8 +97,18 @@ pub static MODULE: ModuleDef = ModuleDef {
 };
 
 fn init(r: &mut Registrar) -> Result<()> {
-    r.function(list())
+    r.contribute(ConfigSection::new::<ProbeConfig>(SECTION))
+        .function(list())
         .function(edit())
+        .function(config())
+        .start(|ctx| async move {
+            let config = ctx.config::<ProbeConfig>()?;
+            STARTED
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(config.as_ref().clone());
+            Ok(())
+        })
         .menu(
             MenuNode::new("probe/items", "probe.item.list")
                 .icon("notebook")
@@ -84,6 +130,16 @@ fn list() -> FunctionDef {
             .column(Column::new("title", ColumnType::Text).sortable().primary())
             .empty("probe.item.empty", None))
         .source(entity_source::<item::Entity>())
+}
+
+fn config() -> FunctionDef {
+    function::<Nothing, ProbeConfig>("probe.config")
+        .kind(Kind::Get)
+        .level(Level::User)
+        .unowned()
+        .handler(
+            |call: Call<Nothing>| async move { Ok(call.config::<ProbeConfig>()?.as_ref().clone()) },
+        )
 }
 
 fn edit() -> FunctionDef {
@@ -117,7 +173,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_module_registers_one_function_of_each_mode() {
+    fn the_module_registers_its_functions_and_contributes_its_section() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let registrations = registrar
@@ -132,9 +188,17 @@ mod tests {
             modes,
             [
                 ("probe.item.list", Mode::Read),
-                ("probe.item.edit", Mode::Write)
+                ("probe.item.edit", Mode::Write),
+                ("probe.config", Mode::Read),
             ]
         );
+        let sections: Vec<&str> = registrations
+            .contributions
+            .of::<ConfigSection>()
+            .map(ConfigSection::key)
+            .collect();
+        assert_eq!(sections, [SECTION]);
+        assert!(registrations.start.is_some());
         assert_eq!(MODULE.sdk, keel_sdk::VERSION);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),

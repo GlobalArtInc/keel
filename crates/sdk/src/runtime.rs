@@ -1,4 +1,5 @@
 pub use crate::call::{AfterCommitHook, CallBuilder, CallHandle, Emitted, Invoker, StillShared};
+pub use crate::config::Section;
 pub use crate::context::Spawner;
 pub use crate::db::Db;
 pub use crate::function::{

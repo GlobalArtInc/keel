@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use keel_sdk::{ModuleDef, ProductManifest};
+use serde_json::Value;
 
 use crate::clock::{Clock, SystemClock};
 use crate::keel;
@@ -19,6 +21,7 @@ pub struct Composition {
     version: String,
     clock: Arc<dyn Clock>,
     key: Option<Key>,
+    sections: Sections,
 }
 
 #[derive(Clone)]
@@ -29,6 +32,43 @@ pub struct Graph {
     version: String,
     clock: Arc<dyn Clock>,
     key: Option<Key>,
+    sections: Sections,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sections {
+    file: PathBuf,
+    raw: BTreeMap<String, Value>,
+}
+
+impl Default for Sections {
+    fn default() -> Self {
+        Self {
+            file: PathBuf::from(crate::config::FILE_NAME),
+            raw: BTreeMap::new(),
+        }
+    }
+}
+
+impl Sections {
+    pub fn new(file: impl Into<PathBuf>, raw: BTreeMap<String, Value>) -> Self {
+        Self {
+            file: file.into(),
+            raw,
+        }
+    }
+
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
+
+    pub fn raw(&self) -> &BTreeMap<String, Value> {
+        &self.raw
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.raw.get(key)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,6 +136,7 @@ impl Default for Composition {
             version: env!("CARGO_PKG_VERSION").to_owned(),
             clock: Arc::new(SystemClock),
             key: None,
+            sections: Sections::default(),
         }
     }
 }
@@ -136,6 +177,16 @@ impl Composition {
 
     pub fn key(mut self, key: Key) -> Self {
         self.key = Some(key);
+        self
+    }
+
+    pub fn sections(mut self, sections: Sections) -> Self {
+        self.sections = sections;
+        self
+    }
+
+    pub fn section(mut self, key: &str, value: Value) -> Self {
+        self.sections.raw.insert(key.to_owned(), value);
         self
     }
 
@@ -264,6 +315,7 @@ impl Composition {
                 version: self.version,
                 clock: self.clock,
                 key: self.key,
+                sections: self.sections,
             })
         } else {
             Err(CompositionError { problems })
@@ -431,6 +483,10 @@ impl Graph {
 
     pub fn key(&self) -> Option<&Key> {
         self.key.as_ref()
+    }
+
+    pub fn sections(&self) -> &Sections {
+        &self.sections
     }
 }
 

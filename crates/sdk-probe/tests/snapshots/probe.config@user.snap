@@ -1,0 +1,38 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: probe.config
+  level: user
+---
+{
+  "keel": 1,
+  "name": "probe.config",
+  "module": "probe",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "ProbeConfig",
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "default": "hello"
+      },
+      "limit": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 10
+      }
+    },
+    "additionalProperties": false
+  }
+}

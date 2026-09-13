@@ -153,6 +153,13 @@ impl<P> Call<P> {
         })
     }
 
+    pub fn config<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.state.services.get::<T>().ok_or_else(|| {
+            KeelError::internal("keel.error.config_missing")
+                .source(std::io::Error::other(type_name::<T>()))
+        })
+    }
+
     pub async fn setting<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
         let source = self.require::<dyn SettingsSource>()?;
         let value = source

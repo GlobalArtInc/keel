@@ -7,18 +7,19 @@ use keel_sdk::runtime::{
     StopHook, UiError,
 };
 use keel_sdk::system::{AccountSource, PrincipalSource, SecretCipher};
-use keel_sdk::{FunctionDef, MenuNode, ProductManifest, SettingsSource};
+use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
 use keel_types::{Access, Descriptor, Kind, Platform};
 use schemars::Schema;
 use serde_json::Value;
 
+use super::composition::Sections;
 use super::composition::{API, Graph};
 use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
 use super::init::Initialised;
 use super::settings::DefaultSettings;
-use super::{keys, patch};
+use super::{keys, patch, section};
 use crate::clock::Clock;
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
@@ -59,6 +60,21 @@ pub enum FreezeProblem {
         "an invoker is registered by both {first} and {second}; the kernel has one invoker slot"
     )]
     InvokerProvidedTwice { first: String, second: String },
+    #[error("the section {section} of {file} is claimed by both {first} and {second}")]
+    SectionClaimedTwice {
+        file: String,
+        section: String,
+        first: String,
+        second: String,
+    },
+    #[error("module {module}: the section {section} of {file} does not fit at {path}: {reason}")]
+    SectionInvalid {
+        module: String,
+        file: String,
+        section: String,
+        path: String,
+        reason: String,
+    },
     #[error("the function {function} is registered by both {first} and {second}")]
     FunctionRegisteredTwice {
         function: String,
@@ -275,6 +291,8 @@ struct Freezer {
     dictionary_owners: BTreeMap<(String, String), String>,
     contributions: Contributions,
     lifecycle: Vec<Lifecycle>,
+    sections: Sections,
+    claimed: BTreeMap<String, String>,
 }
 
 impl Initialised {
@@ -298,6 +316,8 @@ impl Initialised {
             dictionary_owners: BTreeMap::new(),
             contributions: Contributions::default(),
             lifecycle: Vec::new(),
+            sections: self.graph.sections().clone(),
+            claimed: BTreeMap::new(),
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
@@ -327,6 +347,9 @@ impl Initialised {
             for bundle in registrations.i18n {
                 freezer.dictionary(&format!("module {module}"), &bundle.lang, &bundle.messages);
             }
+            for section in registrations.contributions.of::<ConfigSection>() {
+                freezer.section(&module, section);
+            }
             hooks.push((module.clone(), registrations.before, registrations.within));
             patches.push((module.clone(), registrations.patches));
             freezer.contributions.extend(registrations.contributions);
@@ -337,6 +360,7 @@ impl Initialised {
             });
         }
         freezer.platform(&self.graph);
+        freezer.unclaimed();
         for (module, required) in requirements {
             freezer.require(&module, &required);
         }
@@ -401,6 +425,52 @@ impl Freezer {
                     module: module.to_owned(),
                     service: key.name().to_owned(),
                 });
+            }
+        }
+    }
+
+    fn section(&mut self, module: &str, section: &ConfigSection) {
+        let file = self.sections.file().display().to_string();
+        if let Some(first) = self.claimed.get(section.key()) {
+            self.problems.push(FreezeProblem::SectionClaimedTwice {
+                file,
+                section: section.key().to_owned(),
+                first: first.clone(),
+                second: module.to_owned(),
+            });
+            return;
+        }
+        self.claimed
+            .insert(section.key().to_owned(), module.to_owned());
+        let parsed = match self.sections.get(section.key()) {
+            Some(raw) => match section::load(section, raw) {
+                Ok(parsed) => parsed,
+                Err(fault) => {
+                    self.problems.push(FreezeProblem::SectionInvalid {
+                        module: module.to_owned(),
+                        file,
+                        section: section.key().to_owned(),
+                        path: fault.path,
+                        reason: fault.reason,
+                    });
+                    return;
+                }
+            },
+            None => section.fallback(),
+        };
+        let mut services = Services::new();
+        services.provide_erased(section.service(), parsed);
+        self.provide(module, services);
+    }
+
+    fn unclaimed(&self) {
+        for key in self.sections.raw().keys() {
+            if !self.claimed.contains_key(key) {
+                tracing::warn!(
+                    file = %self.sections.file().display(),
+                    section = key,
+                    "the section is claimed by no loaded module and is ignored"
+                );
             }
         }
     }
@@ -1879,5 +1949,158 @@ mod tests {
             .unwrap();
         assert_eq!(initialised.graph().ids(), ["keel", "base"]);
         assert!(format!("{initialised:?}").contains("base"));
+    }
+}
+
+#[cfg(test)]
+mod section_tests {
+    use std::io;
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use keel_sdk::prelude::*;
+    use keel_sdk::{ConfigSection, Registrar};
+    use tracing_subscriber::fmt::MakeWriter;
+
+    use crate::loader::Composition;
+    use crate::loader::Sections;
+    use crate::loader::testing::module;
+
+    #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq)]
+    #[serde(default, deny_unknown_fields)]
+    struct Host {
+        socket: String,
+    }
+
+    fn host_init(r: &mut Registrar) -> Result<()> {
+        r.contribute(ConfigSection::new::<Host>("host"));
+        Ok(())
+    }
+
+    fn host_again_init(r: &mut Registrar) -> Result<()> {
+        r.contribute(ConfigSection::new::<Host>("host"));
+        Ok(())
+    }
+
+    module!(HOST, "host", [], host_init);
+    module!(HOST_AGAIN, "host_again", [], host_again_init);
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Captured {
+        type Writer = Captured;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[test]
+    fn a_claimed_section_is_parsed_into_the_services_and_an_unclaimed_key_is_logged() {
+        let captured = Captured::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(captured.clone())
+            .with_ansi(false)
+            .finish();
+        let frozen = tracing::subscriber::with_default(subscriber, || {
+            Composition::new()
+                .module(&HOST)
+                .sections(Sections::new(
+                    "/etc/keel/config.yaml",
+                    [
+                        ("host".to_owned(), json!({ "socket": "/tmp/agent.sock" })),
+                        ("plugins".to_owned(), json!({ "dir": "/tmp" })),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ))
+                .resolve()
+                .expect("the composition resolves")
+                .init()
+                .expect("init registers")
+                .freeze()
+                .expect("the sections freeze")
+        });
+        let host = frozen
+            .registry()
+            .services()
+            .get::<Host>()
+            .expect("the section is a service");
+        assert_eq!(host.socket, "/tmp/agent.sock");
+        let logged = String::from_utf8(
+            captured
+                .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
+        )
+        .expect("utf-8 logs");
+        assert!(logged.contains("WARN"), "{logged}");
+        assert!(logged.contains("section=\"plugins\""), "{logged}");
+        assert!(logged.contains("/etc/keel/config.yaml"), "{logged}");
+        assert!(!logged.contains("section=\"host\""), "{logged}");
+
+        let absent = Composition::new()
+            .module(&HOST)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect("an absent section is the default");
+        assert_eq!(
+            *absent.registry().services().get::<Host>().expect("a Host"),
+            Host::default()
+        );
+    }
+
+    #[test]
+    fn a_section_claimed_twice_and_one_of_the_wrong_shape_are_freeze_problems() {
+        let twice = Composition::new()
+            .module(&HOST)
+            .module(&HOST_AGAIN)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect_err("two claims fail");
+        let listed: Vec<String> = twice.problems().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            ["the section host of config.yaml is claimed by both host and host_again"]
+        );
+        let wrong = Composition::new()
+            .module(&HOST)
+            .section("host", json!({ "socket": 7 }))
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect_err("a wrong shape fails");
+        let listed: Vec<String> = wrong.problems().iter().map(ToString::to_string).collect();
+        assert_eq!(listed.len(), 1);
+        assert!(
+            listed[0].starts_with(
+                "module host: the section host of config.yaml does not fit at host.socket: "
+            ),
+            "{}",
+            listed[0]
+        );
     }
 }

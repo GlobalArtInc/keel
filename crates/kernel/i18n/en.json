@@ -168,6 +168,7 @@
       "read_call_has_no_outbox": "A read call has no outbox",
       "write_call_without_transaction": "A write call lost its transaction",
       "call_still_shared": "The call is still referenced when it should commit",
+      "config_missing": "The configuration section {section} is not contributed",
       "setting_value": "The setting {key} has no usable value",
       "service_missing": "The service {service} is not provided",
       "ownership_undeclared": "The function {function} declares neither owned nor unowned",

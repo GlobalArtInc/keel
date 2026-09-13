@@ -1,5 +1,6 @@
 pub mod access;
 pub mod clock;
+pub mod config;
 pub mod context;
 pub mod db;
 pub mod error;
@@ -34,6 +35,7 @@ pub use serde_json;
 pub use access::{AccountScope, DefaultScopePolicy, Owned, ScopePolicy, scope_by_account};
 pub use call::{AfterContext, Call};
 pub use clock::Clock;
+pub use config::ConfigSection;
 pub use context::Context;
 pub use db::Db;
 pub use error::{KeelError, Result};

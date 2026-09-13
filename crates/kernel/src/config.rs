@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use sea_orm::sqlx::postgres::PgConnectOptions;
 use serde::Deserialize;
-use serde_yaml_ng::Value;
+use serde_json::Value;
 
 pub const FILE_NAME: &str = "config.yaml";
 pub const CONFIG_DIR: &str = "/etc/keel";
@@ -19,6 +19,7 @@ pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCA
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
+    pub file: PathBuf,
     pub listen: SocketAddr,
     pub socket: PathBuf,
     pub data_dir: PathBuf,
@@ -115,7 +116,7 @@ impl Config {
             })?,
             None => Raw::default(),
         };
-        Self::resolve(raw, |name| std::env::var(name).ok())
+        Self::resolve(path, raw, |name| std::env::var(name).ok())
     }
 
     pub fn parse(
@@ -129,10 +130,14 @@ impl Config {
             })?,
             None => Raw::default(),
         };
-        Self::resolve(raw, env)
+        Self::resolve(Path::new(FILE_NAME), raw, env)
     }
 
-    fn resolve(raw: Raw, env: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
+    fn resolve(
+        file: &Path,
+        raw: Raw,
+        env: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, ConfigError> {
         let listen = match raw.listen {
             Some(text) => text.parse().map_err(|error| ConfigError::Invalid {
                 key: "listen",
@@ -150,6 +155,7 @@ impl Config {
             None => DatabaseUrl::default(),
         };
         Ok(Self {
+            file: file.to_owned(),
             listen,
             socket: raw.socket.unwrap_or_else(|| PathBuf::from(SOCKET)),
             data_dir: raw.data_dir.unwrap_or_else(|| PathBuf::from(DATA_DIR)),
@@ -164,8 +170,8 @@ impl Config {
 
 impl Raw {
     fn parse(text: &str) -> Result<Self, serde_yaml_ng::Error> {
-        match serde_yaml_ng::from_str::<Value>(text)? {
-            Value::Null => Ok(Self::default()),
+        match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(text)? {
+            serde_yaml_ng::Value::Null => Ok(Self::default()),
             value => serde_yaml_ng::from_value(value),
         }
     }
@@ -327,6 +333,7 @@ mod tests {
     fn a_missing_config_file_yields_the_platform_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let config = Config::load(&dir.path().join(FILE_NAME)).unwrap();
+        assert_eq!(config.file, dir.path().join(FILE_NAME));
         assert_eq!(config.listen, "127.0.0.1:1500".parse().unwrap());
         assert_eq!(config.socket, PathBuf::from("/run/keel/core.sock"));
         assert_eq!(config.data_dir, PathBuf::from("/var/lib/keel"));
@@ -354,6 +361,7 @@ mod tests {
         let from_empty = Config::parse(Some(""), no_env).unwrap();
         let from_nothing = Config::parse(None, no_env).unwrap();
         assert_eq!(from_empty, from_nothing);
+        assert_eq!(from_empty.file, PathBuf::from(FILE_NAME));
     }
 
     #[test]
@@ -534,13 +542,16 @@ log: { level: debug, format: text }
 
     #[test]
     fn unknown_top_level_sections_are_kept_for_modules() {
-        let text = "host:\n  socket: /run/keel/agent.sock\n";
+        let text =
+            "host:\n  socket: /run/keel/agent.sock\n  retries: 3\nplugins: [a, b]\nflag: true\n";
         let config = Config::parse(Some(text), no_env).unwrap();
-        assert_eq!(config.sections.len(), 1);
+        assert_eq!(config.sections.len(), 3);
         assert_eq!(
-            config.sections["host"]["socket"],
-            Value::String("/run/keel/agent.sock".to_owned())
+            config.sections["host"],
+            serde_json::json!({ "socket": "/run/keel/agent.sock", "retries": 3 })
         );
+        assert_eq!(config.sections["plugins"], serde_json::json!(["a", "b"]));
+        assert_eq!(config.sections["flag"], Value::Bool(true));
     }
 
     #[test]
