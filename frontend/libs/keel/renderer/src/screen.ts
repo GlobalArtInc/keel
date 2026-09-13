@@ -38,6 +38,7 @@ import {
 } from 'rxjs';
 import { KeelActionComponent } from './action/action.component';
 import { KeelFormScreenComponent } from './form/form-screen.component';
+import { KeelListComponent } from './list/list.component';
 import { KeelObjectComponent } from './object/object.component';
 import { NOT_FOUND_KEY, SCREEN_UNSUPPORTED_KEY, VIEW_MISSING_KEY, describeError } from './messages';
 import {
@@ -77,6 +78,7 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
     PhxErrorComponent,
     PhxNotFoundComponent,
     KeelFormScreenComponent,
+    KeelListComponent,
     KeelObjectComponent,
     KeelActionComponent,
   ],
@@ -102,6 +104,9 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
       }
       @case ('screen') {
         @switch (descriptor().kind) {
+          @case ('list') {
+            <keel-list [descriptor]="descriptor()" [params]="screenParams()" />
+          }
           @case ('form') {
             <keel-form-screen
               [descriptor]="descriptor()"

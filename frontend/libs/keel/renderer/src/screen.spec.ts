@@ -17,13 +17,14 @@ function load<T>(name: string): T {
 }
 
 const EDIT = load<Descriptor>('descriptor-dns-zone-edit.json');
+const LIST = load<Descriptor>('descriptor-dns-zone-list.json');
 const OPTIONS = load<Descriptor>('descriptors/keel.account.options.json');
 const GET = load<Descriptor>('descriptors/keel.account.get.json');
 const BOOT = load<Boot>('boot.json');
 const ID = '01J8A0000000000000000000Z1';
 
 const MESSAGES = {
-  dns: { zone: { edit: { title: 'Zone' }, name: 'Zone name' } },
+  dns: { zone: { edit: { title: 'Zone' }, list: { title: 'Zones' }, name: 'Zone name' } },
   keel: {
     action: { save: 'Save' },
     error: {
@@ -119,6 +120,30 @@ describe('keel-screen', () => {
     element.querySelector<HTMLButtonElement>('phx-form-sheet .header__close')?.click();
     await fixture.whenStable();
     expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it('a list descriptor renders keel-list with the screen parameters as the scope', async () => {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      descriptors: [LIST],
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: {
+        'dns.zone.list': ok({ data: [{ id: ID, name: 'a.org' }], total: 1, totals: null }),
+        'keel.account.options': ok({ data: [], more: false }),
+      },
+    });
+    const fixture = await render('dns.zone.list', client, { view: 'mine' });
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.getAttribute('data-phase')).toBe('screen');
+    expect(element.querySelector('keel-list')?.getAttribute('data-list')).toBe('dns.zone.list');
+    expect(element.querySelector('phx-page-header .title__text')?.textContent).toBe('Zones');
+    expect(client.callsOf('dns.zone.list').map((call) => call.params)).toEqual([
+      { page: 1, pageSize: 25, scope: { view: 'mine' } },
+    ]);
+    expect(client.callsOf('keel.account.options').map((call) => call.params)).toEqual([
+      { scope: { view: 'mine' }, limit: 20 },
+    ]);
+    expect(element.querySelector('.body .row a.link')?.textContent).toBe('a.org');
   });
 
   it('a kind without a renderer yet shows phx-not-found naming the kind', async () => {
