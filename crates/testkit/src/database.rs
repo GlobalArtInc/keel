@@ -1,16 +1,38 @@
 use std::fmt;
+use std::time::{Duration, Instant};
 
 use keel_kernel::config::{DatabaseUrl, DatabaseUrlError};
 use keel_kernel::{Config, ConfigError, Storage, StorageError};
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, Statement};
+use testcontainers::runners::AsyncRunner;
+use testcontainers::{ContainerAsync, ImageExt, ReuseDirective, TestcontainersError};
+use testcontainers_modules::postgres::Postgres;
+use tokio::sync::OnceCell;
 
 pub const VARIABLE: &str = "KEEL_TEST_DATABASE_URL";
 pub const PREFIX: &str = "keel_test_";
 pub const TEMPLATE: &str = "template1";
+pub const CONTAINER_IMAGE: &str = "postgres";
+pub const CONTAINER_TAG: &str = "16";
+pub const CONTAINER_NAME: &str = "keel-testkit-postgres";
+pub const CONTAINER_PORT: u16 = 5432;
+pub const CONTAINER_READY_TIMEOUT: Duration = Duration::from_secs(60);
+
+const CONTAINER_USER: &str = "postgres";
+const CONTAINER_PASSWORD: &str = "postgres";
+const CONTAINER_START_ATTEMPTS: u32 = 3;
+const CONTAINER_READY_PAUSE: Duration = Duration::from_millis(250);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Server {
+    Named,
+    Container,
+}
 
 pub struct TestDatabase {
     admin: String,
+    server: Server,
     name: String,
     url: String,
     finished: bool,
@@ -18,12 +40,21 @@ pub struct TestDatabase {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
-    #[error(
-        "{VARIABLE} is not set: point it at a Postgres superuser connection, every database test creates its own database from {TEMPLATE}"
-    )]
-    Unset,
     #[error("could not connect to {VARIABLE}: {0}")]
     Connect(#[source] DbErr),
+    #[error(
+        "{VARIABLE} is not set and the {CONTAINER_IMAGE}:{CONTAINER_TAG} container could not be started: {0}"
+    )]
+    Container(#[source] TestcontainersError),
+    #[error(
+        "the {CONTAINER_IMAGE}:{CONTAINER_TAG} container at {url} did not answer within {timeout:?}: {last}"
+    )]
+    ContainerReady {
+        url: String,
+        timeout: Duration,
+        #[source]
+        last: DbErr,
+    },
     #[error("could not create the test database {name}: {source}")]
     Create {
         name: String,
@@ -46,8 +77,91 @@ pub enum DatabaseError {
     Runtime(#[source] std::io::Error),
 }
 
-fn admin_url() -> Result<String, DatabaseError> {
-    std::env::var(VARIABLE).map_err(|_| DatabaseError::Unset)
+struct Started {
+    url: String,
+    _container: ContainerAsync<Postgres>,
+}
+
+static STARTED: OnceCell<Started> = OnceCell::const_new();
+
+async fn admin_url() -> Result<(String, Server), DatabaseError> {
+    match std::env::var(VARIABLE) {
+        Ok(url) => Ok((url, Server::Named)),
+        Err(_) => {
+            let started = STARTED.get_or_try_init(start_container).await?;
+            Ok((started.url.clone(), Server::Container))
+        }
+    }
+}
+
+async fn start_container() -> Result<Started, DatabaseError> {
+    let mut attempt = 0;
+    let container = loop {
+        attempt += 1;
+        match Postgres::default()
+            .with_user(CONTAINER_USER)
+            .with_password(CONTAINER_PASSWORD)
+            .with_name(CONTAINER_IMAGE)
+            .with_tag(CONTAINER_TAG)
+            .with_container_name(CONTAINER_NAME)
+            .with_reuse(ReuseDirective::Always)
+            .start()
+            .await
+        {
+            Ok(container) => break container,
+            Err(error) if attempt < CONTAINER_START_ATTEMPTS => {
+                eprintln!(
+                    "keel-testkit: starting {CONTAINER_IMAGE}:{CONTAINER_TAG} failed (attempt {attempt}): {error}"
+                );
+                tokio::time::sleep(CONTAINER_READY_PAUSE).await;
+            }
+            Err(error) => return Err(DatabaseError::Container(error)),
+        }
+    };
+    let host = container
+        .get_host()
+        .await
+        .map_err(DatabaseError::Container)?;
+    let port = container
+        .get_host_port_ipv4(CONTAINER_PORT)
+        .await
+        .map_err(DatabaseError::Container)?;
+    let url = format!("postgres://{CONTAINER_USER}:{CONTAINER_PASSWORD}@{host}:{port}/postgres");
+    wait_until_ready(&url).await?;
+    eprintln!(
+        "keel-testkit: {VARIABLE} is not set; using the {CONTAINER_IMAGE}:{CONTAINER_TAG} container {CONTAINER_NAME} at {url}"
+    );
+    Ok(Started {
+        url,
+        _container: container,
+    })
+}
+
+async fn wait_until_ready(url: &str) -> Result<(), DatabaseError> {
+    let started = Instant::now();
+    loop {
+        let outcome = match Database::connect(url).await {
+            Ok(connection) => {
+                let answered = connection
+                    .execute(Statement::from_string(DbBackend::Postgres, "SELECT 1"))
+                    .await;
+                let _ = connection.close().await;
+                answered.map(|_| ())
+            }
+            Err(error) => Err(error),
+        };
+        match outcome {
+            Ok(()) => return Ok(()),
+            Err(last) if started.elapsed() >= CONTAINER_READY_TIMEOUT => {
+                return Err(DatabaseError::ContainerReady {
+                    url: url.to_owned(),
+                    timeout: CONTAINER_READY_TIMEOUT,
+                    last,
+                });
+            }
+            Err(_) => tokio::time::sleep(CONTAINER_READY_PAUSE).await,
+        }
+    }
 }
 
 impl TestDatabase {
@@ -59,7 +173,7 @@ impl TestDatabase {
     }
 
     pub async fn try_create() -> Result<Self, DatabaseError> {
-        let admin = admin_url()?;
+        let (admin, server) = admin_url().await?;
         let name = format!("{PREFIX}{}", Id::generate().to_string().to_lowercase());
         let connection = connect(&admin).await?;
         let created = connection
@@ -75,6 +189,7 @@ impl TestDatabase {
         let url = with_database(&admin, &name);
         Ok(Self {
             admin,
+            server,
             name,
             url,
             finished: false,
@@ -83,6 +198,14 @@ impl TestDatabase {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn server(&self) -> Server {
+        self.server
+    }
+
+    pub fn admin_url(&self) -> &str {
+        &self.admin
     }
 
     pub fn config(&self) -> Config {
@@ -189,7 +312,8 @@ impl fmt::Debug for TestDatabase {
 }
 
 pub async fn exists(name: &str) -> Result<bool, DatabaseError> {
-    let connection = connect(&admin_url()?).await?;
+    let (admin, _) = admin_url().await?;
+    let connection = connect(&admin).await?;
     let row = connection
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,

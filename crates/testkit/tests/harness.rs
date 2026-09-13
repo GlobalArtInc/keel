@@ -5,7 +5,7 @@ use std::sync::{Mutex, PoisonError};
 
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
-use keel_testkit::{ErrorCode, Fixture, Harness, TestDatabase, Who, database};
+use keel_testkit::{ErrorCode, Fixture, Harness, Server, TestDatabase, Who, database};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde")]
@@ -339,6 +339,33 @@ async fn the_database_is_dropped_when_a_test_panics_before_finish() {
     assert!(database::exists(&name).await.expect("pg_database answers"));
     drop(database);
     assert!(!database::exists(&name).await.expect("pg_database answers"));
+}
+
+#[tokio::test]
+async fn the_server_is_the_named_one_when_the_variable_is_set_and_a_started_container_otherwise() {
+    let database = TestDatabase::create().await;
+    let named = std::env::var(database::VARIABLE).ok();
+    match named {
+        Some(url) => {
+            assert_eq!(database.server(), Server::Named);
+            assert_eq!(database.admin_url(), url);
+        }
+        None => {
+            assert_eq!(database.server(), Server::Container);
+            assert!(
+                database
+                    .admin_url()
+                    .starts_with("postgres://postgres:postgres@"),
+                "{}",
+                database.admin_url()
+            );
+        }
+    }
+    let harness = Harness::new().boot().await;
+    assert_eq!(harness.database().server(), database.server());
+    assert_eq!(harness.database().admin_url(), database.admin_url());
+    harness.finish().await;
+    database.finish().await;
 }
 
 #[tokio::test]

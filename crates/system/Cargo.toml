@@ -39,3 +39,59 @@ tracing = { workspace = true, optional = true }
 [dev-dependencies]
 futures = { workspace = true }
 keel-testkit = { workspace = true }
+
+[[test]]
+name = "audit"
+required-features = ["auth", "audit"]
+
+[[test]]
+name = "audit_alone"
+required-features = ["audit"]
+
+[[test]]
+name = "auth_guards"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_keys"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_passwords"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_policy"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_session_list"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_sessions"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_su"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_tokens"
+required-features = ["auth"]
+
+[[test]]
+name = "auth_totp"
+required-features = ["auth"]
+
+[[test]]
+name = "settings"
+required-features = ["auth", "settings"]
+
+[[test]]
+name = "settings_alone"
+required-features = ["settings"]
+
+[[test]]
+name = "settings_pref"
+required-features = ["auth", "settings"]

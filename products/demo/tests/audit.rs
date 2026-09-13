@@ -68,7 +68,7 @@ async fn note_edit_records_the_id_as_subject_and_the_masked_result_as_after_whil
     let trail = harness
         .database()
         .rows(
-            "SELECT function || ' ' || coalesce(subject, '-') || ' ' || (after IS NOT NULL)::text FROM audit_call WHERE principal_login = 'a1' ORDER BY 1",
+            "SELECT line FROM (SELECT function || ' ' || coalesce(subject, '-') || ' ' || (after IS NOT NULL)::text AS line FROM audit_call WHERE principal_login = 'a1') AS trail ORDER BY line COLLATE \"C\"",
         )
         .await;
     assert_eq!(

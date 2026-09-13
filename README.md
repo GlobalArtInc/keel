@@ -29,7 +29,8 @@ milestones after it are designed, not yet built.
 ## Layout
 
 ```
-crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-host, ... (from M0)
+crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-testkit, keel-conformance,
+             keel-host, ... (from M0)
 products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
 bin/keel/    keel-bin — the binary keel: the composition of every module and every bundle of
              the workspace; the only crate that depends on product crates. Its cargo feature
@@ -46,23 +47,32 @@ hack/        scripts CI runs
 
 ## Building and running
 
-The checks below are the ones CI runs, in the same order; run them before pushing. The tests
-and `hack/prove-binary.sh` need a Postgres superuser connection in `KEEL_TEST_DATABASE_URL`,
-from which every test creates and drops a database of its own:
+The checks below are the ones CI runs, in the same order; run them before pushing. The tests,
+`hack/prove-binary.sh` and `hack/conformance.sh` use the Postgres superuser connection in
+`KEEL_TEST_DATABASE_URL`, from which every test creates and drops a database of its own; when
+the variable is unset, `keel-testkit` starts the container `keel-testkit-postgres` from
+`postgres:16` through the local Docker socket, keeps it running for the next test process and
+prints the URL it uses, which is the path the `env -u` command below proves:
 
 ```
 export KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:5432/postgres
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit
 cargo test -p keel-bin --no-default-features
 cargo build -p keel-bin
 hack/prove-binary.sh target/debug/keel
+hack/conformance.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
 ```
 
-CI ends with `cargo-semver-checks` against the facade crate `keel`.
+CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job runs the
+`keel-system` matrix, `cargo clippy` and `cargo test -p keel-system --no-default-features
+--features <set>` for each module alone (`auth`, `settings`, `audit`) and for the crate without
+each in turn (`settings,audit`, `auth,audit`, `auth,settings`); a test of the crate declares the
+modules it needs as `required-features` and is skipped when they are off.
 
 `cargo build -p keel-bin` produces `target/debug/keel` with the `demo` bundle compiled in, since
 the feature `demo` of `keel-bin` is on by default; `--no-default-features` builds the binary a
@@ -78,6 +88,13 @@ keel ctl note.edit title=x        # the envelope of the call, as JSON
 keel ctl note.list --out table    # the rows rendered by ui.columns with translated headers
 keel product list                 # every bundle the binary carries, enabled or disabled
 ```
+
+`hack/conformance.sh target/debug/keel` prepares a fresh database and `data_dir` the same way,
+enables `demo`, creates an admin and a user in a second account over `ctl`, starts `serve` and
+runs `keel-conformance`, the contract suite: a black-box client of the started binary, typed
+with `keel-types` alone, that prints one line per check and exits non-zero on any failure. It
+takes `--url`, `--admin-login`, `--admin-password` (or `KEEL_CONFORMANCE_ADMIN_PASSWORD`) and
+`--user-login`, the login of a user in another account.
 
 `keel --config <path>` (or `KEEL_CONFIG`) points at another configuration file; `keel ctl
 --socket <path>` at another control socket than `/run/keel/core.sock`. The descriptor snapshots

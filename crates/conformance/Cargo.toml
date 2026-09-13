@@ -1,0 +1,24 @@
+[package]
+name = "keel-conformance"
+description = "The contract suite: a black-box client of a started keel binary, typed with keel-types alone, one line per check"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "keel-conformance"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+keel-types = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }

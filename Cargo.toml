@@ -38,6 +38,8 @@ jsonschema = { version = "0.56", default-features = false }
 migrator = { package = "sqlmig", version = "0.2.1" }
 rand = "0.10"
 regex = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 schemars = { version = "1", features = ["chrono04"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono", "with-json"] }
 semver = "1"
@@ -48,6 +50,8 @@ sha1 = "0.11"
 sha2 = "0.11"
 subtle = "2"
 tempfile = "3"
+testcontainers = { version = "0.27", default-features = false, features = ["reusable-containers"] }
+testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "io-util", "fs", "process"] }
 tokio-util = "0.7"

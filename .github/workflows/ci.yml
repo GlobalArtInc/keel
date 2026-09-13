@@ -82,6 +82,9 @@ jobs:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: cargo test --workspace
 
+      - name: The testkit against the Postgres it starts itself
+        run: env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit
+
       - name: The binary without the demo bundle
         run: cargo test -p keel-bin --no-default-features
 
@@ -92,6 +95,11 @@ jobs:
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: hack/prove-binary.sh target/debug/keel
+
+      - name: Conformance against the binary
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: hack/conformance.sh target/debug/keel
 
       - name: No test database remains
         env:
@@ -118,3 +126,73 @@ jobs:
         with:
           package: keel
           baseline-rev: ${{ steps.baseline.outputs.rev }}
+
+  system:
+    name: keel-system with ${{ matrix.features }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - auth
+          - settings
+          - audit
+          - settings,audit
+          - auth,audit
+          - auth,settings
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_PASSWORD: keel
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U keel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache the cargo download directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -h 127.0.0.1 -p 5432 -U keel && exit 0
+            sleep 2
+          done
+          echo "postgres did not come up" >&2
+          exit 1
+
+      - name: Clippy
+        run: cargo clippy -p keel-system --all-targets --no-default-features --features ${{ matrix.features }} -- -D warnings
+
+      - name: Test
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: cargo test -p keel-system --no-default-features --features ${{ matrix.features }}
+
+      - name: No test database remains
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: hack/check-test-databases.sh

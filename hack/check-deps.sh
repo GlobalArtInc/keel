@@ -74,6 +74,19 @@ if [ "$system" != "keel-sdk " ]; then
 fi
 echo "keel-system graph checked"
 
+conformance=$(cargo tree -p keel-conformance -e normal,build,dev --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$conformance" != "keel-types " ]; then
+  echo "keel-conformance depends on workspace crates other than keel-types: $conformance" >&2
+  fail=1
+fi
+for forbidden in keel-kernel keel-sdk keel-system keel-testkit keel; do
+  if cargo tree -p keel-conformance -e normal,build,dev --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-conformance reaches $forbidden through its dependencies" >&2
+    fail=1
+  fi
+done
+echo "keel-conformance graph checked"
+
 facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
 if [ "$facade" != "keel-kernel keel-sdk keel-types " ]; then
   echo "the facade keel depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $facade" >&2
