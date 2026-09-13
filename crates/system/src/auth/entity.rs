@@ -37,6 +37,8 @@ pub mod session {
         pub absolute_until: DateTimeUtc,
         pub revoked_at: Option<DateTimeUtc>,
         pub reason: Option<String>,
+        pub parent_id_hash: Option<String>,
+        pub su_id_hash: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

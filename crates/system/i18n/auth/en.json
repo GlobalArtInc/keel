@@ -61,5 +61,10 @@
   "auth.error.totp_not_enrolled": "No second factor is being set up",
   "auth.error.totp_owner": "The owner has no second factor; it signs in over the socket",
   "auth.error.totp_secret": "The stored second factor cannot be read",
-  "auth.error.totp_principal": "The second factor names a principal that cannot be read"
+  "auth.error.totp_principal": "The second factor names a principal that cannot be read",
+  "auth.su.title": "Act as a principal",
+  "auth.su.exit.title": "Return to your own session",
+  "auth.su.principal": "Principal",
+  "auth.error.su_nested": "You are already acting as another principal; return first",
+  "auth.error.not_delegated": "You are not acting as another principal"
 }

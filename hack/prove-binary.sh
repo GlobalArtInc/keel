@@ -341,6 +341,30 @@ check "GET /api/v1/boot with the cookie is 200" http_is "$site/boot-alice.json" 
 check "boot names alice as the principal" json_is "$site/boot-alice.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["level"] == "user"'
 check "POST /api/v1/call/note.list with the cookie is 200" http_is "$site/notes-alice.json" 200 POST /api/v1/call/note.list '{}' "$cookie"
 check "note.list answers the page of alice" json_is "$site/notes-alice.json" 'doc["ok"] is True and [row["title"] for row in doc["data"]["data"]] == ["hers"] and doc["meta"]["principal"]["login"] == "alice"'
+root_account=00000000000000000000000000
+check "ctl keel.principal.create login=root level=admin" keel_ok "$site/root.json" ctl keel.principal.create login=root level=admin "account=$root_account"
+root_id=$(json_get "$site/root.json" 'doc["data"]["id"]')
+check "ctl auth.password.set for root" keel_ok "$site/root-password.json" ctl auth.password.set "principal=$root_id" password=correct-horse
+check "POST /api/v1/call/auth.login as root is 200" http_is "$site/login-root.json" 200 POST /api/v1/call/auth.login '{"login":"root","password":"correct-horse"}'
+root_cookie=$(session_cookie_of "$site/login-root.json.headers") || fail "auth.login sets the session cookie for root"
+check "GET /api/v1/boot as root is 200" http_is "$site/boot-root.json" 200 GET /api/v1/boot '' "$root_cookie"
+check "boot names root without an actor" json_is "$site/boot-root.json" 'doc["principal"]["login"] == "root" and doc["principal"]["level"] == "admin" and doc["principal"]["actor"] is None'
+check "POST /api/v1/call/keel.account.list as root is 200" http_is "$site/accounts-root.json" 200 POST /api/v1/call/keel.account.list '{}' "$root_cookie"
+check "keel.account.list as root lists every account" json_is "$site/accounts-root.json" "doc['ok'] is True and doc['data']['total'] >= 2 and doc['meta']['principal']['actor'] is None"
+check "POST /api/v1/call/auth.su into alice is 200" http_is "$site/su.json" 200 POST /api/v1/call/auth.su "{\"principal\":\"$principal_id\"}" "$root_cookie"
+check "auth.su answers alice with root as the actor" json_is "$site/su.json" "doc['ok'] is True and doc['data']['principal']['login'] == 'alice' and doc['data']['principal']['actor']['login'] == 'root' and doc['data']['principal']['actor']['via'] == 'su'"
+check "auth.su sets no cookie" test -z "$(header_of "$site/su.json.headers" set-cookie)"
+check "POST /api/v1/call/keel.account.list under su is 200" http_is "$site/accounts-su.json" 200 POST /api/v1/call/keel.account.list '{}' "$root_cookie"
+check "keel.account.list under su lists the account of alice with root as the actor" json_is "$site/accounts-su.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$account_id'] and doc['meta']['principal']['login'] == 'alice' and doc['meta']['principal']['actor']['login'] == 'root' and doc['meta']['principal']['actor']['via'] == 'su'"
+check "GET /api/v1/boot under su is 200" http_is "$site/boot-su.json" 200 GET /api/v1/boot '' "$root_cookie"
+check "boot under su names alice with root as the actor" json_is "$site/boot-su.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["actor"]["login"] == "root" and doc["principal"]["actor"]["via"] == "su"'
+check "the su session is a second row of kind su naming root as its actor" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_session child JOIN keel.auth_session parent ON parent.su_id_hash = child.id_hash AND child.parent_id_hash = parent.id_hash WHERE child.kind = 'su' AND child.actor_principal_id = '$root_id'")" = "1"
+check "POST /api/v1/call/auth.su.exit is 200" http_is "$site/su-exit.json" 200 POST /api/v1/call/auth.su.exit '{}' "$root_cookie"
+check "auth.su.exit answers root" json_is "$site/su-exit.json" 'doc["ok"] is True and doc["data"]["principal"]["login"] == "root" and doc["data"]["principal"]["actor"] is None'
+check "POST /api/v1/call/keel.account.list after su.exit is 200" http_is "$site/accounts-after-su.json" 200 POST /api/v1/call/keel.account.list '{}' "$root_cookie"
+check "keel.account.list after su.exit is wide again without an actor" json_is "$site/accounts-after-su.json" "doc['data']['total'] >= 2 and doc['meta']['principal']['login'] == 'root' and doc['meta']['principal']['actor'] is None"
+check "POST /api/v1/call/auth.su.exit outside a delegation is 422" http_is "$site/su-exit-again.json" 422 POST /api/v1/call/auth.su.exit '{}' "$root_cookie"
+check "auth.su.exit outside a delegation answers auth.error.not_delegated" json_is "$site/su-exit-again.json" 'doc["ok"] is False and doc["error"]["key"] == "auth.error.not_delegated"'
 check "POST /api/v1/call/auth.token.create with the cookie is 200" http_is "$site/token.json" 200 POST /api/v1/call/auth.token.create '{"name":"api","scope":{"functions":["note.list"]}}' "$cookie"
 check "auth.token.create answers the plaintext token" json_is "$site/token.json" 'doc["ok"] is True and re.fullmatch("kat_[0-9a-f]{64}", doc["data"]["token"]) is not None'
 token="Bearer $(json_get "$site/token.json" 'doc["data"]["token"]')"

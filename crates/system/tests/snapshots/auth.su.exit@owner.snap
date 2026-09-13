@@ -1,0 +1,115 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.su.exit
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "auth.su.exit",
+  "module": "auth",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "service"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Delegation",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "$ref": "#/$defs/MetaPrincipal"
+      }
+    },
+    "required": [
+      "principal"
+    ],
+    "$defs": {
+      "MetaPrincipal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "account": {
+            "$ref": "#/$defs/Id"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MetaActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "account"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "MetaActor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "via": {
+            "$ref": "#/$defs/ActorVia"
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "via"
+        ]
+      },
+      "ActorVia": {
+        "type": "string",
+        "enum": [
+          "su",
+          "socket",
+          "peer"
+        ]
+      }
+    }
+  }
+}

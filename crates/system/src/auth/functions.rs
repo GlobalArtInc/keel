@@ -191,6 +191,13 @@ pub(super) fn http_client<P>(call: &Call<P>) -> Result<&Client> {
         .ok_or_else(|| KeelError::validation("auth.error.http_only"))
 }
 
+pub(super) fn session_client<P>(call: &Call<P>) -> Result<(&Client, String)> {
+    let session_only = || KeelError::validation("auth.error.session_only");
+    let client = call.client().ok_or_else(session_only)?;
+    let id_hash = client.session.clone().ok_or_else(session_only)?;
+    Ok((client, id_hash))
+}
+
 pub(super) async fn open_session<P>(
     call: &Call<P>,
     principal: Principal,
@@ -222,9 +229,7 @@ pub fn logout() -> FunctionDef {
         .level(Level::Service)
         .unowned()
         .handler(|call: Call<Nothing>| async move {
-            let Some(id_hash) = call.client().and_then(|client| client.session.clone()) else {
-                return Err(KeelError::validation("auth.error.session_only"));
-            };
+            let (_, id_hash) = session_client(&call)?;
             let now = call.require::<dyn Clock>()?.now();
             let revoked =
                 session::revoke(call.tx()?, &id_hash, now, session::REASON_LOGOUT).await?;

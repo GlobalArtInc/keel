@@ -9,9 +9,11 @@ use super::entity::session;
 use super::password::{hex, random_bytes};
 
 pub const TOKEN_PREFIX: &str = "ks_";
-const KIND_SESSION: &str = "session";
+pub const KIND_SESSION: &str = "session";
+pub const KIND_SU: &str = "su";
 pub const REASON_LOGOUT: &str = "logout";
 pub const REASON_REPLACED: &str = "replaced";
+pub const REASON_SU_EXIT: &str = "su_exit";
 pub const IDLE_MINUTES: i64 = 30;
 pub const ABSOLUTE_HOURS: i64 = 12;
 const TOKEN_LEN: usize = 32;
@@ -59,10 +61,56 @@ pub async fn open(
         absolute_until: Set(now + absolute()),
         revoked_at: Set(None),
         reason: Set(None),
+        parent_id_hash: Set(None),
+        su_id_hash: Set(None),
     }
     .insert(db)
     .await?;
     Ok(token)
+}
+
+pub async fn open_su(
+    db: &Db,
+    parent: &session::Model,
+    target: &Principal,
+    actor: Id,
+    client: &Client,
+    now: DateTime<Utc>,
+) -> Result<String> {
+    let id_hash = hash(generate()?.expose());
+    session::ActiveModel {
+        id_hash: Set(id_hash.clone()),
+        principal_id: Set(target.id.to_string()),
+        account_id: Set(target.account_id.to_string()),
+        actor_principal_id: Set(Some(actor.to_string())),
+        kind: Set(KIND_SU.to_owned()),
+        ip: Set(client.ip.map(|ip| ip.to_string())),
+        user_agent: Set(client.user_agent.clone()),
+        created_at: Set(now),
+        idle_until: Set(parent.idle_until),
+        absolute_until: Set(parent.absolute_until),
+        revoked_at: Set(None),
+        reason: Set(None),
+        parent_id_hash: Set(Some(parent.id_hash.clone())),
+        su_id_hash: Set(None),
+    }
+    .insert(db)
+    .await?;
+    delegate(db, &parent.id_hash, Some(&id_hash)).await?;
+    Ok(id_hash)
+}
+
+pub async fn delegate(db: &Db, id_hash: &str, su_id_hash: Option<&str>) -> Result<()> {
+    session::Entity::update_many()
+        .col_expr(session::Column::SuIdHash, Expr::value(su_id_hash))
+        .filter(session::Column::IdHash.eq(id_hash))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn row(db: &Db, id_hash: &str) -> Result<Option<session::Model>> {
+    Ok(session::Entity::find_by_id(id_hash).one(db).await?)
 }
 
 pub async fn resolve(db: &Db, id_hash: &str, now: DateTime<Utc>) -> Result<Option<session::Model>> {

@@ -1,10 +1,12 @@
 use std::sync::{Arc, OnceLock};
 
 use keel_sdk::async_trait::async_trait;
+use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::system::{Authenticated, Authenticator, Client, Credential, PrincipalSource};
 use keel_sdk::types::Via;
-use keel_sdk::{Clock, Db, KeelError, Result};
+use keel_sdk::{Clock, Db, KeelError, Principal, Result};
 
+use super::entity::session::Model as SessionRow;
 use super::{session, token};
 
 #[derive(Default)]
@@ -41,10 +43,41 @@ impl CredentialAuthenticator {
         };
         session::touch(db, &id_hash, now).await?;
         principal.via = Via::Http;
+        if let Some(delegated) = self.delegated(&row, principal.clone(), db, now).await? {
+            principal = delegated;
+        }
         Ok(Authenticated {
             principal,
             session: Some(id_hash),
         })
+    }
+
+    async fn delegated(
+        &self,
+        parent: &SessionRow,
+        mut actor: Principal,
+        db: &Db,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Principal>> {
+        let Some(su_id_hash) = parent.su_id_hash.as_deref() else {
+            return Ok(None);
+        };
+        let Some(child) = session::resolve(db, su_id_hash, now).await? else {
+            return Ok(None);
+        };
+        let started = self.started()?;
+        let Some(mut principal) = started
+            .principals
+            .by_id(session::principal_id(&child)?, db)
+            .await?
+        else {
+            return Ok(None);
+        };
+        session::touch(db, su_id_hash, now).await?;
+        actor.via = Via::Su;
+        principal.via = Via::Http;
+        principal.actor = Some(Box::new(actor));
+        Ok(Some(principal))
     }
 
     async fn token(&self, secret: &str, client: &Client, db: &Db) -> Result<Authenticated> {

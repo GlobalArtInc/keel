@@ -421,7 +421,15 @@ async fn the_login_and_logout_descriptors_match_their_snapshots_and_the_password
     let names = harness.snapshot_descriptors(Level::Guest, snapshots_dir());
     assert_eq!(names, ["auth.login", "auth.totp.verify"]);
     let names = harness.snapshot_descriptors(Level::Service, snapshots_dir());
-    assert_eq!(names, ["auth.login", "auth.logout", "auth.totp.verify"]);
+    assert_eq!(
+        names,
+        [
+            "auth.login",
+            "auth.logout",
+            "auth.su.exit",
+            "auth.totp.verify"
+        ]
+    );
     let login = harness
         .registry()
         .function("auth.login")
