@@ -10,7 +10,7 @@
   "scripts": {
     "generate": "node tools/generate.mjs",
     "lint": "eslint .",
-    "test": "jest",
+    "test": "node --no-sparkplug node_modules/jest/bin/jest.js",
     "build": "ng build keel && ng build shell",
     "format": "prettier --check ."
   },
