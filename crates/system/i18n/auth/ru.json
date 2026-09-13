@@ -1,0 +1,22 @@
+{
+  "auth.login": "Логин",
+  "auth.password": "Пароль",
+  "auth.method": "Способ входа",
+  "auth.login.title": "Вход",
+  "auth.login.state.authenticated": "Вход выполнен",
+  "auth.logout.title": "Выход",
+  "auth.password.set.title": "Смена пароля",
+  "auth.password.principal": "Пользователь",
+  "auth.password.current": "Текущий пароль",
+  "auth.password.password": "Новый пароль",
+  "auth.error.credentials": "Неверный логин или пароль",
+  "auth.error.current_required": "Нужен текущий пароль",
+  "auth.error.not_below": "Пароль пользователя уровня {level} не может задать вызывающий уровня {caller}",
+  "auth.error.http_only": "Вход возможен только по HTTP",
+  "auth.error.session_only": "Для этого вызова нужна сессия",
+  "auth.error.method_unknown": "Способ входа {method} недоступен",
+  "auth.error.hashing": "Не удалось обработать пароль",
+  "auth.error.entropy": "Система не дала случайных данных",
+  "auth.error.not_started": "Модуль auth не запущен",
+  "auth.error.session_principal": "Сессия ссылается на пользователя, которого не удалось прочитать"
+}

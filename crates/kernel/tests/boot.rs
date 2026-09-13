@@ -11,7 +11,7 @@ use keel_kernel::{Composition, Http, HttpOptions, Kernel, Readiness, Storage};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Credential};
+use keel_sdk::system::{Authenticated, Authenticator, Client as HttpClient, Credential};
 use keel_testkit::TestDatabase;
 use keel_types::{Boot, Envelope, ErrorCode, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -40,12 +40,17 @@ struct TestAuthenticator;
 
 #[async_trait]
 impl Authenticator for TestAuthenticator {
-    async fn authenticate(&self, credential: &Credential, db: &Db) -> Result<Option<Principal>> {
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &HttpClient,
+        db: &Db,
+    ) -> Result<Option<Authenticated>> {
         let token = match credential {
             Credential::Bearer(secret) | Credential::Session(secret) => secret.expose(),
         };
-        match token.split_once(':') {
-            Some(("login", login)) => stored(db, login).await,
+        let principal = match token.split_once(':') {
+            Some(("login", login)) => stored(db, login).await?,
             Some((level, account)) => {
                 let level: Level = level
                     .parse()
@@ -53,10 +58,14 @@ impl Authenticator for TestAuthenticator {
                 let account: Id = account
                     .parse()
                     .map_err(|_| KeelError::internal("probe.error.account"))?;
-                Ok(Some(principal(level, account, "en")))
+                Some(principal(level, account, "en"))
             }
-            None => Ok(None),
-        }
+            None => None,
+        };
+        Ok(principal.map(|principal| Authenticated {
+            principal,
+            session: None,
+        }))
     }
 }
 
@@ -121,6 +130,20 @@ static PROBE: ModuleDef = ModuleDef {
     init,
 };
 
+static GATE: ModuleDef = ModuleDef {
+    id: "gate",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: gate_init,
+};
+
+fn gate_init(r: &mut Registrar) -> Result<()> {
+    r.contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
+    Ok(())
+}
+
 fn init(r: &mut Registrar) -> Result<()> {
     r.function(
         function::<ListQuery, Page<Item>>("probe.item.list")
@@ -150,7 +173,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     .menu(MenuNode::new("probe/public", "probe.item.public").order(10))
     .i18n("en", EN)
     .i18n("ru", RU)
-    .provide::<dyn Authenticator>(Arc::new(TestAuthenticator));
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
     Ok(())
 }
 
@@ -476,7 +499,7 @@ async fn boot_as_a_guest_returns_no_principal_and_no_node_above_the_guest_level(
 #[tokio::test]
 async fn boot_is_cached_by_its_meta_and_meta_changes_with_the_enabled_set_and_the_acl_gen() {
     let with_probe = start(Composition::new().product(&PROBE_BUNDLE)).await;
-    let bare = start(Composition::new()).await;
+    let bare = start(Composition::new().module(&GATE)).await;
     let created = with_probe
         .as_owner(
             "keel.principal.create",

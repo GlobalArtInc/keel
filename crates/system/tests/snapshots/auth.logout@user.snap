@@ -1,0 +1,32 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.logout
+  level: user
+---
+{
+  "keel": 1,
+  "name": "auth.logout",
+  "module": "auth",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "service"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "LoggedOut",
+    "type": "object",
+    "properties": {
+      "revoked": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revoked"
+    ]
+  }
+}

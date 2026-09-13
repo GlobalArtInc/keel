@@ -15,7 +15,7 @@ use keel_kernel::{Composition, Http, HttpError, HttpOptions, Kernel, Readiness, 
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Credential};
+use keel_sdk::system::{Authenticated, Authenticator, CallExt, Client, Credential, SessionChange};
 use keel_testkit::TestDatabase;
 use keel_types::{ErrorCode, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -50,12 +50,20 @@ struct TestAuthenticator;
 
 #[async_trait]
 impl Authenticator for TestAuthenticator {
-    async fn authenticate(&self, credential: &Credential, db: &Db) -> Result<Option<Principal>> {
-        let token = match credential {
-            Credential::Bearer(secret) | Credential::Session(secret) => secret.expose(),
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &Client,
+        db: &Db,
+    ) -> Result<Option<Authenticated>> {
+        let (token, session) = match credential {
+            Credential::Bearer(secret) => (secret.expose(), None),
+            Credential::Session(secret) => {
+                (secret.expose(), Some(format!("row-of-{}", secret.expose())))
+            }
         };
-        match token.split_once(':') {
-            Some(("login", login)) => stored(db, login).await,
+        let principal = match token.split_once(':') {
+            Some(("login", login)) => stored(db, login).await?,
             Some((level, account)) => {
                 let level: Level = level
                     .parse()
@@ -63,11 +71,12 @@ impl Authenticator for TestAuthenticator {
                 let account: Id = account
                     .parse()
                     .map_err(|_| KeelError::internal("probe.error.account"))?;
-                Ok(Some(principal(level, account)))
+                Some(principal(level, account))
             }
-            None if token == "boom" => Err(KeelError::internal("probe.error.boom")),
-            None => Ok(None),
-        }
+            None if token == "boom" => return Err(KeelError::internal("probe.error.boom")),
+            None => None,
+        };
+        Ok(principal.map(|principal| Authenticated { principal, session }))
     }
 }
 
@@ -166,10 +175,68 @@ fn init(r: &mut Registrar) -> Result<()> {
             .unowned()
             .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
     )
+    .function(
+        function::<Nothing, Seen>("probe.client")
+            .kind(Kind::Get)
+            .level(Level::Guest)
+            .unowned()
+            .handler(|call: Call<Nothing>| async move {
+                Ok(Seen {
+                    client: call.client().cloned().map(ClientSeen::from),
+                })
+            }),
+    )
+    .function(
+        function::<Cookie, Nothing>("probe.cookie")
+            .kind(Kind::Action)
+            .level(Level::Guest)
+            .unowned()
+            .handler(|call: Call<Cookie>| async move {
+                match call.params().change.as_str() {
+                    "set" => call.session(SessionChange::Set(Secret::new("ks_probe"))),
+                    "clear" => call.session(SessionChange::Clear),
+                    _ => {}
+                }
+                if call.params().fail {
+                    return Err(KeelError::conflict("probe.error.after_cookie"));
+                }
+                Ok(Nothing {})
+            }),
+    )
     .i18n("en", EN)
     .i18n("ru", RU)
-    .provide::<dyn Authenticator>(Arc::new(TestAuthenticator));
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
     Ok(())
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Seen {
+    client: Option<ClientSeen>,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ClientSeen {
+    ip: Option<String>,
+    user_agent: Option<String>,
+    session: Option<String>,
+}
+
+impl From<Client> for ClientSeen {
+    fn from(client: Client) -> Self {
+        Self {
+            ip: client.ip.map(|ip| ip.to_string()),
+            user_agent: client.user_agent,
+            session: client.session,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Cookie {
+    change: String,
+    #[serde(default)]
+    fail: bool,
 }
 
 struct Answer {
@@ -537,7 +604,10 @@ async fn functions_as_a_guest_list_only_guest_level_functions() {
     assert!(answer.header(ETAG).is_some());
     let descriptors = &answer.body;
     assert!(descriptors.is_array(), "{descriptors}");
-    assert_eq!(names(descriptors), ["probe.fail", "probe.ping"]);
+    assert_eq!(
+        names(descriptors),
+        ["probe.client", "probe.cookie", "probe.fail", "probe.ping"]
+    );
     for descriptor in descriptors.as_array().unwrap() {
         assert_eq!(descriptor["access"]["level"], json!("guest"));
         assert_eq!(descriptor["keel"], json!(1));
@@ -937,8 +1007,8 @@ async fn session_cookie_requests_are_checked_for_cross_site_and_other_requests_a
         (ORIGIN.as_str(), "https://evil.test".into()),
     ])
     .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["data"]["level"], json!("guest"));
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["key"], json!("keel.error.cross_site"));
     let (status, body) = send(vec![
         (COOKIE.as_str(), cookie.clone()),
         (ORIGIN.as_str(), "http://keel.test:1500".into()),
@@ -964,6 +1034,13 @@ async fn session_cookie_requests_are_checked_for_cross_site_and_other_requests_a
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let (status, body) = send(vec![(ORIGIN.as_str(), "https://evil.test".into())]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["code"], json!("forbidden"));
+    assert_eq!(body["error"]["key"], json!("keel.error.cross_site"));
+    let (status, body) = send(vec![("sec-fetch-site", "cross-site".into())]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["key"], json!("keel.error.cross_site"));
+    let (status, body) = send(vec![]).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["level"], json!("guest"));
     bench.finish().await;
@@ -1158,7 +1235,7 @@ async fn an_invalid_credential_is_unauthenticated_and_an_authenticator_failure_i
 }
 
 #[tokio::test]
-async fn without_an_authenticator_every_request_is_a_guest() {
+async fn without_an_authenticator_every_credential_is_refused_and_a_bare_request_is_a_guest() {
     let bench = bench_with(Composition::new(), HttpOptions::default()).await;
     let with_token = bench
         .call("keel.account.list", Some(&admin()), json!({}))
@@ -1171,12 +1248,13 @@ async fn without_an_authenticator_every_request_is_a_guest() {
     );
     assert_eq!(with_token.code(), ErrorCode::Unauthenticated);
     let functions = bench.get("/api/v1/functions", Some(&admin())).await;
-    assert_eq!(functions.status, StatusCode::OK);
-    assert!(
-        functions.body.as_array().unwrap().is_empty(),
+    assert_eq!(
+        functions.status,
+        StatusCode::UNAUTHORIZED,
         "{}",
         functions.body
     );
+    assert_eq!(functions.key(), "keel.error.unauthenticated");
     let with_cookie = bench
         .send(
             Request::get("/api/v1/functions")
@@ -1187,6 +1265,271 @@ async fn without_an_authenticator_every_request_is_a_guest() {
                 .unwrap(),
         )
         .await;
-    assert_eq!(with_cookie.status, StatusCode::OK);
+    assert_eq!(
+        with_cookie.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        with_cookie.body
+    );
+    let bare = bench.get("/api/v1/functions", None).await;
+    assert_eq!(bare.status, StatusCode::OK, "{}", bare.body);
+    assert!(bare.body.as_array().unwrap().is_empty(), "{}", bare.body);
+    bench.finish().await;
+}
+
+fn connected(mut request: Request<Body>) -> Request<Body> {
+    let addr: SocketAddr = "127.0.0.1:40001".parse().expect("an address");
+    request
+        .extensions_mut()
+        .insert(axum::extract::ConnectInfo(addr));
+    request
+}
+
+#[tokio::test]
+async fn a_session_credential_carries_its_row_and_the_call_reads_the_client_of_the_request() {
+    let bench = bench().await;
+    let cookie = format!("{SESSION_COOKIE}={}", user());
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/call/probe.client")
+        .header(COOKIE, cookie.clone())
+        .header("user-agent", "probe/1")
+        .body(Body::empty())
+        .expect("a request");
+    let answer = bench.send(connected(request)).await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(
+        answer.data()["client"],
+        json!({
+            "ip": "127.0.0.1",
+            "userAgent": "probe/1",
+            "session": format!("row-of-{}", user())
+        })
+    );
+    let bearer = bench.get("/api/v1/call/probe.client", Some(&user())).await;
+    assert_eq!(bearer.status, StatusCode::OK, "{}", bearer.body);
+    assert_eq!(
+        bearer.data()["client"],
+        json!({ "ip": null, "userAgent": null, "session": null })
+    );
+    let guest = bench.get("/api/v1/call/probe.client", None).await;
+    assert_eq!(guest.data()["client"]["session"], json!(null));
+    let direct = bench
+        .dispatcher
+        .call(
+            principal(Level::Owner, Id::ROOT_ACCOUNT),
+            "probe.client",
+            json!({}),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(direct.data().expect("a reply")["client"], json!(null));
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_recorded_session_change_becomes_the_cookie_of_a_committed_call_only() {
+    let bench = bench().await;
+    let set = bench
+        .call("probe.cookie", None, json!({ "change": "set" }))
+        .await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.body);
+    assert_eq!(
+        set.header(axum::http::header::SET_COOKIE),
+        Some("__Host-keel_session=ks_probe; Path=/; Secure; HttpOnly; SameSite=Lax")
+    );
+    let clear = bench
+        .call("probe.cookie", None, json!({ "change": "clear" }))
+        .await;
+    assert_eq!(clear.status, StatusCode::OK, "{}", clear.body);
+    assert_eq!(
+        clear.header(axum::http::header::SET_COOKIE),
+        Some("__Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0")
+    );
+    let failed = bench
+        .call(
+            "probe.cookie",
+            None,
+            json!({ "change": "set", "fail": true }),
+        )
+        .await;
+    assert_eq!(failed.status, StatusCode::CONFLICT, "{}", failed.body);
+    assert_eq!(failed.key(), "probe.error.after_cookie");
+    assert_eq!(failed.header(axum::http::header::SET_COOKIE), None);
+    let none = bench
+        .call("probe.cookie", None, json!({ "change": "none" }))
+        .await;
+    assert_eq!(none.status, StatusCode::OK, "{}", none.body);
+    assert_eq!(none.header(axum::http::header::SET_COOKIE), None);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_refused_session_cookie_is_cleared_and_a_refused_bearer_is_not() {
+    let bench = bench().await;
+    let stale = bench
+        .send(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/v1/call/probe.ping")
+                .header(COOKIE, format!("{SESSION_COOKIE}=nobody"))
+                .body(Body::empty())
+                .expect("a request"),
+        )
+        .await;
+    assert_eq!(stale.status, StatusCode::UNAUTHORIZED, "{}", stale.body);
+    assert_eq!(stale.key(), "keel.error.unauthenticated");
+    assert_eq!(
+        stale.header(axum::http::header::SET_COOKIE),
+        Some("__Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0")
+    );
+    let bearer = bench.get("/api/v1/call/probe.ping", Some("nobody")).await;
+    assert_eq!(bearer.status, StatusCode::UNAUTHORIZED, "{}", bearer.body);
+    assert_eq!(bearer.header(axum::http::header::SET_COOKIE), None);
+    bench.finish().await;
+}
+
+struct Chain {
+    name: &'static str,
+    level: Level,
+}
+
+#[async_trait]
+impl Authenticator for Chain {
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &Client,
+        _: &Db,
+    ) -> Result<Option<Authenticated>> {
+        let token = match credential {
+            Credential::Bearer(secret) | Credential::Session(secret) => secret.expose(),
+        };
+        let mut answered = principal(self.level, Id::ROOT_ACCOUNT);
+        answered.login = self.name.to_owned();
+        let mine = Some(Authenticated {
+            principal: answered,
+            session: None,
+        });
+        match (self.name, token) {
+            ("first", "pass") => Ok(None),
+            ("first", "take") => Ok(mine),
+            ("first", "err") => Err(KeelError::unauthenticated("keel.error.unauthenticated")),
+            ("first", _) => Ok(None),
+            (_, "unknown") => Ok(None),
+            _ => Ok(mine),
+        }
+    }
+}
+
+static FIRST: ModuleDef = ModuleDef {
+    id: "first",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: first_init,
+};
+
+static SECOND: ModuleDef = ModuleDef {
+    id: "second",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: second_init,
+};
+
+fn first_init(r: &mut Registrar) -> Result<()> {
+    r.function(
+        function::<Nothing, Pong>("first.ping")
+            .kind(Kind::Get)
+            .level(Level::Guest)
+            .unowned()
+            .handler(|call: Call<Nothing>| async move {
+                Ok(Pong {
+                    login: call.principal().login.clone(),
+                    level: call.principal().level,
+                    lang: call.principal().lang.clone(),
+                })
+            }),
+    )
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(Chain {
+        name: "first",
+        level: Level::Admin,
+    }));
+    Ok(())
+}
+
+fn second_init(r: &mut Registrar) -> Result<()> {
+    r.contribute::<Arc<dyn Authenticator>>(Arc::new(Chain {
+        name: "second",
+        level: Level::User,
+    }));
+    Ok(())
+}
+
+#[tokio::test]
+async fn authenticators_are_asked_in_module_order_until_one_answers_or_fails() {
+    let bench = bench_with(
+        Composition::new().module(&SECOND).module(&FIRST),
+        HttpOptions::default(),
+    )
+    .await;
+    let passed = bench.get("/api/v1/call/first.ping", Some("pass")).await;
+    assert_eq!(passed.status, StatusCode::OK, "{}", passed.body);
+    assert_eq!(passed.data()["login"], json!("second"));
+    let taken = bench.get("/api/v1/call/first.ping", Some("take")).await;
+    assert_eq!(taken.status, StatusCode::OK, "{}", taken.body);
+    assert_eq!(taken.data()["login"], json!("first"));
+    assert_eq!(taken.data()["level"], json!("admin"));
+    let failed = bench.get("/api/v1/call/first.ping", Some("err")).await;
+    assert_eq!(failed.status, StatusCode::UNAUTHORIZED, "{}", failed.body);
+    assert_eq!(failed.code(), ErrorCode::Unauthenticated);
+    let unknown = bench.get("/api/v1/call/first.ping", Some("unknown")).await;
+    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED, "{}", unknown.body);
+    assert_eq!(unknown.key(), "keel.error.unauthenticated");
+    let guest = bench.get("/api/v1/call/first.ping", None).await;
+    assert_eq!(guest.data()["level"], json!("guest"));
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn every_request_without_a_bearer_token_is_checked_for_cross_site() {
+    let bench = bench().await;
+    let origin = bench
+        .post(
+            "keel.account.list",
+            None,
+            &[("origin", "https://evil.example")],
+            json!({}),
+        )
+        .await;
+    assert_eq!(origin.status, StatusCode::FORBIDDEN, "{}", origin.body);
+    assert_eq!(origin.code(), ErrorCode::Forbidden);
+    assert_eq!(origin.key(), "keel.error.cross_site");
+    let fetch = bench
+        .post(
+            "keel.account.list",
+            None,
+            &[("sec-fetch-site", "cross-site")],
+            json!({}),
+        )
+        .await;
+    assert_eq!(fetch.status, StatusCode::FORBIDDEN, "{}", fetch.body);
+    assert_eq!(fetch.key(), "keel.error.cross_site");
+    let guest = bench.get("/api/v1/call/keel.account.list", None).await;
+    assert_eq!(guest.status, StatusCode::UNAUTHORIZED, "{}", guest.body);
+    assert_eq!(guest.code(), ErrorCode::Unauthenticated);
+    assert_eq!(guest.key(), "keel.error.unauthenticated");
+    let bearer = bench
+        .post(
+            "keel.account.list",
+            Some(&user()),
+            &[("origin", "https://evil.example")],
+            json!({}),
+        )
+        .await;
+    assert_eq!(bearer.status, StatusCode::OK, "{}", bearer.body);
     bench.finish().await;
 }

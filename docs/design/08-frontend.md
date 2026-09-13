@@ -101,9 +101,10 @@ The HTTP and SSE client.
   `meta.invalidate`. `Last-Event-ID` is the outbox sequence number, so a reconnect catches up
   without a gap. The server filters the stream by `ScopePolicy` and principal: a `user` receives
   `data.invalidate` only for objects of their own account.
-- Authentication and safety. `401` sends the shell to the login route. Cookie requests are checked
-  by the server against `Sec-Fetch-Site` and `Origin`; `Bearer` requests are not, so the same client
-  serves both the browser session and integration tokens. Writes may carry an `Idempotency-Key`;
+- Authentication and safety. `401` sends the shell to the login route. Every request without a
+  `Bearer` token, the cookie session and the guest login form alike, is checked by the server
+  against `Sec-Fetch-Site` and `Origin`; `Bearer` requests are not, so the same client serves both
+  the browser session and integration tokens. Writes may carry an `Idempotency-Key`;
   a retry with the same body is replayed with `X-Keel-Idempotent-Replay`, a retry with a different
   body gets `409 idempotency_mismatch`.
 - Response headers. `X-Keel-Request-Id` is kept for error display and support; `X-Keel-Meta-Version`

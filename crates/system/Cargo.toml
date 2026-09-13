@@ -1,0 +1,21 @@
+[package]
+name = "keel-system"
+description = "The system modules of the platform, one cargo feature per module, written on the public SDK alone"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[features]
+default = ["auth"]
+auth = ["dep:argon2", "dep:rand", "dep:sha2", "dep:tokio"]
+
+[dependencies]
+argon2 = { workspace = true, optional = true }
+keel-sdk = { workspace = true }
+rand = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+keel-testkit = { workspace = true }

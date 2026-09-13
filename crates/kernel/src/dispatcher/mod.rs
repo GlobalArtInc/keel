@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
-use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
+use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange};
 use keel_sdk::{AfterContext, KeelError};
 use keel_types::{CallError, Envelope, ErrorCode, Id, Level, Meta, MetaPrincipal, Mode, Principal};
 use sea_orm::{DatabaseConnection, TransactionTrait};
@@ -57,12 +57,14 @@ struct Target<'a> {
 pub struct CallOptions {
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
+    pub client: Option<Client>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Reply {
     pub envelope: Envelope<Value>,
     pub replay: bool,
+    pub session: Option<SessionChange>,
 }
 
 impl Reply {
@@ -90,6 +92,7 @@ struct Executed {
     replay: bool,
     after: Vec<AfterCommitHook>,
     context: Option<AfterContext>,
+    session: Option<SessionChange>,
 }
 
 type AfterHooks = Arc<Mutex<Vec<AfterCommitHook>>>;
@@ -191,6 +194,7 @@ impl Dispatcher {
                 &request_id,
                 params,
                 options.idempotency_key.as_deref(),
+                options.client,
             )
             .await;
         if let (Some(sink), Some(mut params)) = (&self.inner.audit, recorded)
@@ -228,6 +232,7 @@ impl Dispatcher {
                 Reply {
                     envelope: Envelope::ok(executed.data, meta),
                     replay: executed.replay,
+                    session: executed.session,
                 }
             }
             Err(error) => error_reply(error, &request_id),
@@ -265,6 +270,7 @@ fn error_reply(error: KeelError, request_id: &str) -> Reply {
     Reply {
         envelope: Envelope::err(wire),
         replay: false,
+        session: None,
     }
 }
 
@@ -306,12 +312,14 @@ impl Inner {
         request_id: &str,
         params: Value,
         key: Option<&str>,
+        client: Option<Client>,
     ) -> Result<Executed, KeelError> {
         let def = target.function.def();
         let after = AfterHooks::default();
         let pool = CallBuilder::new(principal.clone(), request_id)
             .services(self.registry.services().clone())
             .invoker(self.invoker(after.clone()))
+            .client(client.clone())
             .read(self.db.clone());
         self.admit(target, &pool, &params, true).await?;
         let mut idempotency = None;
@@ -336,12 +344,14 @@ impl Inner {
                         replay: false,
                         after: Vec::new(),
                         context: None,
+                        session: pool.take_session_change(),
                     })
                 }
                 Mode::Write => {
                     let handle = CallBuilder::new(principal.clone(), request_id)
                         .services(self.registry.services().clone())
                         .invoker(self.invoker(after.clone()))
+                        .client(client)
                         .extra(extra)
                         .write(self.db.begin().await?);
                     self.commit(target, handle, params, idempotency, &after)
@@ -390,6 +400,7 @@ impl Inner {
                 let mut hooks = take(after);
                 hooks.extend(handle.take_after_commit());
                 let context = handle.after_context();
+                let session = handle.take_session_change();
                 let transaction = handle
                     .finish()
                     .map_err(|shared| {
@@ -405,6 +416,7 @@ impl Inner {
                     replay: false,
                     after: hooks,
                     context: Some(context),
+                    session,
                 })
             }
             Err(failure) => {
@@ -532,6 +544,7 @@ impl Inner {
         CallBuilder::new(outer.principal().clone(), outer.request_id())
             .scope(*outer.account_scope())
             .services(self.registry.services().clone())
+            .client(outer.client().cloned())
             .invoker(Arc::new(LocalInvoker {
                 inner: self.clone(),
                 after: after.clone(),
@@ -586,6 +599,7 @@ fn replay(record: idempotency::Record, func: &str, hash: &str) -> Result<Execute
             replay: true,
             after: Vec::new(),
             context: None,
+            session: None,
         })
     } else {
         Err(KeelError::idempotency_mismatch(

@@ -13,6 +13,7 @@ use crate::access::AccountScope;
 use crate::db::Db;
 use crate::error::{KeelError, Result};
 use crate::services::Services;
+use crate::system::{Client, SessionChange};
 
 pub struct Call<P> {
     state: Arc<CallState>,
@@ -28,8 +29,10 @@ pub(crate) struct CallState {
     extra: Map<String, Value>,
     services: Arc<Services>,
     invoker: Option<Arc<dyn Invoker>>,
+    client: Option<Client>,
     events: Mutex<Vec<Emitted>>,
     after_commit: Mutex<Vec<AfterCommitHook>>,
+    session: Mutex<Option<SessionChange>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,6 +163,18 @@ impl<P> Call<P> {
         }
     }
 
+    pub(crate) fn client_slot(&self) -> Option<&Client> {
+        self.state.client.as_ref()
+    }
+
+    pub(crate) fn record_session(&self, change: SessionChange) {
+        *self
+            .state
+            .session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(change);
+    }
+
     pub(crate) fn into_parts(self) -> (Arc<CallState>, P) {
         (self.state, self.params)
     }
@@ -187,6 +202,7 @@ pub struct CallBuilder {
     extra: Map<String, Value>,
     services: Arc<Services>,
     invoker: Option<Arc<dyn Invoker>>,
+    client: Option<Client>,
 }
 
 impl CallBuilder {
@@ -198,7 +214,13 @@ impl CallBuilder {
             extra: Map::new(),
             services: Arc::new(Services::new()),
             invoker: None,
+            client: None,
         }
+    }
+
+    pub fn client(mut self, client: Option<Client>) -> Self {
+        self.client = client;
+        self
     }
 
     pub fn scope(mut self, scope: AccountScope) -> Self {
@@ -247,8 +269,10 @@ impl CallBuilder {
             extra: self.extra,
             services: self.services,
             invoker: self.invoker,
+            client: self.client,
             events: Mutex::new(Vec::new()),
             after_commit: Mutex::new(Vec::new()),
+            session: Mutex::new(None),
         }))
     }
 }
@@ -289,6 +313,18 @@ impl CallHandle {
 
     pub fn extra(&self) -> &Map<String, Value> {
         &self.0.extra
+    }
+
+    pub fn client(&self) -> Option<&Client> {
+        self.0.client.as_ref()
+    }
+
+    pub fn take_session_change(&self) -> Option<SessionChange> {
+        self.0
+            .session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
 
     pub fn after_context(&self) -> AfterContext {

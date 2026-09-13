@@ -3,12 +3,14 @@ mod acl;
 mod entity;
 mod principals;
 mod products;
+mod source;
 
 use keel_sdk::prelude::*;
 use keel_sdk::{ModuleDef, Registrar};
 
 pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
 pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
+pub(crate) use source::StoredPrincipals;
 
 pub static MODULE: ModuleDef = ModuleDef {
     id: "keel",

@@ -1,16 +1,19 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
-use axum::http::HeaderMap;
-use axum::http::header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE, HOST, ORIGIN};
+use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
+use axum::http::header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE, HOST, ORIGIN, USER_AGENT};
+use axum::http::request::Parts;
+use axum::http::{Extensions, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::Credential;
+use keel_sdk::system::{Authenticated, Authenticator, Client, Credential, SessionChange};
 use keel_sdk::{KeelError, Secret};
-use keel_types::{Id, Level, Principal, Scope, Via};
+use keel_types::{ErrorCode, Id, Level, Principal, Scope, Via};
 
 use super::Shared;
+use super::cookie;
 use super::live::Live;
 use super::reply;
 use crate::loader::REQUIRED_LANGUAGE;
@@ -18,6 +21,35 @@ use crate::registry::Registry;
 
 pub const SESSION_COOKIE: &str = "__Host-keel_session";
 pub const GUEST_LOGIN: &str = "guest";
+
+#[derive(Clone, Debug)]
+pub(super) struct Caller {
+    pub(super) request_id: String,
+    pub(super) principal: Principal,
+    pub(super) client: Client,
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for Caller {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let request_id = reply::request_id_in(&parts.extensions);
+        let (Some(principal), Some(client)) = (
+            parts.extensions.get::<Principal>().cloned(),
+            parts.extensions.get::<Client>().cloned(),
+        ) else {
+            return Err(reply::error(
+                KeelError::internal("keel.error.unauthenticated_route"),
+                &request_id,
+            ));
+        };
+        Ok(Self {
+            request_id,
+            principal,
+            client,
+        })
+    }
+}
 
 const SEC_FETCH_SITE: &str = "sec-fetch-site";
 const CROSS_SITE: &str = "cross-site";
@@ -52,27 +84,63 @@ pub(super) async fn authenticate(
         .uri()
         .authority()
         .map(|authority| authority.as_str());
-    if matches!(credential, Some(Credential::Session(_))) && cross_site(headers, authority) {
+    if !matches!(credential, Some(Credential::Bearer(_))) && cross_site(headers, authority) {
         return reply::error(KeelError::forbidden("keel.error.cross_site"), &request_id);
     }
-    let principal = match (credential, &live.authenticator) {
-        (Some(credential), Some(authenticator)) => {
+    let mut client = client(headers, request.extensions());
+    let principal = match credential {
+        Some(credential) => {
             let db = Db::from_connection(state.db.clone());
-            match authenticator.authenticate(&credential, &db).await {
-                Ok(Some(principal)) => principal,
-                Ok(None) => {
-                    return reply::error(
-                        KeelError::unauthenticated("keel.error.unauthenticated"),
-                        &request_id,
-                    );
+            match resolve(&live.authenticators, &credential, &client, &db).await {
+                Ok(authenticated) => {
+                    client.session = authenticated.session;
+                    authenticated.principal
                 }
-                Err(error) => return reply::error(error, &request_id),
+                Err(error) => {
+                    let stale = matches!(credential, Credential::Session(_))
+                        && error.code() == ErrorCode::Unauthenticated;
+                    let mut response = reply::error(error, &request_id);
+                    if stale {
+                        cookie::apply(&mut response, &SessionChange::Clear);
+                    }
+                    return response;
+                }
             }
         }
-        _ => guest(&accept_language(headers, &live.registry)),
+        None => guest(&accept_language(headers, &live.registry)),
     };
     request.extensions_mut().insert(principal);
+    request.extensions_mut().insert(client);
     next.run(request).await
+}
+
+async fn resolve(
+    authenticators: &[Arc<dyn Authenticator>],
+    credential: &Credential,
+    client: &Client,
+    db: &Db,
+) -> Result<Authenticated, KeelError> {
+    for authenticator in authenticators {
+        if let Some(authenticated) = authenticator.authenticate(credential, client, db).await? {
+            return Ok(authenticated);
+        }
+    }
+    Err(KeelError::unauthenticated("keel.error.unauthenticated"))
+}
+
+pub(super) fn client(headers: &HeaderMap, extensions: &Extensions) -> Client {
+    Client {
+        ip: extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(addr)| addr.ip()),
+        user_agent: headers
+            .get(USER_AGENT)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+            .filter(|agent| !agent.is_empty())
+            .map(str::to_owned),
+        session: None,
+    }
 }
 
 pub(super) fn credential(headers: &HeaderMap) -> Option<Credential> {
@@ -205,6 +273,20 @@ mod tests {
             &headers(&[("origin", "https://panel.example")]),
             Some("panel.example")
         ));
+    }
+
+    #[test]
+    fn the_client_is_read_from_the_connection_and_the_user_agent_header() {
+        let mut extensions = Extensions::new();
+        let bare = client(&headers(&[("user-agent", " probe/1 ")]), &extensions);
+        assert_eq!(bare.ip, None);
+        assert_eq!(bare.user_agent.as_deref(), Some("probe/1"));
+        assert!(bare.session.is_none());
+        let addr: SocketAddr = "127.0.0.1:4321".parse().expect("an address");
+        extensions.insert(ConnectInfo(addr));
+        let connected = client(&headers(&[("user-agent", "")]), &extensions);
+        assert_eq!(connected.ip, Some(addr.ip()));
+        assert_eq!(connected.user_agent, None);
     }
 
     #[test]

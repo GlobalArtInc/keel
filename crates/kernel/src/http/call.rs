@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
-use axum::Extension;
 use axum::body::to_bytes;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::header::ALLOW;
 use axum::http::{HeaderMap, HeaderValue};
 use axum::response::Response;
 use keel_sdk::KeelError;
+use keel_sdk::system::Client;
 use keel_types::{Kind, Principal};
 use serde_json::{Map, Value};
 
 use super::Shared;
+use super::auth::Caller;
+use super::cookie;
 use super::live::Live;
-use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, RequestId};
+use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION};
 use crate::dispatcher::{CallOptions, Reply};
 
 pub(super) const QUERY_PARAMS: &str = "q";
@@ -21,11 +23,15 @@ pub(super) async fn post(
     State(state): State<Arc<Shared>>,
     live: Live,
     Path(func): Path<String>,
-    Extension(RequestId(request_id)): Extension<RequestId>,
-    Extension(principal): Extension<Principal>,
+    caller: Caller,
     request: Request,
 ) -> Response {
-    let options = options(request.headers(), &request_id);
+    let Caller {
+        request_id,
+        principal,
+        client,
+    } = caller;
+    let options = options(request.headers(), &request_id, client);
     let params = match body(request, state.options.body_limit).await {
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
@@ -41,11 +47,15 @@ pub(super) async fn get(
     State(state): State<Arc<Shared>>,
     live: Live,
     Path(func): Path<String>,
-    Extension(RequestId(request_id)): Extension<RequestId>,
-    Extension(principal): Extension<Principal>,
+    caller: Caller,
     Query(pairs): Query<Vec<(String, String)>>,
     headers: HeaderMap,
 ) -> Response {
+    let Caller {
+        request_id,
+        principal,
+        client,
+    } = caller;
     if let Some(function) = live.registry.function(&func)
         && !matches!(function.def().kind(), Kind::List | Kind::Get)
     {
@@ -64,7 +74,7 @@ pub(super) async fn get(
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
     };
-    let options = options(&headers, &request_id);
+    let options = options(&headers, &request_id, client);
     let reply = live
         .dispatcher
         .call(principal.clone(), &func, params, options)
@@ -72,7 +82,7 @@ pub(super) async fn get(
     respond(&state, &live, &principal, reply).await
 }
 
-fn options(headers: &HeaderMap, request_id: &str) -> CallOptions {
+fn options(headers: &HeaderMap, request_id: &str, client: Client) -> CallOptions {
     CallOptions {
         request_id: Some(request_id.to_owned()),
         idempotency_key: headers
@@ -81,6 +91,7 @@ fn options(headers: &HeaderMap, request_id: &str) -> CallOptions {
             .map(str::trim)
             .filter(|key| !key.is_empty())
             .map(str::to_owned),
+        client: Some(client),
     }
 }
 
@@ -135,6 +146,9 @@ async fn respond(state: &Shared, live: &Live, principal: &Principal, reply: Repl
         response
             .headers_mut()
             .insert(IDEMPOTENT_REPLAY, HeaderValue::from_static("true"));
+    }
+    if let Some(change) = &reply.session {
+        cookie::apply(&mut response, change);
     }
     response
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use keel_sdk::async_trait::async_trait;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Credential};
+use keel_sdk::system::{Authenticated, Authenticator, Client, Credential};
 use keel_sdk::{KeelError, ModuleDef, Registrar, Result};
 use keel_types::{Level, Principal};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -23,23 +23,34 @@ pub static MODULE: ModuleDef = ModuleDef {
 struct FixtureAuthenticator;
 
 fn init(r: &mut Registrar) -> Result<()> {
-    r.provide::<dyn Authenticator>(Arc::new(FixtureAuthenticator));
+    let authenticator: Arc<dyn Authenticator> = Arc::new(FixtureAuthenticator);
+    r.contribute(authenticator);
     Ok(())
 }
 
 #[async_trait]
 impl Authenticator for FixtureAuthenticator {
-    async fn authenticate(&self, credential: &Credential, db: &Db) -> Result<Option<Principal>> {
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &Client,
+        db: &Db,
+    ) -> Result<Option<Authenticated>> {
         let login = match credential {
             Credential::Bearer(secret) => secret.expose(),
             Credential::Session(_) => return Ok(None),
         };
-        if login == Who::Owner.login() {
+        let principal = if login == Who::Owner.login() {
             let mut owner = owner_principal();
             owner.via = keel_types::Via::Http;
-            return Ok(Some(owner));
-        }
-        stored(db, login).await
+            Some(owner)
+        } else {
+            stored(db, login).await?
+        };
+        Ok(principal.map(|principal| Authenticated {
+            principal,
+            session: None,
+        }))
     }
 }
 

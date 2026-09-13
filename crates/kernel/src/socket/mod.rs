@@ -243,6 +243,7 @@ impl Socket {
                 let options = CallOptions {
                     request_id: request_id.filter(|id| acceptable_request_id(id)),
                     idempotency_key,
+                    client: None,
                 };
                 self.dispatcher
                     .call(principal, &func, params, options)

@@ -268,6 +268,22 @@ until 1.0. They are the seams behind which authentication, the transports, backu
 consumers plug in; a product module has no reason to touch them. The public `keel-sdk` is frozen
 at 1.0 (M7); until then only `keel_sdk::system` is exempt from semver.
 
+The authentication seam is a chain, not a single service: a module registers its authenticator
+through the contribution bag, `r.contribute(Arc<dyn Authenticator>)`, so that several modules
+answer for their own token prefixes, and the transport asks them in module order with the
+`Credential` and the `Client` of the request. `Ok(None)` means "not my credential" and the next
+one is asked; `Ok(Some(Authenticated { principal, session }))` ends the chain, `session` being the
+`id_hash` of the session row for a cookie and `None` for a token; `Err` ends it with that error;
+a credential none recognises answers `401 unauthenticated`. `Client { ip, user_agent, session }`
+is what the transport learned about the request, read from the call through
+`CallExt::client()`, `None` on the socket. A handler records `SessionChange { Set(Secret) |
+Clear }` through `CallExt::session()`, and the dispatcher carries it to the transport only for a
+write that committed or a read that completed, so a call that fails after recording it answers
+without `Set-Cookie`. `PrincipalSource { by_id, by_login }` is the kernel's lookup over
+`keel_principal`, answering the stored principal with `via: internal`, no actor and the full
+scope, so that `auth` resolves logins and session rows to principals without SQL on a kernel
+table.
+
 ## Versioning
 
 Compatibility is tracked on three planes:

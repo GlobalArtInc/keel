@@ -9,6 +9,7 @@ use axum::http::HeaderValue;
 use axum::http::header::AUTHORIZATION;
 use axum::middleware::{self, Next};
 use axum::response::Response;
+use keel_kernel::http::SESSION_COOKIE;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -80,11 +81,14 @@ impl TestHttp {
         let addr = listener.local_addr().map_err(HttpError::Bind)?;
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(
-            axum::serve(listener, router)
-                .with_graceful_shutdown(async move {
-                    let _ = stopped.await;
-                })
-                .into_future(),
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move {
+                let _ = stopped.await;
+            })
+            .into_future(),
         );
         Ok(Self {
             addr,
@@ -194,6 +198,22 @@ impl Answer {
             Err(error) => panic!("the body is not JSON ({error}): {}", self.body),
         }
     }
+
+    pub fn set_cookie(&self) -> Option<&str> {
+        self.header("set-cookie")
+    }
+
+    pub fn session_cookie(&self) -> Option<String> {
+        let value = self
+            .set_cookie()?
+            .split(';')
+            .next()?
+            .trim()
+            .strip_prefix(SESSION_COOKIE)?
+            .strip_prefix('=')?
+            .trim();
+        (!value.is_empty()).then(|| format!("{SESSION_COOKIE}={value}"))
+    }
 }
 
 fn parse(raw: &[u8]) -> Result<Answer, String> {
@@ -268,6 +288,25 @@ mod tests {
         assert_eq!(answer.header("x-keel-request-id"), Some("req-1"));
         assert_eq!(answer.header("Content-Type"), Some("application/json"));
         assert_eq!(answer.json()["ok"], Value::Bool(false));
+        assert_eq!(answer.session_cookie(), None);
+    }
+
+    #[test]
+    fn the_session_cookie_is_read_back_from_set_cookie_as_a_cookie_header_value() {
+        let set = parse(
+            b"HTTP/1.1 200 OK\r\nSet-Cookie: __Host-keel_session=ks_1; Path=/; Secure; HttpOnly; SameSite=Lax\r\n\r\n{}",
+        )
+        .unwrap();
+        assert_eq!(
+            set.session_cookie().as_deref(),
+            Some("__Host-keel_session=ks_1")
+        );
+        let cleared = parse(
+            b"HTTP/1.1 200 OK\r\nSet-Cookie: __Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0\r\n\r\n{}",
+        )
+        .unwrap();
+        assert_eq!(cleared.session_cookie(), None);
+        assert!(cleared.set_cookie().unwrap().ends_with("Max-Age=0"));
     }
 
     #[test]

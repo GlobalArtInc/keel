@@ -526,7 +526,7 @@ fn before_saw_transaction(request_id: &str) -> Vec<bool> {
 fn request(id: &str) -> CallOptions {
     CallOptions {
         request_id: Some(id.to_owned()),
-        idempotency_key: None,
+        ..CallOptions::default()
     }
 }
 
@@ -917,8 +917,8 @@ async fn idempotency_replays_the_same_body_rejects_a_different_body_and_ignores_
     let bench = bench().await;
     let alice = principal(Level::User, CUSTOMER);
     let key = || CallOptions {
-        request_id: None,
         idempotency_key: Some("order-1".into()),
+        ..CallOptions::default()
     };
     let body = json!({ "title": "once", "pages": 1 });
     let first = bench
@@ -1257,6 +1257,7 @@ async fn secret_fields_are_masked_in_the_response_in_a_replay_and_in_the_audit_e
     let options = || CallOptions {
         request_id: Some("secret-ok".into()),
         idempotency_key: Some("secret-1".into()),
+        client: None,
     };
     let body = json!({ "title": "sealed", "pages": 1, "token": "hunter2" });
     let saved = bench

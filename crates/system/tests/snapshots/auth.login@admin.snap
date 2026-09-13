@@ -1,0 +1,169 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.login
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "auth.login",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "Login",
+    "type": "object",
+    "properties": {
+      "login": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "password": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        }
+      },
+      "method": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "login",
+      "password"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "LoggedIn",
+    "type": "object",
+    "properties": {
+      "state": {
+        "$ref": "#/$defs/LoginState"
+      },
+      "principal": {
+        "$ref": "#/$defs/MetaPrincipal"
+      }
+    },
+    "required": [
+      "state",
+      "principal"
+    ],
+    "$defs": {
+      "LoginState": {
+        "type": "string",
+        "enum": [
+          "authenticated"
+        ]
+      },
+      "MetaPrincipal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "account": {
+            "$ref": "#/$defs/Id"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MetaActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "account"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "MetaActor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "via": {
+            "$ref": "#/$defs/ActorVia"
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "via"
+        ]
+      },
+      "ActorVia": {
+        "type": "string",
+        "enum": [
+          "su",
+          "socket",
+          "peer"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.login.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "login",
+          "password"
+        ]
+      }
+    ]
+  }
+}

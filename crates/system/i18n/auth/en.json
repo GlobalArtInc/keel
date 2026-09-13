@@ -1,0 +1,22 @@
+{
+  "auth.login": "Login",
+  "auth.password": "Password",
+  "auth.method": "Login method",
+  "auth.login.title": "Sign in",
+  "auth.login.state.authenticated": "Signed in",
+  "auth.logout.title": "Sign out",
+  "auth.password.set.title": "Change password",
+  "auth.password.principal": "Principal",
+  "auth.password.current": "Current password",
+  "auth.password.password": "New password",
+  "auth.error.credentials": "The login or the password is wrong",
+  "auth.error.current_required": "The current password is required",
+  "auth.error.not_below": "The password of a principal at level {level} cannot be set by a caller at level {caller}",
+  "auth.error.http_only": "Signing in is possible over HTTP only",
+  "auth.error.session_only": "This call needs a session",
+  "auth.error.method_unknown": "The login method {method} is not available",
+  "auth.error.hashing": "The password could not be processed",
+  "auth.error.entropy": "The system gave no randomness",
+  "auth.error.not_started": "The auth module has not started",
+  "auth.error.session_principal": "The session names a principal that cannot be read"
+}

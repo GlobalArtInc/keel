@@ -13,11 +13,13 @@ keel = { path = "crates/keel" }
 keel-demo = { path = "products/demo" }
 keel-kernel = { path = "crates/kernel" }
 keel-sdk = { path = "crates/sdk" }
+keel-system = { path = "crates/system" }
 keel-testkit = { path = "crates/testkit" }
 keel-types = { path = "crates/types" }
 
 aes-gcm = "0.11"
 anyhow = "1"
+argon2 = "0.6"
 async-trait = "0.1"
 axum = "0.8"
 blake3 = "1"

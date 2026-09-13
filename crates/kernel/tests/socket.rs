@@ -10,7 +10,7 @@ use keel_kernel::{Composition, Http, HttpOptions, Kernel, Readiness, Storage};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Credential};
+use keel_sdk::system::{Authenticated, Authenticator, CallExt, Client as HttpClient, Credential};
 use keel_testkit::TestDatabase;
 use keel_types::{Envelope, ErrorCode, Via};
 use tempfile::TempDir;
@@ -32,6 +32,7 @@ struct Pong {
     login: String,
     level: Level,
     via: Via,
+    connected: bool,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -43,7 +44,12 @@ struct OwnerOverHttp;
 
 #[async_trait]
 impl Authenticator for OwnerOverHttp {
-    async fn authenticate(&self, credential: &Credential, _: &Db) -> Result<Option<Principal>> {
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &HttpClient,
+        _: &Db,
+    ) -> Result<Option<Authenticated>> {
         let token = match credential {
             Credential::Bearer(secret) | Credential::Session(secret) => secret.expose(),
         };
@@ -52,7 +58,10 @@ impl Authenticator for OwnerOverHttp {
         }
         let mut principal = owner();
         principal.via = Via::Http;
-        Ok(Some(principal))
+        Ok(Some(Authenticated {
+            principal,
+            session: None,
+        }))
     }
 }
 
@@ -76,6 +85,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                     login: call.principal().login.clone(),
                     level: call.principal().level,
                     via: call.principal().via.clone(),
+                    connected: call.client().is_some(),
                 })
             }),
     )
@@ -90,7 +100,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     )
     .i18n("en", EN)
     .i18n("ru", RU)
-    .provide::<dyn Authenticator>(Arc::new(OwnerOverHttp));
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(OwnerOverHttp));
     Ok(())
 }
 
@@ -207,7 +217,7 @@ async fn a_bare_kernel_answers_keel_account_list_on_the_socket_as_the_owner() {
             json!({}),
             CallOptions {
                 request_id: Some("cli-7".into()),
-                idempotency_key: None,
+                ..CallOptions::default()
             },
         )
         .await
@@ -244,7 +254,9 @@ async fn the_socket_and_http_envelopes_for_the_same_call_differ_only_in_meta() {
         assert_eq!(over_socket["ok"], over_http["ok"], "{func}");
         if func == "probe.ping" {
             assert_eq!(over_socket["data"]["via"], json!("socket"));
+            assert_eq!(over_socket["data"]["connected"], json!(false));
             assert_eq!(over_http["data"]["via"], json!("http"));
+            assert_eq!(over_http["data"]["connected"], json!(true));
             continue;
         }
         assert_eq!(
@@ -553,8 +565,8 @@ async fn an_idempotency_key_in_the_frame_replays_the_stored_response() {
         .await
         .expect("the client connects");
     let options = || CallOptions {
-        request_id: None,
         idempotency_key: Some("create-once".into()),
+        ..CallOptions::default()
     };
     let first = client
         .call("keel.account.create", json!({ "kind": "user" }), options())

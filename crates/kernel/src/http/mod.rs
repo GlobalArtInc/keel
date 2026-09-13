@@ -1,6 +1,7 @@
 mod auth;
 mod boot;
 mod call;
+mod cookie;
 mod descriptors;
 mod i18n;
 mod live;
@@ -162,10 +163,14 @@ impl Http {
     ) -> Result<(), HttpError> {
         let addr = listener.local_addr().map_err(HttpError::LocalAddr)?;
         tracing::info!(%addr, "http listening");
-        axum::serve(listener, self.router())
-            .with_graceful_shutdown(shutdown)
-            .await
-            .map_err(HttpError::Serve)
+        axum::serve(
+            listener,
+            self.router()
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(HttpError::Serve)
     }
 
     pub async fn bind(self, addr: SocketAddr) -> Result<Served, HttpError> {

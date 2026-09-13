@@ -6,6 +6,7 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
+use keel_sdk::system::PrincipalSource;
 use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
@@ -18,6 +19,7 @@ use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
 use super::init::Initialised;
 use super::{keys, patch};
 use crate::clock::Clock;
+use crate::keel::StoredPrincipals;
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
@@ -711,6 +713,7 @@ impl Freezer {
         let mut services = self.services;
         services.provide(Arc::new(Composed::new(graph.manifests())));
         services.provide::<dyn Clock>(graph.clock().clone());
+        services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         let registry = Registry {
             platform: Platform {
                 version: graph.version().to_owned(),

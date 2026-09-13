@@ -108,7 +108,9 @@
         "level_guest": "У принципала не может быть уровня гостя",
         "level_above_caller": "Уровень {level} выше вашего",
         "level_account": "Принципал уровня {level} не может состоять в аккаунте типа {kind}",
-        "level_unknown": "Сохранённый уровень {level} принципала {id} не входит в лестницу"
+        "level_unknown": "Сохранённый уровень {level} принципала {id} не входит в лестницу",
+        "id_unknown": "Сохранённый идентификатор {id} принципала не является ULID",
+        "account_unknown": "Сохранённый аккаунт {account} принципала {id} не является ULID"
       }
     },
     "product": {
@@ -168,6 +170,7 @@
       "ownership_undeclared": "Функция {function} не объявила ни owned, ни unowned",
       "owned_composite_key": "Функция {function} владеет строкой через составной ключ",
       "cross_site": "Запрос пришёл с другого сайта",
+      "unauthenticated_route": "Маршрут обслуживает вызовы без прослойки аутентификации",
       "method_not_allowed": "Функция {function} вызывается методом {allowed}",
       "body_too_large": "Тело запроса больше {limit} байт",
       "body_not_json": "Тело запроса не является JSON",

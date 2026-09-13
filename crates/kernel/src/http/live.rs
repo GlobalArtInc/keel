@@ -15,17 +15,21 @@ use crate::registry::Registry;
 pub(super) struct Live {
     pub(super) dispatcher: Arc<Dispatcher>,
     pub(super) registry: Arc<Registry>,
-    pub(super) authenticator: Option<Arc<dyn Authenticator>>,
+    pub(super) authenticators: Arc<[Arc<dyn Authenticator>]>,
 }
 
 impl Live {
     pub(super) fn new(dispatcher: Arc<Dispatcher>) -> Self {
         let registry = dispatcher.registry().clone();
-        let authenticator = registry.services().get::<dyn Authenticator>();
+        let authenticators = registry
+            .contributions()
+            .of::<Arc<dyn Authenticator>>()
+            .cloned()
+            .collect();
         Self {
             dispatcher,
             registry,
-            authenticator,
+            authenticators,
         }
     }
 }

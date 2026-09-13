@@ -258,15 +258,17 @@ Where each code originates in the pipeline is tabulated in [02-functions.md](02-
 - Browser sessions use the cookie `__Host-keel_session`, one for the installation, carrying an
   opaque `ks_` token; API tokens are `kat_` Bearer tokens, peer tokens `kpt_`, one-time login keys
   `kok_` ([03-access.md](03-access.md)).
-- Cookie-authenticated requests are checked by `Sec-Fetch-Site` / `Origin`; Bearer requests are
-  not. The check applies exactly to requests that carry `__Host-keel_session`: a request with a
-  Bearer token, or with no credential at all, is not checked even when it carries other
-  cookies. A request is refused as `403 forbidden` with `keel.error.cross_site` when
-  `Sec-Fetch-Site` says `cross-site`, or when `Origin` is present and its authority differs from
-  the `Host` header, or from the request authority when there is no `Host`. This is why the
-  one-time login key is redeemed by a same-origin page at `/login?key=…` that posts
-  `auth.key.redeem`, instead of the key being accepted on a cross-site navigation
-  ([07-ecosystem.md](07-ecosystem.md)).
+- Every API request that does not carry a Bearer token is checked by `Sec-Fetch-Site` /
+  `Origin`: a request with `__Host-keel_session`, and a request with no credential at all, even
+  when it carries other cookies; a Bearer request is not checked. The check reaches requests
+  without a credential because a guest form such as `auth.login` plants the session cookie, so a
+  cross-site post to it is refused exactly like a cookie call. A request is refused as
+  `403 forbidden` with `keel.error.cross_site` when `Sec-Fetch-Site` says `cross-site`, or when
+  `Origin` is present and its authority differs from the `Host` header, or from the request
+  authority when there is no `Host`; a request that carries neither `Sec-Fetch-Site` nor `Origin`
+  is admitted. This is why the one-time login key is redeemed by a same-origin page at
+  `/login?key=…` that posts `auth.key.redeem`, instead of the key being accepted on a cross-site
+  navigation ([07-ecosystem.md](07-ecosystem.md)).
 - The `__Host-` prefix requires TLS, so the installation listens only on TLS from the first start
   ([09-operations.md](09-operations.md)).
 
