@@ -47,7 +47,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["8"]);
+    assert_eq!(applied, ["9"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
@@ -55,6 +55,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
     assert_eq!(
         tables,
         [
+            "auth_ip_rule",
             "auth_login_challenge",
             "auth_login_key",
             "auth_password",
@@ -137,14 +138,14 @@ async fn a_principal_changes_its_own_password_with_the_current_one_and_an_admin_
     let old_current = set_password(
         &http,
         Who::A1,
-        json!({ "current": FIRST, "password": "third" }),
+        json!({ "current": FIRST, "password": "third-password" }),
     )
     .await;
     assert_eq!(old_current.status, 401, "{}", old_current.body);
     let new_current = set_password(
         &http,
         Who::A1,
-        json!({ "current": SECOND, "password": "third" }),
+        json!({ "current": SECOND, "password": "third-password" }),
     )
     .await;
     assert_eq!(new_current.status, 200, "{}", new_current.body);
@@ -265,6 +266,26 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.login",
                 "auth.logout",
                 "auth.password.set",
+                "auth.session.list",
+                "auth.session.revoke",
+                "auth.su.exit",
+                "auth.token.create",
+                "auth.token.list",
+                "auth.token.revoke",
+                "auth.totp.confirm",
+                "auth.totp.disable",
+                "auth.totp.enroll",
+                "auth.totp.verify",
+            ],
+            Level::Reseller => &[
+                "auth.key.issue",
+                "auth.key.redeem",
+                "auth.login",
+                "auth.logout",
+                "auth.password.set",
+                "auth.session.list",
+                "auth.session.revoke",
+                "auth.su",
                 "auth.su.exit",
                 "auth.token.create",
                 "auth.token.list",
@@ -275,11 +296,16 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             _ => &[
+                "auth.ip_rule.create",
+                "auth.ip_rule.delete",
+                "auth.ip_rule.list",
                 "auth.key.issue",
                 "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
                 "auth.password.set",
+                "auth.session.list",
+                "auth.session.revoke",
                 "auth.su",
                 "auth.su.exit",
                 "auth.token.create",
@@ -289,6 +315,7 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.disable",
                 "auth.totp.enroll",
                 "auth.totp.verify",
+                "auth.unlock",
             ],
         };
         assert_eq!(names, expected, "{level}");

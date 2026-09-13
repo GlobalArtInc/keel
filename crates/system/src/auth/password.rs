@@ -12,6 +12,7 @@ use rand::rngs::SysRng;
 use super::entity::password;
 
 pub const HASH_PREFIX: &str = "$argon2id$";
+pub const MIN_LENGTH: u32 = 12;
 const DECOY_LEN: usize = 32;
 
 pub struct Passwords {
@@ -41,6 +42,19 @@ pub fn random_bytes(len: usize) -> Result<Vec<u8>> {
 
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+pub fn check_policy(password: &Secret, login: &str, min_length: u32) -> Result<()> {
+    let text = password.expose();
+    if text.chars().count() < min_length as usize {
+        return Err(KeelError::validation("auth.error.password_short")
+            .field("password")
+            .param("min", min_length));
+    }
+    if text.to_lowercase() == login.to_lowercase() {
+        return Err(KeelError::validation("auth.error.password_login").field("password"));
+    }
+    Ok(())
 }
 
 fn hash_now(password: &[u8]) -> Result<String> {
@@ -170,7 +184,7 @@ mod tests {
             .call(
                 Who::Admin,
                 "auth.password.set",
-                json!({ "principal": a1, "password": "hunter2" }),
+                json!({ "principal": a1, "password": "correct-horse" }),
             )
             .await;
         assert!(set.data().is_some(), "{:?}", set.error());
@@ -183,7 +197,7 @@ mod tests {
             .expect("the kernel provides the principal source");
         assert_eq!(
             passwords
-                .verify("a1", &Secret::new("hunter2"), &db)
+                .verify("a1", &Secret::new("correct-horse"), &db)
                 .await
                 .unwrap_err()
                 .key(),
@@ -192,21 +206,21 @@ mod tests {
         passwords.attach(source);
         assert_eq!(
             passwords
-                .verify("a1", &Secret::new("hunter2"), &db)
+                .verify("a1", &Secret::new("correct-horse"), &db)
                 .await
                 .unwrap(),
             a1
         );
         let wrong = passwords
-            .verify("a1", &Secret::new("hunter3"), &db)
+            .verify("a1", &Secret::new("correct-house"), &db)
             .await
             .unwrap_err();
         let unknown = passwords
-            .verify("nobody", &Secret::new("hunter2"), &db)
+            .verify("nobody", &Secret::new("correct-horse"), &db)
             .await
             .unwrap_err();
         let no_row = passwords
-            .verify(Who::A2.login(), &Secret::new("hunter2"), &db)
+            .verify(Who::A2.login(), &Secret::new("correct-horse"), &db)
             .await
             .unwrap_err();
         for error in [&wrong, &unknown, &no_row] {
@@ -215,6 +229,21 @@ mod tests {
             assert_eq!(error.to_call_error(), wrong.to_call_error());
         }
         harness.finish().await;
+    }
+
+    #[test]
+    fn the_policy_refuses_a_short_password_and_one_equal_to_the_login() {
+        let short = check_policy(&Secret::new("hunter2"), "alice", 12).unwrap_err();
+        assert_eq!(short.key(), "auth.error.password_short");
+        assert_eq!(short.field_path(), Some("password"));
+        assert_eq!(short.params()["min"], json!(12));
+        let login =
+            check_policy(&Secret::new("Alice-Wonderland"), "alice-wonderland", 12).unwrap_err();
+        assert_eq!(login.key(), "auth.error.password_login");
+        assert_eq!(login.field_path(), Some("password"));
+        assert!(check_policy(&Secret::new("correct-horse"), "alice", 12).is_ok());
+        assert!(check_policy(&Secret::new("hunter2"), "alice", 7).is_ok());
+        assert!(check_policy(&Secret::new("ünïcödé-pässwörd"), "alice", 16).is_ok());
     }
 
     #[test]

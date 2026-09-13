@@ -6,6 +6,7 @@ use keel_sdk::system::SecretCipher;
 use super::super::functions::{
     LoggedIn, Nothing, below_caller, http_client, login_principal, open_session,
 };
+use super::super::limits::{Lockout, locked};
 use super::challenge::{self, Attempts};
 use super::{
     confirm_with, confirmed, enroll as enroll_row, redeem, remove, replace_recovery_codes, row,
@@ -167,7 +168,7 @@ pub fn disable() -> FunctionDef {
         })
 }
 
-pub fn verify(attempts: Arc<Attempts>) -> FunctionDef {
+pub fn verify(attempts: Arc<Attempts>, lockout: Arc<Lockout>) -> FunctionDef {
     function::<Verify, LoggedIn>("auth.totp.verify")
         .kind(Kind::Form)
         .mode(Mode::Write)
@@ -176,6 +177,7 @@ pub fn verify(attempts: Arc<Attempts>) -> FunctionDef {
         .ui(Form::new("auth.totp.verify.title").page("main", ["challenge", "code"]))
         .handler(move |call: Call<Verify>| {
             let attempts = attempts.clone();
+            let lockout = lockout.clone();
             async move {
                 let client = http_client(&call)?;
                 let now = call.require::<dyn Clock>()?.now();
@@ -184,10 +186,14 @@ pub fn verify(attempts: Arc<Attempts>) -> FunctionDef {
                 let pending = challenge::pending(call.db(), &challenge_hash, now)
                     .await?
                     .ok_or_else(challenge_refused)?;
+                let principal_id = challenge::principal_id(&pending)?;
+                let principal = login_principal(&call, principal_id, challenge_refused).await?;
+                if lockout.locked(&principal.login, client.ip, now) {
+                    return Err(locked());
+                }
                 if !attempts.admit(&challenge_hash, pending.expires_at, now) {
                     return Err(challenge_refused());
                 }
-                let principal_id = challenge::principal_id(&pending)?;
                 let factor = confirmed(call.db(), principal_id)
                     .await?
                     .ok_or_else(challenge_refused)?;
@@ -195,12 +201,13 @@ pub fn verify(attempts: Arc<Attempts>) -> FunctionDef {
                 let tx = call.tx()?;
                 let code = params.code.expose();
                 if !redeem(tx, cipher.as_ref(), &factor, principal_id, code, now).await? {
+                    lockout.failed(&principal.login, client.ip, now);
                     return Err(KeelError::unauthenticated("auth.error.code"));
                 }
                 if !challenge::consume(tx, &challenge_hash, now).await? {
                     return Err(challenge_refused());
                 }
-                let principal = login_principal(&call, principal_id, challenge_refused).await?;
+                lockout.succeeded(&principal.login, client.ip);
                 let principal = open_session(&call, principal, client, now).await?;
                 Ok(LoggedIn::authenticated(principal))
             }

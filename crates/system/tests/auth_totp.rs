@@ -175,6 +175,17 @@ fn field_key(reply: &keel_testkit::Reply) -> Option<String> {
         .or_else(|| Some(error.key.clone()))
 }
 
+async fn unlock(harness: &Harness, who: Who) {
+    let reply = harness
+        .call(Who::Admin, "auth.unlock", json!({ "login": who.login() }))
+        .await;
+    assert!(
+        reply.data().is_some(),
+        "auth.unlock {who}: {:?}",
+        reply.error()
+    );
+}
+
 fn cookie_of(answer: &Answer) -> String {
     answer
         .session_cookie()
@@ -333,6 +344,9 @@ async fn the_sixth_wrong_code_kills_the_challenge_and_an_expired_or_unknown_one_
         let wrong = verify(&http, &challenge, "000000", &[]).await;
         error_of(&wrong, 401, "unauthenticated", "auth.error.code");
     }
+    let locked = verify(&http, &challenge, "000000", &[]).await;
+    error_of(&locked, 403, "forbidden", "auth.error.locked");
+    unlock(&harness, Who::A1).await;
     let sixth = verify(&http, &challenge, "000000", &[]).await;
     error_of(&sixth, 401, "unauthenticated", "auth.error.challenge");
     let killed = verify(
@@ -626,21 +640,32 @@ async fn twenty_concurrent_wrong_codes_against_one_challenge_get_five_answers_an
     let keys: Vec<String> = answers
         .iter()
         .map(|answer| {
-            assert_eq!(answer.status, 401, "{}", answer.body);
-            assert_eq!(answer.set_cookie(), None);
-            answer.json()["error"]["key"]
+            let key = answer.json()["error"]["key"]
                 .as_str()
                 .expect("an error key")
-                .to_owned()
+                .to_owned();
+            let expected = if key == "auth.error.locked" { 403 } else { 401 };
+            assert_eq!(answer.status, expected, "{}", answer.body);
+            assert_eq!(answer.set_cookie(), None);
+            key
         })
         .collect();
     let wrong_code = keys.iter().filter(|key| *key == "auth.error.code").count();
     let refused = keys
         .iter()
-        .filter(|key| *key == "auth.error.challenge")
+        .filter(|key| *key == "auth.error.challenge" || *key == "auth.error.locked")
         .count();
     assert_eq!(wrong_code, CHALLENGE_ATTEMPTS as usize, "{keys:?}");
     assert_eq!(refused, keys.len() - wrong_code, "{keys:?}");
+    let locked = verify(
+        &http,
+        &challenge,
+        &code_at(&harness, &factor.secret, 0),
+        &[],
+    )
+    .await;
+    error_of(&locked, 403, "forbidden", "auth.error.locked");
+    unlock(&harness, Who::A1).await;
     let late = verify(
         &http,
         &challenge,

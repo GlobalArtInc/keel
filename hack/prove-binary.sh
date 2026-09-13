@@ -332,6 +332,15 @@ check "ctl keel.account.list --as nobody is refused" keel_fails "$site/as-nobody
 check "keel.account.list as nobody answers not_found" json_is "$site/as-nobody.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found" and doc["error"]["key"] == "keel.error.principal_not_found" and doc["error"]["params"]["login"] == "nobody"'
 check "POST /api/v1/call/auth.login with a wrong password is 401" http_is "$site/wrong.json" 401 POST /api/v1/call/auth.login '{"login":"alice","password":"wrong"}'
 check "the wrong password answers auth.error.credentials" json_is "$site/wrong.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "auth.error.credentials"'
+for attempt in 2 3 4 5; do
+  check "wrong password $attempt of 5 is 401" http_is "$site/wrong-$attempt.json" 401 POST /api/v1/call/auth.login '{"login":"alice","password":"wrong"}'
+done
+check "POST /api/v1/call/auth.login with the right password after five failures is 403" http_is "$site/locked.json" 403 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'
+check "the locked pair answers auth.error.locked" json_is "$site/locked.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "auth.error.locked"'
+check "ctl auth.unlock login=alice" keel_ok "$site/unlock.json" ctl auth.unlock login=alice
+check "auth.unlock answers the cleared pair" json_is "$site/unlock.json" 'doc["ok"] is True and doc["data"] == {"login": "alice", "cleared": 1}'
+check "ctl auth.unlock login=nobody clears nothing" keel_ok "$site/unlock-nobody.json" ctl auth.unlock login=nobody
+check "auth.unlock answers zero for a login without failures" json_is "$site/unlock-nobody.json" 'doc["ok"] is True and doc["data"] == {"login": "nobody", "cleared": 0}'
 check "POST /api/v1/call/auth.login is 200" http_is "$site/login.json" 200 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'
 check "auth.login answers the authenticated state for alice" json_is "$site/login.json" 'doc["ok"] is True and doc["data"]["state"] == "authenticated" and doc["data"]["principal"]["login"] == "alice"'
 cookie=$(session_cookie_of "$site/login.json.headers") || fail "auth.login sets the session cookie"
@@ -426,6 +435,11 @@ check "POST /api/v1/call/auth.logout with the cookie is 200" http_is "$site/logo
 check "auth.logout clears the cookie" grep -qi '^set-cookie: __Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0\r\{0,1\}$' "$site/logout.json.headers"
 check "POST /api/v1/call/note.list with the revoked cookie is 401" http_is "$site/revoked.json" 401 POST /api/v1/call/note.list '{}' "$cookie"
 check "POST /api/v1/call/note.list with the token after the logout is 200" http_is "$site/notes-token-after.json" 200 POST /api/v1/call/note.list '{}' "$token"
+check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
+check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["ok"] is True and doc["data"]["action"] == "deny" and doc["data"]["cidr"] == "127.0.0.1/32" and doc["data"]["level"] == "user" and doc["data"]["comment"] == "prove" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
+ip_rule_id=$(json_get "$site/ip-rule.json" 'doc["data"]["id"]')
+check "ctl auth.ip_rule.list --out json" keel_ok "$site/ip-rules.json" ctl auth.ip_rule.list --out json
+check "auth.ip_rule.list answers the rule" json_is "$site/ip-rules.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$ip_rule_id']"
 check "keel serve stops on SIGTERM" stop_serve
 check "the socket file is removed" socket_is_gone
 
@@ -435,6 +449,14 @@ check "product disable demo prints demo: disabled" stdout_is "$site/disable.out"
 start_serve bare
 check "ctl keel.account.list" keel_ok "$site/accounts.json" ctl keel.account.list
 check "keel.account.list answers the accounts" json_is "$site/accounts.json" 'doc["ok"] is True and len(doc["data"]["data"]) >= 2'
+check "POST /api/v1/call/auth.login as alice below the rule's level is 200" http_is "$site/login-2.json" 200 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'
+cookie=$(session_cookie_of "$site/login-2.json.headers") || fail "auth.login sets the session cookie in run 2"
+check "POST /api/v1/call/keel.account.list with the cookie is 403 under the surviving rule" http_is "$site/accounts-denied.json" 403 POST /api/v1/call/keel.account.list '{}' "$cookie"
+check "the denied call answers auth.error.ip_denied" json_is "$site/accounts-denied.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "auth.error.ip_denied"'
+check "ctl auth.ip_rule.delete over the socket" keel_ok "$site/ip-rule-delete.json" ctl auth.ip_rule.delete "id=$ip_rule_id"
+check "auth.ip_rule.delete answers deleted" json_is "$site/ip-rule-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'
+check "POST /api/v1/call/keel.account.list with the cookie is 200 after the delete" http_is "$site/accounts-allowed.json" 200 POST /api/v1/call/keel.account.list '{}' "$cookie"
+check "keel.account.list answers the account of alice" json_is "$site/accounts-allowed.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$account_id'] and doc['meta']['principal']['login'] == 'alice'"
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

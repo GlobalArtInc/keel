@@ -1,0 +1,115 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.ip_rule.create
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "auth.ip_rule.create",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "IpRuleCreate",
+    "type": "object",
+    "properties": {
+      "action": {
+        "$ref": "#/$defs/RuleAction"
+      },
+      "cidr": {
+        "type": "string",
+        "x-keel": {
+          "check": "cidr"
+        }
+      },
+      "level": {
+        "$ref": "#/$defs/Level"
+      },
+      "comment": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "action",
+      "cidr",
+      "level"
+    ],
+    "$defs": {
+      "RuleAction": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "deny"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "IpRule",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "action": {
+        "type": "string"
+      },
+      "cidr": {
+        "type": "string"
+      },
+      "level": {
+        "type": "string"
+      },
+      "comment": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "action",
+      "cidr",
+      "level",
+      "createdAt"
+    ]
+  },
+  "ui": {
+    "title": "auth.ip_rule.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "action",
+          "cidr",
+          "level",
+          "comment"
+        ]
+      }
+    ]
+  }
+}

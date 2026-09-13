@@ -11,7 +11,7 @@ struct NoteFixture;
 
 #[async_trait]
 impl Fixture for NoteFixture {
-    async fn create(&self, harness: &Harness, account: Id) -> Id {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
         let reply = harness
             .call(
                 Who::Owner,
@@ -19,7 +19,7 @@ impl Fixture for NoteFixture {
                 json!({ "title": format!("note of {account}"), "account": account }),
             )
             .await;
-        id_of(&reply)
+        id_of(&reply).to_string()
     }
 }
 

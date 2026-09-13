@@ -119,12 +119,12 @@ struct LeakyFixture;
 
 #[async_trait]
 impl Fixture for LeakyFixture {
-    async fn create(&self, _: &Harness, _: Id) -> Id {
-        let id = Id::generate();
+    async fn create(&self, _: &Harness, _: Id) -> String {
+        let id = Id::generate().to_string();
         LEAKY_ROWS
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(id.to_string());
+            .push(id.clone());
         id
     }
 }
@@ -133,7 +133,7 @@ struct PrincipalFixture;
 
 #[async_trait]
 impl Fixture for PrincipalFixture {
-    async fn create(&self, harness: &Harness, account: Id) -> Id {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
         let reply = harness
             .call(
                 Who::Owner,
@@ -145,7 +145,7 @@ impl Fixture for PrincipalFixture {
                 }),
             )
             .await;
-        id_of(reply.data())
+        id_of(reply.data()).to_string()
     }
 }
 
@@ -153,7 +153,7 @@ struct AccountFixture;
 
 #[async_trait]
 impl Fixture for AccountFixture {
-    async fn create(&self, harness: &Harness, account: Id) -> Id {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
         let reply = harness
             .call(
                 Who::Owner,
@@ -161,7 +161,7 @@ impl Fixture for AccountFixture {
                 json!({ "kind": "user", "parent": account }),
             )
             .await;
-        id_of(reply.data())
+        id_of(reply.data()).to_string()
     }
 }
 

@@ -23,5 +23,6 @@ pub use crate::module::ModuleDef;
 pub use crate::product::{Brand, Edition, LevelLabels, MenuGroup, ProductManifest};
 pub use crate::registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use crate::secret::Secret;
+pub use crate::settings::SettingDef;
 pub use crate::ui::{Action, Column, Form, List};
 pub use crate::{VERSION, chrono, migrator};

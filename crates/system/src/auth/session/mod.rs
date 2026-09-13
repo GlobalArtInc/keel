@@ -1,3 +1,5 @@
+pub mod functions;
+
 use keel_sdk::chrono::{DateTime, Duration, Utc};
 use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -14,6 +16,7 @@ pub const KIND_SU: &str = "su";
 pub const REASON_LOGOUT: &str = "logout";
 pub const REASON_REPLACED: &str = "replaced";
 pub const REASON_SU_EXIT: &str = "su_exit";
+pub const REASON_REVOKED: &str = "revoked";
 pub const IDLE_MINUTES: i64 = 30;
 pub const ABSOLUTE_HOURS: i64 = 12;
 const TOKEN_LEN: usize = 32;
@@ -137,6 +140,13 @@ pub async fn revoke(db: &Db, id_hash: &str, now: DateTime<Utc>, reason: &str) ->
         .col_expr(session::Column::RevokedAt, Expr::value(now))
         .col_expr(session::Column::Reason, Expr::value(reason))
         .filter(session::Column::IdHash.eq(id_hash))
+        .filter(session::Column::RevokedAt.is_null())
+        .exec(db)
+        .await?;
+    session::Entity::update_many()
+        .col_expr(session::Column::RevokedAt, Expr::value(now))
+        .col_expr(session::Column::Reason, Expr::value(reason))
+        .filter(session::Column::ParentIdHash.eq(id_hash))
         .filter(session::Column::RevokedAt.is_null())
         .exec(db)
         .await?;

@@ -82,7 +82,7 @@ struct TokenFixture;
 
 #[async_trait]
 impl Fixture for TokenFixture {
-    async fn create(&self, harness: &Harness, account: Id) -> Id {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
         let who = harness
             .fixtures()
             .all()
@@ -98,6 +98,7 @@ impl Fixture for TokenFixture {
         )
         .await
         .0
+        .to_string()
     }
 }
 

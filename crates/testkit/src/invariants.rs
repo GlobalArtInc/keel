@@ -11,7 +11,7 @@ const DEFAULT_KEY: &str = "id";
 
 #[async_trait]
 pub trait Fixture: Send + Sync {
-    async fn create(&self, harness: &Harness, account: Id) -> Id;
+    async fn create(&self, harness: &Harness, account: Id) -> String;
 }
 
 impl Harness {
@@ -30,24 +30,24 @@ impl Harness {
         let key = self.row_key(func_list);
         let reseller = self.listed_keys(Who::Reseller, func_list, &key).await;
         assert!(
-            reseller.contains(&inside.to_string()),
+            reseller.contains(&inside),
             "{func_list}: the reseller does not see the row {inside} of account {} in its subtree: {reseller:?}",
             accounts.a1
         );
         assert!(
-            !reseller.contains(&outside.to_string()),
+            !reseller.contains(&outside),
             "{func_list}: the reseller sees the row {outside} of the unrelated account {}: {reseller:?}",
             accounts.unrelated
         );
         let unrelated = self.listed_keys(Who::Unrelated, func_list, &key).await;
         assert!(
-            !unrelated.contains(&inside.to_string()),
+            !unrelated.contains(&inside),
             "{func_list}: the unrelated user sees the row {inside} of account {}: {unrelated:?}",
             accounts.a1
         );
         let owner = self.listed_keys(Who::Owner, func_list, &key).await;
         assert!(
-            owner.contains(&inside.to_string()) && owner.contains(&outside.to_string()),
+            owner.contains(&inside) && owner.contains(&outside),
             "{func_list}: the owner does not see both rows {inside} and {outside}: {owner:?}"
         );
     }

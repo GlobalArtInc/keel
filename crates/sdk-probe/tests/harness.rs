@@ -34,7 +34,7 @@ struct ItemFixture;
 
 #[async_trait]
 impl Fixture for ItemFixture {
-    async fn create(&self, harness: &Harness, account: Id) -> Id {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
         let reply = harness
             .call(
                 Who::Owner,
@@ -45,7 +45,7 @@ impl Fixture for ItemFixture {
         let data = reply
             .data()
             .unwrap_or_else(|| panic!("probe.item.edit failed: {:?}", reply.error()));
-        data["id"].as_str().expect("an id").parse().expect("a ulid")
+        data["id"].as_str().expect("an id").to_owned()
     }
 }
 

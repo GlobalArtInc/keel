@@ -18,6 +18,7 @@ pub mod password {
 }
 
 pub mod session {
+    use keel_sdk::Owned;
     use keel_sdk::sea_orm;
     use keel_sdk::sea_orm::entity::prelude::*;
 
@@ -45,6 +46,12 @@ pub mod session {
     pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
+
+    impl Owned for Entity {
+        fn account_column() -> Self::Column {
+            Column::AccountId
+        }
+    }
 }
 
 pub mod token {
@@ -187,6 +194,36 @@ pub mod login_key {
         pub redirect: String,
         pub expires_at: DateTimeUtc,
         pub used_at: Option<DateTimeUtc>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod ip_rule {
+    use keel_sdk::schemars::JsonSchema;
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+    use keel_sdk::serde::Serialize;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, JsonSchema)]
+    #[sea_orm(table_name = "auth_ip_rule")]
+    #[serde(crate = "keel_sdk::serde", rename_all = "camelCase")]
+    #[schemars(
+        crate = "keel_sdk::schemars",
+        rename = "IpRule",
+        rename_all = "camelCase"
+    )]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub action: String,
+        pub cidr: String,
+        pub level: String,
+        pub comment: Option<String>,
         pub created_at: DateTimeUtc,
     }
 

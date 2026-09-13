@@ -1,0 +1,44 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.session.revoke
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "auth.session.revoke",
+  "module": "auth",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.session.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ]
+  },
+  "result": {
+    "title": "SessionRevoked",
+    "type": "object",
+    "properties": {
+      "revoked": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revoked"
+    ]
+  }
+}

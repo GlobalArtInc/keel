@@ -5,11 +5,12 @@ use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::OnConflict;
 use keel_sdk::sea_orm::{EntityTrait, Set};
 use keel_sdk::system::{CallExt, Client, PrincipalSource, SessionChange};
-use keel_sdk::types::{MetaPrincipal, Via};
+use keel_sdk::types::{ErrorCode, MetaPrincipal, Via};
 
 use super::api::{LOCAL_METHOD, LoginMethod};
 use super::entity::password;
-use super::password::{Passwords, credentials};
+use super::limits::{Lockout, locked};
+use super::password::{MIN_LENGTH, Passwords, check_policy, credentials};
 use super::{State, session, totp};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -84,6 +85,22 @@ pub struct LoggedOut {
     pub revoked: bool,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+pub struct Unlock {
+    #[schemars(length(min = 1, max = 64))]
+    pub login: String,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+pub struct Unlocked {
+    pub login: String,
+    pub cleared: u32,
+}
+
 pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
     function::<PasswordSet, PasswordChanged>("auth.password.set")
         .kind(Kind::Form)
@@ -94,10 +111,17 @@ pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
             let passwords = passwords.clone();
             async move {
                 let params = call.params();
-                let target = match params.principal {
-                    Some(target) => below_caller(&call, target).await?,
-                    None => own_after_current(&call, &passwords).await?,
+                let (target, login) = match params.principal {
+                    Some(target) => {
+                        let target = below_caller(&call, target).await?;
+                        (target, login_of(&call, target).await?)
+                    }
+                    None => (call.principal().id, call.principal().login.clone()),
                 };
+                check_policy(&params.password, &login, MIN_LENGTH)?;
+                if params.principal.is_none() {
+                    verify_current(&call, &passwords).await?;
+                }
                 let hash = passwords.hash(&params.password).await?;
                 let now = call.require::<dyn Clock>()?.now();
                 password::Entity::insert(password::ActiveModel {
@@ -117,13 +141,23 @@ pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
         })
 }
 
-async fn own_after_current(call: &Call<PasswordSet>, passwords: &Passwords) -> Result<Id> {
+async fn verify_current(call: &Call<PasswordSet>, passwords: &Passwords) -> Result<()> {
     let Some(current) = &call.params().current else {
         return Err(KeelError::validation("auth.error.current_required").field("current"));
     };
     passwords
         .verify(&call.principal().login, current, call.db())
-        .await
+        .await?;
+    Ok(())
+}
+
+async fn login_of<P>(call: &Call<P>, id: Id) -> Result<String> {
+    let principals = call.require::<dyn PrincipalSource>()?;
+    principals
+        .by_id(id, call.db())
+        .await?
+        .map(|principal| principal.login)
+        .ok_or_else(|| KeelError::not_found("keel.error.not_found"))
 }
 
 pub(super) async fn below_caller<P>(call: &Call<P>, target: Id) -> Result<Id> {
@@ -142,7 +176,7 @@ pub(super) async fn below_caller<P>(call: &Call<P>, target: Id) -> Result<Id> {
     Ok(target)
 }
 
-pub fn login(state: Arc<State>) -> FunctionDef {
+pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {
     function::<Login, LoggedIn>("auth.login")
         .kind(Kind::Form)
         .mode(Mode::Write)
@@ -151,20 +185,33 @@ pub fn login(state: Arc<State>) -> FunctionDef {
         .ui(Form::new("auth.login.title").page("main", ["login", "password"]))
         .handler(move |call: Call<Login>| {
             let state = state.clone();
+            let lockout = lockout.clone();
             async move {
                 let client = http_client(&call)?;
                 let params = call.params();
+                let now = call.require::<dyn Clock>()?.now();
+                if lockout.locked(&params.login, client.ip, now) {
+                    return Err(locked());
+                }
                 let method = params.method.as_deref().unwrap_or(LOCAL_METHOD);
                 let verifier = state.method(method).ok_or_else(|| {
                     KeelError::validation("auth.error.method_unknown")
                         .field("method")
                         .param("method", method)
                 })?;
-                let id = verifier
+                let id = match verifier
                     .verify(&params.login, &params.password, call.db())
-                    .await?;
+                    .await
+                {
+                    Ok(id) => id,
+                    Err(error) => {
+                        if error.code() == ErrorCode::Unauthenticated {
+                            lockout.failed(&params.login, client.ip, now);
+                        }
+                        return Err(error);
+                    }
+                };
                 let principal = login_principal(&call, id, credentials).await?;
-                let now = call.require::<dyn Clock>()?.now();
                 if totp::confirmed(call.db(), principal.id).await?.is_some() {
                     let challenge =
                         totp::challenge::create(call.tx()?, principal.id, client, now).await?;
@@ -174,6 +221,7 @@ pub fn login(state: Arc<State>) -> FunctionDef {
                         challenge: Some(challenge.into_inner()),
                     });
                 }
+                lockout.succeeded(&params.login, client.ip);
                 let principal = open_session(&call, principal, client, now).await?;
                 Ok(LoggedIn::authenticated(principal))
             }
@@ -242,6 +290,24 @@ pub fn logout() -> FunctionDef {
                 session::revoke(call.tx()?, &id_hash, now, session::REASON_LOGOUT).await?;
             call.session(SessionChange::Clear);
             Ok(LoggedOut { revoked })
+        })
+}
+
+pub fn unlock(lockout: Arc<Lockout>) -> FunctionDef {
+    function::<Unlock, Unlocked>("auth.unlock")
+        .kind(Kind::Action)
+        .level(Level::Admin)
+        .unowned()
+        .handler(move |call: Call<Unlock>| {
+            let lockout = lockout.clone();
+            async move {
+                let login = call.params().login.clone();
+                let cleared = lockout.unlock(&login);
+                Ok(Unlocked {
+                    login,
+                    cleared: u32::try_from(cleared).unwrap_or(u32::MAX),
+                })
+            }
         })
 }
 
