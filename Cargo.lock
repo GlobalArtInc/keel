@@ -1538,6 +1538,7 @@ dependencies = [
  "futures",
  "hmac 0.13.0",
  "ipnet",
+ "jsonschema",
  "keel-sdk",
  "keel-testkit",
  "rand 0.10.2",

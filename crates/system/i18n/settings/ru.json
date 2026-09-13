@@ -1,0 +1,19 @@
+{
+  "settings.list.title": "Настройки",
+  "settings.set.title": "Настройка",
+  "settings.empty": "Настройки не определены",
+  "settings.key": "Ключ",
+  "settings.value": "Значение",
+  "settings.column.key": "Ключ",
+  "settings.column.module": "Модуль",
+  "settings.column.level": "Уровень",
+  "settings.column.value": "Значение",
+  "settings.column.scope": "Задано для",
+  "settings.level.user": "Пользователь",
+  "settings.level.reseller": "Реселлер",
+  "settings.level.admin": "Администратор",
+  "settings.action.set": "Изменить",
+  "settings.error.level": "Настройка {key} имеет уровень {level}, выше вашего уровня {caller}",
+  "settings.error.schema": "Схема настройки {key} не компилируется",
+  "settings.error.not_started": "Модуль настроек не запущен"
+}

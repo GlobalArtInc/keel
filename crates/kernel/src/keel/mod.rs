@@ -10,7 +10,7 @@ use keel_sdk::{ModuleDef, Registrar};
 
 pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
 pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
-pub(crate) use source::StoredPrincipals;
+pub(crate) use source::{StoredAccounts, StoredPrincipals};
 
 pub static MODULE: ModuleDef = ModuleDef {
     id: "keel",

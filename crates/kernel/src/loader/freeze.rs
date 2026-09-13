@@ -6,8 +6,8 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
-use keel_sdk::system::{PrincipalSource, SecretCipher};
-use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
+use keel_sdk::system::{AccountSource, PrincipalSource, SecretCipher};
+use keel_sdk::{FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
 use keel_types::{Access, Descriptor, Kind, Platform};
@@ -17,9 +17,10 @@ use serde_json::Value;
 use super::composition::{API, Graph};
 use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
 use super::init::Initialised;
+use super::settings::DefaultSettings;
 use super::{keys, patch};
 use crate::clock::Clock;
-use crate::keel::StoredPrincipals;
+use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
@@ -363,8 +364,16 @@ impl Freezer {
         services.provide(Arc::new(Composed::new(graph.manifests())));
         services.provide::<dyn Clock>(graph.clock().clone());
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
+        services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
         if let Some(key) = graph.key() {
             services.provide::<dyn SecretCipher>(Arc::new(DataKeyCipher::new(key.clone())));
+        }
+        if !self
+            .services
+            .contains(&ServiceKey::of::<dyn SettingsSource>())
+        {
+            services
+                .provide::<dyn SettingsSource>(Arc::new(DefaultSettings::new(&self.contributions)));
         }
         self.provide(PLATFORM, services);
     }

@@ -19,6 +19,7 @@
   "auth.error.entropy": "The system gave no randomness",
   "auth.error.not_started": "The auth module has not started",
   "auth.error.session_principal": "The session names a principal that cannot be read",
+  "auth.error.session_account": "The session names an account that cannot be read",
   "auth.token.list.title": "API tokens",
   "auth.token.create.title": "New API token",
   "auth.token.empty": "No API tokens yet",

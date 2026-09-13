@@ -7,6 +7,7 @@ mod ip_rule;
 mod key;
 mod limits;
 mod password;
+mod policy;
 mod session;
 mod su;
 mod token;
@@ -48,12 +49,10 @@ use session::functions::{PERMISSION_MANAGE as SESSION_MANAGE, PERMISSION_READ as
 use token::functions::{PERMISSION_MANAGE as TOKEN_MANAGE, PERMISSION_READ as TOKEN_READ};
 use totp::functions::PERMISSION_MANAGE as TOTP_MANAGE;
 
-pub const SETTING_PASSWORD_MIN_LENGTH: &str = "auth.password.min_length";
-pub const SETTING_SESSION_IDLE_MINUTES: &str = "auth.session.idle_minutes";
-pub const SETTING_SESSION_ABSOLUTE_HOURS: &str = "auth.session.absolute_hours";
-pub const SETTING_LOCKOUT_THRESHOLD: &str = "auth.lockout.threshold";
-pub const SETTING_LOCKOUT_MINUTES: &str = "auth.lockout.minutes";
-pub const SETTING_RATE_GUEST_PER_MINUTE: &str = "auth.rate.guest_per_minute";
+pub use policy::{
+    SETTING_LOCKOUT_MINUTES, SETTING_LOCKOUT_THRESHOLD, SETTING_PASSWORD_MIN_LENGTH,
+    SETTING_RATE_GUEST_PER_MINUTE, SETTING_SESSION_ABSOLUTE_HOURS, SETTING_SESSION_IDLE_MINUTES,
+};
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/auth").table("keel_migration_auth");
@@ -97,10 +96,11 @@ fn init(r: &mut Registrar) -> Result<()> {
     let local: Arc<dyn LoginMethod> = Arc::new(Local::new(passwords.clone()));
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
     let attempts = Arc::new(Attempts::default());
-    let rate_limit = Arc::new(RateLimit::new(GUEST_PER_MINUTE));
-    let lockout = Arc::new(Lockout::new(LOCKOUT_THRESHOLD, LOCKOUT_MINUTES));
+    let rate_limit = Arc::new(RateLimit::new());
+    let lockout = Arc::new(Lockout::new());
     let ip_rules = Arc::new(IpRules::default());
     r.require::<dyn SecretCipher>()
+        .require::<dyn SettingsSource>()
         .provide::<dyn SecondFactorSource>(Arc::new(totp::SecondFactor))
         .provide::<RateLimit>(rate_limit.clone())
         .provide::<Lockout>(lockout.clone())
@@ -144,8 +144,9 @@ fn init(r: &mut Registrar) -> Result<()> {
     r.start(move |ctx| async move {
         let clock = ctx.require::<dyn Clock>()?;
         let principals = ctx.require::<dyn PrincipalSource>()?;
+        let settings = ctx.require::<dyn SettingsSource>()?;
         passwords.attach(principals.clone());
-        authenticator.attach(clock, principals);
+        authenticator.attach(clock, principals, settings);
         let methods: Vec<Arc<dyn LoginMethod>> = ctx
             .contributions::<Arc<dyn LoginMethod>>()
             .cloned()
@@ -304,23 +305,14 @@ mod tests {
                 .get::<dyn SecondFactorSource>()
                 .is_some()
         );
-        assert_eq!(
-            registrations
-                .provides
-                .get::<RateLimit>()
-                .map(|limit| limit.limit()),
-            Some(GUEST_PER_MINUTE)
-        );
-        assert_eq!(
-            registrations
-                .provides
-                .get::<Lockout>()
-                .map(|lockout| lockout.threshold()),
-            Some(LOCKOUT_THRESHOLD)
-        );
+        assert!(registrations.provides.get::<RateLimit>().is_some());
+        assert!(registrations.provides.get::<Lockout>().is_some());
         assert_eq!(
             registrations.requires,
-            [keel_sdk::runtime::ServiceKey::of::<dyn SecretCipher>()]
+            [
+                keel_sdk::runtime::ServiceKey::of::<dyn SecretCipher>(),
+                keel_sdk::runtime::ServiceKey::of::<dyn SettingsSource>()
+            ]
         );
         assert_eq!(MODULE.sdk, VERSION);
         assert_eq!(

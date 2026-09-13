@@ -9,9 +9,9 @@ use keel_sdk::types::{ErrorCode, MetaPrincipal, Via};
 
 use super::api::{LOCAL_METHOD, LoginMethod};
 use super::entity::password;
-use super::limits::{Lockout, locked};
-use super::password::{MIN_LENGTH, Passwords, check_policy, credentials};
-use super::{State, session, totp};
+use super::limits::Lockout;
+use super::password::{Passwords, check_policy, credentials};
+use super::{State, policy, session, totp};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde")]
@@ -118,7 +118,7 @@ pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
                     }
                     None => (call.principal().id, call.principal().login.clone()),
                 };
-                check_policy(&params.password, &login, MIN_LENGTH)?;
+                check_policy(&params.password, &login, policy::min_length(&call).await?)?;
                 if params.principal.is_none() {
                     verify_current(&call, &passwords).await?;
                 }
@@ -190,9 +190,7 @@ pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {
                 let client = http_client(&call)?;
                 let params = call.params();
                 let now = call.require::<dyn Clock>()?.now();
-                if lockout.locked(&params.login, client.ip, now) {
-                    return Err(locked());
-                }
+                let lockout_policy = lockout.check(&call, &params.login, client.ip, now).await?;
                 let method = params.method.as_deref().unwrap_or(LOCAL_METHOD);
                 let verifier = state.method(method).ok_or_else(|| {
                     KeelError::validation("auth.error.method_unknown")
@@ -206,7 +204,7 @@ pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {
                     Ok(id) => id,
                     Err(error) => {
                         if error.code() == ErrorCode::Unauthenticated {
-                            lockout.failed(&params.login, client.ip, now);
+                            lockout.failed(&params.login, client.ip, now, lockout_policy);
                         }
                         return Err(error);
                     }
@@ -263,11 +261,12 @@ pub(super) async fn open_session<P>(
     client: &Client,
     now: DateTime<Utc>,
 ) -> Result<MetaPrincipal> {
+    let lifetime = policy::lifetime(call).await?;
     let tx = call.tx()?;
     if let Some(previous) = &client.session {
         session::revoke(tx, previous, now, session::REASON_REPLACED).await?;
     }
-    let token = session::open(tx, &principal, client, now).await?;
+    let token = session::open(tx, &principal, client, now, lifetime).await?;
     call.session(SessionChange::Set(token));
     Ok(MetaPrincipal {
         id: principal.id,

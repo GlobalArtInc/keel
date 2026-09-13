@@ -1,0 +1,19 @@
+{
+  "settings.list.title": "Settings",
+  "settings.set.title": "Setting",
+  "settings.empty": "No settings are defined",
+  "settings.key": "Key",
+  "settings.value": "Value",
+  "settings.column.key": "Key",
+  "settings.column.module": "Module",
+  "settings.column.level": "Level",
+  "settings.column.value": "Value",
+  "settings.column.scope": "Set for",
+  "settings.level.user": "User",
+  "settings.level.reseller": "Reseller",
+  "settings.level.admin": "Administrator",
+  "settings.action.set": "Change",
+  "settings.error.level": "The setting {key} is at level {level}, above your level {caller}",
+  "settings.error.schema": "The schema of the setting {key} does not compile",
+  "settings.error.not_started": "The settings module has not started"
+}

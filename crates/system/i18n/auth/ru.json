@@ -19,6 +19,7 @@
   "auth.error.entropy": "Система не дала случайных данных",
   "auth.error.not_started": "Модуль auth не запущен",
   "auth.error.session_principal": "Сессия ссылается на пользователя, которого не удалось прочитать",
+  "auth.error.session_account": "Сессия ссылается на аккаунт, который не удалось прочитать",
   "auth.token.list.title": "API-токены",
   "auth.token.create.title": "Новый API-токен",
   "auth.token.empty": "API-токенов пока нет",

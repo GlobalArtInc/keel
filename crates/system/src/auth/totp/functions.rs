@@ -6,7 +6,7 @@ use keel_sdk::system::SecretCipher;
 use super::super::functions::{
     LoggedIn, Nothing, below_caller, http_client, login_principal, open_session,
 };
-use super::super::limits::{Lockout, locked};
+use super::super::limits::Lockout;
 use super::challenge::{self, Attempts};
 use super::{
     confirm_with, confirmed, enroll as enroll_row, redeem, remove, replace_recovery_codes, row,
@@ -188,9 +188,9 @@ pub fn verify(attempts: Arc<Attempts>, lockout: Arc<Lockout>) -> FunctionDef {
                     .ok_or_else(challenge_refused)?;
                 let principal_id = challenge::principal_id(&pending)?;
                 let principal = login_principal(&call, principal_id, challenge_refused).await?;
-                if lockout.locked(&principal.login, client.ip, now) {
-                    return Err(locked());
-                }
+                let lockout_policy = lockout
+                    .check(&call, &principal.login, client.ip, now)
+                    .await?;
                 if !attempts.admit(&challenge_hash, pending.expires_at, now) {
                     return Err(challenge_refused());
                 }
@@ -201,7 +201,7 @@ pub fn verify(attempts: Arc<Attempts>, lockout: Arc<Lockout>) -> FunctionDef {
                 let tx = call.tx()?;
                 let code = params.code.expose();
                 if !redeem(tx, cipher.as_ref(), &factor, principal_id, code, now).await? {
-                    lockout.failed(&principal.login, client.ip, now);
+                    lockout.failed(&principal.login, client.ip, now, lockout_policy);
                     return Err(KeelError::unauthenticated("auth.error.code"));
                 }
                 if !challenge::consume(tx, &challenge_hash, now).await? {

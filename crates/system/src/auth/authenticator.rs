@@ -4,9 +4,10 @@ use keel_sdk::async_trait::async_trait;
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::system::{Authenticated, Authenticator, Client, Credential, PrincipalSource};
 use keel_sdk::types::Via;
-use keel_sdk::{Clock, Db, KeelError, Principal, Result};
+use keel_sdk::{Clock, Db, KeelError, Principal, Result, SettingsSource};
 
 use super::entity::session::Model as SessionRow;
+use super::policy::idle_of;
 use super::{session, token};
 
 #[derive(Default)]
@@ -17,11 +18,31 @@ pub struct CredentialAuthenticator {
 struct Started {
     clock: Arc<dyn Clock>,
     principals: Arc<dyn PrincipalSource>,
+    settings: Arc<dyn SettingsSource>,
 }
 
 impl CredentialAuthenticator {
-    pub fn attach(&self, clock: Arc<dyn Clock>, principals: Arc<dyn PrincipalSource>) {
-        let _ = self.started.set(Started { clock, principals });
+    pub fn attach(
+        &self,
+        clock: Arc<dyn Clock>,
+        principals: Arc<dyn PrincipalSource>,
+        settings: Arc<dyn SettingsSource>,
+    ) {
+        let _ = self.started.set(Started {
+            clock,
+            principals,
+            settings,
+        });
+    }
+
+    async fn touch(&self, row: &SessionRow, db: &Db, now: DateTime<Utc>) -> Result<()> {
+        let started = self.started()?;
+        let account = row.account_id.parse().map_err(|_| {
+            KeelError::internal("auth.error.session_account")
+                .param("account", row.account_id.as_str())
+        })?;
+        let idle = idle_of(started.settings.as_ref(), account, db).await?;
+        session::touch(db, &row.id_hash, now, idle).await
     }
 
     fn started(&self) -> Result<&Started> {
@@ -41,7 +62,7 @@ impl CredentialAuthenticator {
         let Some(mut principal) = started.principals.by_id(principal_id, db).await? else {
             return Err(unauthenticated());
         };
-        session::touch(db, &id_hash, now).await?;
+        self.touch(&row, db, now).await?;
         principal.via = Via::Http;
         if let Some(delegated) = self.delegated(&row, principal.clone(), db, now).await? {
             principal = delegated;
@@ -73,7 +94,7 @@ impl CredentialAuthenticator {
         else {
             return Ok(None);
         };
-        session::touch(db, su_id_hash, now).await?;
+        self.touch(&child, db, now).await?;
         actor.via = Via::Su;
         principal.via = Via::Http;
         principal.actor = Some(Box::new(actor));

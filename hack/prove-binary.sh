@@ -324,6 +324,19 @@ check "ctl keel.principal.create login=alice" keel_ok "$site/principal.json" ctl
 check "keel.principal.create answers ok with an id" json_is "$site/principal.json" 'doc["ok"] is True and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
 principal_id=$(json_get "$site/principal.json" 'doc["data"]["id"]')
 check "ctl auth.password.set for alice" keel_ok "$site/password.json" ctl auth.password.set "principal=$principal_id" password=correct-horse
+check "ctl settings.list --out json" keel_ok "$site/settings.json" ctl settings.list --out json
+check "settings.list answers the six auth definitions with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None)}'
+check "ctl settings.set auth.password.min_length=16" keel_ok "$site/setting.json" ctl settings.set key=auth.password.min_length value=16
+check "settings.set answers the root value" json_is "$site/setting.json" 'doc["ok"] is True and doc["data"]["value"] == 16 and doc["data"]["scope"] == "00000000000000000000000000"'
+check "ctl auth.password.set with twelve characters is refused" keel_fails "$site/password-short.json" ctl auth.password.set "principal=$principal_id" password=twelve-chars
+check "the short password answers auth.error.password_short with the raised minimum" json_is "$site/password-short.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "password" and doc["error"]["fields"][0]["key"] == "auth.error.password_short" and doc["error"]["fields"][0]["params"]["min"] == 16'
+check "ctl settings.set auth.password.min_length=12 restores the default" keel_ok "$site/setting-back.json" ctl settings.set key=auth.password.min_length value=12
+check "ctl settings.set with a string is 422 on value" keel_fails "$site/setting-wrong.json" ctl settings.set key=auth.password.min_length value=many
+check "the wrong value answers a schema error on value" json_is "$site/setting-wrong.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "value" and doc["error"]["fields"][0]["key"] == "keel.schema.type"'
+check "ctl settings.set of an unknown key is not_found" keel_fails "$site/setting-unknown.json" ctl settings.set key=auth.password.max_length value=1
+check "the unknown key answers not_found" json_is "$site/setting-unknown.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
+check "ctl settings.get auth.password.min_length" keel_ok "$site/setting-get.json" ctl settings.get key=auth.password.min_length
+check "settings.get answers the restored value at the root" json_is "$site/setting-get.json" 'doc["ok"] is True and doc["data"]["value"] == 12 and doc["data"]["scope"] == "00000000000000000000000000"'
 check "auth.password.set answers the principal" json_is "$site/password.json" "doc['ok'] is True and doc['data']['principal'] == '$principal_id'"
 check "ctl note.edit title=hers in the account of alice" keel_ok "$site/hers.json" ctl note.edit title=hers "account=$account_id"
 check "ctl keel.account.list --as alice" keel_ok "$site/accounts-as-alice.json" ctl keel.account.list --as alice

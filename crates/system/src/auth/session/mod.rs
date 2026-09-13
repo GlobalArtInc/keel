@@ -21,12 +21,19 @@ pub const IDLE_MINUTES: i64 = 30;
 pub const ABSOLUTE_HOURS: i64 = 12;
 const TOKEN_LEN: usize = 32;
 
-pub fn idle() -> Duration {
-    Duration::minutes(IDLE_MINUTES)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lifetime {
+    pub idle: Duration,
+    pub absolute: Duration,
 }
 
-pub fn absolute() -> Duration {
-    Duration::hours(ABSOLUTE_HOURS)
+impl Default for Lifetime {
+    fn default() -> Self {
+        Self {
+            idle: Duration::minutes(IDLE_MINUTES),
+            absolute: Duration::hours(ABSOLUTE_HOURS),
+        }
+    }
 }
 
 pub fn generate() -> Result<Secret> {
@@ -49,6 +56,7 @@ pub async fn open(
     principal: &Principal,
     client: &Client,
     now: DateTime<Utc>,
+    lifetime: Lifetime,
 ) -> Result<Secret> {
     let token = generate()?;
     session::ActiveModel {
@@ -60,8 +68,8 @@ pub async fn open(
         ip: Set(client.ip.map(|ip| ip.to_string())),
         user_agent: Set(client.user_agent.clone()),
         created_at: Set(now),
-        idle_until: Set(now + idle()),
-        absolute_until: Set(now + absolute()),
+        idle_until: Set(now + lifetime.idle),
+        absolute_until: Set(now + lifetime.absolute),
         revoked_at: Set(None),
         reason: Set(None),
         parent_id_hash: Set(None),
@@ -126,9 +134,9 @@ pub async fn resolve(db: &Db, id_hash: &str, now: DateTime<Utc>) -> Result<Optio
     Ok(row)
 }
 
-pub async fn touch(db: &Db, id_hash: &str, now: DateTime<Utc>) -> Result<()> {
+pub async fn touch(db: &Db, id_hash: &str, now: DateTime<Utc>, idle: Duration) -> Result<()> {
     session::Entity::update_many()
-        .col_expr(session::Column::IdleUntil, Expr::value(now + idle()))
+        .col_expr(session::Column::IdleUntil, Expr::value(now + idle))
         .filter(session::Column::IdHash.eq(id_hash))
         .exec(db)
         .await?;

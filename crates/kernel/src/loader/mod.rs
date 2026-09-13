@@ -6,6 +6,7 @@ mod keys;
 mod lifecycle;
 mod migrate;
 mod patch;
+mod settings;
 
 pub use composition::{Composition, CompositionError, Graph, LEDGER_PREFIX, Problem};
 pub use freeze::{FreezeError, FreezeProblem, Frozen};

@@ -53,6 +53,11 @@ pub trait PrincipalSource: Send + Sync {
     async fn by_login(&self, login: &str, db: &Db) -> Result<Option<Principal>>;
 }
 
+#[async_trait]
+pub trait AccountSource: Send + Sync {
+    async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;
+}
+
 pub trait SecretCipher: Send + Sync {
     fn seal(&self, plaintext: &[u8]) -> Result<String>;
     fn open(&self, sealed: &str) -> Result<Vec<u8>>;

@@ -7,12 +7,14 @@ use futures::future::BoxFuture;
 use keel_types::{Id, Mode, Principal};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 use crate::access::AccountScope;
 use crate::db::Db;
 use crate::error::{KeelError, Result};
 use crate::services::Services;
+use crate::settings::SettingsSource;
 use crate::system::{Client, SessionChange};
 
 pub struct Call<P> {
@@ -148,6 +150,18 @@ impl<P> Call<P> {
         self.state.services.get::<T>().ok_or_else(|| {
             KeelError::internal("keel.error.service_missing")
                 .source(std::io::Error::other(type_name::<T>()))
+        })
+    }
+
+    pub async fn setting<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
+        let source = self.require::<dyn SettingsSource>()?;
+        let value = source
+            .resolve(key, self.state.principal.account_id, &self.state.db)
+            .await?;
+        serde_json::from_value(value.unwrap_or(Value::Null)).map_err(|error| {
+            KeelError::internal("keel.error.setting_value")
+                .param("key", key)
+                .source(error)
         })
     }
 

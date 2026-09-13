@@ -1,0 +1,109 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.set
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "settings.set",
+  "module": "settings",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "settings.manage"
+  },
+  "params": {
+    "title": "SettingSet",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "value": true
+    },
+    "required": [
+      "key",
+      "value"
+    ]
+  },
+  "result": {
+    "title": "SettingRow",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "module": {
+        "type": "string"
+      },
+      "schema": true,
+      "default": true,
+      "level": {
+        "$ref": "#/$defs/Level"
+      },
+      "value": true,
+      "scope": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "key",
+      "module",
+      "schema",
+      "level"
+    ],
+    "$defs": {
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "settings.set.title",
+    "read": "settings.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "key",
+          "value"
+        ]
+      }
+    ],
+    "fields": {
+      "key": {
+        "readonly_if": {
+          "eq": [
+            "$mode",
+            "edit"
+          ]
+        }
+      }
+    }
+  }
+}

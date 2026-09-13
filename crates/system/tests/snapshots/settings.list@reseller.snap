@@ -1,0 +1,160 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.list
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "settings.list",
+  "module": "settings",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "reseller",
+    "permission": "settings.read"
+  },
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_SettingRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/SettingRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "SettingRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "schema": true,
+          "default": true,
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "value": true,
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "module",
+          "schema",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "settings.list.title",
+    "search": [
+      "key",
+      "module"
+    ],
+    "columns": [
+      {
+        "key": "key",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "module",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "level",
+        "type": "text",
+        "sortable": true,
+        "filter": {
+          "options": [
+            "user",
+            "reseller",
+            "admin"
+          ]
+        }
+      },
+      {
+        "key": "value",
+        "type": "text"
+      },
+      {
+        "key": "scope",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "set",
+        "role": "edit",
+        "screen": "settings.set",
+        "icon": "pencil",
+        "params": {
+          "key": "$key"
+        }
+      }
+    ],
+    "row_actions": [
+      "set"
+    ],
+    "empty": {
+      "title": "settings.empty"
+    },
+    "invalidate_on": [
+      "settings.*"
+    ]
+  }
+}

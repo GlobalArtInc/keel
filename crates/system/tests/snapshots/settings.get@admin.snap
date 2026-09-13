@@ -1,0 +1,84 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.get
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "settings.get",
+  "module": "settings",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "reseller",
+    "permission": "settings.read"
+  },
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "key"
+    ]
+  },
+  "result": {
+    "title": "SettingRow",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "module": {
+        "type": "string"
+      },
+      "schema": true,
+      "default": true,
+      "level": {
+        "$ref": "#/$defs/Level"
+      },
+      "value": true,
+      "scope": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "key",
+      "module",
+      "schema",
+      "level"
+    ],
+    "$defs": {
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

@@ -1,14 +1,45 @@
 use keel_sdk::async_trait::async_trait;
 use keel_sdk::runtime::Db;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use keel_sdk::system::PrincipalSource;
+use keel_sdk::system::{AccountSource, PrincipalSource};
 use keel_sdk::{KeelError, Result};
 use keel_types::{Id, Level, Principal, Scope, Via};
 
-use super::entity::principal;
+use super::entity::{account, principal};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StoredPrincipals;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StoredAccounts;
+
+#[async_trait]
+impl AccountSource for StoredAccounts {
+    async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>> {
+        let Some(row) = account::Entity::find_by_id(account.to_string())
+            .one(db)
+            .await?
+        else {
+            return Ok(Vec::new());
+        };
+        ancestry_of(&row.path)
+    }
+}
+
+fn ancestry_of(path: &str) -> Result<Vec<Id>> {
+    let mut chain: Vec<Id> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| {
+            segment.parse().map_err(|_| {
+                KeelError::internal("keel.account.error.path_unknown").param("segment", segment)
+            })
+        })
+        .collect::<Result<_>>()?;
+    chain.reverse();
+    chain.push(Id::ROOT_ACCOUNT);
+    Ok(chain)
+}
 
 #[async_trait]
 impl PrincipalSource for StoredPrincipals {
@@ -98,6 +129,24 @@ mod tests {
             principal.account_id.to_string(),
             "01J8A0000000000000000000A1"
         );
+    }
+
+    #[test]
+    fn the_ancestry_of_a_path_runs_from_the_account_itself_up_to_the_root() {
+        let a1: Id = "01J8A0000000000000000000A1".parse().unwrap();
+        let a2: Id = "01J8A0000000000000000000A2".parse().unwrap();
+        assert_eq!(ancestry_of("/").unwrap(), [Id::ROOT_ACCOUNT]);
+        assert_eq!(
+            ancestry_of("/01J8A0000000000000000000A1/").unwrap(),
+            [a1, Id::ROOT_ACCOUNT]
+        );
+        assert_eq!(
+            ancestry_of("/01J8A0000000000000000000A1/01J8A0000000000000000000A2/").unwrap(),
+            [a2, a1, Id::ROOT_ACCOUNT]
+        );
+        let error = ancestry_of("/not-an-id/").expect_err("the segment is not a ULID");
+        assert_eq!(error.key(), "keel.account.error.path_unknown");
+        assert_eq!(error.params()["segment"], "not-an-id");
     }
 
     #[test]
