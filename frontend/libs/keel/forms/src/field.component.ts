@@ -41,6 +41,7 @@ import {
 } from '@globalart/phoenix-ui';
 import type { ControlMapping } from './mapping';
 import type { FormField } from './model';
+import { toSelectOption } from './options';
 import { findingsOf } from './validators';
 
 interface ControlState {
@@ -103,6 +104,10 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
             [formControl]="control()"
             [options]="choices()"
             [remote]="remote() !== null"
+            [loading]="loading()"
+            [more]="more()"
+            (searchChange)="search($event)"
+            (loadMore)="loadMore()"
             [placeholder]="placeholder()"
             [required]="required()"
             [hint]="hint()"
@@ -279,12 +284,28 @@ export class KeelFieldComponent {
     () => member(this.mapping(), 'phx-password')?.generate ?? false,
   );
   protected readonly remote = computed(() => member(this.mapping(), 'phx-select')?.remote ?? null);
-  protected readonly choices = computed<PhxSelectOption<string>[]>(() =>
-    (member(this.mapping(), 'phx-select')?.choices ?? []).map((value) => this.choice(value)),
-  );
-  protected readonly switcherOptions = computed<PhxSwitcherOption<string>[]>(() =>
-    (member(this.mapping(), 'phx-switcher')?.choices ?? []).map((value) => this.choice(value)),
-  );
+  protected readonly choices = computed<PhxSelectOption<string>[]>(() => {
+    const served = this.field().choices();
+    if (served !== null) {
+      return served.map(toSelectOption);
+    }
+    const options = this.field().options;
+    if (options !== null) {
+      return options.options();
+    }
+    return (member(this.mapping(), 'phx-select')?.choices ?? []).map((value) => this.choice(value));
+  });
+  protected readonly loading = computed(() => this.field().options?.loading() ?? false);
+  protected readonly more = computed(() => this.field().options?.more() ?? false);
+  protected readonly switcherOptions = computed<PhxSwitcherOption<string>[]>(() => {
+    const served = this.field().choices();
+    if (served !== null) {
+      return served.map(toSelectOption);
+    }
+    return (member(this.mapping(), 'phx-switcher')?.choices ?? []).map((value) =>
+      this.choice(value),
+    );
+  });
   protected readonly min = computed(() => this.numeric()?.min ?? null);
   protected readonly max = computed(() => this.numeric()?.max ?? null);
   protected readonly step = computed(() => this.numeric()?.step ?? 1);
@@ -339,6 +360,14 @@ export class KeelFieldComponent {
 
   protected setDate(value: PhxDateValue): void {
     this.setValue(value instanceof Date ? formatIsoDate(value) : null);
+  }
+
+  protected search(query: string): void {
+    this.field().options?.search(query);
+  }
+
+  protected loadMore(): void {
+    this.field().options?.loadMore();
   }
 
   private reflect(value: number | null, disabled: boolean): void {

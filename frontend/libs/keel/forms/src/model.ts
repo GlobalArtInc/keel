@@ -1,11 +1,15 @@
-import { computed, signal, type Signal } from '@angular/core';
+import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
+import type { KeelClient } from '@globalart/keel/client';
 import {
   entityPrefix,
+  type Choice,
   type Context,
   type ContextPrincipal,
   type Descriptor,
+  type Envelope,
   type Expr,
+  type FieldError,
   type FieldUi,
   type KeelAttrs,
   type ScreenPage,
@@ -14,6 +18,8 @@ import {
 import { Subscription } from 'rxjs';
 import { applyConditions, contextOf, holds, type ConditionScope } from './conditions';
 import { mapControl, type ControlMapping, type FieldSchema } from './mapping';
+import { RemoteOptions } from './options';
+import { bindRecompute } from './recompute';
 import {
   defsOf,
   isObject,
@@ -22,6 +28,7 @@ import {
   resolveSchema,
   type JsonObject,
 } from './schema';
+import { newIdempotencyKey, submitForm } from './submit';
 import { fieldValidator, isEmptyValue } from './validators';
 import type { KeelWidget } from './widgets';
 
@@ -37,6 +44,7 @@ export interface FormOptions {
   principal?: ContextPrincipal | null;
   values?: Record<string, unknown>;
   widgets?: readonly KeelWidget[];
+  client?: KeelClient;
 }
 
 export interface FormField {
@@ -51,6 +59,8 @@ export interface FormField {
   readonly conditions: FieldUi;
   readonly mapping: ControlMapping;
   readonly control: FormControl<unknown>;
+  readonly options: RemoteOptions | null;
+  readonly choices: WritableSignal<readonly Choice[] | null>;
   readonly visible: Signal<boolean>;
   readonly required: Signal<boolean>;
   readonly readonly: Signal<boolean>;
@@ -80,8 +90,12 @@ export interface KeelForm {
   readonly values: Signal<Record<string, unknown>>;
   readonly context: Signal<Context>;
   readonly widgets: readonly KeelWidget[];
+  readonly client: KeelClient | null;
+  readonly unmapped: WritableSignal<readonly FieldError[]>;
+  readonly pending: Signal<boolean>;
   field(name: string): FormField | undefined;
   page(id: string): FormPage | undefined;
+  submit<T = unknown>(): Promise<Envelope<T> | null>;
   destroy(): void;
 }
 
@@ -100,6 +114,7 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
     params: screenParams,
   };
   const values = signal<Record<string, unknown>>({});
+  const client = options.client ?? null;
   const site: Site = {
     prefix: entityPrefix(descriptor.name),
     properties,
@@ -108,6 +123,8 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
     conditions: descriptor.ui?.fields ?? {},
     context: computed(() => contextOf(values(), scope)),
     initial,
+    client,
+    scope: screenParams,
   };
   const pages: FormPage[] = [];
   const seen = new Set<string>();
@@ -146,6 +163,8 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
   values.set(group.getRawValue());
   const visiblePages = computed(() => pages.filter((page) => page.visible()));
   const teardown = new Subscription();
+  const pending = signal(false);
+  let idempotencyKey: string | null = null;
   const form: KeelForm = {
     descriptor,
     name: descriptor.name,
@@ -160,11 +179,38 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
     values: values.asReadonly(),
     context: site.context,
     widgets: options.widgets ?? [],
+    client,
+    unmapped: signal<readonly FieldError[]>([]),
+    pending: pending.asReadonly(),
     field: (name) => fields.find((field) => field.name === name),
     page: (id) => pages.find((page) => page.id === id),
-    destroy: () => teardown.unsubscribe(),
+    submit: async <T>() => {
+      if (client === null) {
+        throw new TypeError(`the form ${descriptor.name} was built without a client`);
+      }
+      idempotencyKey ??= newIdempotencyKey();
+      pending.set(true);
+      try {
+        const envelope = await submitForm<T>(form, client, idempotencyKey);
+        if (envelope?.ok) {
+          idempotencyKey = null;
+        }
+        return envelope;
+      } finally {
+        pending.set(false);
+      }
+    },
+    destroy: () => {
+      teardown.unsubscribe();
+      for (const field of fields) {
+        field.options?.destroy();
+      }
+    },
   };
   applyConditions(form);
+  if (client !== null) {
+    teardown.add(bindRecompute(form, client));
+  }
   let applying = false;
   teardown.add(
     group.valueChanges.subscribe(() => {
@@ -191,6 +237,8 @@ interface Site {
   conditions: Record<string, FieldUi>;
   context: Signal<Context>;
   initial: Record<string, unknown>;
+  client: KeelClient | null;
+  scope: Record<string, unknown>;
 }
 
 function buildField(name: string, pageVisible: Signal<boolean>, site: Site): FormField {
@@ -216,10 +264,20 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
     conditions: own,
     mapping: mapControl(shape),
     control,
+    options: remoteOptionsOf(shape, site),
+    choices: signal<readonly Choice[] | null>(null),
     visible: computed(() => pageVisible() && holds(own.show_if, site.context(), true)),
     required,
     readonly: computed(() => holds(own.readonly_if, site.context(), false)),
   };
+}
+
+function remoteOptionsOf(shape: FieldSchema, site: Site): RemoteOptions | null {
+  const func = shape.keel.options ?? null;
+  if (func === null || site.client === null) {
+    return null;
+  }
+  return new RemoteOptions(site.client, func, site.scope);
 }
 
 function shapeOf(name: string, site: Site): FieldSchema {

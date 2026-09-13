@@ -31,9 +31,11 @@
       "edit": "Edit",
       "delete": "Delete",
       "refresh": "Refresh",
-      "export": "Export"
+      "export": "Export",
+      "save": "Save"
     },
     "page": { "main": "Main" },
+    "once": { "title": "Shown only once: copy the values now" },
     "level": {
       "guest": "Guest",
       "service": "Service",
