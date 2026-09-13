@@ -59,6 +59,7 @@ import {
   type RowScope,
 } from './actions';
 import { invalidations } from './invalidate';
+import { scopeOf, searchOf } from './scope';
 
 export interface ReadonlyToggle {
   key: string;
@@ -107,6 +108,7 @@ const DEFAULT_EMPTY_ICON: PhxIconName = 'plus';
         [rowKey]="key()"
         [label]="title()"
         [searchable]="searchable()"
+        [search]="search()"
         [selectable]="selectable()"
         [selection]="selection()"
         (selectionChange)="selection.set($event)"
@@ -189,8 +191,10 @@ export class KeelListComponent {
     const descriptor = this.descriptor();
     return descriptor.ui ? this.i18n.t(descriptor.ui.title) : descriptor.name;
   });
+  readonly scope = computed(() => scopeOf(this.params()));
+  readonly search = computed(() => searchOf(this.params()));
   readonly fetch = computed<KeelListFetch<Row>>(() =>
-    listFetch<Row>(this.descriptor().name, this.params(), this.client),
+    listFetch<Row>(this.descriptor().name, this.scope(), this.client),
   );
   readonly exportable = toSignal(
     toObservable(this.descriptor).pipe(
@@ -276,15 +280,15 @@ export class KeelListComponent {
     const principal = this.boot.principal();
     return {
       principal: principal === null ? null : { level: principal.level },
-      params: this.params(),
+      params: this.scope(),
     };
   });
 
   constructor() {
     effect((onCleanup) => {
       const descriptor = this.descriptor();
-      const params = this.params();
-      const opened = untracked(() => this.openRemotes(descriptor, params));
+      const scope = this.scope();
+      const opened = untracked(() => this.openRemotes(descriptor, scope));
       this.remotes.set(opened);
       onCleanup(() => {
         for (const remote of opened.values()) {

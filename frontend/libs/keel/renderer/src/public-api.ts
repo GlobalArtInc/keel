@@ -10,12 +10,15 @@ export {
 } from './views';
 export type { KeelView, KeelViewContext } from './views';
 export {
+  BACK_KEY,
   CONFIRM_COUNT_KEY,
   CONFIRM_MANY_KEY,
   CONFIRM_ONE_KEY,
   DONE_KEY,
   EMPTY_VALUE,
   FALSE_KEY,
+  FINISH_KEY,
+  NEXT_KEY,
   NOT_FOUND_KEY,
   REQUEST_KEY,
   RETRY_KEY,
@@ -46,7 +49,17 @@ export type { ActionOutcome, ActionRequest, Row } from './action/runner';
 export { KeelActionComponent, routeAction } from './action/action.component';
 export type { ActionState } from './action/action.component';
 export { KeelFormScreenComponent } from './form/form-screen.component';
-export type { FormScreenState } from './form/form-screen.component';
+export { formLoader } from './form/loader';
+export type { FormLoadOptions, FormLoader, FormScreenState } from './form/loader';
+export { KeelWizardComponent } from './wizard/wizard.component';
+export {
+  fieldsUpTo,
+  firstInvalidPage,
+  markPageTouched,
+  pageValid,
+  stepsOf,
+  validateStep,
+} from './wizard/steps';
 export { KeelNavigation, SCREEN_PATH, objectTab } from './navigation';
 export type { ScreenTarget } from './navigation';
 export {
@@ -82,6 +95,7 @@ export {
 } from './list/actions';
 export type { RowScope } from './list/actions';
 export { MASK_SUFFIX, invalidations, maskMatches, matchesAny } from './list/invalidate';
+export { SEARCH_PARAM, scopeOf, searchOf } from './list/scope';
 export { KeelListComponent } from './list/list.component';
 export type { ReadonlyToggle } from './list/list.component';
 

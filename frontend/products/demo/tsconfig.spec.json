@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc/demo-spec",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "isolatedModules": false,
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -27,6 +27,15 @@ export default tseslint.config(
     },
   },
   {
+    files: ['products/demo/**/*.ts'],
+    rules: {
+      '@angular-eslint/component-selector': [
+        'error',
+        { type: 'element', prefix: 'demo', style: 'kebab-case' },
+      ],
+    },
+  },
+  {
     files: ['**/*.html'],
     extends: [...angular.configs.templateRecommended, ...angular.configs.templateAccessibility],
   },

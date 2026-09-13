@@ -7,24 +7,14 @@ import {
   inject,
   input,
   output,
-  signal,
   untracked,
 } from '@angular/core';
-import { KeelBoot, KeelCallError, KeelClient, KeelI18n } from '@globalart/keel/client';
-import {
-  KeelFormComponent,
-  injectKeelWidgets,
-  loadForm,
-  unreachable,
-  type KeelForm,
-  type Saved,
-} from '@globalart/keel/forms';
-import type { CallError, Descriptor } from '@globalart/keel/meta';
+import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
+import { KeelFormComponent, injectKeelWidgets, type Saved } from '@globalart/keel/forms';
+import type { Descriptor } from '@globalart/keel/meta';
 import { PhxErrorComponent, PhxLoaderComponent, PhxPanelComponent } from '@globalart/phoenix-ui';
 import { RETRY_KEY, describeError } from '../messages';
-
-export type FormScreenState =
-  { phase: 'loading' } | { phase: 'ready'; form: KeelForm } | { phase: 'failed'; error: CallError };
+import { formLoader } from './loader';
 
 @Component({
   selector: 'keel-form-screen',
@@ -75,10 +65,13 @@ export class KeelFormScreenComponent {
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
   private readonly widgets = injectKeelWidgets();
-  private readonly held = signal<FormScreenState>({ phase: 'loading' });
-  private sequence = 0;
+  private readonly loader = formLoader(() => ({
+    client: this.client,
+    principal: this.boot.principal(),
+    widgets: this.widgets,
+  }));
 
-  readonly state = this.held.asReadonly();
+  readonly state = this.loader.state;
 
   protected readonly form = computed(() => {
     const state = this.state();
@@ -95,48 +88,14 @@ export class KeelFormScreenComponent {
 
   constructor() {
     effect(() => {
-      this.descriptor();
-      this.params();
-      untracked(() => this.reload());
+      const descriptor = this.descriptor();
+      const params = this.params();
+      untracked(() => this.loader.reload(descriptor, params));
     });
-    inject(DestroyRef).onDestroy(() => this.drop());
+    inject(DestroyRef).onDestroy(() => this.loader.drop());
   }
 
   reload(): void {
-    const started = ++this.sequence;
-    const descriptor = this.descriptor();
-    const params = this.params();
-    this.drop();
-    this.held.set({ phase: 'loading' });
-    loadForm(descriptor, {
-      client: this.client,
-      params,
-      principal: this.boot.principal(),
-      widgets: this.widgets,
-    }).then(
-      (form) => {
-        if (started !== this.sequence) {
-          form.destroy();
-          return;
-        }
-        this.held.set({ phase: 'ready', form });
-      },
-      (error: unknown) => {
-        if (started !== this.sequence) {
-          return;
-        }
-        this.held.set({
-          phase: 'failed',
-          error: error instanceof KeelCallError ? error.error : unreachable(error),
-        });
-      },
-    );
-  }
-
-  private drop(): void {
-    const state = this.held();
-    if (state.phase === 'ready') {
-      state.form.destroy();
-    }
+    this.loader.reload(this.descriptor(), this.params());
   }
 }

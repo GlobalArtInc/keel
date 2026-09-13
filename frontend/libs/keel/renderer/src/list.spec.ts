@@ -17,7 +17,9 @@ import {
   KeelActionRunner,
   KeelListComponent,
   maskMatches,
+  scopeOf,
   screenParamsOf,
+  searchOf,
   toColumn,
   usableZone,
   type Row,
@@ -143,6 +145,7 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 async function render(
   mock: KeelMockClient,
   descriptor: Descriptor = LIST,
+  params?: Record<string, unknown>,
 ): Promise<ComponentFixture<KeelListComponent>> {
   TestBed.configureTestingModule({
     imports: [KeelListComponent],
@@ -157,6 +160,9 @@ async function render(
   await TestBed.inject(KeelI18n).load('en');
   const fixture = TestBed.createComponent(KeelListComponent);
   fixture.componentRef.setInput('descriptor', descriptor);
+  if (params !== undefined) {
+    fixture.componentRef.setInput('params', params);
+  }
   fixture.detectChanges();
   await settle(fixture);
   return fixture;
@@ -499,6 +505,37 @@ describe('the list renderer', () => {
     expect(
       texts((again.nativeElement as HTMLElement).querySelectorAll('button[data-action]')),
     ).toEqual(['New zone', 'Export']);
+  });
+
+  it('a search screen parameter fills the search box and stays out of the scope', async () => {
+    const mock = client();
+    const fixture = await render(mock, LIST, { search: 'a.org', view: 'mine' });
+    const element: HTMLElement = fixture.nativeElement;
+    expect(fixture.componentInstance.scope()).toEqual({ view: 'mine' });
+    expect(fixture.componentInstance.search()).toBe('a.org');
+    expect(element.querySelector<HTMLInputElement>('phx-list-searchbar input')?.value).toBe(
+      'a.org',
+    );
+    expect(mock.callsOf('dns.zone.list').map((call) => call.params)).toEqual([
+      { page: 1, pageSize: 25, search: 'a.org', scope: { view: 'mine' } },
+    ]);
+    expect(mock.callsOf('keel.account.options').map((call) => call.params)).toEqual([
+      { scope: { view: 'mine' }, limit: OPTIONS_LIMIT },
+    ]);
+    expect(scopeOf({ search: 'x', id: 'z1' })).toEqual({ id: 'z1' });
+    expect(searchOf({ search: ['a', 'b'] })).toBe('');
+
+    fixture.componentRef.setInput('params', { search: 'b.org', view: 'mine' });
+    await settle(fixture);
+    expect(element.querySelector<HTMLInputElement>('phx-list-searchbar input')?.value).toBe(
+      'b.org',
+    );
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({
+      page: 1,
+      pageSize: 25,
+      search: 'b.org',
+      scope: { view: 'mine' },
+    });
   });
 });
 

@@ -49,6 +49,7 @@ import {
   type KeelView,
   type KeelViewContext,
 } from './views';
+import { KeelWizardComponent } from './wizard/wizard.component';
 
 export type ScreenState =
   | { phase: 'loading' }
@@ -81,6 +82,7 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
     KeelListComponent,
     KeelObjectComponent,
     KeelActionComponent,
+    KeelWizardComponent,
   ],
   template: `
     @switch (state().phase) {
@@ -120,6 +122,14 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
           }
           @case ('action') {
             <keel-action
+              [descriptor]="descriptor()"
+              [params]="screenParams()"
+              (done)="done.emit($event)"
+              (closed)="closed.emit()"
+            />
+          }
+          @case ('wizard') {
+            <keel-wizard
               [descriptor]="descriptor()"
               [params]="screenParams()"
               (done)="done.emit($event)"

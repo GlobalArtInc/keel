@@ -30,6 +30,29 @@
         }
       }
     },
+    "demo": {
+      "projectType": "library",
+      "root": "products/demo",
+      "sourceRoot": "products/demo/src",
+      "prefix": "demo",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "products/demo/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "products/demo/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "products/demo/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        }
+      }
+    },
     "shell": {
       "projectType": "application",
       "root": "apps/shell",

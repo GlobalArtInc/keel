@@ -70,6 +70,7 @@ export interface FormPage {
   readonly id: string;
   readonly labelKey: string;
   readonly showIf: Expr | null;
+  readonly validate: string | null;
   readonly fields: readonly FormField[];
   readonly visible: Signal<boolean>;
 }
@@ -143,6 +144,7 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
       id: declared.id,
       labelKey: `${site.prefix}.page.${declared.id}`,
       showIf,
+      validate: declared.validate ?? null,
       fields: fields.sort(byOrder),
       visible,
     });

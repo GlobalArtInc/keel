@@ -3,6 +3,9 @@ import type { CallError } from '@globalart/keel/meta';
 
 export const RETRY_KEY = 'keel.action.retry';
 export const DONE_KEY = 'keel.action.done';
+export const BACK_KEY = 'keel.action.back';
+export const NEXT_KEY = 'keel.action.next';
+export const FINISH_KEY = 'keel.action.finish';
 export const REQUEST_KEY = 'keel.error.request';
 export const NOT_FOUND_KEY = 'keel.error.not_found';
 export const VIEW_MISSING_KEY = 'keel.view.missing';

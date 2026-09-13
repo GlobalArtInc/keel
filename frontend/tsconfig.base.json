@@ -22,7 +22,8 @@
     "declaration": false,
     "paths": {
       "@globalart/keel": ["libs/keel/src/public-api.ts"],
-      "@globalart/keel/*": ["libs/keel/*/src/public-api.ts"]
+      "@globalart/keel/*": ["libs/keel/*/src/public-api.ts"],
+      "@globalart/keel-demo": ["products/demo/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {

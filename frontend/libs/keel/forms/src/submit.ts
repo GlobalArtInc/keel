@@ -2,23 +2,27 @@ import type { KeelClient } from '@globalart/keel/client';
 import type { CallError, Envelope } from '@globalart/keel/meta';
 import { firstValueFrom } from 'rxjs';
 import { applyCallError, clearFieldErrors } from './errors';
-import type { KeelForm } from './model';
+import type { FormField, KeelForm } from './model';
 import { isEmptyValue } from './validators';
 
 export type Saved<T = unknown> = Extract<Envelope<T>, { ok: true }>;
 
-export function bodyOf(form: KeelForm): Record<string, unknown> {
+export function bodyOf(
+  form: KeelForm,
+  fields: readonly FormField[] = form.fields,
+): Record<string, unknown> {
   const raw = form.group.getRawValue();
   const body: Record<string, unknown> = {};
   if (form.key !== null && !isEmptyValue(raw[form.key])) {
     body[form.key] = raw[form.key];
   }
-  for (const field of form.fields) {
+  for (const field of fields) {
     if (!field.visible()) {
       continue;
     }
     const value = raw[field.name];
-    body[field.name] = isEmptyValue(value) && !field.required() ? null : (value ?? null);
+    const blank = isEmptyValue(value) && !field.required() && field.nullable;
+    body[field.name] = blank ? null : (value ?? null);
   }
   return body;
 }

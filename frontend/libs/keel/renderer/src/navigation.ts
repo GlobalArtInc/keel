@@ -1,3 +1,4 @@
+import { Location } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { PhxTabsService, type PhxTab } from '@globalart/phoenix-ui';
@@ -16,6 +17,7 @@ export function objectTab(url: string, target: ScreenTarget, label: string): Phx
 @Injectable({ providedIn: 'root' })
 export class KeelNavigation {
   private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly tabs = inject(PhxTabsService);
 
   url(target: ScreenTarget): string {
@@ -33,5 +35,9 @@ export class KeelNavigation {
     const url = this.url(target);
     this.tabs.open(objectTab(url, target, label));
     return this.router.navigateByUrl(url);
+  }
+
+  back(): void {
+    this.location.back();
   }
 }

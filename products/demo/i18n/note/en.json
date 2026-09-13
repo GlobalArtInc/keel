@@ -5,6 +5,7 @@
     "import": { "title": "Import notes" },
     "tag": {
       "list": { "title": "Tags" },
+      "empty": "No tags yet",
       "column": {
         "tag": "Tag",
         "count": "Count"

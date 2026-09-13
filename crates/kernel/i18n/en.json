@@ -34,7 +34,10 @@
       "export": "Export",
       "save": "Save",
       "retry": "Retry",
-      "done": "{action} completed"
+      "done": "{action} completed",
+      "back": "Back",
+      "next": "Next",
+      "finish": "Finish"
     },
     "page": { "main": "Main" },
     "once": { "title": "Shown only once: copy the values now" },
