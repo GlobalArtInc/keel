@@ -317,7 +317,14 @@
           "type": "string"
         },
         "kind": {
-          "$ref": "#/$defs/Kind"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Kind"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "icon": {
           "type": [
@@ -339,8 +346,7 @@
       "required": [
         "path",
         "label",
-        "func",
-        "kind"
+        "func"
       ]
     },
     "BootPrincipal": {

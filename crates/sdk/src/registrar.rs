@@ -15,6 +15,7 @@ use crate::error::Result;
 use crate::function::FunctionDef;
 use crate::guard::Guard;
 use crate::services::{ServiceKey, Services};
+use crate::ui::ViewSpec;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuNode {
@@ -87,6 +88,13 @@ impl MenuNode {
 pub struct PermissionDef {
     pub key: String,
     pub defaults: Vec<Level>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ViewDef {
+    pub name: String,
+    pub access: Access,
+    pub needs: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -294,11 +302,19 @@ pub enum RegistrationError {
         lang: String,
         reason: String,
     },
+    #[error("module {module}: the menu node {path} of the view {view} points at {func}")]
+    ViewMenu {
+        module: String,
+        view: String,
+        path: String,
+        func: String,
+    },
 }
 
 pub struct Registrar {
     module: String,
     functions: Vec<FunctionDef>,
+    views: Vec<ViewDef>,
     menu: Vec<MenuNode>,
     i18n: Vec<I18nBundle>,
     permissions: Vec<PermissionDef>,
@@ -318,6 +334,7 @@ pub struct Registrar {
 pub struct Registrations {
     pub module: String,
     pub functions: Vec<FunctionDef>,
+    pub views: Vec<ViewDef>,
     pub menu: Vec<MenuNode>,
     pub i18n: Vec<I18nBundle>,
     pub permissions: Vec<PermissionDef>,
@@ -338,6 +355,7 @@ impl fmt::Debug for Registrations {
         f.debug_struct("Registrations")
             .field("module", &self.module)
             .field("functions", &self.functions)
+            .field("views", &self.views)
             .field("menu", &self.menu)
             .field("permissions", &self.permissions)
             .field("before", &self.before)
@@ -359,6 +377,7 @@ impl Registrar {
         Self {
             module: module.to_owned(),
             functions: Vec::new(),
+            views: Vec::new(),
             menu: Vec::new(),
             i18n: Vec::new(),
             permissions: Vec::new(),
@@ -386,6 +405,7 @@ impl Registrar {
             .functions
             .iter()
             .any(|known| known.name() == def.name())
+            || self.views.iter().any(|known| known.name == def.name())
         {
             self.errors.push(RegistrationError::Duplicate {
                 module: self.module.clone(),
@@ -394,6 +414,37 @@ impl Registrar {
             });
         }
         self.functions.push(def);
+        self
+    }
+
+    pub fn view(&mut self, name: &str, spec: ViewSpec) -> &mut Self {
+        self.check_prefix("view", name);
+        if self.views.iter().any(|known| known.name == name)
+            || self.functions.iter().any(|known| known.name() == name)
+        {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "view",
+                name: name.to_owned(),
+            });
+        }
+        if let Some(node) = spec.menu {
+            if node.func() == name {
+                self.menu.push(node);
+            } else {
+                self.errors.push(RegistrationError::ViewMenu {
+                    module: self.module.clone(),
+                    view: name.to_owned(),
+                    path: node.path().to_owned(),
+                    func: node.func().to_owned(),
+                });
+            }
+        }
+        self.views.push(ViewDef {
+            name: name.to_owned(),
+            access: spec.access,
+            needs: spec.needs,
+        });
         self
     }
 
@@ -555,6 +606,7 @@ impl Registrar {
         Ok(Registrations {
             module: self.module,
             functions: self.functions,
+            views: self.views,
             menu: self.menu,
             i18n: self.i18n,
             permissions: self.permissions,
@@ -590,6 +642,7 @@ impl fmt::Debug for Registrar {
         f.debug_struct("Registrar")
             .field("module", &self.module)
             .field("functions", &self.function_names())
+            .field("views", &self.views)
             .field("menu", &self.menu)
             .field("permissions", &self.permissions)
             .field("errors", &self.errors)
@@ -668,6 +721,14 @@ mod tests {
             )
             .permission("dns.zone.read", &[Level::User])
             .permission("dns.zone.manage", &[Level::User, Level::Reseller])
+            .view(
+                "dns.zone-map",
+                ViewSpec::new(Level::Reseller)
+                    .permission("dns.zone.read")
+                    .menu(MenuNode::new("dns/map", "dns.zone-map").label("dns.zone_map.title"))
+                    .needs(["dns.map"]),
+            )
+            .view("dns.zone-health", ViewSpec::new(Level::User))
             .before("dns.zone.delete", |_: Call<Value>| async {
                 Ok(Before::Proceed)
             })
@@ -698,6 +759,35 @@ mod tests {
         assert_eq!(registrations.menu[0].path(), "dns/zones");
         assert_eq!(registrations.menu[0].icon_name(), Some("globe"));
         assert_eq!(registrations.menu[0].order_value(), 10);
+        assert_eq!(registrations.menu[1].path(), "dns/map");
+        assert_eq!(registrations.menu[1].func(), "dns.zone-map");
+        assert_eq!(
+            registrations.menu[1].label_key(),
+            Some("dns.zone_map.title")
+        );
+        assert_eq!(
+            registrations.views,
+            [
+                ViewDef {
+                    name: "dns.zone-map".into(),
+                    access: Access {
+                        level: Level::Reseller,
+                        permission: Some("dns.zone.read".into()),
+                        feature: None,
+                    },
+                    needs: vec!["dns.map".into()],
+                },
+                ViewDef {
+                    name: "dns.zone-health".into(),
+                    access: Access {
+                        level: Level::User,
+                        permission: None,
+                        feature: None,
+                    },
+                    needs: Vec::new(),
+                },
+            ]
+        );
         assert_eq!(registrations.i18n[0].lang, "en");
         assert_eq!(
             registrations.i18n[0].messages["dns"]["zone"]["list"]["title"],
@@ -744,6 +834,14 @@ mod tests {
             .function(noop("dns.zone.get"))
             .function(noop("dns."))
             .permission("auth.zone.read", &[])
+            .view("dnsx.zone-map", ViewSpec::new(Level::User))
+            .view("dns.zone.get", ViewSpec::new(Level::User))
+            .view(
+                "dns.zone-map",
+                ViewSpec::new(Level::User).menu(MenuNode::new("dns/map", "dns.zone.list")),
+            )
+            .view("dns.zone-map", ViewSpec::new(Level::User))
+            .function(noop("dns.zone-map"))
             .i18n("ru", "[1, 2]")
             .i18n("de", "{ not json")
             .provide::<dyn Clock>(Arc::new(Fixed))
@@ -763,6 +861,11 @@ mod tests {
                 "module dns: function \"dns.zone.get\" is registered twice",
                 "module dns: function \"dns.\" does not carry the module prefix",
                 "module dns: permission \"auth.zone.read\" does not carry the module prefix",
+                "module dns: view \"dnsx.zone-map\" does not carry the module prefix",
+                "module dns: view \"dns.zone.get\" is registered twice",
+                "module dns: the menu node dns/map of the view dns.zone-map points at dns.zone.list",
+                "module dns: view \"dns.zone-map\" is registered twice",
+                "module dns: function \"dns.zone-map\" is registered twice",
                 "module dns: the ru dictionary is not a JSON object: the document is not an object",
                 "module dns: the de dictionary is not a JSON object: key must be a string at line 1 column 3",
                 format!(

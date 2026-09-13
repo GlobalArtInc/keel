@@ -302,7 +302,7 @@ fn boot_fixture_round_trips_with_the_platform_brand_and_a_product_on_every_group
         .map(|group| group.product.as_deref())
         .collect();
     assert_eq!(products, [Some("dns"), Some("panel"), None]);
-    assert_eq!(boot.menu[0].items[0].kind, Kind::List);
+    assert_eq!(boot.menu[0].items[0].kind, Some(Kind::List));
     assert_eq!(
         boot.menu[0].items[0]
             .badge

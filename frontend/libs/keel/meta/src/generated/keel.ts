@@ -220,7 +220,7 @@ export interface BootMenuItem {
   path: string;
   label: string;
   func: string;
-  kind: Kind;
+  kind?: Kind | null;
   icon?: string | null;
   badge?: Badge | null;
 }

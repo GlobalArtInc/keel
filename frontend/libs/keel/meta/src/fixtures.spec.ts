@@ -5,6 +5,8 @@ import addFormats from 'ajv-formats';
 import type {
   Account,
   ActionRole,
+  Boot,
+  BootMenuItem,
   Check,
   ColumnType,
   Control,
@@ -128,6 +130,20 @@ describe('contracts/fixtures', () => {
 
   it('boot.json validates against Boot', () => {
     expectValid('Boot', load('boot.json'), 'boot.json');
+  });
+
+  it('a boot with a view and its menu item without a kind validates against Boot', () => {
+    const item: BootMenuItem = {
+      path: 'hosting/files',
+      label: 'hosting.file_manager.title',
+      func: 'hosting.file-manager',
+    };
+    const boot = load('boot.json') as Boot;
+    boot.views = ['hosting.file-manager'];
+    boot.menu[1].items.push(item);
+    expectValid('Boot', boot, 'boot.json with a view');
+    boot.menu[1].items.push({ path: 'hosting/terminal', label: 'x' } as BootMenuItem);
+    expect(validator('Boot')(boot)).toBe(false);
   });
 
   it('event.json validates against Event', () => {

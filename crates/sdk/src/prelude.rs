@@ -25,5 +25,5 @@ pub use crate::product::{Brand, Edition, LevelLabels, MenuGroup, ProductManifest
 pub use crate::registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use crate::secret::Secret;
 pub use crate::settings::{SettingDef, SettingsSource};
-pub use crate::ui::{Action, Column, Form, List};
+pub use crate::ui::{Action, Column, Form, List, ViewSpec};
 pub use crate::{VERSION, chrono, migrator};

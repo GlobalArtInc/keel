@@ -8,7 +8,7 @@ use axum::{Extension, Json};
 use keel_sdk::KeelError;
 use keel_sdk::runtime::property_names;
 use keel_types::descriptor::MemberAccess;
-use keel_types::{Descriptor, Level, Principal};
+use keel_types::{Access, Descriptor, Level, Principal};
 use serde_json::{Map, Value};
 
 use super::Shared;
@@ -33,7 +33,10 @@ impl<'a> Projection<'a> {
     }
 
     pub fn admit(&self, function: &Function) -> Result<(), KeelError> {
-        let access = &function.descriptor().access;
+        self.admits(&function.descriptor().access)
+    }
+
+    pub fn admits(&self, access: &Access) -> Result<(), KeelError> {
         guards::level(access, self.principal)?;
         guards::permission(self.registry, access, self.principal)
     }

@@ -420,7 +420,7 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
     assert_eq!(probe.label, "menu.probe");
     assert_eq!(probe.icon, "flask");
     assert_eq!(probe.items[0].label, "probe.item.public.title");
-    assert_eq!(probe.items[0].kind, Kind::List);
+    assert_eq!(probe.items[0].kind, Some(Kind::List));
     assert!(probe.items[0].icon.is_none());
     assert_eq!(probe.items[1].func, "probe.item.list");
     assert_eq!(probe.items[1].icon.as_deref(), Some("notebook"));

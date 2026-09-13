@@ -54,13 +54,22 @@ pub(crate) fn project(registry: &Registry, principal: &Principal) -> Vec<BootMen
 }
 
 fn item(registry: &Registry, projection: &Projection<'_>, node: &MenuNode) -> Option<BootMenuItem> {
-    let function = registry.function(node.func())?;
-    projection.admit(function).ok()?;
+    let (label, kind) = match registry.function(node.func()) {
+        Some(function) => {
+            projection.admit(function).ok()?;
+            (label_of(node, function)?, Some(function.def().kind()))
+        }
+        None => {
+            let view = registry.view(node.func())?;
+            projection.admits(view.access()).ok()?;
+            (node.label_key()?, None)
+        }
+    };
     Some(BootMenuItem {
         path: node.path().to_owned(),
-        label: label_of(node, function)?.to_owned(),
+        label: label.to_owned(),
         func: node.func().to_owned(),
-        kind: function.def().kind(),
+        kind,
         icon: node.icon_name().map(str::to_owned),
         badge: node.badge_problem().map(|problem| Badge {
             problem: problem.to_owned(),

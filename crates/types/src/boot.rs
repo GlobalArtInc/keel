@@ -71,7 +71,8 @@ pub struct BootMenuItem {
     pub path: String,
     pub label: String,
     pub func: String,
-    pub kind: Kind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Kind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,7 +127,7 @@ mod tests {
                     path: "system/accounts".into(),
                     label: "keel.account.list.title".into(),
                     func: "keel.account.list".into(),
-                    kind: Kind::List,
+                    kind: Some(Kind::List),
                     icon: Some("users".into()),
                     badge: None,
                 }],
@@ -161,6 +162,25 @@ mod tests {
             })
         );
         assert_eq!(serde_json::from_value::<Boot>(wire).unwrap(), boot);
+    }
+
+    #[test]
+    fn a_menu_item_of_a_view_carries_no_kind_member_and_reads_back_without_one() {
+        let item = BootMenuItem {
+            path: "hosting/files".into(),
+            label: "hosting.file_manager.title".into(),
+            func: "hosting.file-manager".into(),
+            kind: None,
+            icon: Some("folder".into()),
+            badge: None,
+        };
+        let wire = serde_json::to_value(&item).unwrap();
+        assert_eq!(
+            wire,
+            json!({ "path": "hosting/files", "label": "hosting.file_manager.title",
+                    "func": "hosting.file-manager", "icon": "folder" })
+        );
+        assert_eq!(serde_json::from_value::<BootMenuItem>(wire).unwrap(), item);
     }
 
     #[test]

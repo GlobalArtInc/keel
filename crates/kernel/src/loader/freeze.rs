@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
-    StopHook, UiError,
+    StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{AccountSource, LanguageSource, PrincipalSource, SecretCipher};
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
@@ -24,7 +24,7 @@ use crate::clock::Clock;
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
-use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
+use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
 use crate::secret::DataKeyCipher;
 
 const PLATFORM: &str = "the platform";
@@ -86,6 +86,20 @@ pub enum FreezeProblem {
         permission: String,
         first: String,
         second: String,
+    },
+    #[error("the view {view} is registered by both {first} and {second}")]
+    ViewRegisteredTwice {
+        view: String,
+        first: String,
+        second: String,
+    },
+    #[error(
+        "module {module}: view {view} names the permission {permission}, which no module registers"
+    )]
+    ViewPermissionUnknown {
+        module: String,
+        view: String,
+        permission: String,
     },
     #[error("module {module}: {kind} hook on {function}, which is not registered")]
     HookTarget {
@@ -280,6 +294,7 @@ struct Freezer {
     known: BTreeMap<String, Kind>,
     functions: BTreeMap<String, Function>,
     owners: BTreeMap<String, String>,
+    views: BTreeMap<String, View>,
     permissions: BTreeMap<String, PermissionDef>,
     permission_owners: BTreeMap<String, String>,
     guards: Vec<Hook<Arc<dyn Guard>>>,
@@ -305,6 +320,7 @@ impl Initialised {
             known: BTreeMap::new(),
             functions: BTreeMap::new(),
             owners: BTreeMap::new(),
+            views: BTreeMap::new(),
             permissions: BTreeMap::new(),
             permission_owners: BTreeMap::new(),
             guards: Vec::new(),
@@ -322,6 +338,7 @@ impl Initialised {
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
         let mut patches = Vec::new();
+        let mut views = Vec::new();
         for registrations in self.registrations {
             let module = registrations.module;
             freezer.provide(&module, registrations.provides);
@@ -332,6 +349,7 @@ impl Initialised {
             for def in registrations.functions {
                 freezer.function(&module, def);
             }
+            views.push((module.clone(), registrations.views));
             for permission in registrations.permissions {
                 freezer.permission(&module, permission);
             }
@@ -366,6 +384,11 @@ impl Initialised {
         freezer.unclaimed();
         for (module, required) in requirements {
             freezer.require(&module, &required);
+        }
+        for (module, views) in views {
+            for def in views {
+                freezer.view(&module, def);
+            }
         }
         for (module, before, within) in hooks {
             freezer.hooks(&module, before, within);
@@ -533,6 +556,34 @@ impl Freezer {
         self.permissions.insert(permission.key.clone(), permission);
     }
 
+    fn view(&mut self, module: &str, def: ViewDef) {
+        if let Some(first) = self.owners.get(&def.name) {
+            self.problems.push(FreezeProblem::ViewRegisteredTwice {
+                view: def.name,
+                first: first.clone(),
+                second: module.to_owned(),
+            });
+            return;
+        }
+        self.owners.insert(def.name.clone(), module.to_owned());
+        if let Some(permission) = &def.access.permission
+            && !self.permissions.contains_key(permission)
+        {
+            self.problems.push(FreezeProblem::ViewPermissionUnknown {
+                module: module.to_owned(),
+                view: def.name.clone(),
+                permission: permission.clone(),
+            });
+        }
+        self.views.insert(
+            def.name.clone(),
+            View {
+                module: module.to_owned(),
+                def,
+            },
+        );
+    }
+
     fn menu(&mut self, module: &str, node: MenuNode) {
         if let Some(first) = self.menu_owners.get(node.path()) {
             self.problems.push(FreezeProblem::MenuPathTwice {
@@ -689,7 +740,7 @@ impl Freezer {
                 .get(node.path())
                 .cloned()
                 .unwrap_or_default();
-            if !self.known.contains_key(node.func()) {
+            if !self.known.contains_key(node.func()) && !self.views.contains_key(node.func()) {
                 problems.push(FreezeProblem::MenuFunction {
                     module: module.clone(),
                     path: node.path().to_owned(),
@@ -733,11 +784,12 @@ impl Freezer {
         }
         for node in &self.menu {
             let owner = format!("menu node {}", node.path());
-            match self
-                .functions
-                .get(node.func())
-                .map(|function| label_of(node, function))
-            {
+            let label = match self.functions.get(node.func()) {
+                Some(function) => Some(label_of(node, function)),
+                None if self.views.contains_key(node.func()) => Some(node.label_key()),
+                None => None,
+            };
+            match label {
                 Some(Some(label)) => required.push((owner, label.to_owned(), None)),
                 Some(None) => self.problems.push(FreezeProblem::MenuLabel {
                     module: self
@@ -812,6 +864,7 @@ impl Freezer {
             manifests: graph.manifests().to_vec(),
             products: graph.products().to_vec(),
             functions: self.functions,
+            views: self.views,
             groups: self.groups,
             menu: self.menu,
             permissions: self.permissions,
@@ -825,6 +878,7 @@ impl Freezer {
             modules = ?graph.ids(),
             products = ?graph.product_ids(),
             functions = registry.functions.len(),
+            views = registry.views.len(),
             "registries frozen"
         );
         Ok(Frozen {
@@ -1889,6 +1943,70 @@ mod tests {
                 "the en dictionaries of module base and module clashing both define menu.base",
                 "module clashing: menu node clashing/items names the group clashing, which no enabled product declares",
                 "menu node clashing/items: the en dictionary has no entry for clashing.menu",
+            ]
+        );
+    }
+
+    fn viewing_init(r: &mut Registrar) -> Result<()> {
+        r.view(
+            "viewing.map",
+            ViewSpec::new(Level::Reseller)
+                .permission("base.item.read")
+                .menu(
+                    MenuNode::new("base/map", "viewing.map")
+                        .label("viewing.map.title")
+                        .icon("map"),
+                )
+                .needs(["base.maps"]),
+        )
+        .view("viewing.health", ViewSpec::new(Level::Admin))
+        .i18n("en", r#"{ "viewing": { "map": { "title": "Map" } } }"#);
+        Ok(())
+    }
+
+    module!(VIEWING, "viewing", ["base"], viewing_init);
+
+    #[test]
+    fn a_view_is_frozen_with_its_access_and_features_and_its_menu_node_beside_the_functions() {
+        let frozen = freeze(&[&BASE, &VIEWING], &[&BASE_BUNDLE]).unwrap();
+        let registry = frozen.registry();
+        let names: Vec<&str> = registry.views().map(View::name).collect();
+        assert_eq!(names, ["viewing.health", "viewing.map"]);
+        let map = registry.view("viewing.map").unwrap();
+        assert_eq!(map.module(), "viewing");
+        assert_eq!(map.access().level, Level::Reseller);
+        assert_eq!(map.access().permission.as_deref(), Some("base.item.read"));
+        assert_eq!(map.needs(), ["base.maps"]);
+        assert!(registry.function("viewing.map").is_none());
+        let node = registry
+            .menu()
+            .iter()
+            .find(|node| node.path() == "base/map")
+            .unwrap();
+        assert_eq!(node.func(), "viewing.map");
+        assert!(format!("{registry:?}").contains("\"viewing.map\""));
+    }
+
+    fn misviewing_init(r: &mut Registrar) -> Result<()> {
+        r.view(
+            "misviewing.map",
+            ViewSpec::new(Level::User)
+                .permission("misviewing.map.open")
+                .menu(MenuNode::new("nowhere/map", "misviewing.map")),
+        );
+        Ok(())
+    }
+
+    module!(MISVIEWING, "misviewing", [], misviewing_init);
+
+    #[test]
+    fn a_view_needs_a_registered_permission_a_declared_group_and_a_labelled_menu_node() {
+        assert_eq!(
+            problems(&[&MISVIEWING], &[]),
+            [
+                "module misviewing: view misviewing.map names the permission misviewing.map.open, which no module registers",
+                "module misviewing: menu node nowhere/map names the group nowhere, which no enabled product declares",
+                "module misviewing: menu node nowhere/map has no label and misviewing.map has no screen title to use instead",
             ]
         );
     }

@@ -6,8 +6,10 @@ use keel_types::ui::{
     Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,
     Total,
 };
-use keel_types::{Expr, Level, MemberAccess};
+use keel_types::{Access, Expr, Level, MemberAccess};
 use serde_json::{Map, Value};
+
+use crate::registrar::MenuNode;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UiDef {
@@ -636,6 +638,46 @@ impl Action {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ViewSpec {
+    pub access: Access,
+    pub menu: Option<MenuNode>,
+    pub needs: Vec<String>,
+}
+
+impl ViewSpec {
+    pub fn new(level: Level) -> Self {
+        Self {
+            access: Access {
+                level,
+                permission: None,
+                feature: None,
+            },
+            menu: None,
+            needs: Vec::new(),
+        }
+    }
+
+    pub fn permission(mut self, key: &str) -> Self {
+        self.access.permission = Some(key.to_owned());
+        self
+    }
+
+    pub fn menu(mut self, node: MenuNode) -> Self {
+        self.menu = Some(node);
+        self
+    }
+
+    pub fn needs<I, S>(mut self, features: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.needs = features.into_iter().map(Into::into).collect();
+        self
+    }
+}
+
 fn string_map<'a, I>(pairs: I) -> Map<String, Value>
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
@@ -918,5 +960,29 @@ mod tests {
             def.compile(&def.column_keys()),
             Err(UiError::UnknownField { .. })
         ));
+    }
+
+    #[test]
+    fn a_view_spec_starts_from_a_level_and_collects_the_permission_menu_and_features() {
+        let spec = ViewSpec::new(Level::Reseller)
+            .permission("hosting.file.manage")
+            .menu(MenuNode::new("hosting/files", "hosting.file-manager").icon("folder"))
+            .needs(["hosting.web"]);
+        assert_eq!(
+            spec,
+            ViewSpec {
+                access: Access {
+                    level: Level::Reseller,
+                    permission: Some("hosting.file.manage".into()),
+                    feature: None,
+                },
+                menu: Some(MenuNode::new("hosting/files", "hosting.file-manager").icon("folder")),
+                needs: vec!["hosting.web".into()],
+            }
+        );
+        let bare = ViewSpec::new(Level::User);
+        assert!(bare.access.permission.is_none());
+        assert!(bare.menu.is_none());
+        assert!(bare.needs.is_empty());
     }
 }

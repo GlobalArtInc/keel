@@ -3,10 +3,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use keel_sdk::runtime::{
-    BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, WithinHook,
+    BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, ViewDef,
+    WithinHook,
 };
 use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
-use keel_types::{Descriptor, Platform};
+use keel_types::{Access, Descriptor, Platform};
 use serde_json::{Map, Value};
 
 pub struct Registry {
@@ -15,6 +16,7 @@ pub struct Registry {
     pub(crate) manifests: Vec<&'static ProductManifest>,
     pub(crate) products: Vec<&'static ProductManifest>,
     pub(crate) functions: BTreeMap<String, Function>,
+    pub(crate) views: BTreeMap<String, View>,
     pub(crate) groups: Vec<Group>,
     pub(crate) menu: Vec<MenuNode>,
     pub(crate) permissions: BTreeMap<String, PermissionDef>,
@@ -45,6 +47,12 @@ pub struct Function {
     pub(crate) before: Vec<Hook<BeforeHook>>,
     pub(crate) within: Vec<Hook<WithinHook>>,
     pub(crate) patched: Vec<PatchedField>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct View {
+    pub(crate) module: String,
+    pub(crate) def: ViewDef,
 }
 
 #[derive(Clone)]
@@ -91,6 +99,14 @@ impl Registry {
 
     pub fn function(&self, name: &str) -> Option<&Function> {
         self.functions.get(name)
+    }
+
+    pub fn views(&self) -> impl Iterator<Item = &View> {
+        self.views.values()
+    }
+
+    pub fn view(&self, name: &str) -> Option<&View> {
+        self.views.get(name)
     }
 
     pub fn menu(&self) -> &[MenuNode] {
@@ -160,6 +176,24 @@ impl Function {
     }
 }
 
+impl View {
+    pub fn name(&self) -> &str {
+        &self.def.name
+    }
+
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
+    pub fn access(&self) -> &Access {
+        &self.def.access
+    }
+
+    pub fn needs(&self) -> &[String] {
+        &self.def.needs
+    }
+}
+
 impl fmt::Debug for Registry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Registry")
@@ -175,6 +209,7 @@ impl fmt::Debug for Registry {
             )
             .field("products", &self.product_ids())
             .field("functions", &self.functions.keys().collect::<Vec<_>>())
+            .field("views", &self.views.keys().collect::<Vec<_>>())
             .field("groups", &self.groups)
             .field("menu", &self.menu)
             .field("permissions", &self.permissions.keys().collect::<Vec<_>>())

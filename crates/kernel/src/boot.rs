@@ -5,6 +5,7 @@ use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Level, Principal};
 use sea_orm::DatabaseConnection;
 
 use crate::dispatcher;
+use crate::http::Projection;
 use crate::menu;
 use crate::meta;
 use crate::registry::Registry;
@@ -75,6 +76,15 @@ pub(crate) fn features(registry: &Registry) -> Vec<String> {
     features
 }
 
+pub(crate) fn views(registry: &Registry, principal: &Principal) -> Vec<String> {
+    let projection = Projection::new(registry, principal);
+    registry
+        .views()
+        .filter(|view| projection.admits(view.access()).is_ok())
+        .map(|view| view.name().to_owned())
+        .collect()
+}
+
 pub(crate) fn principal(
     principal: &Principal,
     totp: bool,
@@ -130,7 +140,7 @@ pub(crate) async fn payload(
         license: None,
         menu: menu::project(registry, principal),
         dashboard: Vec::new(),
-        views: Vec::new(),
+        views: views(registry, principal),
         meta,
         problems: None,
     })
