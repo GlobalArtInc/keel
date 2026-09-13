@@ -58,11 +58,22 @@ impl Client {
         params: Value,
         options: CallOptions,
     ) -> Result<Envelope<Value>, ClientError> {
+        self.call_as(func, params, None, options).await
+    }
+
+    pub async fn call_as(
+        &mut self,
+        func: &str,
+        params: Value,
+        run_as: Option<&str>,
+        options: CallOptions,
+    ) -> Result<Envelope<Value>, ClientError> {
         self.send(&Frame::Call {
             func: func.to_owned(),
             params,
             request_id: options.request_id,
             idempotency_key: options.idempotency_key,
+            run_as: run_as.map(str::to_owned),
         })
         .await
     }

@@ -11,7 +11,7 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Authenticated, Authenticator, CallExt, Client as HttpClient, Credential};
-use keel_testkit::TestDatabase;
+use keel_testkit::{Harness, TestDatabase, Who};
 use keel_types::{Envelope, ErrorCode, Via};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -453,6 +453,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
             params: ctl::params(["kind=reseller"]).unwrap(),
             out: Out::Json,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await
@@ -471,6 +472,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
             params: json!({ "sort": { "key": "id", "dir": "asc" } }),
             out: Out::Table,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await
@@ -499,6 +501,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
             params: json!({}),
             out: Out::Table,
             lang: "ru".into(),
+            run_as: None,
         },
     )
     .await
@@ -520,6 +523,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
             params: json!({ "kind": "not a name" }),
             out: Out::Table,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await
@@ -545,6 +549,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
             params: json!({ "id": id }),
             out: Out::Table,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await
@@ -601,4 +606,71 @@ async fn an_idempotency_key_in_the_frame_replays_the_stored_response() {
     assert_eq!(error.code, ErrorCode::IdempotencyMismatch);
     serving.stop().await.expect("the socket stops");
     bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_frame_with_as_runs_as_the_named_principal_with_the_owner_as_actor_via_socket() {
+    let harness = Harness::new().boot().await;
+    let a1 = harness.principal(Who::A1).clone();
+    let socket = harness.socket().await;
+    let listed = socket
+        .ctl_json_as("keel.account.list", &[], "en", "a1")
+        .await;
+    assert!(listed.ok, "{}", listed.text);
+    let envelope: Value = serde_json::from_str(&listed.text).expect("ctl prints the envelope");
+    assert_eq!(envelope["data"]["total"], json!(1));
+    assert_eq!(
+        envelope["data"]["data"][0]["id"],
+        json!(a1.account_id.to_string())
+    );
+    assert_eq!(
+        envelope["meta"]["principal"],
+        json!({
+            "id": a1.id,
+            "login": "a1",
+            "level": "user",
+            "account": a1.account_id,
+            "actor": { "id": Id::ROOT_ACCOUNT, "login": OWNER_LOGIN, "level": "owner", "via": "socket" }
+        })
+    );
+
+    let frame = socket
+        .call_as("keel.principal.list", json!({}), "reseller")
+        .await;
+    let Envelope::Ok { data, meta } = frame else {
+        panic!("expected an ok envelope: {frame:?}");
+    };
+    let logins: Vec<&str> = data["data"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .filter_map(|row| row["login"].as_str())
+        .collect();
+    assert_eq!(logins, ["a1", "a2", "reseller"]);
+    let principal = meta.principal.expect("the reseller is named in meta");
+    assert_eq!(principal.level, Level::Reseller);
+    let actor = principal.actor.expect("the owner is the actor");
+    assert_eq!(actor.login, OWNER_LOGIN);
+    assert_eq!(actor.via, keel_types::ActorVia::Socket);
+
+    let nobody = socket
+        .ctl_json_as("keel.account.list", &[], "en", "nobody")
+        .await;
+    assert!(!nobody.ok, "{}", nobody.text);
+    let envelope: Value = serde_json::from_str(&nobody.text).expect("ctl prints the envelope");
+    assert_eq!(envelope["error"]["code"], json!("not_found"));
+    assert_eq!(
+        envelope["error"]["key"],
+        json!("keel.error.principal_not_found")
+    );
+    assert_eq!(envelope["error"]["params"]["login"], json!("nobody"));
+
+    let owner_frame = socket.call("keel.account.list", json!({})).await;
+    let Envelope::Ok { data, meta } = owner_frame else {
+        panic!("expected an ok envelope: {owner_frame:?}");
+    };
+    assert_eq!(data["total"], json!(5));
+    assert!(meta.principal.expect("the owner").actor.is_none());
+    socket.stop().await.expect("the socket stops");
+    harness.finish().await;
 }

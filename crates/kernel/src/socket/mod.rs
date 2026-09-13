@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use keel_sdk::KeelError;
-use keel_types::{Envelope, Meta, Principal};
+use keel_sdk::runtime::Db;
+use keel_sdk::system::PrincipalSource;
+use keel_types::{Envelope, Meta, Principal, Via};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -23,6 +25,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use crate::boot;
 use crate::dispatcher::{CallOptions, Dispatcher, generate_request_id};
 use crate::http::{Projection, acceptable_request_id, catalogue};
+use crate::keel::StoredPrincipals;
 
 pub use client::{Client, ClientError};
 pub use frame::{FRAME_LIMIT, Frame};
@@ -239,9 +242,23 @@ impl Socket {
                 params,
                 request_id,
                 idempotency_key,
+                run_as,
             } => {
+                let request_id = request_id.filter(|id| acceptable_request_id(id));
+                let principal = match run_as {
+                    Some(login) => match self.run_as(&login).await {
+                        Ok(principal) => principal,
+                        Err(error) => {
+                            return error_envelope(
+                                error,
+                                &request_id.unwrap_or_else(generate_request_id),
+                            );
+                        }
+                    },
+                    None => principal,
+                };
                 let options = CallOptions {
-                    request_id: request_id.filter(|id| acceptable_request_id(id)),
+                    request_id,
                     idempotency_key,
                     client: None,
                 };
@@ -284,6 +301,18 @@ impl Socket {
                 }
             }
         }
+    }
+
+    async fn run_as(&self, login: &str) -> Result<Principal, KeelError> {
+        let db = Db::from_connection(self.dispatcher.db().clone());
+        let Some(mut principal) = StoredPrincipals.by_login(login, &db).await? else {
+            return Err(
+                KeelError::not_found("keel.error.principal_not_found").param("login", login)
+            );
+        };
+        principal.via = Via::Socket;
+        principal.actor = Some(Box::new(owner()));
+        Ok(principal)
     }
 }
 

@@ -155,6 +155,7 @@
       "level": "Требуется уровень {level}",
       "permission": "Требуется право {permission}",
       "function_not_found": "Функции {function} не существует",
+      "principal_not_found": "Принципал {login} не существует",
       "account_not_found": "Аккаунта не существует или он вне вашей области",
       "timeout": "Вызов занял слишком много времени",
       "hook_timeout": "Хук модуля {module} на {function} не уложился в срок",

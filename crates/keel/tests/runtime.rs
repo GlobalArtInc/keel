@@ -573,6 +573,7 @@ async fn ctl_keel_account_create_returns_the_envelope_and_out_table_renders_the_
             params: ctl::params(["kind=reseller"]).unwrap(),
             out: Out::Json,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await
@@ -589,6 +590,7 @@ async fn ctl_keel_account_create_returns_the_envelope_and_out_table_renders_the_
             params: json!({}),
             out: Out::Table,
             lang: "en".into(),
+            run_as: None,
         },
     )
     .await

@@ -326,6 +326,10 @@ principal_id=$(json_get "$site/principal.json" 'doc["data"]["id"]')
 check "ctl auth.password.set for alice" keel_ok "$site/password.json" ctl auth.password.set "principal=$principal_id" password=correct-horse
 check "auth.password.set answers the principal" json_is "$site/password.json" "doc['ok'] is True and doc['data']['principal'] == '$principal_id'"
 check "ctl note.edit title=hers in the account of alice" keel_ok "$site/hers.json" ctl note.edit title=hers "account=$account_id"
+check "ctl keel.account.list --as alice" keel_ok "$site/accounts-as-alice.json" ctl keel.account.list --as alice
+check "keel.account.list as alice answers her account with the owner as actor" json_is "$site/accounts-as-alice.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$account_id'] and doc['meta']['principal']['login'] == 'alice' and doc['meta']['principal']['actor']['login'] == 'owner' and doc['meta']['principal']['actor']['via'] == 'socket'"
+check "ctl keel.account.list --as nobody is refused" keel_fails "$site/as-nobody.json" ctl keel.account.list --as nobody
+check "keel.account.list as nobody answers not_found" json_is "$site/as-nobody.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found" and doc["error"]["key"] == "keel.error.principal_not_found" and doc["error"]["params"]["login"] == "nobody"'
 check "POST /api/v1/call/auth.login with a wrong password is 401" http_is "$site/wrong.json" 401 POST /api/v1/call/auth.login '{"login":"alice","password":"wrong"}'
 check "the wrong password answers auth.error.credentials" json_is "$site/wrong.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "auth.error.credentials"'
 check "POST /api/v1/call/auth.login is 200" http_is "$site/login.json" 200 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'

@@ -21,6 +21,7 @@ pub struct Request {
     pub params: Value,
     pub out: Out,
     pub lang: String,
+    pub run_as: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,9 +70,10 @@ fn value_of(text: &str) -> Value {
 pub async fn run(socket: &Path, request: &Request) -> Result<Output, CtlError> {
     let mut client = Client::connect(socket).await?;
     let envelope = client
-        .call(
+        .call_as(
             &request.func,
             request.params.clone(),
+            request.run_as.as_deref(),
             CallOptions::default(),
         )
         .await?;

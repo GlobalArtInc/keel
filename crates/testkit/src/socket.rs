@@ -64,9 +64,16 @@ impl TestSocket {
     }
 
     pub async fn call(&self, func: &str, params: Value) -> Envelope<Value> {
-        match self.try_call(func, params).await {
+        match self.try_call(func, params, None).await {
             Ok(envelope) => envelope,
             Err(error) => panic!("{func} over the control socket: {error}"),
+        }
+    }
+
+    pub async fn call_as(&self, func: &str, params: Value, run_as: &str) -> Envelope<Value> {
+        match self.try_call(func, params, Some(run_as)).await {
+            Ok(envelope) => envelope,
+            Err(error) => panic!("{func} as {run_as} over the control socket: {error}"),
         }
     }
 
@@ -74,9 +81,12 @@ impl TestSocket {
         &self,
         func: &str,
         params: Value,
+        run_as: Option<&str>,
     ) -> Result<Envelope<Value>, SocketTestError> {
         let mut client = Client::connect(&self.path).await?;
-        Ok(client.call(func, params, CallOptions::default()).await?)
+        Ok(client
+            .call_as(func, params, run_as, CallOptions::default())
+            .await?)
     }
 
     pub async fn boot(&self) -> Envelope<Boot> {
@@ -92,15 +102,32 @@ impl TestSocket {
     }
 
     pub async fn ctl_json(&self, func: &str, pairs: &[&str], lang: &str) -> CtlOutput {
-        self.ctl(func, pairs, Out::Json, lang).await
+        self.ctl(func, pairs, Out::Json, lang, None).await
+    }
+
+    pub async fn ctl_json_as(
+        &self,
+        func: &str,
+        pairs: &[&str],
+        lang: &str,
+        run_as: &str,
+    ) -> CtlOutput {
+        self.ctl(func, pairs, Out::Json, lang, Some(run_as)).await
     }
 
     pub async fn ctl_table(&self, func: &str, pairs: &[&str], lang: &str) -> CtlOutput {
-        self.ctl(func, pairs, Out::Table, lang).await
+        self.ctl(func, pairs, Out::Table, lang, None).await
     }
 
-    async fn ctl(&self, func: &str, pairs: &[&str], out: Out, lang: &str) -> CtlOutput {
-        match self.try_ctl(func, pairs, out, lang).await {
+    async fn ctl(
+        &self,
+        func: &str,
+        pairs: &[&str],
+        out: Out,
+        lang: &str,
+        run_as: Option<&str>,
+    ) -> CtlOutput {
+        match self.try_ctl(func, pairs, out, lang, run_as).await {
             Ok(output) => output,
             Err(error) => panic!("ctl {func} over the control socket: {error}"),
         }
@@ -112,12 +139,14 @@ impl TestSocket {
         pairs: &[&str],
         out: Out,
         lang: &str,
+        run_as: Option<&str>,
     ) -> Result<CtlOutput, SocketTestError> {
         let request = Request {
             func: func.to_owned(),
             params: ctl::params(pairs.iter().copied())?,
             out,
             lang: lang.to_owned(),
+            run_as: run_as.map(str::to_owned),
         };
         let output = ctl::run(&self.path, &request).await?;
         Ok(CtlOutput {

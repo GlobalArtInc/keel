@@ -57,6 +57,8 @@ pub(crate) struct CtlArgs {
     pub(crate) socket: Option<PathBuf>,
     #[arg(long, default_value = "en", value_name = "CODE")]
     pub(crate) lang: String,
+    #[arg(long = "as", value_name = "LOGIN")]
+    pub(crate) run_as: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
@@ -155,6 +157,7 @@ impl Runtime {
                         params: ctl::params(args.pairs.iter().map(String::as_str))?,
                         out: args.out.into(),
                         lang: args.lang,
+                        run_as: args.run_as,
                     };
                     let output = ctl::run(&socket, &request).await?;
                     if output.ok {
@@ -262,6 +265,8 @@ mod tests {
             "/tmp/core.sock",
             "--lang",
             "ru",
+            "--as",
+            "alice",
         ])
         .unwrap();
         let Command::Ctl(args) = cli.command else {
@@ -273,6 +278,7 @@ mod tests {
         assert_eq!(Out::from(args.out), Out::Table);
         assert_eq!(args.socket, Some(PathBuf::from("/tmp/core.sock")));
         assert_eq!(args.lang, "ru");
+        assert_eq!(args.run_as.as_deref(), Some("alice"));
         let cli = Cli::try_parse_from(["keel", "ctl", "keel.account.list"]).unwrap();
         let Command::Ctl(args) = cli.command else {
             panic!("expected ctl");
@@ -281,6 +287,7 @@ mod tests {
         assert_eq!(args.out, OutArg::Json);
         assert!(args.socket.is_none());
         assert_eq!(args.lang, "en");
+        assert!(args.run_as.is_none());
         assert!(Cli::try_parse_from(["keel", "ctl"]).is_err());
         assert!(Cli::try_parse_from(["keel", "ctl", "a.b", "--out", "yaml"]).is_err());
         assert!(Cli::try_parse_from(["keel"]).is_err());

@@ -155,6 +155,7 @@
       "level": "The level {level} is required",
       "permission": "The permission {permission} is required",
       "function_not_found": "The function {function} does not exist",
+      "principal_not_found": "The principal {login} does not exist",
       "account_not_found": "The account does not exist or is outside your scope",
       "timeout": "The call took too long",
       "hook_timeout": "A hook of {module} on {function} took too long",

@@ -14,6 +14,7 @@ pub enum Frame {
         params: Value,
         request_id: Option<String>,
         idempotency_key: Option<String>,
+        run_as: Option<String>,
     },
     Describe {
         name: String,
@@ -35,6 +36,8 @@ struct Wire {
     request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     idempotency_key: Option<String>,
+    #[serde(default, rename = "as", skip_serializing_if = "Option::is_none")]
+    run_as: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     describe: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,6 +73,7 @@ impl Frame {
                 params,
                 request_id,
                 idempotency_key,
+                run_as,
                 describe: None,
                 i18n: None,
                 boot: None,
@@ -80,12 +84,16 @@ impl Frame {
                 idempotency_key: idempotency_key
                     .map(|key| key.trim().to_owned())
                     .filter(|key| !key.is_empty()),
+                run_as: run_as
+                    .map(|login| login.trim().to_owned())
+                    .filter(|login| !login.is_empty()),
             }),
             Wire {
                 func: None,
                 params: None,
                 request_id: None,
                 idempotency_key: None,
+                run_as: None,
                 describe: Some(name),
                 i18n: None,
                 boot: None,
@@ -95,6 +103,7 @@ impl Frame {
                 params: None,
                 request_id: None,
                 idempotency_key: None,
+                run_as: None,
                 describe: None,
                 i18n: Some(lang),
                 boot: None,
@@ -106,6 +115,7 @@ impl Frame {
                 params: None,
                 request_id: None,
                 idempotency_key: None,
+                run_as: None,
                 describe: None,
                 i18n: None,
                 boot: Some(true),
@@ -121,11 +131,13 @@ impl Frame {
                 params,
                 request_id,
                 idempotency_key,
+                run_as,
             } => Wire {
                 func: Some(func.clone()),
                 params: Some(params.clone()),
                 request_id: request_id.clone(),
                 idempotency_key: idempotency_key.clone(),
+                run_as: run_as.clone(),
                 ..Wire::default()
             },
             Frame::Describe { name } => Wire {
@@ -157,7 +169,7 @@ mod tests {
     #[test]
     fn a_call_frame_carries_the_function_its_parameters_and_the_optional_ids() {
         let frame = Frame::parse(
-            br#"{"func":"keel.account.list","params":{"page":2},"requestId":"req-1","idempotencyKey":" k1 "}"#,
+            br#"{"func":"keel.account.list","params":{"page":2},"requestId":"req-1","idempotencyKey":" k1 ","as":" a1 "}"#,
         )
         .unwrap();
         assert_eq!(
@@ -167,9 +179,10 @@ mod tests {
                 params: json!({ "page": 2 }),
                 request_id: Some("req-1".into()),
                 idempotency_key: Some("k1".into()),
+                run_as: Some("a1".into()),
             }
         );
-        let bare = Frame::parse(br#"{"func":"keel.account.list"}"#).unwrap();
+        let bare = Frame::parse(br#"{"func":"keel.account.list","as":""}"#).unwrap();
         assert_eq!(
             bare,
             Frame::Call {
@@ -177,6 +190,7 @@ mod tests {
                 params: json!({}),
                 request_id: None,
                 idempotency_key: None,
+                run_as: None,
             }
         );
         assert_eq!(
@@ -198,6 +212,7 @@ mod tests {
                 params: json!({ "a": [1, "x"] }),
                 request_id: Some("req-7".into()),
                 idempotency_key: None,
+                run_as: Some("alice".into()),
             },
             Frame::describe("probe.ping"),
             Frame::i18n("en"),
@@ -227,6 +242,8 @@ mod tests {
             br#"{"boot":true,"i18n":"en"}"#,
             br#"{"func":"a.b.c","extra":1}"#,
             br#"{"func":1}"#,
+            br#"{"describe":"a.b.c","as":"alice"}"#,
+            br#"{"boot":true,"as":"alice"}"#,
             br#"[1,2]"#,
         ] {
             let error = Frame::parse(line).unwrap_err();
