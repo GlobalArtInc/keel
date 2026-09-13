@@ -169,6 +169,8 @@
       "service_missing": "The service {service} is not provided",
       "ownership_undeclared": "The function {function} declares neither owned nor unowned",
       "owned_composite_key": "The function {function} is owned through a composite key",
+      "token_scope": "The token is not scoped to {function}",
+      "token_read_only": "The token is read-only and {function} writes",
       "cross_site": "The request comes from another site",
       "unauthenticated_route": "The route serves calls without the authentication middleware",
       "method_not_allowed": "The function {function} is called with {allowed}",

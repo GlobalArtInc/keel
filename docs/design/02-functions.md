@@ -69,14 +69,17 @@ the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.m
 
    | Namespace | Contents                                          | Guarantee                                                                                  |
    |-----------|---------------------------------------------------|--------------------------------------------------------------------------------------------|
-   | `x-keel`  | `level`, `secret`, `check` presets, `options` function | Protocol semantics. Part of `keel-types` and `PROTOCOL = 1`; the kernel is obliged to enforce it in the guard and strip stages. |
+   | `x-keel`  | `level`, `secret`, `once`, `check` presets, `options` function | Protocol semantics. Part of `keel-types` and `PROTOCOL = 1`; the kernel is obliged to enforce it in the guard and strip stages. |
    | `x-ui`    | `control`, `placeholder`, `help`, `order`, and similar presentation hints such as `generate` | Presentation only. A client that ignores it renders a plainer screen and nothing else breaks. |
 
    `level` says which principal level may see and send the field; `secret` says the value must
    never come back in a response and drives the same masking in audit records, logs and the
-   support bundle; `check` names a validation preset the kernel applies on top of the schema;
-   `options` names a `kind: options` function that supplies the field's choices. These four
-   were deliberately placed outside `x-ui`: the two namespaces carry different guarantees, and
+   support bundle; `once` says the value is answered to the call that produced it and is `***`
+   in every stored copy — the record an `Idempotency-Key` replays from and the audit event —
+   which is the shape of an API token or a recovery code, shown when it is made and never
+   again; `check` names a validation preset the kernel applies on top of the schema; `options`
+   names a `kind: options` function that supplies the field's choices. These five were
+   deliberately placed outside `x-ui`: the two namespaces carry different guarantees, and
    mixing enforced attributes into a namespace a client may ignore would let that client treat
    them as optional. A standard validator ignores both namespaces alike, which is why the kernel
    enforces `x-keel` itself, on every call.
@@ -388,7 +391,11 @@ the parameters, and fails with `code: check.<preset>`, `key: keel.check.<preset>
 path of the value (`records[1].ip`) and the offending `value` in `params`. A
 `secret` field is accepted on input and masked everywhere on output, including the audit record:
 the kernel replaces its value with `***` in every response, in the record an `Idempotency-Key`
-replays from and in the audit event, whatever type the handler returned it as.
+replays from and in the audit event, whatever type the handler returned it as. A `once` field is
+the complement for a value the caller must see exactly one time: the kernel answers it in the
+response of the call that produced it and replaces it with `***` in the same stored copies, so a
+replay by `Idempotency-Key` answers the rest of the result with that value masked and no table
+of the kernel ever holds it.
 
 ### Two kinds of hooks
 

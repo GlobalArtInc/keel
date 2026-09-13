@@ -47,12 +47,12 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["2"]);
+    assert_eq!(applied, ["3"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
         .await;
-    assert_eq!(tables, ["auth_password", "auth_session"]);
+    assert_eq!(tables, ["auth_password", "auth_session", "auth_token"]);
     let socket = harness.socket().await;
     let a1 = harness.principal(Who::A1).id;
     let set = socket
@@ -243,7 +243,14 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
         let expected: &[&str] = match level {
             Level::Guest => &["auth.login"],
             Level::Service => &["auth.login", "auth.logout"],
-            _ => &["auth.login", "auth.logout", "auth.password.set"],
+            _ => &[
+                "auth.login",
+                "auth.logout",
+                "auth.password.set",
+                "auth.token.create",
+                "auth.token.list",
+                "auth.token.revoke",
+            ],
         };
         assert_eq!(names, expected, "{level}");
     }

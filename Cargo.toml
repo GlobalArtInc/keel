@@ -30,6 +30,7 @@ futures = "0.3"
 http = "1"
 indexmap = { version = "2", features = ["serde"] }
 insta = { version = "1", features = ["json", "redactions"] }
+ipnet = "2"
 jsonschema = { version = "0.56", default-features = false }
 migrator = { package = "sqlmig", version = "0.2.1" }
 rand = "0.10"

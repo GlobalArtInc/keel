@@ -26,7 +26,9 @@ pub use id::Id;
 pub use level::Level;
 pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
 pub use options::{Choice, Choices, OptionsQuery};
-pub use principal::{Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via};
+pub use principal::{
+    Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via, is_mask,
+};
 pub use ui::{
     Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,
     Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,

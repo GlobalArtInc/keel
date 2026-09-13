@@ -142,11 +142,15 @@ stdout_has_line() {
 }
 
 http() {
-  local out=$1 method=$2 path=$3 body=${4:-} cookie=${5:-}
+  local out=$1 method=$2 path=$3 body=${4:-} credential=${5:-} extra=${6:-}
   local status
   local -a headers=(-H 'Content-Type: application/json')
-  if [ -n "$cookie" ]; then
-    headers+=(-H "Cookie: $cookie")
+  case "$credential" in
+    Bearer\ *) headers+=(-H "Authorization: $credential") ;;
+    ?*) headers+=(-H "Cookie: $credential") ;;
+  esac
+  if [ -n "$extra" ]; then
+    headers+=(-H "$extra")
   fi
   if [ -n "$body" ]; then
     status=$(curl -sS -o "$out" -D "$out.headers" -w '%{http_code}' -X "$method" "${headers[@]}" --data "$body" "http://127.0.0.1:$port$path")
@@ -157,9 +161,9 @@ http() {
 }
 
 http_is() {
-  local out=$1 expected=$2 method=$3 path=$4 body=${5:-} cookie=${6:-}
+  local out=$1 expected=$2 method=$3 path=$4 body=${5:-} credential=${6:-} extra=${7:-}
   local status
-  status=$(http "$out" "$method" "$path" "$body" "$cookie")
+  status=$(http "$out" "$method" "$path" "$body" "$credential" "$extra")
   if [ "$status" != "$expected" ]; then
     echo "  $method $path answered $status, expected $expected" >&2
     sed 's/^/  /' "$out" >&2
@@ -320,9 +324,24 @@ check "GET /api/v1/boot with the cookie is 200" http_is "$site/boot-alice.json" 
 check "boot names alice as the principal" json_is "$site/boot-alice.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["level"] == "user"'
 check "POST /api/v1/call/note.list with the cookie is 200" http_is "$site/notes-alice.json" 200 POST /api/v1/call/note.list '{}' "$cookie"
 check "note.list answers the page of alice" json_is "$site/notes-alice.json" 'doc["ok"] is True and [row["title"] for row in doc["data"]["data"]] == ["hers"] and doc["meta"]["principal"]["login"] == "alice"'
+check "POST /api/v1/call/auth.token.create with the cookie is 200" http_is "$site/token.json" 200 POST /api/v1/call/auth.token.create '{"name":"api","scope":{"functions":["note.list"]}}' "$cookie"
+check "auth.token.create answers the plaintext token" json_is "$site/token.json" 'doc["ok"] is True and re.fullmatch("kat_[0-9a-f]{64}", doc["data"]["token"]) is not None'
+token="Bearer $(json_get "$site/token.json" 'doc["data"]["token"]')"
+check "POST /api/v1/call/note.list with the token is 200" http_is "$site/notes-token.json" 200 POST /api/v1/call/note.list '{}' "$token"
+check "note.list answers the page of alice under the token" json_is "$site/notes-token.json" 'doc["ok"] is True and [row["title"] for row in doc["data"]["data"]] == ["hers"] and doc["meta"]["principal"]["login"] == "alice"'
+check "POST /api/v1/call/note.edit with the token is 403" http_is "$site/edit-token.json" 403 POST /api/v1/call/note.edit '{"title":"no"}' "$token"
+check "note.edit answers keel.error.token_scope under the token" json_is "$site/edit-token.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "keel.error.token_scope" and doc["error"]["params"]["function"] == "note.edit"'
+check "POST /api/v1/call/auth.token.create with an Idempotency-Key is 200" http_is "$site/token-keyed.json" 200 POST /api/v1/call/auth.token.create '{"name":"keyed"}' "$cookie" 'Idempotency-Key: token-keyed'
+check "the keyed auth.token.create answers the plaintext token" json_is "$site/token-keyed.json" 'doc["ok"] is True and re.fullmatch("kat_[0-9a-f]{64}", doc["data"]["token"]) is not None'
+check "the same Idempotency-Key replays auth.token.create" http_is "$site/token-replay.json" 200 POST /api/v1/call/auth.token.create '{"name":"keyed"}' "$cookie" 'Idempotency-Key: token-keyed'
+check "the replay is marked" test "$(header_of "$site/token-replay.json.headers" x-keel-idempotent-replay)" = "true"
+check "the replay answers the masked token" json_is "$site/token-replay.json" 'doc["ok"] is True and doc["data"]["token"] == "***"'
+check "no column of auth_token holds a kat_ value" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_token t WHERE t::text LIKE '%kat\\_%'")" = "0"
+check "no idempotency record holds a kat_ value" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.keel_idempotency WHERE response_json::text LIKE '%kat\\_%'")" = "0"
 check "POST /api/v1/call/auth.logout with the cookie is 200" http_is "$site/logout.json" 200 POST /api/v1/call/auth.logout '{}' "$cookie"
 check "auth.logout clears the cookie" grep -qi '^set-cookie: __Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0\r\{0,1\}$' "$site/logout.json.headers"
 check "POST /api/v1/call/note.list with the revoked cookie is 401" http_is "$site/revoked.json" 401 POST /api/v1/call/note.list '{}' "$cookie"
+check "POST /api/v1/call/note.list with the token after the logout is 200" http_is "$site/notes-token-after.json" 200 POST /api/v1/call/note.list '{}' "$token"
 check "keel serve stops on SIGTERM" stop_serve
 check "the socket file is removed" socket_is_gone
 

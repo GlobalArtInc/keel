@@ -1,6 +1,6 @@
 use keel_sdk::runtime::{Db, Ownership};
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
-use keel_types::{Access, Id, Level, Principal};
+use keel_types::{Access, Id, Level, Mode, Principal};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 use serde_json::Value;
 
@@ -29,6 +29,16 @@ pub fn permission(
     } else {
         Err(KeelError::forbidden("keel.error.permission").param("permission", key.as_str()))
     }
+}
+
+pub fn scope(function: &str, mode: Mode, principal: &Principal) -> Result<(), KeelError> {
+    if !principal.scope.admits(function) {
+        return Err(KeelError::forbidden("keel.error.token_scope").param("function", function));
+    }
+    if mode == Mode::Write && !principal.scope.admits_write() {
+        return Err(KeelError::forbidden("keel.error.token_read_only").param("function", function));
+    }
+    Ok(())
 }
 
 pub fn holds(registry: &Registry, key: &str, principal: &Principal) -> bool {
@@ -142,6 +152,31 @@ mod tests {
             permission: None,
             feature: None,
         }
+    }
+
+    #[test]
+    fn the_scope_guard_refuses_a_function_outside_the_masks_and_a_write_under_read_only() {
+        let mut scoped = principal(Level::User);
+        scoped.scope = Scope::Functions(vec!["keel.account.list".into(), "svc.*".into()]);
+        scope("keel.account.list", Mode::Read, &scoped).unwrap();
+        scope("svc.order.create", Mode::Write, &scoped).unwrap();
+        let outside = scope("keel.principal.list", Mode::Read, &scoped).unwrap_err();
+        assert_eq!(outside.code(), ErrorCode::Forbidden);
+        assert_eq!(outside.key(), "keel.error.token_scope");
+        assert_eq!(outside.params()["function"], "keel.principal.list");
+        let mut read_only = principal(Level::User);
+        read_only.scope = Scope::ReadOnly;
+        scope("keel.principal.list", Mode::Read, &read_only).unwrap();
+        let write = scope("keel.principal.update", Mode::Write, &read_only).unwrap_err();
+        assert_eq!(write.code(), ErrorCode::Forbidden);
+        assert_eq!(write.key(), "keel.error.token_read_only");
+        assert_eq!(write.params()["function"], "keel.principal.update");
+        scope(
+            "keel.principal.update",
+            Mode::Write,
+            &principal(Level::User),
+        )
+        .unwrap();
     }
 
     #[test]

@@ -8,10 +8,11 @@ repository.workspace = true
 
 [features]
 default = ["auth"]
-auth = ["dep:argon2", "dep:rand", "dep:sha2", "dep:tokio"]
+auth = ["dep:argon2", "dep:ipnet", "dep:rand", "dep:sha2", "dep:tokio"]
 
 [dependencies]
 argon2 = { workspace = true, optional = true }
+ipnet = { workspace = true, optional = true }
 keel-sdk = { workspace = true }
 rand = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

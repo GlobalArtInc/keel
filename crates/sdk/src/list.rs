@@ -7,7 +7,8 @@ use schemars::JsonSchema;
 use sea_orm::sea_query::extension::postgres::PgExpr;
 use sea_orm::sea_query::{Condition, Expr, SimpleExpr};
 use sea_orm::{
-    ColumnTrait, ColumnType, EntityTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, Value,
+    ColumnTrait, ColumnType, EntityTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, Select,
+    Value,
 };
 use serde::Serialize;
 
@@ -138,36 +139,47 @@ where
     type Row = E::Model;
 
     async fn fetch(&self, call: &Call<ListQuery>, spec: &ListSpec) -> Result<Page<E::Model>> {
-        let query = call.params();
-        let mut select = call.account_scope().apply(E::find());
-        if !query.search.is_empty() && !spec.search.is_empty() {
-            let pattern = format!("%{}%", escape_like(&query.search));
-            let mut any = Condition::any();
-            for key in &spec.search {
-                let column = column::<E>(key, "search")?;
-                any = any.add(Expr::col(column.as_column_ref()).ilike(pattern.as_str()));
-            }
-            select = select.filter(any);
-        }
-        for (index, filter) in query.filters.iter().enumerate() {
-            select = select.filter(filter_expr::<E>(filter, index)?);
-        }
-        if let Some(sort) = &query.sort {
-            let order = match sort.dir {
-                SortDir::Asc => Order::Asc,
-                SortDir::Desc => Order::Desc,
-            };
-            select = select.order_by(column::<E>(&sort.key, "sort.key")?, order);
-        }
-        let paginator = select.paginate(call.db(), u64::from(query.page_size));
-        let total = paginator.num_items().await?;
-        let data = paginator.fetch_page(u64::from(query.page) - 1).await?;
-        Ok(Page {
-            data,
-            total,
-            totals: None,
-        })
+        fetch_page(call.account_scope().apply(E::find()), call, spec).await
     }
+}
+
+pub async fn fetch_page<E>(
+    mut select: Select<E>,
+    call: &Call<ListQuery>,
+    spec: &ListSpec,
+) -> Result<Page<E::Model>>
+where
+    E: EntityTrait,
+    E::Model: Send + Sync,
+{
+    let query = call.params();
+    if !query.search.is_empty() && !spec.search.is_empty() {
+        let pattern = format!("%{}%", escape_like(&query.search));
+        let mut any = Condition::any();
+        for key in &spec.search {
+            let column = column::<E>(key, "search")?;
+            any = any.add(Expr::col(column.as_column_ref()).ilike(pattern.as_str()));
+        }
+        select = select.filter(any);
+    }
+    for (index, filter) in query.filters.iter().enumerate() {
+        select = select.filter(filter_expr::<E>(filter, index)?);
+    }
+    if let Some(sort) = &query.sort {
+        let order = match sort.dir {
+            SortDir::Asc => Order::Asc,
+            SortDir::Desc => Order::Desc,
+        };
+        select = select.order_by(column::<E>(&sort.key, "sort.key")?, order);
+    }
+    let paginator = select.paginate(call.db(), u64::from(query.page_size));
+    let total = paginator.num_items().await?;
+    let data = paginator.fetch_page(u64::from(query.page) - 1).await?;
+    Ok(Page {
+        data,
+        total,
+        totals: None,
+    })
 }
 
 fn column<E: EntityTrait>(key: &str, path: &str) -> Result<E::Column> {

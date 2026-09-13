@@ -1,4 +1,5 @@
 use keel_sdk::KeelError;
+use keel_types::descriptor::KeelAttrs;
 use keel_types::{Descriptor, ErrorCode, FieldError, Kind, Level};
 use serde_json::{Map, Value};
 
@@ -57,7 +58,11 @@ impl Plan {
     }
 
     pub fn mask(&self, value: &mut Value) {
-        mask(&self.0, value);
+        mask(&self.0, value, &|attrs| attrs.secret);
+    }
+
+    pub fn mask_once(&self, value: &mut Value) {
+        mask(&self.0, value, &|attrs| attrs.once);
     }
 
     pub fn row_visible(&self, key: &str, level: Level) -> bool {
@@ -97,15 +102,15 @@ fn strip(tree: &Tree, level: Level, value: &mut Value) {
     }
 }
 
-fn mask(tree: &Tree, value: &mut Value) {
+fn mask(tree: &Tree, value: &mut Value, flagged: &dyn Fn(&KeelAttrs) -> bool) {
     match value {
         Value::Object(object) => {
             for (name, nested) in object.iter_mut() {
                 if let Some(node) = tree.fields.get(name) {
-                    if node.attrs.secret && !nested.is_null() {
+                    if flagged(&node.attrs) && !nested.is_null() {
                         *nested = Value::String(MASK.to_owned());
                     } else {
-                        mask(&node.nested, nested);
+                        mask(&node.nested, nested, flagged);
                     }
                 }
             }
@@ -113,7 +118,7 @@ fn mask(tree: &Tree, value: &mut Value) {
         Value::Array(items) => {
             if let Some(nested) = &tree.items {
                 for item in items {
-                    mask(nested, item);
+                    mask(nested, item, flagged);
                 }
             }
         }
@@ -191,6 +196,8 @@ mod tests {
         account_id: String,
         #[schemars(extend("x-keel" = json!({ "level": "admin" })))]
         note: String,
+        #[schemars(extend("x-keel" = json!({ "once": true })))]
+        receipt: Option<String>,
     }
 
     fn form() -> Descriptor {
@@ -279,5 +286,22 @@ mod tests {
         let mut scalar = json!(7);
         plan.strip(Level::Guest, &mut scalar);
         assert_eq!(scalar, json!(7));
+    }
+
+    #[test]
+    fn once_fields_survive_the_wire_mask_and_fall_to_the_stored_one() {
+        let plan = Plan::of_result(&form());
+        let mut row = json!({ "id": "01J8A0000000000000000000A1", "title": "x", "receipt": "r-1" });
+        plan.mask(&mut row);
+        assert_eq!(row["receipt"], json!("r-1"));
+        plan.mask_once(&mut row);
+        assert_eq!(row["receipt"], json!(MASK));
+        assert_eq!(row["title"], json!("x"));
+        let mut page = json!({ "data": [ { "title": "x", "receipt": "r-2" } ], "total": 1 });
+        Plan::of_result(&list()).mask_once(&mut page);
+        assert_eq!(page["data"][0]["receipt"], json!(MASK));
+        let mut absent = json!({ "title": "x", "receipt": null });
+        plan.mask_once(&mut absent);
+        assert_eq!(absent["receipt"], Value::Null);
     }
 }

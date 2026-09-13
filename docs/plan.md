@@ -1136,7 +1136,10 @@ it out.
 
 **Touches.** `Cargo.toml` (the pinned `ipnet`), `crates/system/` (auth: migration, entity,
 functions, the `Bearer` branch), `crates/kernel/src/dispatcher/guards.rs` and `mod.rs` (the scope
-guard), `products/demo/tests/` (the nested-invoke check, with `keel-system` as a dev-dependency).
+guard), `products/demo/tests/` (the nested-invoke check, with `keel-system` as a dev-dependency);
+`design/02-functions.md`, `design/08-frontend.md` and `design/11-decisions.md` gain the `x-keel`
+attribute `once` for the plaintext of a token, answered to the call that produced it and masked in
+every stored copy.
 
 **Out of scope.** Peer tokens `kpt_`, on-behalf calls and `X-Keel-On-Behalf-Of` (M6); the feature
 guard (M4); stored grants (M2); the token screens of the shell (M2); a service principal created for

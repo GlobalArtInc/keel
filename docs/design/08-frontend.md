@@ -124,7 +124,7 @@ Turns the parameter schema and the `ui` block of a descriptor into an Angular re
 date, time, file, list field, code field, tags. The `control` value from `x-ui` is a closed enum and
 maps to a component; `x-ui` attributes (`control`, `placeholder`, `help`, `order`) are presentation
 only and may be ignored without breaking anything, while the `x-keel` attributes (`level`, `secret`,
-`check`, `options`) carry protocol semantics that the server enforces.
+`once`, `check`, `options`) carry protocol semantics that the server enforces.
 
 - Pages. `ui.page(...)` groups fields into pages or tabs; a page or a field may carry `show_if`,
   `required_if` or `readonly_if`, evaluated by the `/meta` interpreter with `$mode` set to the
@@ -135,6 +135,8 @@ only and may be ignored without breaking anything, while the `x-keel` attributes
   error.
 - Secret. Fields marked `secret` use the password control, with generation when `x-ui.generate`
   is set; the same flag masks the value in audit, logs and the support bundle.
+- Once. A result field marked `once` is shown by the form the one time the call answers it, with
+  a copy control, since no replay and no later read answers it again.
 - Remote options. A field with `x-keel.options` names a `kind: options` function. The form calls it
   with `{ search, scope, limit, cursor }` and receives `{ data: [{ value, label, hint?, icon?,
   group? }], more }`, which is exactly the remote mode of `phx-select`.

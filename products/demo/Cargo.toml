@@ -12,5 +12,6 @@ repository.workspace = true
 keel = { workspace = true }
 
 [dev-dependencies]
+keel-system = { workspace = true }
 keel-testkit = { workspace = true }
 tempfile = { workspace = true }

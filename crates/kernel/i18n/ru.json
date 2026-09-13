@@ -169,6 +169,8 @@
       "service_missing": "Сервис {service} не предоставлен",
       "ownership_undeclared": "Функция {function} не объявила ни owned, ни unowned",
       "owned_composite_key": "Функция {function} владеет строкой через составной ключ",
+      "token_scope": "Токен не охватывает {function}",
+      "token_read_only": "Токен только для чтения, а {function} пишет",
       "cross_site": "Запрос пришёл с другого сайта",
       "unauthenticated_route": "Маршрут обслуживает вызовы без прослойки аутентификации",
       "method_not_allowed": "Функция {function} вызывается методом {allowed}",

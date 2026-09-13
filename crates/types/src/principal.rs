@@ -29,6 +29,66 @@ pub enum Scope {
     ReadOnly,
 }
 
+const MASK_SUFFIX: &str = ".*";
+
+impl Scope {
+    pub fn admits(&self, function: &str) -> bool {
+        match self {
+            Scope::Full | Scope::ReadOnly => true,
+            Scope::Functions(masks) => masks.iter().any(|mask| mask_matches(mask, function)),
+        }
+    }
+
+    pub fn admits_write(&self) -> bool {
+        !matches!(self, Scope::ReadOnly)
+    }
+
+    pub fn contains(&self, other: &Scope) -> bool {
+        match (self, other) {
+            (Scope::Full, _) => true,
+            (Scope::Functions(_) | Scope::ReadOnly, Scope::Full) => false,
+            (Scope::Functions(outer), Scope::Functions(inner)) => inner
+                .iter()
+                .all(|mask| outer.iter().any(|wider| mask_covers(wider, mask))),
+            (Scope::Functions(_), Scope::ReadOnly) => false,
+            (Scope::ReadOnly, Scope::ReadOnly) => true,
+            (Scope::ReadOnly, Scope::Functions(_)) => false,
+        }
+    }
+}
+
+pub fn is_mask(text: &str) -> bool {
+    let name = text.strip_suffix(MASK_SUFFIX).unwrap_or(text);
+    !name.is_empty()
+        && name.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        })
+}
+
+fn mask_matches(mask: &str, function: &str) -> bool {
+    match mask.strip_suffix(MASK_SUFFIX) {
+        Some(prefix) => function
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with('.') && rest.len() > 1),
+        None => mask == function,
+    }
+}
+
+fn mask_covers(wider: &str, mask: &str) -> bool {
+    match (
+        wider.strip_suffix(MASK_SUFFIX),
+        mask.strip_suffix(MASK_SUFFIX),
+    ) {
+        (None, None) => wider == mask,
+        (None, Some(_)) => false,
+        (Some(_), None) => mask_matches(wider, mask),
+        (Some(outer), Some(inner)) => outer == inner || mask_matches(wider, inner),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Via {
@@ -220,6 +280,70 @@ mod tests {
         actor.via = Via::Http;
         let error = principal.meta().unwrap_err();
         assert_eq!(error.0, Via::Http);
+    }
+
+    #[test]
+    fn a_mask_is_an_exact_name_or_a_prefix_ending_in_dot_star() {
+        assert!(mask_matches("dns.zone.edit", "dns.zone.edit"));
+        assert!(!mask_matches("dns.zone.edit", "dns.zone.list"));
+        assert!(!mask_matches("dns.zone", "dns.zone.edit"));
+        assert!(mask_matches("svc.*", "svc.order"));
+        assert!(mask_matches("svc.*", "svc.order.list"));
+        assert!(!mask_matches("svc.*", "svc"));
+        assert!(!mask_matches("svc.*", "svc."));
+        assert!(!mask_matches("svc.*", "svcs.order"));
+        assert!(!mask_matches("*", "svc.order"));
+        for mask in ["svc.*", "svc.order", "keel.account_2.list", "a"] {
+            assert!(is_mask(mask), "{mask}");
+        }
+        for mask in [
+            "", "*", ".*", "svc.", "svc..x", "Svc.x", "svc.*.x", "svc x", "svc.**",
+        ] {
+            assert!(!is_mask(mask), "{mask}");
+        }
+    }
+
+    #[test]
+    fn a_functions_scope_admits_its_masks_and_read_only_refuses_writes() {
+        let scoped = Scope::Functions(vec!["keel.account.list".into(), "svc.*".into()]);
+        assert!(scoped.admits("keel.account.list"));
+        assert!(scoped.admits("svc.order.list"));
+        assert!(!scoped.admits("keel.principal.list"));
+        assert!(scoped.admits_write());
+        assert!(Scope::Full.admits("anything.at.all"));
+        assert!(Scope::Full.admits_write());
+        assert!(Scope::ReadOnly.admits("anything.at.all"));
+        assert!(!Scope::ReadOnly.admits_write());
+        assert!(!Scope::Functions(Vec::new()).admits("keel.account.list"));
+    }
+
+    #[test]
+    fn a_scope_contains_another_only_when_every_mask_is_covered() {
+        let full = Scope::Full;
+        let keel = Scope::Functions(vec!["keel.*".into()]);
+        let list = Scope::Functions(vec!["keel.account.list".into()]);
+        let accounts = Scope::Functions(vec!["keel.account.*".into()]);
+        let auth = Scope::Functions(vec!["auth.*".into()]);
+        assert!(full.contains(&full));
+        assert!(full.contains(&keel));
+        assert!(full.contains(&Scope::ReadOnly));
+        assert!(!keel.contains(&full));
+        assert!(keel.contains(&keel));
+        assert!(keel.contains(&list));
+        assert!(keel.contains(&accounts));
+        assert!(!accounts.contains(&keel));
+        assert!(!keel.contains(&auth));
+        assert!(list.contains(&list));
+        assert!(!list.contains(&accounts));
+        assert!(!keel.contains(&Scope::ReadOnly));
+        assert!(Scope::ReadOnly.contains(&Scope::ReadOnly));
+        assert!(!Scope::ReadOnly.contains(&list));
+        assert!(!Scope::ReadOnly.contains(&full));
+        assert!(mask_covers("keel.*", "keel.*"));
+        assert!(mask_covers("keel.*", "keel.account.*"));
+        assert!(!mask_covers("keel.account.*", "keel.*"));
+        assert!(!mask_covers("keel.account.list", "keel.account.*"));
+        assert!(!mask_covers("keel.account.list", "keel.account.get"));
     }
 
     #[test]

@@ -1,0 +1,151 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.token.create
+  level: user
+---
+{
+  "keel": 1,
+  "name": "auth.token.create",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.token.manage"
+  },
+  "params": {
+    "title": "TokenCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "level": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Level"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "scope": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Scope"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ipAllow": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "x-keel": {
+          "check": "cidr"
+        }
+      },
+      "expiresAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "Scope": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "full",
+              "read_only"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "functions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "functions"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "TokenCreated",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "token": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "id",
+      "token"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.token.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "level",
+          "scope",
+          "ipAllow",
+          "expiresAt"
+        ]
+      }
+    ]
+  }
+}

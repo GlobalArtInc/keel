@@ -41,7 +41,7 @@ pub use guard::Guard;
 pub use keel_types::{
     Account, Choice, Choices, Id, Level, ListQuery, OptionsQuery, Page, Principal,
 };
-pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like};
+pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like, fetch_page};
 pub use module::ModuleDef;
 pub use product::{Brand, Edition, LevelLabels, MenuGroup, ProductManifest};
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};

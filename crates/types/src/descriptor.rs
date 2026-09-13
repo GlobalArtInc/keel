@@ -95,6 +95,8 @@ pub struct KeelAttrs {
     pub level: Option<Level>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub secret: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub once: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check: Option<Check>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -188,6 +190,15 @@ mod tests {
         assert_eq!(keel.options.as_deref(), Some("keel.account.options"));
         assert_eq!(keel.check, Some(Check::Domain));
         assert!(keel.secret);
+        assert!(!keel.once);
+        let shown_once = json_schema!({ "type": "string", "x-keel": { "once": true } });
+        let keel = KeelAttrs::of(&shown_once).unwrap().unwrap();
+        assert!(keel.once);
+        assert!(!keel.secret);
+        assert_eq!(
+            serde_json::to_value(&keel).unwrap(),
+            json!({ "once": true })
+        );
         let ui = UiAttrs::of(&field).unwrap().unwrap();
         assert_eq!(ui.control, Some(Control::Tags));
         assert!(ui.generate);

@@ -1,0 +1,218 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.token.list
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "auth.token.list",
+  "module": "auth",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "auth.token.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Token",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Token"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Token": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/$defs/Scope"
+          },
+          "ipAllow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "principalId",
+          "accountId",
+          "name",
+          "level",
+          "scope",
+          "ipAllow",
+          "createdAt"
+        ]
+      },
+      "Scope": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "full",
+              "read_only"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "functions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "functions"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.token.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "level",
+        "type": "text",
+        "sortable": true,
+        "filter": {
+          "options": [
+            "service",
+            "user",
+            "reseller",
+            "admin"
+          ]
+        }
+      },
+      {
+        "key": "scope",
+        "type": "text"
+      },
+      {
+        "key": "ipAllow",
+        "type": "text"
+      },
+      {
+        "key": "expiresAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "lastUsedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "revokedAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "auth.token.create",
+        "icon": "plus"
+      },
+      {
+        "id": "revoke",
+        "role": "button",
+        "function": "auth.token.revoke",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "revoke"
+    ],
+    "empty": {
+      "title": "auth.token.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "auth.token.*"
+    ]
+  }
+}

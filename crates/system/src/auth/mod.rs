@@ -5,6 +5,7 @@ mod entity;
 mod functions;
 mod password;
 mod session;
+mod token;
 
 use std::sync::{Arc, OnceLock};
 
@@ -12,12 +13,15 @@ use keel_sdk::prelude::*;
 use keel_sdk::system::{Authenticator, PrincipalSource};
 
 use api::LoginMethod;
-use authenticator::SessionAuthenticator;
+use authenticator::CredentialAuthenticator;
 use functions::Local;
 use password::Passwords;
 
 pub use password::HASH_PREFIX;
 pub use session::{ABSOLUTE_HOURS, IDLE_MINUTES, REASON_LOGOUT, REASON_REPLACED, TOKEN_PREFIX};
+pub use token::API_TOKEN_PREFIX;
+
+use token::functions::{PERMISSION_MANAGE as TOKEN_MANAGE, PERMISSION_READ as TOKEN_READ};
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/auth").table("keel_migration_auth");
@@ -46,13 +50,18 @@ fn init(r: &mut Registrar) -> Result<()> {
     let state = Arc::new(State {
         methods: OnceLock::new(),
     });
-    let authenticator = Arc::new(SessionAuthenticator::default());
+    let authenticator = Arc::new(CredentialAuthenticator::default());
     let local: Arc<dyn LoginMethod> = Arc::new(Local::new(passwords.clone()));
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
     r.function(functions::password_set(passwords.clone()))
         .function(functions::login(state.clone()))
         .function(functions::logout())
+        .function(token::functions::list())
+        .function(token::functions::create())
+        .function(token::functions::revoke_function())
         .permission("auth.password.manage", &[Level::User, Level::Reseller])
+        .permission(TOKEN_READ, &[Level::User, Level::Reseller])
+        .permission(TOKEN_MANAGE, &[Level::User, Level::Reseller])
         .contribute(local)
         .contribute(contributed)
         .i18n("en", include_str!("../../i18n/auth/en.json"))
@@ -76,6 +85,15 @@ fn init(r: &mut Registrar) -> Result<()> {
 mod tests {
     use super::*;
 
+    const FUNCTIONS: [&str; 6] = [
+        "auth.password.set",
+        "auth.login",
+        "auth.logout",
+        "auth.token.list",
+        "auth.token.create",
+        "auth.token.revoke",
+    ];
+
     #[test]
     fn the_module_registers_its_functions_permission_dictionaries_and_extension_points() {
         let mut registrar = Registrar::new(MODULE.id);
@@ -94,18 +112,28 @@ mod tests {
                 ("auth.password.set", Kind::Form, Mode::Write, Level::User),
                 ("auth.login", Kind::Form, Mode::Write, Level::Guest),
                 ("auth.logout", Kind::Action, Mode::Write, Level::Service),
+                ("auth.token.list", Kind::List, Mode::Read, Level::User),
+                ("auth.token.create", Kind::Form, Mode::Write, Level::User),
+                ("auth.token.revoke", Kind::Action, Mode::Write, Level::User),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
-        assert_eq!(names, ["auth.password.set", "auth.login", "auth.logout"]);
+        assert_eq!(names, FUNCTIONS);
         for def in &registrations.functions {
             def.descriptor().expect("the descriptor compiles");
         }
-        assert_eq!(registrations.permissions.len(), 1);
-        assert_eq!(registrations.permissions[0].key, "auth.password.manage");
+        let permissions: Vec<(&str, &[Level])> = registrations
+            .permissions
+            .iter()
+            .map(|def| (def.key.as_str(), def.defaults.as_slice()))
+            .collect();
         assert_eq!(
-            registrations.permissions[0].defaults,
-            [Level::User, Level::Reseller]
+            permissions,
+            [
+                ("auth.password.manage", &[Level::User, Level::Reseller][..]),
+                (TOKEN_READ, &[Level::User, Level::Reseller][..]),
+                (TOKEN_MANAGE, &[Level::User, Level::Reseller][..]),
+            ]
         );
         let languages: Vec<&str> = registrations
             .i18n

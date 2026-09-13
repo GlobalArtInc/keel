@@ -71,6 +71,8 @@ struct Saved {
     id: Id,
     #[schemars(extend("x-keel" = json!({ "secret": true })))]
     token: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "once": true })))]
+    receipt: String,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -328,6 +330,7 @@ fn edit() -> FunctionDef {
                     .token
                     .as_ref()
                     .map(|token| token.expose().to_owned()),
+                receipt: format!("rcpt-{}", saved.title),
             })
         })
 }
@@ -656,6 +659,112 @@ async fn guards_run_in_order_and_each_failure_is_observable_by_its_error_code() 
         )
         .await;
     assert!(reseller.data().is_some(), "{:?}", reseller.error());
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn the_scope_guard_runs_after_level_and_permission_before_module_guards_and_not_for_nested_invokes()
+ {
+    let bench = bench().await;
+    let scoped = |level: Level, login: &str, masks: &[&str]| {
+        let mut principal = principal(level, CUSTOMER);
+        principal.login = login.into();
+        principal.scope = Scope::Functions(masks.iter().map(|mask| (*mask).to_owned()).collect());
+        principal
+    };
+    let listing = scoped(Level::User, "scoped", &["shelf.book.list"]);
+    let admitted = bench
+        .call_with(
+            listing.clone(),
+            "shelf.book.list",
+            json!({}),
+            CallOptions::default(),
+        )
+        .await;
+    assert!(admitted.data().is_some(), "{:?}", admitted.error());
+    let outside = bench
+        .call_with(
+            listing.clone(),
+            "shelf.book.edit",
+            json!({ "title": "no", "pages": 1 }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(code(&outside), ErrorCode::Forbidden);
+    assert_eq!(outside.error().unwrap().key, "keel.error.token_scope");
+    assert_eq!(
+        outside.error().unwrap().params["function"],
+        "shelf.book.edit"
+    );
+    assert_eq!(bench.titles().await, Vec::<String>::new());
+
+    let level_first = bench
+        .call_with(
+            scoped(Level::Service, "scoped", &["shelf.book.list"]),
+            "shelf.book.pair",
+            json!({ "first": "a", "second": "b", "fail": false }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(level_first.error().unwrap().key, "keel.error.level");
+    let permission_first = bench
+        .call_with(
+            listing,
+            "shelf.book.pair",
+            json!({ "first": "a", "second": "b", "fail": false }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(
+        permission_first.error().unwrap().key,
+        "keel.error.permission"
+    );
+    let scope_before_module_guards = bench
+        .call_with(
+            scoped(Level::User, "limited", &["shelf.book.list"]),
+            "shelf.book.edit",
+            json!({ "title": "no", "pages": 1 }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(
+        scope_before_module_guards.error().unwrap().key,
+        "keel.error.token_scope"
+    );
+
+    let mut reader = principal(Level::User, CUSTOMER);
+    reader.scope = Scope::ReadOnly;
+    let reads = bench
+        .call_with(
+            reader.clone(),
+            "shelf.book.list",
+            json!({}),
+            CallOptions::default(),
+        )
+        .await;
+    assert!(reads.data().is_some(), "{:?}", reads.error());
+    let writes = bench
+        .call_with(
+            reader,
+            "shelf.book.edit",
+            json!({ "title": "no", "pages": 1 }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(code(&writes), ErrorCode::Forbidden);
+    assert_eq!(writes.error().unwrap().key, "keel.error.token_read_only");
+    assert_eq!(bench.titles().await, Vec::<String>::new());
+
+    let relayed = bench
+        .call_with(
+            scoped(Level::User, "scoped", &["shelf.book.relay"]),
+            "shelf.book.relay",
+            json!({ "title": "nested", "token": "t" }),
+            CallOptions::default(),
+        )
+        .await;
+    assert!(relayed.data().is_some(), "{:?}", relayed.error());
+    assert_eq!(bench.titles().await, ["nested"]);
     bench.finish().await;
 }
 
@@ -1306,6 +1415,52 @@ async fn secret_fields_are_masked_in_the_response_in_a_replay_and_in_the_audit_e
         )
         .await;
     assert_eq!(absent.data().unwrap()["token"], Value::Null);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_once_field_is_answered_to_the_call_that_produced_it_and_masked_in_the_replay() {
+    let bench = bench().await;
+    let alice = principal(Level::User, CUSTOMER);
+    let key = || CallOptions {
+        idempotency_key: Some("once-1".into()),
+        ..CallOptions::default()
+    };
+    let body = json!({ "title": "shown", "pages": 1 });
+    let first = bench
+        .call_with(alice.clone(), "shelf.book.edit", body.clone(), key())
+        .await;
+    assert!(!first.replay);
+    assert_eq!(first.data().unwrap()["receipt"], json!("rcpt-shown"));
+    assert_eq!(
+        bench
+            .count("SELECT count(*) FROM keel_idempotency WHERE response_json::text LIKE '%rcpt-%'")
+            .await,
+        0,
+        "the recorded response holds no value shown once"
+    );
+    assert_eq!(
+        bench
+            .count("SELECT count(*) FROM keel_idempotency WHERE response_json->>'receipt' = '***'")
+            .await,
+        1
+    );
+    let replayed = bench
+        .call_with(alice.clone(), "shelf.book.edit", body, key())
+        .await;
+    assert!(replayed.replay);
+    assert_eq!(replayed.data().unwrap()["receipt"], json!(dispatcher::MASK));
+    assert_eq!(replayed.data().unwrap()["id"], first.data().unwrap()["id"]);
+
+    let without_key = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "plain", "pages": 1 }),
+        )
+        .await;
+    assert_eq!(without_key.data().unwrap()["receipt"], json!("rcpt-plain"));
     bench.finish().await;
 }
 

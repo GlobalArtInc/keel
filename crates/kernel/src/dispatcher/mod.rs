@@ -378,19 +378,22 @@ impl Inner {
         let principal = handle.principal().clone();
         let performed = async {
             let data = self.perform(target, &handle, params).await?;
-            if let Some((key, hash)) = idempotency
-                && let idempotency::Recorded::Taken = idempotency::record(
+            if let Some((key, hash)) = idempotency {
+                let mut stored = data.clone();
+                target.prepared.result.mask_once(&mut stored);
+                if let idempotency::Recorded::Taken = idempotency::record(
                     handle.db(),
                     principal.id,
                     &key,
                     target.function.name(),
                     &hash,
-                    &data,
+                    &stored,
                     self.clock.now(),
                 )
                 .await?
-            {
-                return Err(Failure::Race { key, hash });
+                {
+                    return Err(Failure::Race { key, hash });
+                }
             }
             Ok::<Value, Failure>(data)
         }
@@ -443,16 +446,19 @@ impl Inner {
         target: &Target<'_>,
         handle: &CallHandle,
         params: &Value,
-        module_guards: bool,
+        entered: bool,
     ) -> Result<(), KeelError> {
         let function = target.function;
         let access = &function.descriptor().access;
         guards::level(access, handle.principal())?;
         guards::permission(&self.registry, access, handle.principal())?;
-        if module_guards && !self.registry.guards().is_empty() {
-            let probe = handle.call(params.clone());
-            for guard in self.registry.guards() {
-                guard.hook.check(function.name(), &probe).await?;
+        if entered {
+            guards::scope(function.name(), function.def().mode(), handle.principal())?;
+            if !self.registry.guards().is_empty() {
+                let probe = handle.call(params.clone());
+                for guard in self.registry.guards() {
+                    guard.hook.check(function.name(), &probe).await?;
+                }
             }
         }
         guards::owned(handle.db(), handle.account_scope(), function.def(), params).await?;
