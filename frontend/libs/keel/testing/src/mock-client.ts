@@ -1,0 +1,123 @@
+import { signal } from '@angular/core';
+import {
+  KeelCallError,
+  KeelClient,
+  requestIdOf,
+  type CallOptions,
+  type Catalogue,
+  type Fetched,
+} from '@globalart/keel/client';
+import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
+import { Observable, Subject, of, throwError } from 'rxjs';
+
+export type CannedAnswer = Envelope | Envelope[];
+
+export interface KeelMockFixtures {
+  boot?: Boot;
+  descriptors?: Descriptor[];
+  catalogue?: Catalogue;
+  answers?: Record<string, CannedAnswer>;
+}
+
+export interface RecordedCall {
+  func: string;
+  params: unknown;
+  options: CallOptions;
+}
+
+export class KeelMockClient extends KeelClient {
+  readonly calls: RecordedCall[] = [];
+  private readonly answers = new Map<string, Envelope[]>();
+  private readonly requestId = signal<string | null>(null);
+  private readonly replay = signal(false);
+  private readonly version = signal<string | null>(null);
+  private readonly metaChanges = new Subject<string>();
+  private readonly bursts = new Subject<void>();
+
+  readonly lastRequestId = this.requestId.asReadonly();
+  readonly replayed = this.replay.asReadonly();
+  readonly metaVersion = this.version.asReadonly();
+  readonly metaChanged = this.metaChanges.asObservable();
+  readonly unauthenticated = this.bursts.asObservable();
+
+  constructor(private readonly fixtures: KeelMockFixtures = {}) {
+    super();
+    for (const [func, canned] of Object.entries(fixtures.answers ?? {})) {
+      this.answer(func, canned);
+    }
+    this.version.set(fixtures.boot?.meta ?? null);
+  }
+
+  answer(func: string, canned: CannedAnswer): this {
+    const sequence = Array.isArray(canned) ? [...canned] : [canned];
+    if (sequence.length === 0) {
+      throw new RangeError(`the canned answers of ${func} are empty`);
+    }
+    this.answers.set(func, sequence);
+    return this;
+  }
+
+  callsOf(func: string): RecordedCall[] {
+    return this.calls.filter((call) => call.func === func);
+  }
+
+  changeMeta(version: string): void {
+    this.version.set(version);
+    this.metaChanges.next(version);
+  }
+
+  expire(): void {
+    this.bursts.next();
+  }
+
+  call<T = unknown>(
+    func: string,
+    params: unknown = {},
+    options: CallOptions = {},
+  ): Observable<Envelope<T>> {
+    this.calls.push({ func, params, options });
+    const sequence = this.answers.get(func);
+    if (sequence === undefined) {
+      throw new Error(`no canned answer for ${func}`);
+    }
+    const envelope = sequence.length > 1 ? sequence.shift() : sequence[0];
+    if (envelope === undefined) {
+      throw new Error(`no canned answer for ${func}`);
+    }
+    this.requestId.set(requestIdOf(envelope));
+    return of(envelope as Envelope<T>);
+  }
+
+  boot(): Observable<Fetched<Boot> | null> {
+    const boot = this.fixtures.boot;
+    if (boot === undefined) {
+      throw new Error('no boot payload was handed to the mock client');
+    }
+    this.version.set(boot.meta);
+    return of({ body: boot, etag: `"${boot.meta}"` });
+  }
+
+  descriptor(func: string): Observable<Descriptor> {
+    const descriptor = (this.fixtures.descriptors ?? []).find((entry) => entry.name === func);
+    if (descriptor === undefined) {
+      return throwError(
+        () =>
+          new KeelCallError({
+            code: 'not_found',
+            key: 'keel.error.function_not_found',
+            params: { function: func },
+          }),
+      );
+    }
+    return of(descriptor);
+  }
+
+  descriptors(): Observable<Descriptor[]> {
+    return of([...(this.fixtures.descriptors ?? [])]);
+  }
+
+  catalogue(lang: string): Observable<Fetched<Catalogue> | null> {
+    const catalogue = this.fixtures.catalogue ?? { lang, messages: {} };
+    return of({ body: catalogue, etag: null });
+  }
+}
