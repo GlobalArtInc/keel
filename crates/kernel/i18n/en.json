@@ -32,10 +32,20 @@
       "delete": "Delete",
       "refresh": "Refresh",
       "export": "Export",
-      "save": "Save"
+      "save": "Save",
+      "retry": "Retry",
+      "done": "{action} completed"
     },
     "page": { "main": "Main" },
     "once": { "title": "Shown only once: copy the values now" },
+    "confirm": {
+      "one": "Continue with {action}?",
+      "many": "Continue with {action} for {count} items?",
+      "count": "Type {count} to confirm"
+    },
+    "value": { "true": "Yes", "false": "No" },
+    "view": { "missing": "The screen {view} belongs to {product}, whose views are not part of this shell" },
+    "screen": { "unsupported": "Screens of kind {kind} are not rendered yet" },
     "level": {
       "guest": "Guest",
       "service": "Service",
@@ -155,6 +165,7 @@
       "unavailable": "Temporarily unavailable",
       "peer": "A neighbouring product did not answer",
       "internal": "Internal error",
+      "request": "{message} (request {id})",
       "level": "The level {level} is required",
       "permission": "The permission {permission} is required",
       "function_not_found": "The function {function} does not exist",

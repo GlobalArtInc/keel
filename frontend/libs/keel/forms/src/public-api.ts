@@ -22,8 +22,8 @@ export {
   validateField,
 } from './validators';
 export type { FieldRule } from './validators';
-export { resolveSchema } from './schema';
-export type { ResolvedSchema } from './schema';
+export { defsOf, isObject, propertiesOf, resolveSchema } from './schema';
+export type { JsonObject, ResolvedSchema } from './schema';
 export { KEEL_WIDGETS, injectKeelWidgets, provideKeelWidgets, widgetOf } from './widgets';
 export type { KeelWidget } from './widgets';
 export { OPTIONS_LIMIT, RemoteOptions, isIconName, optionsQuery, toSelectOption } from './options';
