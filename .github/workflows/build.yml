@@ -61,7 +61,7 @@ jobs:
           mkdir -p dist
           cp target/x86_64-unknown-linux-musl/release/keel dist/keel
           tar -C dist -cf - keel | zstd -19 -o "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst"
-          sha256sum "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst" > "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst.sha256"
+          (cd dist && sha256sum "keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst" > "keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst.sha256")
 
       - name: Upload
         uses: actions/upload-artifact@v4
