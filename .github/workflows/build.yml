@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  linux-musl:
+    name: keel for x86_64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install the musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup show
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Cache the cargo download directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-musl-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-musl-
+
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin
+
+      - name: The binary is static
+        run: |
+          file target/x86_64-unknown-linux-musl/release/keel
+          if ldd target/x86_64-unknown-linux-musl/release/keel 2>&1 | grep -q '=>'; then
+            echo "the binary links shared libraries" >&2
+            exit 1
+          fi
+          target/x86_64-unknown-linux-musl/release/keel --version
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-musl/release/keel dist/keel
+          tar -C dist -cf - keel | zstd -19 -o "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst"
+          sha256sum "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst" > "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst.sha256"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: keel-x86_64-linux-musl
+          path: |
+            dist/*.tar.zst
+            dist/*.sha256
+          retention-days: 14
+          if-no-files-found: error
