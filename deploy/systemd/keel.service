@@ -1,0 +1,31 @@
+[Unit]
+Description=keel
+Documentation=https://github.com/GlobalArtInc/keel
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=keel
+Group=keel
+ExecStart=/opt/keel/bin/current serve
+WorkingDirectory=/var/lib/keel
+Restart=always
+RestartSec=2
+TimeoutStopSec=30
+RuntimeDirectory=keel
+RuntimeDirectoryMode=0750
+StateDirectory=keel
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/keel /run/keel
+PrivateTmp=yes
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+MemoryMax=50%
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

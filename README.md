@@ -40,7 +40,8 @@ frontend/    pnpm workspace: @globalart/keel, the shell application and the prod
              libraries (from M2)
 contracts/   golden fixtures and the kernel's descriptor snapshots; protocol.md and the
              generated openapi.json come later (from M2)
-deploy/      install.sh, systemd units, sample configs (from M4)
+deploy/      install.sh, uninstall.sh, the systemd unit and the sample config, with a README
+             of what the installer does today and what waits for M4
 docs/        design and plan
 hack/        scripts CI runs
 ```
@@ -63,13 +64,17 @@ env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit
 cargo test -p keel-bin --no-default-features
 cargo build -p keel-bin
 hack/prove-binary.sh target/debug/keel
+hack/check-install.sh target/debug/keel
 hack/conformance.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
 hack/check-docs.sh
 ```
 
-`hack/check-docs.sh` holds the documents to the code: the names M1 introduced are found under
+`hack/check-install.sh` checks the installer under `deploy/`: `bash -n` and shellcheck over
+the scripts, `--help` printing the usage, every subcommand and flag they call found in the
+built binary's `--help`, every function they call defined in the workspace, and the sample
+config parsing. `hack/check-docs.sh` holds the documents to the code: the names M1 introduced are found under
 both `docs/design/` and `crates/`, every test and command the M1 exit checklist of `docs/plan.md`
 cites exists, and the list above, the "How we work" section of the plan and `ci.yml` name the same
 commands. CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job
@@ -92,6 +97,10 @@ keel ctl note.edit title=x        # the envelope of the call, as JSON
 keel ctl note.list --out table    # the rows rendered by ui.columns with translated headers
 keel product list                 # every bundle the binary carries, enabled or disabled
 ```
+
+Installing the built binary on a host is `deploy/install.sh --product demo --binary <artifact>`
+on a clean Debian or Ubuntu; `deploy/README.md` describes the steps, the flags and what the
+installer leaves to later milestones.
 
 `hack/conformance.sh target/debug/keel` prepares a fresh database and `data_dir` the same way,
 enables `demo`, creates an admin and a user in a second account over `ctl`, starts `serve` and

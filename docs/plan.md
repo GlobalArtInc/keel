@@ -1832,9 +1832,10 @@ anything of M2.
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the
   Postgres server `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p
   keel-testkit` against the container the testkit starts, `cargo test -p keel-bin
-  --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel` and
-  `hack/conformance.sh target/debug/keel`, then `hack/check-test-databases.sh`,
-  `hack/check-deps.sh` and `hack/check-docs.sh`; the README lists them in CI's order. Once
+  --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`,
+  `hack/check-install.sh target/debug/keel` and `hack/conformance.sh target/debug/keel`, then
+  `hack/check-test-databases.sh`, `hack/check-deps.sh` and `hack/check-docs.sh`; the README
+  lists them in CI's order. Once
   `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
 - No comments in code. Explanations go into the commit message or into `docs/`; the only

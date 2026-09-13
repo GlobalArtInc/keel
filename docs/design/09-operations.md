@@ -241,6 +241,15 @@ product's modules migrate before the port opens.
 
 `uninstall.sh --purge` removes the installation together with its data.
 
+The installer lives under `deploy/` ahead of M4, in the subset the current binary supports:
+the clean-host and container checks, Postgres from the distribution, the role and the
+database, the unix user, the directories, `keel.service`, the enabled products and the first
+administrator created over the control socket in place of the setup link. Signature
+verification, TLS, the privileged unit, the update path-unit and `keel.setup.admin` join it
+with the milestones that build them, and `deploy/README.md` names what is missing at any
+time. Until the kernel speaks `sd_notify`, the shipped unit is `Type=simple` without
+`WatchdogSec` and the installer waits for `/readyz`.
+
 The M4 acceptance test for this section is: on a clean Debian or Ubuntu,
 `curl | sh -s -- --product dns` installs Keel with `dns` enabled, and no process except the
 privileged unit runs as root; at M5 `keel product enable panel` on the same host yields one login

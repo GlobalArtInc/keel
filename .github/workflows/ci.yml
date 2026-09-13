@@ -96,6 +96,14 @@ jobs:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: hack/prove-binary.sh target/debug/keel
 
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q shellcheck
+
+      - name: The installer against the binary
+        run: hack/check-install.sh target/debug/keel
+
       - name: Conformance against the binary
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres

@@ -1,0 +1,7 @@
+listen: 127.0.0.1:1500
+socket: /run/keel/core.sock
+data_dir: /var/lib/keel
+database: postgres:///keel?host=/run/postgresql
+tls: { cert: "", key: "", acme: "" }
+trusted_proxies: []
+log: { level: info, format: json }
