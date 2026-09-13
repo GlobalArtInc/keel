@@ -850,7 +850,10 @@ async fn the_code_and_the_challenge_are_masked_in_the_audit_event_and_the_descri
     for level in [Level::Guest, Level::User, Level::Reseller, Level::Admin] {
         names.push(harness.snapshot_descriptors(level, snapshots_dir()));
     }
-    assert_eq!(names[0], ["auth.login", "auth.totp.verify"]);
+    assert_eq!(
+        names[0],
+        ["auth.key.redeem", "auth.login", "auth.totp.verify"]
+    );
     assert!(
         names[1].contains(&"auth.totp.enroll".to_owned()),
         "{:?}",

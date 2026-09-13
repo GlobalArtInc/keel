@@ -365,6 +365,20 @@ check "POST /api/v1/call/keel.account.list after su.exit is 200" http_is "$site/
 check "keel.account.list after su.exit is wide again without an actor" json_is "$site/accounts-after-su.json" "doc['data']['total'] >= 2 and doc['meta']['principal']['login'] == 'root' and doc['meta']['principal']['actor'] is None"
 check "POST /api/v1/call/auth.su.exit outside a delegation is 422" http_is "$site/su-exit-again.json" 422 POST /api/v1/call/auth.su.exit '{}' "$root_cookie"
 check "auth.su.exit outside a delegation answers auth.error.not_delegated" json_is "$site/su-exit-again.json" 'doc["ok"] is False and doc["error"]["key"] == "auth.error.not_delegated"'
+check "ctl auth.key.issue for alice" keel_ok "$site/key.json" ctl auth.key.issue "principal=$principal_id" ttl=60 redirect=/f/note.list
+check "auth.key.issue answers a kok_ key and the relative login url" json_is "$site/key.json" 'doc["ok"] is True and re.fullmatch("kok_[0-9a-f]{64}", doc["data"]["key"]) is not None and doc["data"]["url"] == "/login?key=" + doc["data"]["key"]'
+login_key=$(json_get "$site/key.json" 'doc["data"]["key"]')
+check "POST /api/v1/call/auth.key.redeem cross-site is 403" http_is "$site/redeem-cross.json" 403 POST /api/v1/call/auth.key.redeem "{\"key\":\"$login_key\"}" '' 'Origin: https://evil.example'
+check "the cross-site redeem answers keel.error.cross_site and sets no cookie" json_is "$site/redeem-cross.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.cross_site"'
+check "the cross-site redeem leaves the key unused" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_login_key WHERE used_at IS NULL")" = "1"
+check "POST /api/v1/call/auth.key.redeem is 200" http_is "$site/redeem.json" 200 POST /api/v1/call/auth.key.redeem "{\"key\":\"$login_key\"}"
+check "auth.key.redeem answers the redirect, alice and the issuer" json_is "$site/redeem.json" "doc['ok'] is True and doc['data']['redirect'] == '/f/note.list' and doc['data']['principal']['login'] == 'alice' and doc['data']['issuedBy'] == '$root_account'"
+key_cookie=$(session_cookie_of "$site/redeem.json.headers") || fail "auth.key.redeem sets the session cookie"
+check "GET /api/v1/boot with the redeemed cookie names alice" http_is "$site/boot-key.json" 200 GET /api/v1/boot '' "$key_cookie"
+check "boot names alice after the redeem" json_is "$site/boot-key.json" 'doc["principal"]["login"] == "alice"'
+check "POST /api/v1/call/auth.key.redeem with the spent key is 401" http_is "$site/redeem-spent.json" 401 POST /api/v1/call/auth.key.redeem "{\"key\":\"$login_key\"}"
+check "the spent key answers auth.error.key" json_is "$site/redeem-spent.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "auth.error.key"'
+check "auth_login_key holds the hash, not the key" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_login_key k WHERE k::text LIKE '%kok\\_%'")" = "0"
 check "POST /api/v1/call/auth.token.create with the cookie is 200" http_is "$site/token.json" 200 POST /api/v1/call/auth.token.create '{"name":"api","scope":{"functions":["note.list"]}}' "$cookie"
 check "auth.token.create answers the plaintext token" json_is "$site/token.json" 'doc["ok"] is True and re.fullmatch("kat_[0-9a-f]{64}", doc["data"]["token"]) is not None'
 token="Bearer $(json_get "$site/token.json" 'doc["data"]["token"]')"

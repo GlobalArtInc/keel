@@ -66,5 +66,15 @@
   "auth.su.exit.title": "Return to your own session",
   "auth.su.principal": "Principal",
   "auth.error.su_nested": "You are already acting as another principal; return first",
-  "auth.error.not_delegated": "You are not acting as another principal"
+  "auth.error.not_delegated": "You are not acting as another principal",
+  "auth.key.issue.title": "Issue a one-time login key",
+  "auth.key.redeem.title": "Sign in with a login key",
+  "auth.key.principal": "Principal",
+  "auth.key.ttl": "Valid for (seconds)",
+  "auth.key.redirect": "Land on",
+  "auth.key.key": "Login key",
+  "auth.error.key": "The login key is not valid; it may have been used or expired",
+  "auth.error.redirect": "The landing path must start with a single / and stay inside the installation",
+  "auth.error.key_principal": "The login key names a principal that cannot be read",
+  "auth.error.key_issuer": "The login key names an issuer that cannot be read"
 }

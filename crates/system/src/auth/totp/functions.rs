@@ -201,7 +201,8 @@ pub fn verify(attempts: Arc<Attempts>) -> FunctionDef {
                     return Err(challenge_refused());
                 }
                 let principal = login_principal(&call, principal_id, challenge_refused).await?;
-                open_session(&call, principal, client, now).await
+                let principal = open_session(&call, principal, client, now).await?;
+                Ok(LoggedIn::authenticated(principal))
             }
         })
 }

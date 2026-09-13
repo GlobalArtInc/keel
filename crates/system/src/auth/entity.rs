@@ -172,3 +172,26 @@ pub mod login_challenge {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod login_key {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_login_key")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub key_hash: String,
+        pub principal_id: String,
+        pub issued_by: String,
+        pub redirect: String,
+        pub expires_at: DateTimeUtc,
+        pub used_at: Option<DateTimeUtc>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

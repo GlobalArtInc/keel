@@ -3,6 +3,7 @@ pub mod api;
 mod authenticator;
 mod entity;
 mod functions;
+mod key;
 mod password;
 mod session;
 mod su;
@@ -20,6 +21,8 @@ use functions::Local;
 use password::Passwords;
 use totp::challenge::Attempts;
 
+pub use key::functions::PERMISSION_ISSUE as KEY_ISSUE;
+pub use key::{KEY_PREFIX as LOGIN_KEY_PREFIX, LOGIN_PATH, MAX_TTL_SECONDS as LOGIN_KEY_MAX_TTL};
 pub use password::HASH_PREFIX;
 pub use session::{
     ABSOLUTE_HOURS, IDLE_MINUTES, KIND_SESSION, KIND_SU, REASON_LOGOUT, REASON_REPLACED,
@@ -84,11 +87,14 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(totp::functions::verify(attempts))
         .function(su::su())
         .function(su::exit())
+        .function(key::functions::issue())
+        .function(key::functions::redeem())
         .permission("auth.password.manage", &[Level::User, Level::Reseller])
         .permission(TOKEN_READ, &[Level::User, Level::Reseller])
         .permission(TOKEN_MANAGE, &[Level::User, Level::Reseller])
         .permission(TOTP_MANAGE, &[Level::User, Level::Reseller])
         .permission(SU, &[Level::Reseller])
+        .permission(KEY_ISSUE, &[Level::Reseller])
         .contribute(local)
         .contribute(contributed)
         .i18n("en", include_str!("../../i18n/auth/en.json"))
@@ -112,7 +118,7 @@ fn init(r: &mut Registrar) -> Result<()> {
 mod tests {
     use super::*;
 
-    const FUNCTIONS: [&str; 12] = [
+    const FUNCTIONS: [&str; 14] = [
         "auth.password.set",
         "auth.login",
         "auth.logout",
@@ -125,6 +131,8 @@ mod tests {
         "auth.totp.verify",
         "auth.su",
         "auth.su.exit",
+        "auth.key.issue",
+        "auth.key.redeem",
     ];
 
     #[test]
@@ -154,6 +162,8 @@ mod tests {
                 ("auth.totp.verify", Kind::Form, Mode::Write, Level::Guest),
                 ("auth.su", Kind::Action, Mode::Write, Level::Reseller),
                 ("auth.su.exit", Kind::Action, Mode::Write, Level::Service),
+                ("auth.key.issue", Kind::Form, Mode::Write, Level::Reseller),
+                ("auth.key.redeem", Kind::Form, Mode::Write, Level::Guest),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
@@ -174,6 +184,7 @@ mod tests {
                 (TOKEN_MANAGE, &[Level::User, Level::Reseller][..]),
                 (TOTP_MANAGE, &[Level::User, Level::Reseller][..]),
                 (SU, &[Level::Reseller][..]),
+                (KEY_ISSUE, &[Level::Reseller][..]),
             ]
         );
         let languages: Vec<&str> = registrations

@@ -47,7 +47,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["7"]);
+    assert_eq!(applied, ["8"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
@@ -56,6 +56,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         tables,
         [
             "auth_login_challenge",
+            "auth_login_key",
             "auth_password",
             "auth_recovery_code",
             "auth_session",
@@ -251,14 +252,16 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
     for level in Level::ALL {
         let names = harness.snapshot_descriptors(level, snapshots_dir());
         let expected: &[&str] = match level {
-            Level::Guest => &["auth.login", "auth.totp.verify"],
+            Level::Guest => &["auth.key.redeem", "auth.login", "auth.totp.verify"],
             Level::Service => &[
+                "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
                 "auth.su.exit",
                 "auth.totp.verify",
             ],
             Level::User => &[
+                "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
                 "auth.password.set",
@@ -272,6 +275,8 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             _ => &[
+                "auth.key.issue",
+                "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
                 "auth.password.set",

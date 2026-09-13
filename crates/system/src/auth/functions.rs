@@ -62,6 +62,16 @@ pub struct LoggedIn {
     pub challenge: Option<String>,
 }
 
+impl LoggedIn {
+    pub fn authenticated(principal: MetaPrincipal) -> Self {
+        Self {
+            state: LoginState::Authenticated,
+            principal: Some(principal),
+            challenge: None,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde")]
 #[schemars(crate = "keel_sdk::schemars")]
@@ -164,7 +174,8 @@ pub fn login(state: Arc<State>) -> FunctionDef {
                         challenge: Some(challenge.into_inner()),
                     });
                 }
-                open_session(&call, principal, client, now).await
+                let principal = open_session(&call, principal, client, now).await?;
+                Ok(LoggedIn::authenticated(principal))
             }
         })
 }
@@ -203,23 +214,19 @@ pub(super) async fn open_session<P>(
     principal: Principal,
     client: &Client,
     now: DateTime<Utc>,
-) -> Result<LoggedIn> {
+) -> Result<MetaPrincipal> {
     let tx = call.tx()?;
     if let Some(previous) = &client.session {
         session::revoke(tx, previous, now, session::REASON_REPLACED).await?;
     }
     let token = session::open(tx, &principal, client, now).await?;
     call.session(SessionChange::Set(token));
-    Ok(LoggedIn {
-        state: LoginState::Authenticated,
-        principal: Some(MetaPrincipal {
-            id: principal.id,
-            login: principal.login,
-            level: principal.level,
-            account: principal.account_id,
-            actor: None,
-        }),
-        challenge: None,
+    Ok(MetaPrincipal {
+        id: principal.id,
+        login: principal.login,
+        level: principal.level,
+        account: principal.account_id,
+        actor: None,
     })
 }
 
