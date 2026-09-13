@@ -368,6 +368,19 @@ check "auth.login sets the session cookie" test -n "$cookie"
 check "the cookie carries the fixed attributes" grep -qi '^set-cookie: __Host-keel_session=ks_[0-9a-f]*; Path=/; Secure; HttpOnly; SameSite=Lax\r\{0,1\}$' "$site/login.json.headers"
 check "GET /api/v1/boot with the cookie is 200" http_is "$site/boot-alice.json" 200 GET /api/v1/boot '' "$cookie"
 check "boot names alice as the principal" json_is "$site/boot-alice.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["level"] == "user"'
+check "boot answers no zone before a preference is set" json_is "$site/boot-alice.json" 'doc["principal"]["tz"] is None and doc["principal"]["lang"] == "en"'
+check "POST /api/v1/call/settings.pref.set tz=Asia/Tokyo with the cookie is 200" http_is "$site/pref-tz.json" 200 POST /api/v1/call/settings.pref.set '{"key":"tz","value":"Asia/Tokyo"}' "$cookie"
+check "settings.pref.set answers the preference" json_is "$site/pref-tz.json" 'doc["ok"] is True and doc["data"] == {"key": "tz", "value": "Asia/Tokyo"}'
+check "POST /api/v1/call/settings.pref.set lang=ru with the cookie is 200" http_is "$site/pref-lang.json" 200 POST /api/v1/call/settings.pref.set '{"key":"lang","value":"ru"}' "$cookie"
+check "POST /api/v1/call/settings.pref.set with an unknown zone is 422" http_is "$site/pref-bad.json" 422 POST /api/v1/call/settings.pref.set '{"key":"tz","value":"Mars/Olympus"}' "$cookie"
+check "the unknown zone answers settings.error.pref_tz on value" json_is "$site/pref-bad.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "value" and doc["error"]["fields"][0]["key"] == "settings.error.pref_tz"'
+check "GET /api/v1/boot with the cookie shows the zone and the language" http_is "$site/boot-pref.json" 200 GET /api/v1/boot '' "$cookie"
+check "boot answers tz Asia/Tokyo and lang ru" json_is "$site/boot-pref.json" 'doc["principal"]["tz"] == "Asia/Tokyo" and doc["principal"]["lang"] == "ru"'
+check "GET /api/v1/i18n without lang serves ru" http_is "$site/i18n-pref.json" 200 GET /api/v1/i18n '' "$cookie"
+check "the catalogue answers lang ru" json_is "$site/i18n-pref.json" 'doc["ok"] is True and doc["data"]["lang"] == "ru"'
+check "POST /api/v1/call/settings.pref.set lang=en restores the language" http_is "$site/pref-lang-en.json" 200 POST /api/v1/call/settings.pref.set '{"key":"lang","value":"en"}' "$cookie"
+check "ctl settings.pref.set over the socket is refused" keel_fails "$site/pref-owner.json" ctl settings.pref.set key=tz value=UTC
+check "the owner answers settings.error.pref_owner, not internal" json_is "$site/pref-owner.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "settings.error.pref_owner"'
 check "POST /api/v1/call/note.list with the cookie is 200" http_is "$site/notes-alice.json" 200 POST /api/v1/call/note.list '{}' "$cookie"
 check "note.list answers the page of alice" json_is "$site/notes-alice.json" 'doc["ok"] is True and [row["title"] for row in doc["data"]["data"]] == ["hers"] and doc["meta"]["principal"]["login"] == "alice"'
 root_account=00000000000000000000000000

@@ -1,0 +1,57 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.pref.set
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "settings.pref.set",
+  "module": "settings",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "PrefSet",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "value": true
+    },
+    "required": [
+      "key",
+      "value"
+    ]
+  },
+  "result": {
+    "title": "Pref",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "value": true
+    },
+    "required": [
+      "key"
+    ]
+  },
+  "ui": {
+    "title": "settings.pref.set.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "key",
+          "value"
+        ]
+      }
+    ]
+  }
+}

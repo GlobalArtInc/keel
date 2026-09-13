@@ -11,6 +11,7 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use chrono_tz::Tz;
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange};
@@ -58,6 +59,7 @@ pub struct CallOptions {
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
     pub client: Option<Client>,
+    pub tz: Option<Tz>,
 }
 
 #[derive(Clone, Debug)]
@@ -93,6 +95,11 @@ struct Executed {
     after: Vec<AfterCommitHook>,
     context: Option<AfterContext>,
     session: Option<SessionChange>,
+}
+
+struct Origin {
+    client: Option<Client>,
+    tz: Tz,
 }
 
 type AfterHooks = Arc<Mutex<Vec<AfterCommitHook>>>;
@@ -194,7 +201,10 @@ impl Dispatcher {
                 &request_id,
                 params,
                 options.idempotency_key.as_deref(),
-                options.client,
+                Origin {
+                    client: options.client,
+                    tz: options.tz.unwrap_or(Tz::UTC),
+                },
             )
             .await;
         if let (Some(sink), Some(mut params)) = (&self.inner.audit, recorded)
@@ -312,14 +322,15 @@ impl Inner {
         request_id: &str,
         params: Value,
         key: Option<&str>,
-        client: Option<Client>,
+        origin: Origin,
     ) -> Result<Executed, KeelError> {
         let def = target.function.def();
         let after = AfterHooks::default();
         let pool = CallBuilder::new(principal.clone(), request_id)
             .services(self.registry.services().clone())
             .invoker(self.invoker(after.clone()))
-            .client(client.clone())
+            .client(origin.client.clone())
+            .tz(origin.tz)
             .read(self.db.clone());
         self.admit(target, &pool, &params, true).await?;
         let mut idempotency = None;
@@ -351,7 +362,8 @@ impl Inner {
                     let handle = CallBuilder::new(principal.clone(), request_id)
                         .services(self.registry.services().clone())
                         .invoker(self.invoker(after.clone()))
-                        .client(client)
+                        .client(origin.client)
+                        .tz(origin.tz)
                         .extra(extra)
                         .write(self.db.begin().await?);
                     self.commit(target, handle, params, idempotency, &after)
@@ -551,6 +563,7 @@ impl Inner {
             .scope(*outer.account_scope())
             .services(self.registry.services().clone())
             .client(outer.client().cloned())
+            .tz(outer.tz())
             .invoker(Arc::new(LocalInvoker {
                 inner: self.clone(),
                 after: after.clone(),

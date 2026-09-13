@@ -1,17 +1,26 @@
 mod entity;
 mod functions;
+mod pref;
 mod store;
 
 use std::sync::Arc;
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::AccountSource;
+use keel_sdk::system::{AccountSource, LanguageSource, PreferenceSource};
 
+use pref::Prefs;
 use store::Store;
 
 pub use functions::{PERMISSION_MANAGE as MANAGE, PERMISSION_READ as READ, SettingRow, scope_of};
+pub use pref::{LANG as PREF_LANG, THEME as PREF_THEME, TZ as PREF_TZ};
 
-pub const FUNCTIONS: [&str; 3] = ["settings.list", "settings.get", "settings.set"];
+pub const FUNCTIONS: [&str; 5] = [
+    "settings.list",
+    "settings.get",
+    "settings.set",
+    "settings.pref.get",
+    "settings.pref.set",
+];
 pub const MENU_PATH: &str = "system/settings";
 
 static MIGRATIONS: migrator::Migrations =
@@ -28,10 +37,15 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     let store = Arc::new(Store::default());
+    let prefs = Arc::new(Prefs::default());
     r.provide::<dyn SettingsSource>(store.clone())
+        .provide::<dyn PreferenceSource>(prefs.clone())
+        .require::<dyn LanguageSource>()
         .function(functions::list(store.clone()))
         .function(functions::get(store.clone()))
         .function(functions::set(store.clone()))
+        .function(pref::get())
+        .function(pref::set(prefs.clone()))
         .permission(READ, &[Level::Reseller])
         .permission(MANAGE, &[Level::Reseller])
         .menu(
@@ -43,6 +57,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .i18n("ru", include_str!("../../i18n/settings/ru.json"))
         .start(move |ctx| async move {
             let accounts = ctx.require::<dyn AccountSource>()?;
+            prefs.attach(ctx.require::<dyn LanguageSource>()?);
             store.attach(ctx.contributions::<SettingDef>(), accounts)
         });
     Ok(())
@@ -70,6 +85,8 @@ mod tests {
                 ("settings.list", Kind::List, Mode::Read, Level::Reseller),
                 ("settings.get", Kind::Get, Mode::Read, Level::Reseller),
                 ("settings.set", Kind::Form, Mode::Write, Level::Reseller),
+                ("settings.pref.get", Kind::Get, Mode::Read, Level::User),
+                ("settings.pref.set", Kind::Form, Mode::Write, Level::User),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
@@ -99,6 +116,16 @@ mod tests {
             .collect();
         assert_eq!(languages, ["en", "ru"]);
         assert!(registrations.provides.get::<dyn SettingsSource>().is_some());
+        assert!(
+            registrations
+                .provides
+                .get::<dyn PreferenceSource>()
+                .is_some()
+        );
+        assert_eq!(
+            registrations.requires,
+            [keel_sdk::runtime::ServiceKey::of::<dyn LanguageSource>()]
+        );
         assert!(registrations.start.is_some());
         assert_eq!(MODULE.sdk, VERSION);
         assert_eq!(

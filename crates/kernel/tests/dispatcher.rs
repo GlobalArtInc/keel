@@ -1366,7 +1366,7 @@ async fn secret_fields_are_masked_in_the_response_in_a_replay_and_in_the_audit_e
     let options = || CallOptions {
         request_id: Some("secret-ok".into()),
         idempotency_key: Some("secret-1".into()),
-        client: None,
+        ..CallOptions::default()
     };
     let body = json!({ "title": "sealed", "pages": 1, "token": "hunter2" });
     let saved = bench

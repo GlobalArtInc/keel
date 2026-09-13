@@ -1,0 +1,43 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.pref.get
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "settings.pref.get",
+  "module": "settings",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "PrefPick",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    },
+    "required": [
+      "key"
+    ]
+  },
+  "result": {
+    "title": "Pref",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "value": true
+    },
+    "required": [
+      "key"
+    ]
+  }
+}

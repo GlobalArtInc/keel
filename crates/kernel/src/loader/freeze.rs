@@ -6,7 +6,7 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
-use keel_sdk::system::{AccountSource, PrincipalSource, SecretCipher};
+use keel_sdk::system::{AccountSource, LanguageSource, PrincipalSource, SecretCipher};
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
@@ -359,6 +359,9 @@ impl Initialised {
                 stop: registrations.stop,
             });
         }
+        for bundle in self.graph.products() {
+            freezer.bundle(bundle);
+        }
         freezer.platform(&self.graph);
         freezer.unclaimed();
         for (module, required) in requirements {
@@ -371,9 +374,6 @@ impl Initialised {
             for patch in patches {
                 freezer.patch(&module, &patch);
             }
-        }
-        for bundle in self.graph.products() {
-            freezer.bundle(bundle);
         }
         freezer.group(PLATFORM, None, &SYSTEM_GROUP);
         freezer.references();
@@ -389,6 +389,7 @@ impl Freezer {
         services.provide::<dyn Clock>(graph.clock().clone());
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
+        services.provide::<dyn LanguageSource>(Arc::new(Languages(self.catalogue.languages())));
         if let Some(key) = graph.key() {
             services.provide::<dyn SecretCipher>(Arc::new(DataKeyCipher::new(key.clone())));
         }
@@ -831,6 +832,14 @@ impl Freezer {
             registry: Arc::new(registry),
             lifecycle: self.lifecycle,
         })
+    }
+}
+
+struct Languages(Vec<String>);
+
+impl LanguageSource for Languages {
+    fn languages(&self) -> Vec<String> {
+        self.0.clone()
     }
 }
 

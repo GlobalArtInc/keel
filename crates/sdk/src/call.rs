@@ -3,6 +3,7 @@ use std::fmt;
 use std::future::Future;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use chrono_tz::Tz;
 use futures::future::BoxFuture;
 use keel_types::{Id, Mode, Principal};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
@@ -32,6 +33,7 @@ pub(crate) struct CallState {
     services: Arc<Services>,
     invoker: Option<Arc<dyn Invoker>>,
     client: Option<Client>,
+    tz: Tz,
     events: Mutex<Vec<Emitted>>,
     after_commit: Mutex<Vec<AfterCommitHook>>,
     session: Mutex<Option<SessionChange>>,
@@ -89,6 +91,10 @@ impl<P> Call<P> {
 
     pub fn account_scope(&self) -> &AccountScope {
         &self.state.scope
+    }
+
+    pub fn tz(&self) -> Tz {
+        self.state.tz
     }
 
     pub fn db(&self) -> &Db {
@@ -224,6 +230,7 @@ pub struct CallBuilder {
     services: Arc<Services>,
     invoker: Option<Arc<dyn Invoker>>,
     client: Option<Client>,
+    tz: Tz,
 }
 
 impl CallBuilder {
@@ -236,11 +243,17 @@ impl CallBuilder {
             services: Arc::new(Services::new()),
             invoker: None,
             client: None,
+            tz: Tz::UTC,
         }
     }
 
     pub fn client(mut self, client: Option<Client>) -> Self {
         self.client = client;
+        self
+    }
+
+    pub fn tz(mut self, tz: Tz) -> Self {
+        self.tz = tz;
         self
     }
 
@@ -291,6 +304,7 @@ impl CallBuilder {
             services: self.services,
             invoker: self.invoker,
             client: self.client,
+            tz: self.tz,
             events: Mutex::new(Vec::new()),
             after_commit: Mutex::new(Vec::new()),
             session: Mutex::new(None),
@@ -338,6 +352,10 @@ impl CallHandle {
 
     pub fn client(&self) -> Option<&Client> {
         self.0.client.as_ref()
+    }
+
+    pub fn tz(&self) -> Tz {
+        self.0.tz
     }
 
     pub fn take_session_change(&self) -> Option<SessionChange> {

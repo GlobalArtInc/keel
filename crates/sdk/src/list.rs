@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono_tz::Tz;
 use keel_types::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir, Total};
 use schemars::JsonSchema;
 use sea_orm::sea_query::extension::postgres::PgExpr;
@@ -163,7 +165,7 @@ where
         select = select.filter(any);
     }
     for (index, filter) in query.filters.iter().enumerate() {
-        select = select.filter(filter_expr::<E>(filter, index)?);
+        select = select.filter(filter_expr::<E>(filter, index, call.tz())?);
     }
     if let Some(sort) = &query.sort {
         let order = match sort.dir {
@@ -190,10 +192,13 @@ fn column<E: EntityTrait>(key: &str, path: &str) -> Result<E::Column> {
     })
 }
 
-fn filter_expr<E: EntityTrait>(filter: &Filter, index: usize) -> Result<SimpleExpr> {
+fn filter_expr<E: EntityTrait>(filter: &Filter, index: usize, tz: Tz) -> Result<SimpleExpr> {
     let path = format!("filters[{index}].value");
     let column = column::<E>(&filter.key, &format!("filters[{index}].key"))?;
     let column_type = column.def().get_column_type().clone();
+    if is_instant(&column_type) {
+        return instant_expr(column, filter, index, tz);
+    }
     let convert = |text: &str| typed_value(&column_type, text, &path);
     Ok(match (&filter.value, filter.op) {
         (FilterValue::One(text), FilterOp::Eq) => column.eq(convert(text)?),
@@ -220,6 +225,93 @@ fn filter_expr<E: EntityTrait>(filter: &Filter, index: usize) -> Result<SimpleEx
                 .param("field", filter.key.clone()));
         }
     })
+}
+
+fn is_instant(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::TimestampWithTimeZone | ColumnType::Timestamp | ColumnType::DateTime
+    )
+}
+
+enum Bound {
+    Instant(DateTime<Utc>),
+    Day {
+        start: DateTime<Utc>,
+        next: DateTime<Utc>,
+    },
+}
+
+fn day_start(tz: Tz, date: NaiveDate) -> Option<DateTime<Utc>> {
+    [NaiveTime::MIN, NaiveTime::from_hms_opt(1, 0, 0)?]
+        .into_iter()
+        .find_map(|time| {
+            tz.from_local_datetime(&date.and_time(time))
+                .earliest()
+                .map(|at| at.with_timezone(&Utc))
+        })
+}
+
+fn bound(text: &str, tz: Tz, path: &str) -> Result<Bound> {
+    let mismatch = || {
+        KeelError::validation("keel.error.list.filter_value")
+            .field(path)
+            .param("value", text)
+    };
+    if let Ok(date) = NaiveDate::parse_from_str(text, "%Y-%m-%d") {
+        let start = day_start(tz, date).ok_or_else(mismatch)?;
+        let next = date
+            .succ_opt()
+            .and_then(|tomorrow| day_start(tz, tomorrow))
+            .unwrap_or(start + Duration::days(1));
+        return Ok(Bound::Day { start, next });
+    }
+    DateTime::parse_from_rfc3339(text)
+        .map(|at| Bound::Instant(at.with_timezone(&Utc)))
+        .map_err(|_| mismatch())
+}
+
+fn instant_one<C: ColumnTrait>(column: C, bound: Bound, op: FilterOp) -> SimpleExpr {
+    match (bound, op) {
+        (Bound::Instant(at), FilterOp::Eq) => column.eq(at),
+        (Bound::Instant(at), FilterOp::Ne) => column.ne(at),
+        (Bound::Instant(at), FilterOp::Gt) => column.gt(at),
+        (Bound::Instant(at), FilterOp::Gte) => column.gte(at),
+        (Bound::Instant(at), FilterOp::Lt) => column.lt(at),
+        (Bound::Instant(at), FilterOp::Lte) => column.lte(at),
+        (Bound::Day { start, next }, FilterOp::Eq) => column.gte(start).and(column.lt(next)),
+        (Bound::Day { start, next }, FilterOp::Ne) => column.lt(start).or(column.gte(next)),
+        (Bound::Day { next, .. }, FilterOp::Gt) => column.gte(next),
+        (Bound::Day { start, .. }, FilterOp::Gte) => column.gte(start),
+        (Bound::Day { start, .. }, FilterOp::Lt) => column.lt(start),
+        (Bound::Day { next, .. }, FilterOp::Lte) => column.lt(next),
+    }
+}
+
+fn instant_expr<C: ColumnTrait>(
+    column: C,
+    filter: &Filter,
+    index: usize,
+    tz: Tz,
+) -> Result<SimpleExpr> {
+    let path = format!("filters[{index}].value");
+    match (&filter.value, filter.op) {
+        (FilterValue::One(text), op) => Ok(instant_one(column, bound(text, tz, &path)?, op)),
+        (FilterValue::Many(texts), op @ (FilterOp::Eq | FilterOp::Ne)) => {
+            let mut condition = if op == FilterOp::Eq {
+                Condition::any()
+            } else {
+                Condition::all()
+            };
+            for text in texts {
+                condition = condition.add(instant_one(column, bound(text, tz, &path)?, op));
+            }
+            Ok(condition.into())
+        }
+        (FilterValue::Many(_), _) => Err(KeelError::validation("keel.error.list.list_value_op")
+            .field(format!("filters[{index}].op"))
+            .param("field", filter.key.clone())),
+    }
 }
 
 fn typed_value(column_type: &ColumnType, text: &str, path: &str) -> Result<Value> {
@@ -274,6 +366,7 @@ mod tests {
             pub title: String,
             pub weight: i32,
             pub pinned: bool,
+            pub updated_at: DateTimeUtc,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -378,11 +471,106 @@ mod tests {
         assert_eq!(spec().check(zero).unwrap_err().field_path(), Some("page"));
     }
 
+    fn sql_in(tz: Tz, filter: Filter) -> String {
+        item::Entity::find()
+            .filter(filter_expr::<item::Entity>(&filter, 0, tz).unwrap())
+            .build(DbBackend::Postgres)
+            .to_string()
+    }
+
+    fn one(op: FilterOp, text: &str) -> Filter {
+        Filter {
+            key: "updated_at".into(),
+            op,
+            value: FilterValue::One(text.into()),
+        }
+    }
+
+    #[test]
+    fn a_bare_date_on_a_datetime_column_resolves_to_the_day_in_the_callers_zone() {
+        let tokyo = chrono_tz::Asia::Tokyo;
+        let tail = |sql: String| sql.split(" WHERE ").nth(1).unwrap().to_owned();
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Gte, "2026-09-14"))),
+            r#""memo_item"."updated_at" >= '2026-09-13 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Lt, "2026-09-14"))),
+            r#""memo_item"."updated_at" < '2026-09-13 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Gt, "2026-09-13"))),
+            r#""memo_item"."updated_at" >= '2026-09-13 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Lte, "2026-09-13"))),
+            r#""memo_item"."updated_at" < '2026-09-13 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Eq, "2026-09-14"))),
+            r#""memo_item"."updated_at" >= '2026-09-13 15:00:00.000000 +00:00' AND "memo_item"."updated_at" < '2026-09-14 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(tokyo, one(FilterOp::Ne, "2026-09-14"))),
+            r#""memo_item"."updated_at" < '2026-09-13 15:00:00.000000 +00:00' OR "memo_item"."updated_at" >= '2026-09-14 15:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(Tz::UTC, one(FilterOp::Gte, "2026-09-14"))),
+            r#""memo_item"."updated_at" >= '2026-09-14 00:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(
+                tokyo,
+                one(FilterOp::Gte, "2026-09-13T20:00:00+02:00")
+            )),
+            r#""memo_item"."updated_at" >= '2026-09-13 18:00:00.000000 +00:00'"#
+        );
+        assert_eq!(
+            tail(sql_in(
+                tokyo,
+                Filter {
+                    key: "updated_at".into(),
+                    op: FilterOp::Eq,
+                    value: FilterValue::Many(vec![
+                        "2026-09-14".into(),
+                        "2026-09-16T00:00:00Z".into()
+                    ]),
+                }
+            )),
+            r#"("memo_item"."updated_at" >= '2026-09-13 15:00:00.000000 +00:00' AND "memo_item"."updated_at" < '2026-09-14 15:00:00.000000 +00:00') OR "memo_item"."updated_at" = '2026-09-16 00:00:00.000000 +00:00'"#
+        );
+        let vague =
+            filter_expr::<item::Entity>(&one(FilterOp::Gte, "yesterday"), 3, tokyo).unwrap_err();
+        assert_eq!(vague.key(), "keel.error.list.filter_value");
+        assert_eq!(vague.field_path(), Some("filters[3].value"));
+        let local =
+            filter_expr::<item::Entity>(&one(FilterOp::Gte, "2026-09-13T20:00:00"), 0, tokyo)
+                .unwrap_err();
+        assert_eq!(local.key(), "keel.error.list.filter_value");
+        let ranged = filter_expr::<item::Entity>(
+            &Filter {
+                key: "updated_at".into(),
+                op: FilterOp::Gt,
+                value: FilterValue::Many(vec!["2026-09-14".into()]),
+            },
+            0,
+            tokyo,
+        )
+        .unwrap_err();
+        assert_eq!(ranged.field_path(), Some("filters[0].op"));
+        let skipped = day_start(
+            chrono_tz::America::Santiago,
+            NaiveDate::from_ymd_opt(2026, 9, 6).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(skipped.to_rfc3339(), "2026-09-06T04:00:00+00:00");
+    }
+
     #[test]
     fn filters_are_typed_by_the_column() {
         let sql = |filter: Filter| {
             item::Entity::find()
-                .filter(filter_expr::<item::Entity>(&filter, 0).unwrap())
+                .filter(filter_expr::<item::Entity>(&filter, 0, Tz::UTC).unwrap())
                 .build(DbBackend::Postgres)
                 .to_string()
         };
@@ -417,6 +605,7 @@ mod tests {
                 value: FilterValue::One("heavy".into()),
             },
             2,
+            Tz::UTC,
         )
         .unwrap_err();
         assert_eq!(bad.field_path(), Some("filters[2].value"));
@@ -427,6 +616,7 @@ mod tests {
                 value: FilterValue::One("red".into()),
             },
             0,
+            Tz::UTC,
         )
         .unwrap_err();
         assert_eq!(unknown.key(), "keel.error.list.unknown_field");
@@ -437,6 +627,7 @@ mod tests {
                 value: FilterValue::Many(vec!["1".into()]),
             },
             0,
+            Tz::UTC,
         )
         .unwrap_err();
         assert_eq!(ranged.field_path(), Some("filters[0].op"));

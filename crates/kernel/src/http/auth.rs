@@ -7,8 +7,11 @@ use axum::http::request::Parts;
 use axum::http::{Extensions, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
+use chrono_tz::Tz;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticated, Authenticator, Client, Credential, SessionChange};
+use keel_sdk::system::{
+    Authenticated, Authenticator, Client, Credential, PreferenceSource, Preferences, SessionChange,
+};
 use keel_sdk::{KeelError, Secret};
 use keel_types::{ErrorCode, Id, Level, Principal, Scope, Via};
 
@@ -22,11 +25,15 @@ use crate::registry::Registry;
 pub const SESSION_COOKIE: &str = "__Host-keel_session";
 pub const GUEST_LOGIN: &str = "guest";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Zone(pub(super) Option<Tz>);
+
 #[derive(Clone, Debug)]
 pub(super) struct Caller {
     pub(super) request_id: String,
     pub(super) principal: Principal,
     pub(super) client: Client,
+    pub(super) zone: Zone,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for Caller {
@@ -47,6 +54,7 @@ impl<S: Send + Sync> FromRequestParts<S> for Caller {
             request_id,
             principal,
             client,
+            zone: parts.extensions.get::<Zone>().copied().unwrap_or_default(),
         })
     }
 }
@@ -88,13 +96,19 @@ pub(super) async fn authenticate(
         return reply::error(KeelError::forbidden("keel.error.cross_site"), &request_id);
     }
     let mut client = client(headers, request.extensions());
+    let mut zone = Zone::default();
     let principal = match credential {
         Some(credential) => {
             let db = Db::from_connection(state.db.clone());
             match resolve(&live.authenticators, &credential, &client, &db).await {
                 Ok(authenticated) => {
                     client.session = authenticated.session;
-                    authenticated.principal
+                    let mut principal = authenticated.principal;
+                    match preferences(&live.registry, &principal, &db).await {
+                        Ok(preferred) => zone = overlay(&live.registry, &mut principal, preferred),
+                        Err(error) => return reply::error(error, &request_id),
+                    }
+                    principal
                 }
                 Err(error) => {
                     let stale = matches!(credential, Credential::Session(_))
@@ -111,7 +125,35 @@ pub(super) async fn authenticate(
     };
     request.extensions_mut().insert(principal);
     request.extensions_mut().insert(client);
+    request.extensions_mut().insert(zone);
     next.run(request).await
+}
+
+async fn preferences(
+    registry: &Registry,
+    principal: &Principal,
+    db: &Db,
+) -> Result<Preferences, KeelError> {
+    if principal.level == Level::Guest || principal.level >= Level::Owner {
+        return Ok(Preferences::default());
+    }
+    match registry.services().get::<dyn PreferenceSource>() {
+        Some(source) => source.preferences(principal.id, db).await,
+        None => Ok(Preferences::default()),
+    }
+}
+
+pub(super) fn overlay(
+    registry: &Registry,
+    principal: &mut Principal,
+    preferred: Preferences,
+) -> Zone {
+    if let Some(lang) = preferred.lang
+        && registry.i18n(&lang).is_some()
+    {
+        principal.lang = lang;
+    }
+    Zone(preferred.tz.and_then(|name| name.parse::<Tz>().ok()))
 }
 
 async fn resolve(

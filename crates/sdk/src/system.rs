@@ -58,6 +58,21 @@ pub trait AccountSource: Send + Sync {
     async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Preferences {
+    pub lang: Option<String>,
+    pub tz: Option<String>,
+}
+
+#[async_trait]
+pub trait PreferenceSource: Send + Sync {
+    async fn preferences(&self, principal: Id, db: &Db) -> Result<Preferences>;
+}
+
+pub trait LanguageSource: Send + Sync {
+    fn languages(&self) -> Vec<String>;
+}
+
 pub trait SecretCipher: Send + Sync {
     fn seal(&self, plaintext: &[u8]) -> Result<String>;
     fn open(&self, sealed: &str) -> Result<Vec<u8>>;
@@ -130,9 +145,12 @@ mod tests {
         };
         let handle = CallBuilder::new(crate::tests::principal(Level::User), "req-1")
             .client(Some(client.clone()))
+            .tz(chrono_tz::Asia::Tokyo)
             .read(sea_orm::DatabaseConnection::Disconnected);
         let call = handle.call(());
         assert_eq!(call.client(), Some(&client));
+        assert_eq!(call.tz(), chrono_tz::Asia::Tokyo);
+        assert_eq!(handle.tz(), chrono_tz::Asia::Tokyo);
         assert!(handle.take_session_change().is_none());
         call.session(SessionChange::Set(Secret::new("ks_1")));
         call.session(SessionChange::Clear);
@@ -143,6 +161,7 @@ mod tests {
         assert!(handle.take_session_change().is_none());
         let bare = crate::tests::read_handle();
         assert!(bare.call(()).client().is_none());
+        assert_eq!(bare.call(()).tz(), chrono_tz::UTC);
         assert_eq!(
             format!("{:?}", SessionChange::Set(Secret::new("ks_1"))),
             "Set(Secret(***))"

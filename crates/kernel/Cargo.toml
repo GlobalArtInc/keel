@@ -10,6 +10,7 @@ repository.workspace = true
 aes-gcm = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 futures = { workspace = true }
 jsonschema = { workspace = true }
 keel-sdk = { workspace = true }

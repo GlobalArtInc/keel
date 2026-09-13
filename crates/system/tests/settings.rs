@@ -385,10 +385,18 @@ async fn the_settings_descriptors_match_their_snapshots() {
             .map(String::as_str)
             .filter(|name| name.starts_with("settings."))
             .collect();
-        let expected: &[&str] = if level < Level::Reseller {
+        let expected: &[&str] = if level < Level::User {
             &[]
+        } else if level < Level::Reseller {
+            &["settings.pref.get", "settings.pref.set"]
         } else {
-            &["settings.get", "settings.list", "settings.set"]
+            &[
+                "settings.get",
+                "settings.list",
+                "settings.pref.get",
+                "settings.pref.set",
+                "settings.set",
+            ]
         };
         assert_eq!(settings, expected, "{level}");
     }

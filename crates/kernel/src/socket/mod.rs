@@ -261,6 +261,7 @@ impl Socket {
                     request_id,
                     idempotency_key,
                     client: None,
+                    tz: None,
                 };
                 self.dispatcher
                     .call(principal, &func, params, options)
@@ -293,8 +294,13 @@ impl Socket {
             }
             Frame::Boot => {
                 let request_id = generate_request_id();
-                match boot::payload(self.dispatcher.registry(), self.dispatcher.db(), &principal)
-                    .await
+                match boot::payload(
+                    self.dispatcher.registry(),
+                    self.dispatcher.db(),
+                    &principal,
+                    None,
+                )
+                .await
                 {
                     Ok(payload) => ok_envelope(&payload, &request_id, &principal),
                     Err(error) => error_envelope(error, &request_id),

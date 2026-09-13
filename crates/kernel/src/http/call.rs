@@ -11,7 +11,7 @@ use keel_types::{Kind, Principal};
 use serde_json::{Map, Value};
 
 use super::Shared;
-use super::auth::Caller;
+use super::auth::{Caller, Zone};
 use super::cookie;
 use super::live::Live;
 use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION};
@@ -30,8 +30,9 @@ pub(super) async fn post(
         request_id,
         principal,
         client,
+        zone,
     } = caller;
-    let options = options(request.headers(), &request_id, client);
+    let options = options(request.headers(), &request_id, client, zone);
     let params = match body(request, state.options.body_limit).await {
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
@@ -55,6 +56,7 @@ pub(super) async fn get(
         request_id,
         principal,
         client,
+        zone,
     } = caller;
     if let Some(function) = live.registry.function(&func)
         && !matches!(function.def().kind(), Kind::List | Kind::Get)
@@ -74,7 +76,7 @@ pub(super) async fn get(
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
     };
-    let options = options(&headers, &request_id, client);
+    let options = options(&headers, &request_id, client, zone);
     let reply = live
         .dispatcher
         .call(principal.clone(), &func, params, options)
@@ -82,7 +84,7 @@ pub(super) async fn get(
     respond(&state, &live, &principal, reply).await
 }
 
-fn options(headers: &HeaderMap, request_id: &str, client: Client) -> CallOptions {
+fn options(headers: &HeaderMap, request_id: &str, client: Client, zone: Zone) -> CallOptions {
     CallOptions {
         request_id: Some(request_id.to_owned()),
         idempotency_key: headers
@@ -92,6 +94,7 @@ fn options(headers: &HeaderMap, request_id: &str, client: Client) -> CallOptions
             .filter(|key| !key.is_empty())
             .map(str::to_owned),
         client: Some(client),
+        tz: zone.0,
     }
 }
 

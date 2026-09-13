@@ -38,6 +38,10 @@ impl Catalogue {
             .is_some_and(Value::is_string)
     }
 
+    pub fn languages(&self) -> Vec<String> {
+        self.languages.keys().cloned().collect()
+    }
+
     pub fn into_languages(self) -> BTreeMap<String, Map<String, Value>> {
         self.languages
     }
