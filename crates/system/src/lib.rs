@@ -1,3 +1,5 @@
+#[cfg(feature = "audit")]
+pub mod audit;
 #[cfg(feature = "auth")]
 pub mod auth;
 #[cfg(feature = "settings")]

@@ -4,7 +4,7 @@ use std::time::Duration;
 use keel_kernel::dispatcher::{self, CallOptions, Dispatcher, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
-use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
+use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client};
 use keel_sdk::{Registrar, migrator};
 use keel_testkit::TestDatabase;
 use keel_types::{Check, ErrorCode, Scope, Via};
@@ -1292,6 +1292,85 @@ async fn an_outbox_row_exists_exactly_when_the_call_committed() {
     assert_eq!(actor["kind"], json!("principal"));
     let data: Value = serde_json::from_str(&row.try_get::<String>("", "data").unwrap()).unwrap();
     assert_eq!(data["title"], json!("kept"));
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn the_audit_event_carries_the_client_the_subject_and_the_masked_result_of_a_keyed_form() {
+    let bench = bench().await;
+    let client = Client {
+        ip: Some("10.0.0.9".parse().expect("an address")),
+        user_agent: Some("probe/1".into()),
+        session: None,
+    };
+    let with_client = |id: &str| CallOptions {
+        client: Some(client.clone()),
+        ..request(id)
+    };
+    let created = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "title": "subject", "pages": 1, "token": "hunter2" }),
+            with_client("subject-create"),
+        )
+        .await;
+    let id = created.data().expect("the saved book")["id"]
+        .as_str()
+        .expect("an id")
+        .to_owned();
+    let events = RECORDER.audit_of("subject-create");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].client, Some(client.clone()));
+    assert_eq!(events[0].subject, None);
+    assert_eq!(
+        events[0].result,
+        Some(json!({ "id": id, "token": dispatcher::MASK, "receipt": dispatcher::MASK }))
+    );
+
+    let edited = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "id": id, "title": "subject-2", "pages": 2 }),
+            with_client("subject-edit"),
+        )
+        .await;
+    assert!(edited.data().is_some(), "{:?}", edited.error());
+    let events = RECORDER.audit_of("subject-edit");
+    assert_eq!(events[0].subject.as_deref(), Some(id.as_str()));
+    assert_eq!(events[0].params["id"], json!(id));
+    assert_eq!(
+        events[0].result,
+        Some(json!({ "id": id, "token": null, "receipt": dispatcher::MASK }))
+    );
+
+    let failed = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "id": id, "title": "boom", "pages": 3 }),
+            with_client("subject-boom"),
+        )
+        .await;
+    assert_eq!(code(&failed), ErrorCode::Conflict);
+    let events = RECORDER.audit_of("subject-boom");
+    assert_eq!(events[0].subject.as_deref(), Some(id.as_str()));
+    assert_eq!(events[0].result, None);
+
+    let batched = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.batch",
+            json!({ "ids": [id], "pages": 4 }),
+            request("subject-batch"),
+        )
+        .await;
+    assert!(batched.data().is_some(), "{:?}", batched.error());
+    let events = RECORDER.audit_of("subject-batch");
+    assert_eq!(events[0].client, None);
+    assert_eq!(events[0].subject, Some(format!("[\"{id}\"]")));
+    assert_eq!(events[0].result, None);
     bench.finish().await;
 }
 

@@ -349,6 +349,8 @@ check "ctl note.edit title=hers in the account of alice" keel_ok "$site/hers.jso
 check "ctl keel.account.list --as alice" keel_ok "$site/accounts-as-alice.json" ctl keel.account.list --as alice
 check "keel.account.list as alice answers her account with the owner as actor" json_is "$site/accounts-as-alice.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$account_id'] and doc['meta']['principal']['login'] == 'alice' and doc['meta']['principal']['actor']['login'] == 'owner' and doc['meta']['principal']['actor']['via'] == 'socket'"
 check "ctl keel.account.list --as nobody is refused" keel_fails "$site/as-nobody.json" ctl keel.account.list --as nobody
+check "ctl auth.token.create --as alice" keel_ok "$site/token-as-alice.json" ctl auth.token.create name=cli --as alice
+check "auth.token.create as alice answers the plaintext with the owner as actor" json_is "$site/token-as-alice.json" "doc['ok'] is True and re.fullmatch('kat_[0-9a-f]{64}', doc['data']['token']) is not None and doc['meta']['principal']['login'] == 'alice' and doc['meta']['principal']['actor']['login'] == 'owner'"
 check "keel.account.list as nobody answers not_found" json_is "$site/as-nobody.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found" and doc["error"]["key"] == "keel.error.principal_not_found" and doc["error"]["params"]["login"] == "nobody"'
 check "POST /api/v1/call/auth.login with a wrong password is 401" http_is "$site/wrong.json" 401 POST /api/v1/call/auth.login '{"login":"alice","password":"wrong"}'
 check "the wrong password answers auth.error.credentials" json_is "$site/wrong.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "auth.error.credentials"'
@@ -475,6 +477,23 @@ check "ctl auth.ip_rule.list --out json" keel_ok "$site/ip-rules.json" ctl auth.
 check "auth.ip_rule.list answers the rule" json_is "$site/ip-rules.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$ip_rule_id']"
 check "keel serve stops on SIGTERM" stop_serve
 check "the socket file is removed" socket_is_gone
+audit_sql() {
+  psql "$(database_url "$admin_url" "$database")" -qAt -c "$1"
+}
+check "the stopped worker left no audit event unwritten" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.ip_rule.create'")" = "1"
+check "the failed login is a failed row with the password masked" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'failed' AND error_key = 'auth.error.credentials' AND principal_id IS NULL AND account_id = '$root_account' AND params_redacted->>'password' = '***' AND params_redacted->>'login' = 'alice'")" = "5"
+check "the committed logins mask the password the same way" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'committed' AND params_redacted->>'password' <> '***'")" = "0"
+check "auth.password.set records the masked password" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.password.set' AND params_redacted->>'password' <> '***'")" = "0"
+check "no session, token or key reaches the trail" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE params_redacted::text ~ '(ks|kat|kok)_' OR coalesce(after::text, '') ~ '(ks|kat|kok)_' OR coalesce(subject, '') ~ '(ks|kat|kok)_'")" = "0"
+check "the totp secret and the recovery code are not in the trail" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE params_redacted::text LIKE '%$totp_secret%' OR params_redacted::text LIKE '%$recovery_code%' OR coalesce(after::text, '') LIKE '%$totp_secret%'")" = "0"
+check "auth.su is recorded for root and the calls inside it carry alice with root as actor" test "$(audit_sql "SELECT string_agg(function || ':' || principal_login || ':' || coalesce(actor_login, '-') || ':' || via || ':' || status || ':' || coalesce(error_key, '-'), ' ' ORDER BY function, status) FROM keel.audit_call WHERE function IN ('auth.su', 'auth.su.exit')")" = "auth.su:root:-:http:committed:- auth.su.exit:alice:root:http:committed:- auth.su.exit:root:-:http:failed:auth.error.not_delegated"
+check "the frame with --as records alice with the owner as actor via socket" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.token.create' AND via = 'socket' AND principal_login = 'alice' AND actor_login = 'owner' AND ip IS NULL")" = "1"
+check "socket frames record via socket without an address" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'keel.principal.create' AND via = 'socket' AND ip IS NULL AND principal_login = 'owner' AND actor_login IS NULL")" = "2"
+check "cookie calls record via http with the peer address and a request id" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.token.create' AND via = 'http' AND ip = '127.0.0.1' AND request_id LIKE 'req-%'")" = "2"
+check "the idempotent replay left no second row" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.token.create' AND params_redacted->>'name' = 'keyed'")" = "1"
+check "read calls leave no row" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function IN ('note.list', 'keel.account.list', 'settings.list', 'auth.ip_rule.list')")" = "0"
+check "note.edit records the masked result as after and no subject on a create" test "$(audit_sql "SELECT string_agg(after->>'title', ' ' ORDER BY after->>'title') FROM keel.audit_call WHERE function = 'note.edit' AND subject IS NULL AND after IS NOT NULL")" = "hers x"
+check "auth.token.create records neither subject nor after" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.token.create' AND (subject IS NOT NULL OR after IS NOT NULL)")" = "0"
 
 echo "--- run 2: no bundle enabled"
 check "product disable demo" keel_ok "$site/disable.out" product disable demo
@@ -490,6 +509,10 @@ check "ctl auth.ip_rule.delete over the socket" keel_ok "$site/ip-rule-delete.js
 check "auth.ip_rule.delete answers deleted" json_is "$site/ip-rule-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'
 check "POST /api/v1/call/keel.account.list with the cookie is 200 after the delete" http_is "$site/accounts-allowed.json" 200 POST /api/v1/call/keel.account.list '{}' "$cookie"
 check "keel.account.list answers the account of alice" json_is "$site/accounts-allowed.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$account_id'] and doc['meta']['principal']['login'] == 'alice'"
+check "ctl audit.list --out json" keel_ok "$site/audit.json" ctl audit.list --out json filters='[{"key":"function","op":"eq","value":"auth.su"}]'
+check "audit.list answers the su row with root as the principal" json_is "$site/audit.json" 'doc["ok"] is True and doc["data"]["total"] == 1 and doc["data"]["data"][0]["principalLogin"] == "root" and doc["data"]["data"][0]["actorLogin"] is None and doc["data"]["data"][0]["status"] == "committed"'
+check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
+check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

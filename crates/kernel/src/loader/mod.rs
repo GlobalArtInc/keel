@@ -37,7 +37,7 @@ impl Kernel {
         let graph = composition.resolve()?;
         graph.migrate(storage).await?;
         let frozen = graph.init()?.freeze()?;
-        Ok(frozen.start().await?)
+        Ok(frozen.start(storage.db().clone()).await?)
     }
 }
 

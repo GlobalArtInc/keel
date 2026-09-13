@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{Spawner, StopHook};
-use keel_sdk::{Context, KeelError};
+use keel_sdk::{Context, Db, KeelError};
+use sea_orm::DatabaseConnection;
 use tokio::task::JoinSet;
 
 use super::composition::Graph;
@@ -41,7 +42,7 @@ pub struct StopError {
 }
 
 impl Frozen {
-    pub async fn start(self) -> Result<Kernel, StartError> {
+    pub async fn start(self, db: DatabaseConnection) -> Result<Kernel, StartError> {
         let mut kernel = Kernel {
             graph: self.graph,
             registry: self.registry,
@@ -55,6 +56,7 @@ impl Frozen {
                     kernel.registry.contributions().clone(),
                     kernel.registry.services().clone(),
                     tasks.clone(),
+                    Db::from_connection(db.clone()),
                 );
                 if let Err(source) = start(ctx).await {
                     tasks.shutdown().await;
@@ -272,7 +274,7 @@ mod tests {
             .expect("init registers")
             .freeze()
             .expect("the registries freeze")
-            .start()
+            .start(DatabaseConnection::Disconnected)
             .await
     }
 

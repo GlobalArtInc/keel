@@ -7,7 +7,8 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings"]
+default = ["auth", "settings", "audit"]
+audit = ["dep:tokio", "dep:tracing"]
 settings = ["dep:jsonschema"]
 auth = [
   "dep:argon2",
@@ -33,6 +34,7 @@ sha1 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures = { workspace = true }

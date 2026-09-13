@@ -11,12 +11,15 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange};
 use keel_sdk::{AfterContext, KeelError};
-use keel_types::{CallError, Envelope, ErrorCode, Id, Level, Meta, MetaPrincipal, Mode, Principal};
+use keel_types::{
+    CallError, Envelope, ErrorCode, Id, Kind, Level, Meta, MetaPrincipal, Mode, Principal,
+};
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde_json::{Map, Value};
 
@@ -100,6 +103,63 @@ struct Executed {
 struct Origin {
     client: Option<Client>,
     tz: Tz,
+}
+
+struct Recorded {
+    params: Value,
+    client: Option<Client>,
+}
+
+impl Recorded {
+    fn event(
+        self,
+        target: &Target<'_>,
+        principal: &Principal,
+        request_id: &str,
+        outcome: &Result<Executed, KeelError>,
+        at: DateTime<Utc>,
+        elapsed: Duration,
+    ) -> AuditEvent {
+        let def = target.function.def();
+        let Recorded { mut params, client } = self;
+        let subject = def.key().and_then(|key| subject_of(&params, key));
+        target.prepared.params.mask(&mut params);
+        let result = match outcome {
+            Ok(executed) if def.kind() == Kind::Form && def.key().is_some() => {
+                let mut result = executed.data.clone();
+                target.prepared.result.mask_once(&mut result);
+                Some(result)
+            }
+            _ => None,
+        };
+        AuditEvent {
+            request_id: request_id.to_owned(),
+            function: def.name().to_owned(),
+            module: def.module().to_owned(),
+            mode: def.mode(),
+            principal: principal.clone(),
+            client,
+            params,
+            subject,
+            result,
+            outcome: match outcome {
+                Ok(_) => AuditOutcome::Committed,
+                Err(error) => AuditOutcome::Failed {
+                    error: error.to_call_error(),
+                },
+            },
+            at,
+            elapsed,
+        }
+    }
+}
+
+fn subject_of(params: &Value, key: &str) -> Option<String> {
+    match params.get(key)? {
+        Value::Null => None,
+        Value::String(id) => Some(id.clone()),
+        other => Some(other.to_string()),
+    }
 }
 
 type AfterHooks = Arc<Mutex<Vec<AfterCommitHook>>>;
@@ -192,7 +252,10 @@ impl Dispatcher {
             );
         };
         let mode = target.function.def().mode();
-        let recorded = (mode == Mode::Write && self.inner.audit.is_some()).then(|| params.clone());
+        let recorded = (mode == Mode::Write && self.inner.audit.is_some()).then(|| Recorded {
+            params: params.clone(),
+            client: options.client.clone(),
+        });
         let outcome = self
             .inner
             .execute(
@@ -207,26 +270,17 @@ impl Dispatcher {
                 },
             )
             .await;
-        if let (Some(sink), Some(mut params)) = (&self.inner.audit, recorded)
+        if let (Some(sink), Some(recorded)) = (&self.inner.audit, recorded)
             && !outcome.as_ref().is_ok_and(|executed| executed.replay)
         {
-            target.prepared.params.mask(&mut params);
-            sink.record(AuditEvent {
-                request_id: request_id.clone(),
-                function: target.function.name().to_owned(),
-                module: target.function.module().to_owned(),
-                mode,
-                principal: principal.clone(),
-                params,
-                outcome: match &outcome {
-                    Ok(_) => AuditOutcome::Committed,
-                    Err(error) => AuditOutcome::Failed {
-                        error: error.to_call_error(),
-                    },
-                },
-                at: self.inner.clock.now(),
-                elapsed: started.elapsed(),
-            });
+            sink.record(recorded.event(
+                &target,
+                &principal,
+                &request_id,
+                &outcome,
+                self.inner.clock.now(),
+                started.elapsed(),
+            ));
         }
         match outcome {
             Ok(executed) => {
@@ -706,6 +760,21 @@ mod tests {
         let (params, extra) = split_extra(json!({ "title": "x" }), &[]);
         assert_eq!(params, json!({ "title": "x" }));
         assert!(extra.is_empty());
+    }
+
+    #[test]
+    fn the_subject_is_the_key_parameter_as_text_and_absent_when_it_is_null_or_missing() {
+        assert_eq!(
+            subject_of(&json!({ "id": "01J" }), "id"),
+            Some("01J".to_owned())
+        );
+        assert_eq!(
+            subject_of(&json!({ "ids": ["a", "b"] }), "ids"),
+            Some(r#"["a","b"]"#.to_owned())
+        );
+        assert_eq!(subject_of(&json!({ "id": null }), "id"), None);
+        assert_eq!(subject_of(&json!({ "title": "x" }), "id"), None);
+        assert_eq!(subject_of(&json!("bare"), "id"), None);
     }
 
     #[test]

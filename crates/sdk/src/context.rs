@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
+use crate::db::Db;
 use crate::error::{KeelError, Result};
 use crate::registrar::Contributions;
 use crate::services::Services;
@@ -19,6 +20,7 @@ pub struct Context {
     contributions: Arc<Contributions>,
     services: Arc<Services>,
     spawner: Arc<dyn Spawner>,
+    db: Db,
 }
 
 impl Context {
@@ -28,12 +30,14 @@ impl Context {
         contributions: Arc<Contributions>,
         services: Arc<Services>,
         spawner: Arc<dyn Spawner>,
+        db: Db,
     ) -> Self {
         Self {
             module: Arc::from(module),
             contributions,
             services,
             spawner,
+            db,
         }
     }
 
@@ -62,6 +66,10 @@ impl Context {
         F: Future<Output = ()> + Send + 'static,
     {
         self.spawner.spawn(Box::pin(task));
+    }
+
+    pub(crate) fn db_slot(&self) -> &Db {
+        &self.db
     }
 }
 
@@ -116,8 +124,10 @@ mod tests {
             Arc::new(contributions),
             Arc::new(services),
             spawner.clone(),
+            Db::from_connection(sea_orm::DatabaseConnection::Disconnected),
         );
         assert_eq!(ctx.module(), "dns");
+        assert!(!crate::system::ContextExt::db(&ctx).is_transaction());
         let widgets: Vec<&str> = ctx.contributions::<Widget>().map(|w| w.0).collect();
         assert_eq!(widgets, ["a", "b"]);
         assert_eq!(ctx.contributions::<u8>().count(), 0);

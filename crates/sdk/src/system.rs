@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::call::Call;
+use crate::context::Context;
 use crate::db::Db;
 use crate::error::Result;
 use crate::secret::Secret;
@@ -18,7 +19,7 @@ pub enum Credential {
     Session(Secret),
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Client {
     pub ip: Option<IpAddr>,
     pub user_agent: Option<String>,
@@ -88,6 +89,16 @@ pub trait CallExt {
     fn session(&self, change: SessionChange);
 }
 
+pub trait ContextExt {
+    fn db(&self) -> Db;
+}
+
+impl ContextExt for Context {
+    fn db(&self) -> Db {
+        self.db_slot().clone()
+    }
+}
+
 impl<P> CallExt for Call<P> {
     fn client(&self) -> Option<&Client> {
         self.client_slot()
@@ -106,7 +117,10 @@ pub struct AuditEvent {
     pub module: String,
     pub mode: Mode,
     pub principal: Principal,
+    pub client: Option<Client>,
     pub params: Value,
+    pub subject: Option<String>,
+    pub result: Option<Value>,
     pub outcome: AuditOutcome,
     pub at: DateTime<Utc>,
     pub elapsed: Duration,

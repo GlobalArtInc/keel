@@ -254,6 +254,19 @@ impl Harness {
     }
 
     pub async fn try_finish(self) -> Result<(), Error> {
+        let database = self.try_stop().await?;
+        database.try_finish().await?;
+        Ok(())
+    }
+
+    pub async fn stop(self) -> TestDatabase {
+        match self.try_stop().await {
+            Ok(database) => database,
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    pub async fn try_stop(self) -> Result<TestDatabase, Error> {
         let Harness {
             kernel,
             dispatcher,
@@ -272,12 +285,9 @@ impl Harness {
         if let Err(error) = storage.close().await {
             first.get_or_insert(error.into());
         }
-        if let Err(error) = database.try_finish().await {
-            first.get_or_insert(error.into());
-        }
         match first {
             Some(error) => Err(error),
-            None => Ok(()),
+            None => Ok(database),
         }
     }
 }
