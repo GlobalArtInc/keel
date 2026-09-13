@@ -107,3 +107,66 @@ pub mod token {
         }
     }
 }
+
+pub mod totp {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_totp")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub principal_id: String,
+        pub secret: String,
+        pub confirmed_at: Option<DateTimeUtc>,
+        pub last_step: Option<i64>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod recovery_code {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_recovery_code")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub principal_id: String,
+        pub code_hash: String,
+        pub used_at: Option<DateTimeUtc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod login_challenge {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_login_challenge")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub challenge_hash: String,
+        pub principal_id: String,
+        pub ip: Option<String>,
+        pub expires_at: DateTimeUtc,
+        pub used_at: Option<DateTimeUtc>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

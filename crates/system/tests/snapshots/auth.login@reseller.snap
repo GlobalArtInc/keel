@@ -57,18 +57,34 @@ info:
         "$ref": "#/$defs/LoginState"
       },
       "principal": {
-        "$ref": "#/$defs/MetaPrincipal"
+        "anyOf": [
+          {
+            "$ref": "#/$defs/MetaPrincipal"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "challenge": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "once": true
+        }
       }
     },
     "required": [
-      "state",
-      "principal"
+      "state"
     ],
     "$defs": {
       "LoginState": {
         "type": "string",
         "enum": [
-          "authenticated"
+          "authenticated",
+          "totp"
         ]
       },
       "MetaPrincipal": {

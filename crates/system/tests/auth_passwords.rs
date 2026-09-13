@@ -47,12 +47,22 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["3"]);
+    assert_eq!(applied, ["6"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
         .await;
-    assert_eq!(tables, ["auth_password", "auth_session", "auth_token"]);
+    assert_eq!(
+        tables,
+        [
+            "auth_login_challenge",
+            "auth_password",
+            "auth_recovery_code",
+            "auth_session",
+            "auth_token",
+            "auth_totp"
+        ]
+    );
     let socket = harness.socket().await;
     let a1 = harness.principal(Who::A1).id;
     let set = socket
@@ -241,8 +251,8 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
     for level in Level::ALL {
         let names = harness.snapshot_descriptors(level, snapshots_dir());
         let expected: &[&str] = match level {
-            Level::Guest => &["auth.login"],
-            Level::Service => &["auth.login", "auth.logout"],
+            Level::Guest => &["auth.login", "auth.totp.verify"],
+            Level::Service => &["auth.login", "auth.logout", "auth.totp.verify"],
             _ => &[
                 "auth.login",
                 "auth.logout",
@@ -250,6 +260,10 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.token.create",
                 "auth.token.list",
                 "auth.token.revoke",
+                "auth.totp.confirm",
+                "auth.totp.disable",
+                "auth.totp.enroll",
+                "auth.totp.verify",
             ],
         };
         assert_eq!(names, expected, "{level}");

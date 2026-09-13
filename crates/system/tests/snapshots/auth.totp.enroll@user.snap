@@ -1,0 +1,43 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.totp.enroll
+  level: user
+---
+{
+  "keel": 1,
+  "name": "auth.totp.enroll",
+  "module": "auth",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.totp.manage"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Enrolled",
+    "type": "object",
+    "properties": {
+      "secret": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      },
+      "uri": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "secret",
+      "uri"
+    ]
+  }
+}

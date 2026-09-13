@@ -6,22 +6,33 @@ mod functions;
 mod password;
 mod session;
 mod token;
+mod totp;
 
 use std::sync::{Arc, OnceLock};
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::{Authenticator, PrincipalSource};
+use keel_sdk::system::{Authenticator, PrincipalSource, SecondFactorSource, SecretCipher};
 
 use api::LoginMethod;
 use authenticator::CredentialAuthenticator;
 use functions::Local;
 use password::Passwords;
+use totp::challenge::Attempts;
 
 pub use password::HASH_PREFIX;
 pub use session::{ABSOLUTE_HOURS, IDLE_MINUTES, REASON_LOGOUT, REASON_REPLACED, TOKEN_PREFIX};
 pub use token::API_TOKEN_PREFIX;
+pub use totp::challenge::{
+    LIFETIME_MINUTES as CHALLENGE_MINUTES, MAX_ATTEMPTS as CHALLENGE_ATTEMPTS,
+};
+pub use totp::code::{
+    DIGITS as TOTP_DIGITS, ISSUER as TOTP_ISSUER, RECOVERY_CODE_LEN, RECOVERY_CODES,
+    STEP_SECONDS as TOTP_STEP_SECONDS, code as totp_code, decode_secret as decode_totp_secret,
+    step_at as totp_step,
+};
 
 use token::functions::{PERMISSION_MANAGE as TOKEN_MANAGE, PERMISSION_READ as TOKEN_READ};
+use totp::functions::PERMISSION_MANAGE as TOTP_MANAGE;
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/auth").table("keel_migration_auth");
@@ -53,15 +64,23 @@ fn init(r: &mut Registrar) -> Result<()> {
     let authenticator = Arc::new(CredentialAuthenticator::default());
     let local: Arc<dyn LoginMethod> = Arc::new(Local::new(passwords.clone()));
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
-    r.function(functions::password_set(passwords.clone()))
+    let attempts = Arc::new(Attempts::default());
+    r.require::<dyn SecretCipher>()
+        .provide::<dyn SecondFactorSource>(Arc::new(totp::SecondFactor))
+        .function(functions::password_set(passwords.clone()))
         .function(functions::login(state.clone()))
         .function(functions::logout())
         .function(token::functions::list())
         .function(token::functions::create())
         .function(token::functions::revoke_function())
+        .function(totp::functions::enroll())
+        .function(totp::functions::confirm())
+        .function(totp::functions::disable())
+        .function(totp::functions::verify(attempts))
         .permission("auth.password.manage", &[Level::User, Level::Reseller])
         .permission(TOKEN_READ, &[Level::User, Level::Reseller])
         .permission(TOKEN_MANAGE, &[Level::User, Level::Reseller])
+        .permission(TOTP_MANAGE, &[Level::User, Level::Reseller])
         .contribute(local)
         .contribute(contributed)
         .i18n("en", include_str!("../../i18n/auth/en.json"))
@@ -85,13 +104,17 @@ fn init(r: &mut Registrar) -> Result<()> {
 mod tests {
     use super::*;
 
-    const FUNCTIONS: [&str; 6] = [
+    const FUNCTIONS: [&str; 10] = [
         "auth.password.set",
         "auth.login",
         "auth.logout",
         "auth.token.list",
         "auth.token.create",
         "auth.token.revoke",
+        "auth.totp.enroll",
+        "auth.totp.confirm",
+        "auth.totp.disable",
+        "auth.totp.verify",
     ];
 
     #[test]
@@ -115,6 +138,10 @@ mod tests {
                 ("auth.token.list", Kind::List, Mode::Read, Level::User),
                 ("auth.token.create", Kind::Form, Mode::Write, Level::User),
                 ("auth.token.revoke", Kind::Action, Mode::Write, Level::User),
+                ("auth.totp.enroll", Kind::Action, Mode::Write, Level::User),
+                ("auth.totp.confirm", Kind::Form, Mode::Write, Level::User),
+                ("auth.totp.disable", Kind::Form, Mode::Write, Level::User),
+                ("auth.totp.verify", Kind::Form, Mode::Write, Level::Guest),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
@@ -133,6 +160,7 @@ mod tests {
                 ("auth.password.manage", &[Level::User, Level::Reseller][..]),
                 (TOKEN_READ, &[Level::User, Level::Reseller][..]),
                 (TOKEN_MANAGE, &[Level::User, Level::Reseller][..]),
+                (TOTP_MANAGE, &[Level::User, Level::Reseller][..]),
             ]
         );
         let languages: Vec<&str> = registrations
@@ -155,6 +183,16 @@ mod tests {
             .collect();
         assert_eq!(methods, [api::LOCAL_METHOD]);
         assert!(registrations.start.is_some());
+        assert!(
+            registrations
+                .provides
+                .get::<dyn SecondFactorSource>()
+                .is_some()
+        );
+        assert_eq!(
+            registrations.requires,
+            [keel_sdk::runtime::ServiceKey::of::<dyn SecretCipher>()]
+        );
         assert_eq!(MODULE.sdk, VERSION);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),

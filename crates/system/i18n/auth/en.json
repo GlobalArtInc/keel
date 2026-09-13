@@ -45,5 +45,21 @@
   "auth.error.token_expires_past": "The expiry must lie in the future",
   "auth.error.token_net": "The stored network {net} of a token cannot be read",
   "auth.error.token_principal": "The token names a principal that cannot be read",
-  "auth.error.token_level_unknown": "The stored level {level} of token {id} is not on the ladder"
+  "auth.error.token_level_unknown": "The stored level {level} of token {id} is not on the ladder",
+  "auth.login.state.totp": "A second factor is required",
+  "auth.totp.enroll.title": "Set up a second factor",
+  "auth.totp.confirm.title": "Confirm the second factor",
+  "auth.totp.disable.title": "Disable the second factor",
+  "auth.totp.verify.title": "Enter the code",
+  "auth.totp.code": "Code",
+  "auth.totp.challenge": "Sign-in challenge",
+  "auth.totp.principal": "Principal",
+  "auth.error.code": "The code is wrong",
+  "auth.error.code_required": "A code is required",
+  "auth.error.challenge": "The sign-in challenge is no longer valid; sign in again",
+  "auth.error.totp_enrolled": "A second factor is already enrolled; disable it first",
+  "auth.error.totp_not_enrolled": "No second factor is being set up",
+  "auth.error.totp_owner": "The owner has no second factor; it signs in over the socket",
+  "auth.error.totp_secret": "The stored second factor cannot be read",
+  "auth.error.totp_principal": "The second factor names a principal that cannot be read"
 }

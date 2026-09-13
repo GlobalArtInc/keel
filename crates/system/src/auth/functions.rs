@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
+use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::OnConflict;
 use keel_sdk::sea_orm::{EntityTrait, Set};
-use keel_sdk::system::{CallExt, PrincipalSource, SessionChange};
+use keel_sdk::system::{CallExt, Client, PrincipalSource, SessionChange};
 use keel_sdk::types::{MetaPrincipal, Via};
 
 use super::api::{LOCAL_METHOD, LoginMethod};
 use super::entity::password;
 use super::password::{Passwords, credentials};
-use super::{State, session};
+use super::{State, session, totp};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde")]
@@ -46,6 +47,7 @@ pub struct Login {
 #[schemars(crate = "keel_sdk::schemars")]
 pub enum LoginState {
     Authenticated,
+    Totp,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -53,7 +55,11 @@ pub enum LoginState {
 #[schemars(crate = "keel_sdk::schemars")]
 pub struct LoggedIn {
     pub state: LoginState,
-    pub principal: MetaPrincipal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal: Option<MetaPrincipal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-keel" = json!({ "once": true })))]
+    pub challenge: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -110,7 +116,7 @@ async fn own_after_current(call: &Call<PasswordSet>, passwords: &Passwords) -> R
         .await
 }
 
-async fn below_caller(call: &Call<PasswordSet>, target: Id) -> Result<Id> {
+pub(super) async fn below_caller<P>(call: &Call<P>, target: Id) -> Result<Id> {
     let row = call
         .invoke("keel.principal.get", json!({ "id": target }))
         .await?;
@@ -136,10 +142,7 @@ pub fn login(state: Arc<State>) -> FunctionDef {
         .handler(move |call: Call<Login>| {
             let state = state.clone();
             async move {
-                let Some(client) = call.client().filter(|_| call.principal().via == Via::Http)
-                else {
-                    return Err(KeelError::validation("auth.error.http_only"));
-                };
+                let client = http_client(&call)?;
                 let params = call.params();
                 let method = params.method.as_deref().unwrap_or(LOCAL_METHOD);
                 let verifier = state.method(method).ok_or_else(|| {
@@ -150,33 +153,67 @@ pub fn login(state: Arc<State>) -> FunctionDef {
                 let id = verifier
                     .verify(&params.login, &params.password, call.db())
                     .await?;
-                let principals = call.require::<dyn PrincipalSource>()?;
-                let Some(mut principal) = principals.by_id(id, call.db()).await? else {
-                    return Err(credentials());
-                };
-                if principal.level >= Level::Owner {
-                    return Err(credentials());
-                }
-                principal.via = Via::Http;
+                let principal = login_principal(&call, id, credentials).await?;
                 let now = call.require::<dyn Clock>()?.now();
-                let tx = call.tx()?;
-                if let Some(previous) = &client.session {
-                    session::revoke(tx, previous, now, session::REASON_REPLACED).await?;
+                if totp::confirmed(call.db(), principal.id).await?.is_some() {
+                    let challenge =
+                        totp::challenge::create(call.tx()?, principal.id, client, now).await?;
+                    return Ok(LoggedIn {
+                        state: LoginState::Totp,
+                        principal: None,
+                        challenge: Some(challenge.into_inner()),
+                    });
                 }
-                let token = session::open(tx, &principal, client, now).await?;
-                call.session(SessionChange::Set(token));
-                Ok(LoggedIn {
-                    state: LoginState::Authenticated,
-                    principal: MetaPrincipal {
-                        id: principal.id,
-                        login: principal.login,
-                        level: principal.level,
-                        account: principal.account_id,
-                        actor: None,
-                    },
-                })
+                open_session(&call, principal, client, now).await
             }
         })
+}
+
+pub(super) async fn login_principal<P>(
+    call: &Call<P>,
+    id: Id,
+    refused: fn() -> KeelError,
+) -> Result<Principal> {
+    let principals = call.require::<dyn PrincipalSource>()?;
+    let Some(mut principal) = principals.by_id(id, call.db()).await? else {
+        return Err(refused());
+    };
+    if principal.level >= Level::Owner {
+        return Err(refused());
+    }
+    principal.via = Via::Http;
+    Ok(principal)
+}
+
+pub(super) fn http_client<P>(call: &Call<P>) -> Result<&Client> {
+    call.client()
+        .filter(|_| call.principal().via == Via::Http)
+        .ok_or_else(|| KeelError::validation("auth.error.http_only"))
+}
+
+pub(super) async fn open_session<P>(
+    call: &Call<P>,
+    principal: Principal,
+    client: &Client,
+    now: DateTime<Utc>,
+) -> Result<LoggedIn> {
+    let tx = call.tx()?;
+    if let Some(previous) = &client.session {
+        session::revoke(tx, previous, now, session::REASON_REPLACED).await?;
+    }
+    let token = session::open(tx, &principal, client, now).await?;
+    call.session(SessionChange::Set(token));
+    Ok(LoggedIn {
+        state: LoginState::Authenticated,
+        principal: Some(MetaPrincipal {
+            id: principal.id,
+            login: principal.login,
+            level: principal.level,
+            account: principal.account_id,
+            actor: None,
+        }),
+        challenge: None,
+    })
 }
 
 pub fn logout() -> FunctionDef {

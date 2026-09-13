@@ -1,0 +1,177 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.totp.verify
+  level: service
+---
+{
+  "keel": 1,
+  "name": "auth.totp.verify",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "Verify",
+    "type": "object",
+    "properties": {
+      "challenge": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "code": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      }
+    },
+    "required": [
+      "challenge",
+      "code"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "LoggedIn",
+    "type": "object",
+    "properties": {
+      "state": {
+        "$ref": "#/$defs/LoginState"
+      },
+      "principal": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/MetaPrincipal"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "challenge": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "state"
+    ],
+    "$defs": {
+      "LoginState": {
+        "type": "string",
+        "enum": [
+          "authenticated",
+          "totp"
+        ]
+      },
+      "MetaPrincipal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "account": {
+            "$ref": "#/$defs/Id"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MetaActor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "account"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      },
+      "MetaActor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "login": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "via": {
+            "$ref": "#/$defs/ActorVia"
+          }
+        },
+        "required": [
+          "id",
+          "login",
+          "level",
+          "via"
+        ]
+      },
+      "ActorVia": {
+        "type": "string",
+        "enum": [
+          "su",
+          "socket",
+          "peer"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.totp.verify.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "challenge",
+          "code"
+        ]
+      }
+    ]
+  }
+}

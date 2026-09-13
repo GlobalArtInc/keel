@@ -45,5 +45,21 @@
   "auth.error.token_expires_past": "Срок действия должен лежать в будущем",
   "auth.error.token_net": "Не удалось прочитать сохранённую сеть {net} токена",
   "auth.error.token_principal": "Токен ссылается на пользователя, которого не удалось прочитать",
-  "auth.error.token_level_unknown": "Сохранённый уровень {level} токена {id} не входит в лестницу"
+  "auth.error.token_level_unknown": "Сохранённый уровень {level} токена {id} не входит в лестницу",
+  "auth.login.state.totp": "Нужен второй фактор",
+  "auth.totp.enroll.title": "Подключить второй фактор",
+  "auth.totp.confirm.title": "Подтвердить второй фактор",
+  "auth.totp.disable.title": "Отключить второй фактор",
+  "auth.totp.verify.title": "Введите код",
+  "auth.totp.code": "Код",
+  "auth.totp.challenge": "Запрос входа",
+  "auth.totp.principal": "Пользователь",
+  "auth.error.code": "Неверный код",
+  "auth.error.code_required": "Нужен код",
+  "auth.error.challenge": "Запрос входа больше не действителен; войдите заново",
+  "auth.error.totp_enrolled": "Второй фактор уже подключён; сначала отключите его",
+  "auth.error.totp_not_enrolled": "Второй фактор не подключается",
+  "auth.error.totp_owner": "У владельца нет второго фактора; он входит через сокет",
+  "auth.error.totp_secret": "Не удалось прочитать сохранённый второй фактор",
+  "auth.error.totp_principal": "Второй фактор ссылается на пользователя, которого не удалось прочитать"
 }

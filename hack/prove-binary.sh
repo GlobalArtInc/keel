@@ -171,6 +171,19 @@ http_is() {
   fi
 }
 
+totp_code() {
+  local secret=$1 offset=${2:-0}
+  python3 - "$secret" "$offset" <<'EOF'
+import base64, hashlib, hmac, struct, sys, time
+secret = sys.argv[1]
+key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+step = int(time.time()) // 30 + int(sys.argv[2])
+digest = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest()
+offset = digest[-1] & 15
+print("%06d" % ((struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1000000))
+EOF
+}
+
 session_cookie_of() {
   local file=$1
   local value
@@ -338,6 +351,35 @@ check "the replay is marked" test "$(header_of "$site/token-replay.json.headers"
 check "the replay answers the masked token" json_is "$site/token-replay.json" 'doc["ok"] is True and doc["data"]["token"] == "***"'
 check "no column of auth_token holds a kat_ value" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_token t WHERE t::text LIKE '%kat\\_%'")" = "0"
 check "no idempotency record holds a kat_ value" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.keel_idempotency WHERE response_json::text LIKE '%kat\\_%'")" = "0"
+check "POST /api/v1/call/auth.totp.enroll with the cookie is 200" http_is "$site/enroll.json" 200 POST /api/v1/call/auth.totp.enroll '{}' "$cookie"
+check "auth.totp.enroll answers the base32 secret and the otpauth uri" json_is "$site/enroll.json" 'doc["ok"] is True and re.fullmatch("[A-Z2-7]{32}", doc["data"]["secret"]) is not None and doc["data"]["uri"].startswith("otpauth://totp/keel:alice?secret=" + doc["data"]["secret"] + "&issuer=keel")'
+totp_secret=$(json_get "$site/enroll.json" 'doc["data"]["secret"]')
+check "POST /api/v1/call/auth.totp.confirm with a wrong code is 422" http_is "$site/confirm-wrong.json" 422 POST /api/v1/call/auth.totp.confirm '{"code":"000000"}' "$cookie"
+check "the wrong code lands on the code field" json_is "$site/confirm-wrong.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "code" and doc["error"]["fields"][0]["key"] == "auth.error.code"'
+check "POST /api/v1/call/auth.totp.confirm with the current code is 200" http_is "$site/confirm.json" 200 POST /api/v1/call/auth.totp.confirm "{\"code\":\"$(totp_code "$totp_secret")\"}" "$cookie"
+check "auth.totp.confirm answers ten recovery codes of ten base32 characters" json_is "$site/confirm.json" 'doc["ok"] is True and len(doc["data"]["recoveryCodes"]) == 10 and all(re.fullmatch("[A-Z2-7]{10}", code) for code in doc["data"]["recoveryCodes"])'
+recovery_code=$(json_get "$site/confirm.json" 'doc["data"]["recoveryCodes"][0]')
+check "GET /api/v1/boot with the cookie shows totp enrolled" http_is "$site/boot-totp.json" 200 GET /api/v1/boot '' "$cookie"
+check "boot answers principal.totp true" json_is "$site/boot-totp.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["totp"] is True'
+check "POST /api/v1/call/auth.login now answers the totp state" http_is "$site/login-totp.json" 200 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'
+check "auth.login answers a challenge and no principal" json_is "$site/login-totp.json" 'doc["ok"] is True and doc["data"]["state"] == "totp" and re.fullmatch("[0-9a-f]{64}", doc["data"]["challenge"]) is not None and "principal" not in doc["data"]'
+check "auth.login with a pending second factor sets no cookie" test -z "$(header_of "$site/login-totp.json.headers" set-cookie)"
+challenge=$(json_get "$site/login-totp.json" 'doc["data"]["challenge"]')
+check "POST /api/v1/call/auth.totp.verify with a wrong code is 401" http_is "$site/verify-wrong.json" 401 POST /api/v1/call/auth.totp.verify "{\"challenge\":\"$challenge\",\"code\":\"000000\"}"
+check "the wrong code answers auth.error.code" json_is "$site/verify-wrong.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "auth.error.code"'
+check "POST /api/v1/call/auth.totp.verify with a recovery code is 200" http_is "$site/verify.json" 200 POST /api/v1/call/auth.totp.verify "{\"challenge\":\"$challenge\",\"code\":\"$recovery_code\"}"
+check "auth.totp.verify answers the authenticated state for alice" json_is "$site/verify.json" 'doc["ok"] is True and doc["data"]["state"] == "authenticated" and doc["data"]["principal"]["login"] == "alice"'
+verified_cookie=$(session_cookie_of "$site/verify.json.headers") || fail "auth.totp.verify sets the session cookie"
+check "the verified session differs from the first one" test "$verified_cookie" != "$cookie"
+check "POST /api/v1/call/auth.totp.verify with the spent challenge is 401" http_is "$site/verify-spent.json" 401 POST /api/v1/call/auth.totp.verify "{\"challenge\":\"$challenge\",\"code\":\"$recovery_code\"}"
+check "the spent challenge answers auth.error.challenge" json_is "$site/verify-spent.json" 'doc["ok"] is False and doc["error"]["key"] == "auth.error.challenge"'
+check "auth_totp holds the sealed secret, not the base32 one" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_totp WHERE secret LIKE '%$totp_secret%' OR secret NOT LIKE '%A256GCM%'")" = "0"
+check "auth_recovery_code holds hashes, not the codes" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_recovery_code WHERE code_hash = '$recovery_code' OR length(code_hash) <> 64")" = "0"
+check "auth_login_challenge holds the hash, not the challenge" test "$(psql "$(database_url "$admin_url" "$database")" -qAt -c "SELECT count(*) FROM keel.auth_login_challenge WHERE challenge_hash = '$challenge'")" = "0"
+check "POST /api/v1/call/auth.totp.disable with the next code is 200" http_is "$site/disable.json" 200 POST /api/v1/call/auth.totp.disable "{\"code\":\"$(totp_code "$totp_secret" 1)\"}" "$verified_cookie"
+check "auth.totp.disable answers disabled" json_is "$site/disable.json" 'doc["ok"] is True and doc["data"]["disabled"] is True'
+check "GET /api/v1/boot after the disable shows totp off" http_is "$site/boot-disabled.json" 200 GET /api/v1/boot '' "$verified_cookie"
+check "boot answers principal.totp false" json_is "$site/boot-disabled.json" 'doc["principal"]["totp"] is False'
 check "POST /api/v1/call/auth.logout with the cookie is 200" http_is "$site/logout.json" 200 POST /api/v1/call/auth.logout '{}' "$cookie"
 check "auth.logout clears the cookie" grep -qi '^set-cookie: __Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0\r\{0,1\}$' "$site/logout.json.headers"
 check "POST /api/v1/call/note.list with the revoked cookie is 401" http_is "$site/revoked.json" 401 POST /api/v1/call/note.list '{}' "$cookie"
