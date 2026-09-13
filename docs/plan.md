@@ -1865,11 +1865,12 @@ with and without the `demo` feature, and `hack/prove-binary.sh` against the buil
 - [x] The test "a user neither sees nor edits another account's notes" passes.
 - [x] The test "a reseller sees its subtree" passes.
 - [x] A nested `invoke` reuses the transaction of the call (`note.edit`).
-- [ ] The binary starts without `config.yaml` against the default database `keel`: a missing
-      file yields the defaults (`a_missing_config_file_yields_the_platform_defaults`), and CI
-      starts the binary against its own database through `--config`; the start against a host's
-      `keel` database over the Postgres socket is checked by hand until the installer of M4
-      runs it in CI.
+- [x] The binary starts without `config.yaml` against the default database `keel`: a missing
+      file yields the defaults (`a_missing_config_file_yields_the_platform_defaults`), CI
+      starts the binary against its own database through `--config`, and the start against a
+      host's `keel` database over the Postgres socket with peer authentication was checked by
+      hand on the Debian 13 machine `keel-demo` through `deploy/install.sh` (the config it
+      wrote carries `listen` only); the installer of M4 runs it in CI.
 - [x] `keel serve` with no bundle enabled starts and answers on the socket
       (`crates/keel/tests/runtime.rs` and the second run of `hack/prove-binary.sh`).
 - [x] `keel product disable demo` leaves the `note_` table and flips `note` to `orphaned`
