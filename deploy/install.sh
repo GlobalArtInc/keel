@@ -181,6 +181,9 @@ parse_args() {
   if ! [[ $admin =~ ^[A-Za-z0-9._@-]{1,64}$ ]]; then
     fail "--admin must be 1 to 64 characters of letters, digits, . _ @ -"
   fi
+  if [[ $admin =~ ^(true|false|null|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)$ ]]; then
+    fail "--admin \"$admin\" would be read by keel ctl as a JSON number or keyword, not as a login"
+  fi
   case $binary in
     https://*) ;;
     http://*) fail "--binary accepts https URLs only" ;;
@@ -312,8 +315,8 @@ fetch_binary() {
       fi
       name=${binary##*/}
       say "downloading $binary"
-      curl -fsSL --proto '=https' -o "$tmp/$name" "$binary"
-      if curl -fsSL --proto '=https' -o "$tmp/$name.sha256" "$binary.sha256" 2>/dev/null; then
+      curl -fsSL --proto '=https' --proto-redir '=https' -o "$tmp/$name" "$binary"
+      if curl -fsSL --proto '=https' --proto-redir '=https' -o "$tmp/$name.sha256" "$binary.sha256" 2>/dev/null; then
         say "downloaded $binary.sha256"
       else
         rm -f "$tmp/$name.sha256"
@@ -334,7 +337,7 @@ fetch_binary() {
   else
     say "no $name.sha256 next to $binary; the checksum is not verified"
   fi
-  begin "unpacking the binary under $OPT/staging"
+  begin "unpacking the release under $OPT/staging"
   touched=1
   install -d -m 0755 -o root -g root "$OPT" "$OPT/staging"
   opt_installed=1
@@ -345,12 +348,16 @@ fetch_binary() {
   else
     if ! command -v zstd >/dev/null 2>&1; then
       apt_install zstd
-      begin "unpacking the binary under $OPT/staging"
+      begin "unpacking the release under $OPT/staging"
     fi
-    if ! zstd -d -c "$source" | tar -x -C "$OPT/staging" keel 2>/dev/null; then
-      fail "$name is neither an ELF binary nor a tar.zst archive containing keel"
+    if ! zstd -d -c "$source" | tar -x -C "$OPT/staging" 2>/dev/null; then
+      fail "$name is neither an ELF binary nor a tar.zst archive"
     fi
-    chown root:root "$staged"
+    if [ ! -f "$staged" ]; then
+      fail "$name does not carry keel at the root of the archive"
+    fi
+    chown -R root:root "$OPT/staging"
+    chmod -R u=rwX,go=rX "$OPT/staging"
     chmod 0755 "$staged"
   fi
   if ! version=$("$staged" --version 2>&1); then
@@ -449,15 +456,25 @@ check_peer_auth() {
   say "connected as $answer"
 }
 
-install_files() {
-  begin "installing the binary under $OPT/versions/$version"
-  install -d -m 0755 -o root -g root "$OPT/versions" "$OPT/versions/$version" "$OPT/bin"
-  mv "$staged" "$OPT/versions/$version/keel"
-  rm -rf "$OPT/staging"
-  ln -sfn "$OPT/versions/$version/keel" "$OPT/bin/current"
-  if [ -f "$here/config-sample.yaml" ]; then
-    install -m 0644 -o root -g root "$here/config-sample.yaml" "$OPT/versions/$version/config-sample.yaml"
+release_file() {
+  local name=$1 fallback=$2
+  if [ -f "$OPT/versions/$version/$name" ]; then
+    say "$name comes with the release"
+    return 0
   fi
+  if [ ! -f "$fallback" ]; then
+    return 1
+  fi
+  install -m 0644 -o root -g root "$fallback" "$OPT/versions/$version/$name"
+  say "the release does not carry $name; taken from $fallback"
+}
+
+install_files() {
+  begin "installing the release under $OPT/versions/$version"
+  install -d -m 0755 -o root -g root "$OPT/versions" "$OPT/bin"
+  mv "$OPT/staging" "$OPT/versions/$version"
+  ln -sfn "$OPT/versions/$version/keel" "$OPT/bin/current"
+  release_file config-sample.yaml "$here/config-sample.yaml" || say "no config-sample.yaml in the release or next to install.sh; none installed"
   if [ -L "$LINK" ] || [ ! -e "$LINK" ]; then
     ln -sfn "$OPT/bin/current" "$LINK"
     link_installed=1
@@ -470,10 +487,10 @@ install_files() {
   begin "writing $ETC/config.yaml"
   {
     if [ "$listen" != "$DEFAULT_LISTEN" ]; then
-      printf 'listen: %s\n' "$listen"
+      printf 'listen: "%s"\n' "$listen"
     fi
     if [ "$pg_port" != "5432" ]; then
-      printf 'database: postgres:///keel?host=%s&port=%s\n' "$PG_SOCKET_DIR" "$pg_port"
+      printf 'database: "postgres:///keel?host=%s&port=%s"\n' "$PG_SOCKET_DIR" "$pg_port"
     fi
   } >"$ETC/config.yaml"
   chown root:keel "$ETC/config.yaml"
@@ -486,11 +503,11 @@ install_files() {
 }
 
 install_unit() {
-  begin "installing keel.service"
-  if [ ! -f "$here/systemd/keel.service" ]; then
-    fail "$here/systemd/keel.service is missing; copy the whole deploy/ directory next to install.sh"
+  begin "installing keel.service from $OPT/versions/$version"
+  if ! release_file keel.service "$here/systemd/keel.service"; then
+    fail "the release does not carry keel.service and $here/systemd/keel.service is missing; copy the whole deploy/ directory next to install.sh"
   fi
-  install -m 0644 -o root -g root "$here/systemd/keel.service" "$UNIT"
+  install -m 0644 -o root -g root "$OPT/versions/$version/keel.service" "$UNIT"
   unit_installed=1
   systemctl daemon-reload
   systemctl enable keel.service
@@ -606,7 +623,11 @@ report() {
   else
     say "  binary:       $OPT/versions/$version/keel"
   fi
-  say "  config:       $ETC/config.yaml (sample: $OPT/versions/$version/config-sample.yaml)"
+  if [ -f "$OPT/versions/$version/config-sample.yaml" ]; then
+    say "  config:       $ETC/config.yaml (sample: $OPT/versions/$version/config-sample.yaml)"
+  else
+    say "  config:       $ETC/config.yaml"
+  fi
   say "  data:         $LIB"
   say "  socket:       $RUN/core.sock"
   say "  unit:         keel.service (enabled, running)"

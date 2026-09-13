@@ -38,6 +38,11 @@ missing the installer says so and goes on without the check. A local build works
 `cargo build --release -p keel-bin` and `--binary target/release/keel`, provided the build's
 target matches the host.
 
+The archive is unpacked as a whole into `/opt/keel/versions/<version>/`, the design's one
+unpacked release per version, and `keel.service` and `config-sample.yaml` are taken from its root
+when it carries them. Until the release archive of M4 does, they come from `deploy/` next to the
+script, which is why the whole directory is copied; a bare binary always takes them from there.
+
 ## Installing
 
 ```
@@ -51,8 +56,8 @@ Flags:
 |---|---|---|
 | `--product <id>[,<id>]` | bundles to enable; the binary must carry each of them | required |
 | `--binary <path\|url>` | the binary or the tar.zst artifact; an https URL is downloaded to a temporary directory, and a `.sha256` file next to it is verified. The flag stands in for the release channel: from M4 a missing `--binary` means the channel's current version, and the flag stays as an override | required until M4 |
-| `--listen <addr:port>` | listen address written to `config.yaml` when it differs from the kernel's default | `127.0.0.1:1500` |
-| `--admin <login>` | login of the first administrator | `admin` |
+| `--listen <addr:port>` | listen address written to `config.yaml` when it differs from the kernel's default; `<ipv4>:<port>` or `[<ipv6>]:<port>` | `127.0.0.1:1500` |
+| `--admin <login>` | login of the first administrator: 1 to 64 characters of letters, digits, `.`, `_`, `@`, `-`; a value `keel ctl` would read as JSON (a number, `true`, `false`, `null`) is refused | `admin` |
 | `--yes` | do not ask for confirmation | asks |
 
 The installer prints the login, the generated password and the URL once at the end and writes
@@ -64,9 +69,10 @@ non-zero.
 1. Refuses a container (`systemd-detect-virt --container`, `/.dockerenv`, `/proc/1/cgroup`),
    a host with `/opt/keel` or `/var/lib/keel`, a host without `apt-get`, and a host whose
    running init is not systemd.
-2. Fetches the binary: downloads an https URL, verifies the `.sha256` when present and reports
-   when it is missing, unpacks the tar.zst, runs `keel --version` to make sure the build runs on
-   this host.
+2. Fetches the binary: downloads an https URL (https for redirects too), verifies the `.sha256`
+   when present and reports when it is missing, unpacks the whole tar.zst under
+   `/opt/keel/staging` and requires `keel` at its root, runs `keel --version` to make sure the
+   build runs on this host.
 3. Installs `postgresql` from the distribution when no server answers on
    `/run/postgresql`, enables and starts it, and waits for its socket; an existing server is
    used as it is and the version must be 15 or newer. A pre-existing cluster that is down is
@@ -75,7 +81,8 @@ non-zero.
    when they are absent. Nothing else on the server is touched.
 5. Creates the system user and group `keel`, home `/var/lib/keel`, shell `nologin`, and checks
    that peer authentication over the unix socket admits it.
-6. Lays out `/opt/keel/versions/<version>/` with `keel` and `config-sample.yaml`, the symlink
+6. Moves the unpacked release to `/opt/keel/versions/<version>/`, places `config-sample.yaml`
+   there from `deploy/` when the release does not carry it, and lays out the symlink
    `/opt/keel/bin/current`, the convenience symlink `/usr/local/bin/keel` (an absent or dangling
    name is taken, an existing symlink is repointed, anything else is left alone and reported),
    `/etc/keel` (`0750 root:keel`) with `config.yaml` (`0640`) and `templates/`, and
@@ -85,8 +92,10 @@ non-zero.
    `RuntimeDirectory=` at every start.
 7. Writes `/etc/keel/config.yaml` with the keys that differ from the kernel's defaults only:
    `listen` when `--listen` was given, `database` when the server's socket is not on port
-   5432. With the defaults the file is empty, which the kernel treats as absent.
-8. Installs `systemd/keel.service` and enables it.
+   5432, both as quoted scalars so that a bracketed IPv6 address stays an address. With the
+   defaults the file is empty, which the kernel treats as absent.
+8. Installs `keel.service` from `/opt/keel/versions/<version>/`, placed there from
+   `deploy/systemd/` when the release does not carry it, and enables it.
 9. As user `keel`: `keel migrate`, `keel product enable <id>` for each product, `keel migrate`
    again so that the products' migrations are applied before the first start.
 10. Starts the unit and waits up to 90 s for `GET /readyz` to answer `200`
@@ -145,9 +154,9 @@ every host size. An operator who needs another limit sets it in a drop-in,
 
 `config-sample.yaml` lists every key the kernel reads with its default value. It is installed
 next to the binary as `/opt/keel/versions/<version>/config-sample.yaml`, since it documents that
-version's kernel and an update refreshes it with the release; `/etc/keel` holds nothing but the
-files the design lists there. The kernel starts without the file, and an empty file is the same
-as no file.
+version's kernel and an update refreshes it with the release; until the release archive carries
+it, the installer takes it from `deploy/`. `/etc/keel` holds nothing but the files the design
+lists there. The kernel starts without the file, and an empty file is the same as no file.
 
 | Key | Default | Meaning |
 |---|---|---|
