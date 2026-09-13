@@ -137,7 +137,11 @@ Scope:
   module.
 - The feature guard without a lease.
 - The bundle `dns`: `dns-zones`, `dns-records`, `dns-templates` on bind, account limits, an
-  OwnLate project, the release build and channel.
+  OwnLate project.
+- The release workflow on the tag `keel-vX.Y.Z`: the musl build, `hack/release.py` signing the
+  manifest, publication to the `keel-releases` repository of Nexus behind `dl.globalart.hu`
+  ([design/09-operations.md](design/09-operations.md), the release channel), the Nexus role and
+  deploy account, the route.
 - The first dependency rehearsal: `bin/keel` built with the `dns` module crates pulled from a
   git tag instead of the workspace.
 

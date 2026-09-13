@@ -311,8 +311,41 @@ belong to the runtime, not to a module.
 ## Updates
 
 Releases are published on a channel described by a signed `manifest.json` with `version`,
-`sha256`, `min_upgrade_from`, `contract` and `notes`. An update runs in two halves separated by the
-privilege boundary:
+`sha256`, `min_upgrade_from`, `contract` and `notes`.
+
+### The release channel
+
+The channel lives at `https://dl.globalart.hu/keel/`, a host name compiled into the binary as the
+default `update.channel_url`. Behind that name stands a raw repository `keel-releases` of the
+Nexus at `nexus.globalart.hu`, reachable through a route of the cluster; the name is the contract
+with every installation, the storage behind it is not, so the repository can move to an object
+store later without touching a single host. The layout:
+
+```
+https://dl.globalart.hu/keel/
+  stable/manifest.json
+  beta/manifest.json
+  versions/<ver>/keel-<ver>-x86_64-linux-musl.tar.zst
+  versions/<ver>/keel-<ver>-x86_64-linux-musl.tar.zst.sha256
+  versions/<ver>/manifest.json
+```
+
+`stable/manifest.json` and `beta/manifest.json` are the heads of the two channels; the copy under
+`versions/<ver>/` is the manifest the version was released with, kept so that a rollback and an
+audit can read what was promised at the time. Reading is anonymous for this repository only: the
+manifest is signed and the archive is verified against the hash in it, and what an installation
+may run is decided by its license, not by who can download the archive. Should downloads ever
+need to be restricted, the license server of M5 hands out tokens for the same URL.
+
+Publication is the release workflow of M4: a tag `keel-vX.Y.Z` builds the musl binary, signs the
+manifest with `hack/release.py` and uploads through the Nexus REST API under a deploy account
+`keel-release` whose secret reaches CI through `ci-cd sync-secrets`. The first releases sign in
+CI with the key held as a repository secret, which is enough while the only installations are
+our own; before the product is sold the signature moves to an offline machine, which changes
+where `hack/release.py` runs and nothing else. Until M4, the `Build` workflow uploads the musl
+binary as a short-lived GitHub artifact and the demo installation receives it by hand.
+
+An update runs in two halves separated by the privilege boundary:
 
 1. The `update` module compares the running version with the channel manifest. Anti-rollback is
    enforced by the minimum version stated in the channel manifest.
@@ -402,4 +435,4 @@ decided:
   its own upgrade path and responsibility for the data).
 - The default listen port of the installation.
 - The license server: the first releases run on long offline leases issued by hand; when the
-  server is written as a Keel product and where the signing key is stored remain open.
+  server is written as a Keel product remains open.
