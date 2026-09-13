@@ -304,7 +304,8 @@ What does not go into phoenix-ui, because it depends on descriptors, preferences
 protocol, is code of `/renderer` and `/forms`:
 
 - the wizard step container with navigation and per-step server validation;
-- persistence of column order and visibility in `settings_pref`;
+- persistence of column order and visibility in `settings_pref`, through `settings.pref.set` under
+  the key `columns.<function>`;
 - the link between table selection and the bulk-action panel;
 - export.
 

@@ -194,28 +194,36 @@ customers. The token must also have been granted `onBehalf` at pairing.
 
 A customer who is already signed in to a peer (the billing account page, for example) should open
 the installation without a second password. The peer, usually on behalf of the customer, calls
-`auth.key.issue` with the customer's `external_id`, a `ttl` of at most 300 seconds and the path
-to land on; it receives a one-time `kok_` key and the URL to send the browser to:
+`auth.key.issue` with the customer's principal, a `ttl` of at most 300 seconds and the path to
+land on — a path starting with a single `/`, neither `//` nor a scheme; it receives a one-time
+`kok_` key and the relative URL to send the browser to:
 
 ```
 POST /api/v1/call/auth.key.issue
-{ "external_id": "client-42", "ttl": 60, "redirect": "/f/dns.zone.list" }
-→ { "key": "kok_…", "url": "https://dns.example:8443/login?key=kok_…" }
+{ "principal": "01J9…", "ttl": 60, "redirect": "/f/dns.zone.list" }
+→ { "key": "kok_…", "url": "/login?key=kok_…" }
 ```
+
+The target must lie below the caller's level and inside its scope, as for `auth.su`. The `peers`
+module of M6 adds `externalId`, resolved against `(origin, external_id)` for the peer that
+carries an `origin`, and a public-URL setting makes the `url` absolute.
 
 The browser navigates to `/login?key=…`. That request is a `GET` and does not redeem the key: it
 returns a page which, from the installation's own origin, performs `POST auth.key.redeem`. The
-detour is required by the CSRF policy: cookie-bearing requests are checked by `Sec-Fetch-Site`
-and `Origin` ([10-contracts.md](10-contracts.md)), and a navigation arriving from the peer's site
-would fail that check if the navigation itself created the session. The key is consumed at first
-use and is bound to the `redirect` given at issue time. The session that results is an ordinary
-`ks_` session; the audit entry of the first login records the peer as the actor, so opening a DNS
-installation from a hosting installation on another host is traceable to that installation.
+detour is required by the CSRF policy: every request without a Bearer token is checked by
+`Sec-Fetch-Site` and `Origin` ([10-contracts.md](10-contracts.md)), and a navigation arriving
+from the peer's site would fail that check if the navigation itself created the session. The key
+is consumed at first use, with one conditional update so that two concurrent redeems end with
+one session, and is bound to the `redirect` given at issue time; the redeem answers `{ redirect,
+principal, issuedBy }`. The session that results is an ordinary `ks_` session; the audit record
+of `auth.key.issue` names the issuer and the target and the row keeps `issued_by`, so opening a
+DNS installation from a hosting installation on another host is traceable to that installation.
 Between products of one installation there is nothing to redeem: they share the session.
 
 The `auth` module keeps issued keys as `auth_login_key(key_hash, principal_id, issued_by,
-redirect, expires_at, used_at)`. The same mechanism serves the first administrator: the installer
-prints a one-time `kok_` link for `keel.setup.admin` ([09-operations.md](09-operations.md)).
+redirect, expires_at, used_at, created_at)`. The same mechanism serves the first administrator:
+the installer prints a one-time `kok_` link for `keel.setup.admin`
+([09-operations.md](09-operations.md)).
 
 ## Shared customer identity
 

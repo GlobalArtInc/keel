@@ -339,7 +339,10 @@ The guard stage runs the checks a function's `access` and its registrations impl
   absent from the menu and answers `402`. A function of a disabled product is never registered,
   so its name is unknown to the resolve stage and answers `not_found`, not `402`.
 - **Token scope.** An API token or a peer token may be limited to a mask of functions, a level
-  ceiling and on-behalf rights; a token scoped to one function receives `403` on another.
+  ceiling and on-behalf rights; a token scoped to one function receives `403` on another,
+  `keel.error.token_scope` with the function in `params`, and a read-only token receives
+  `keel.error.token_read_only` on a write. The guard runs for the entered call only: a nested
+  `invoke` belongs to a call the guard already admitted, the same rule as module guards.
 - **Module guards.** Guards contributed by modules, such as the `auth` module's IP rules and
   rate limit, and the guard a module attaches to a raw route. A module registers one with
   `r.guard(Arc<dyn Guard>)`; the guard receives the function name and the call, runs on a
@@ -488,9 +491,12 @@ validation, a hook — is audited with that failure as its outcome; an idempoten
 nothing and raises no event. The event reaches the `audit` module through the `AuditSink`
 service it provides; without a sink the event is dropped. The `audit` module subscribes and
 writes in batches from a background worker so that the call's response does not wait for the
-audit write. For read functions the event is off by default. Optional subject and before/after
-snapshots for form functions, which feed the object-history screen, are described with the module
-in [05-modules.md](05-modules.md).
+audit write. For read functions the event is off by default. The event also carries the
+`Client` of the request, the `subject` — the key parameter of a keyed function as text — and the
+`result` of a committed form function that has a key, masked like the parameters with `once`
+fields as well, so an object edit records what it left behind while the results of key-less
+forms never reach the trail; the `before` snapshot of the object-history screen stays `NULL` at
+M1, and both snapshots are described with the module in [05-modules.md](05-modules.md).
 
 ### `after_commit`, host operations and tasks
 

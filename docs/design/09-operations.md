@@ -254,7 +254,10 @@ HTTP origin — a first visit over plain HTTP by IP address would leave the oper
 in. The plain port therefore serves nothing but a redirect. The operator can supply a certificate
 and key or request one through ACME with a button in the settings; `trusted_proxies` makes the
 installation usable behind a reverse proxy. A certificate that is about to expire raises a problem
-([05-modules.md](05-modules.md)).
+([05-modules.md](05-modules.md)). The self-signed certificate and `trusted_proxies` arrive with
+M3; until then the installation listens on plain HTTP, the cookie carries `Secure` from its first
+version, and the clients of M1 keep and return it themselves, since a browser is not a client
+before M2.
 
 ## Configuration
 
@@ -280,13 +283,17 @@ of `socket`, `data_dir` and `database` are fixed by the kernel, not by a product
 enabled products are not a configuration key: they live in the database. Sections of modules
 (`host`, `plugins`) are added by their `ConfigSection` contributions; their keys are not fixed by
 this revision ([06-host.md](06-host.md)). The kernel keeps every top-level key it does not know as
-a raw section for those contributions, while a misspelt key inside `tls` or `log`, an unusable
-`listen` or `database` value, or a file that is not YAML fails the start with a message naming the
-file and the key. An empty file is the same as no file. The default listen port of the
-installation is open ([11-decisions.md](11-decisions.md)); the value above is only an example,
-and M0 keeps the provisional default `127.0.0.1:1500` while the port is undecided. The body
-limit of a request is a kernel constant, 1 MiB, not a key of this file. The runtime binds the
-listener before the kernel boots and attaches the dispatcher after it, so `/healthz` answers
+a raw section for those contributions and matches them at freeze: a section is validated
+against the schema of the type the contribution names and a violation fails the start naming the
+file, the section and the path, an absent section becomes the type's default, a section claimed
+by two modules is a freeze error, and a top-level key no loaded module claims is logged as a
+warning, so that the section of a disabled product stays valid. A misspelt key inside `tls` or
+`log`, an unusable `listen` or `database` value, or a file that is not YAML fails the start with
+a message naming the file and the key. An empty file is the same as no file. The default listen
+port of the installation is open ([11-decisions.md](11-decisions.md)); the value above is only an
+example, and M0 keeps the provisional default `127.0.0.1:1500` while the port is undecided. The
+body limit of a request is a kernel constant, 1 MiB, not a key of this file. The runtime binds
+the listener before the kernel boots and attaches the dispatcher after it, so `/healthz` answers
 `{ "status": "ok" }` from the first moment, `/readyz` reports `migrating` (and later `draining`,
 or `database` when `SELECT 1` fails) with `503` until it reports `ready`, and `/api/v1/*`
 answers `503 unavailable` in between ([10-contracts.md](10-contracts.md)); the readiness flags

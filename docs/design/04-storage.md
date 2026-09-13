@@ -210,10 +210,14 @@ regenerated key, or a database restored next to the wrong data directory) fails 
 instead of silently starting an installation that cannot read its own secrets. A `secret.key`
 readable by group or others is refused the same way.
 
-Fields marked `x-keel.secret` in a function schema are the same fields that audit, logs and the
-support bundle mask; see [02-functions.md](02-functions.md). Session and API tokens are not
-`Secret` values: the auth module stores only their SHA-256 hashes, so a backup contains no usable
-token ([05-modules.md](05-modules.md)).
+A module seals a value under the data key through the hidden service `SecretCipher` of
+`keel_sdk::system`, whose sealed form is the same JSON text as the wrapped key above, so a `TEXT`
+column holds it; the `auth` module keeps TOTP secrets that way, and sealing `Secret` columns by
+the type itself is left to the first product that stores one. Fields marked `x-keel.secret` in a
+function schema are the same fields that audit, logs and the support bundle mask; see
+[02-functions.md](02-functions.md). Session and API tokens are not `Secret` values: the auth
+module stores only their SHA-256 hashes, so a backup contains no usable token
+([05-modules.md](05-modules.md)).
 
 ## Kernel tables
 
@@ -328,8 +332,12 @@ rejected with `409 idempotency_mismatch`. Expired records are removed by retenti
 
 There is no in-memory substitute. `keel-testkit` gives every test its own temporary database,
 created with `CREATE DATABASE` from a template on the server named by `KEEL_TEST_DATABASE_URL`
-and dropped when the test finishes; `hack/check-test-databases.sh` fails CI when one remains. CI
-provides the server as a service until testcontainers take over in M1. The CI matrix of
+and dropped when the test finishes; `hack/check-test-databases.sh` fails CI when one remains.
+When `KEEL_TEST_DATABASE_URL` is unset the testkit starts a `postgres:16` container through
+testcontainers and keeps it for the next test process, so a developer needs no local server; CI
+proves that path in a step of its own and keeps its Postgres service for the checks that need a
+server outliving one process — the binary proof, the conformance run and the leftover check. The
+CI matrix of
 `keel-system` ("every module alone and without each one in turn") and the test "a composition
 of the bare kernel starts and answers on the socket" start the binary for each composition and
 enabled set and therefore run its migrations. See [05-modules.md](05-modules.md) and

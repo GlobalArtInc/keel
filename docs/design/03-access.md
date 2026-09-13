@@ -180,6 +180,15 @@ Rules for `su`:
 - `su` opens a separate session that records the actor; `su.exit` returns to the session it was
   started from. The session, not the request, carries the actor, so every call made inside the
   delegated session is attributed the same way.
+- In `auth_session` the delegated session is a second row of `kind: su` carrying
+  `actor_principal_id` and `parent_id_hash`, created with the parent's lifetimes; the parent row
+  names its live child in `su_id_hash`, and the cookie does not change: the authenticator
+  resolves the cookie to the parent row, follows `su_id_hash`, slides both rows and answers the
+  child's principal with the parent's as `actor`. `su.exit` revokes the child and clears
+  `su_id_hash`; revoking the parent revokes its child through `parent_id_hash`, and a revoked or
+  expired child is ignored, so the parent answers as itself again. A target outside the caller's
+  scope answers `not_found`, one at or above the caller's level `auth.error.not_below`, and a
+  caller already delegated `auth.error.su_nested`.
 - The audit record contains both sides: the effective principal and the actor.
 - Metadata is keyed by the effective principal, so entering a user in the same browser shows that
   user's menu, not the admin's (see `acl_gen` below).
@@ -206,9 +215,11 @@ principal to act as:
 CLI:  keel ctl dns.zone.edit id=01J9Q3… ttl=300 --as alice --out json     (same envelope; --out table renders ui.columns)
 ```
 
-Without `--as`, which arrives with `auth.su` in M1, every frame on the socket runs as the owner
-principal: the nil id `Id::ROOT_ACCOUNT` as its id, login `owner`, level `owner`, the root
-account, no actor, `via: socket` ([10-contracts.md](10-contracts.md)).
+Without `--as` every frame on the socket runs as the owner principal: the nil id
+`Id::ROOT_ACCOUNT` as its id, login `owner`, level `owner`, the root account, no actor, `via:
+socket`. With `--as <login>` the call frame carries `as`, and the kernel runs it as that stored
+principal with the owner as `actor` and `via: socket`, answering `not_found` for a login it does
+not know ([10-contracts.md](10-contracts.md)).
 
 On-behalf calls from a neighbouring product (`X-Keel-On-Behalf-Of: origin=…; external_id=…`)
 produce a principal whose `actor` is the peer. They are accepted only for principals and accounts
@@ -219,7 +230,8 @@ The M1 acceptance sequence exercises all of this end to end:
 `login → boot → keel.account.list → auth.su → list narrowed and actor filled → su.exit`;
 a token scoped to one function gets 403 on another; writing a field above level gives
 `forbidden_field`; the audit contains both sides of `su` and masks the password, including for
-failed calls (see [../plan.md](../plan.md)).
+failed calls. The M1 exit checklist of [../plan.md](../plan.md) names the test and the command
+that demonstrate each item.
 
 ### `acl_gen` and metadata caching
 

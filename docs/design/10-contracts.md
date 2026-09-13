@@ -62,9 +62,14 @@ stream.
 ### Conventions shared by every shape
 
 - Identifiers are ULIDs serialised as text: stable for peers, import and export, sortable by time.
-- Time is RFC 3339 in UTC. The principal's time zone comes from `settings_pref` and is reported in
-  `/boot`; date filters compute day boundaries in that zone, and the client converts to `Date` by
-  it.
+- Time is RFC 3339 in UTC. The principal's time zone comes from `settings_pref`, is reported in
+  `/boot` and reaches a handler as `Call::tz()`, UTC without a preference and on the socket.
+  Date filters compute day boundaries in that zone: in the `Owned` list source of
+  `keel_sdk::list`, a filter on a timestamp column whose value is a bare calendar date
+  `YYYY-MM-DD` resolves to the day's boundaries in the caller's zone — `gte` and `lt` at the
+  day's start, `gt` and `lte` at the next day's start, `eq` the day as a range and `ne` its
+  complement — while a full RFC 3339 value is compared as the instant it names, and a module with
+  its own `ListSource` reads `call.tz()` for the same; the client converts to `Date` by the zone.
 - Every human-readable string is an i18n key, never a sentence: `title`, `label`, `error.key`,
   `fields[].key`. Placeholders have one format, `{name}`, in minijinja, the CLI and TypeScript.
 - Function names are `<module>.<entity>.<verb>`, or `<module>.<verb>` for a module with a single
@@ -287,25 +292,28 @@ Whether parameters are accepted as `a.b=v` with repeated keys and `@file.json`, 
 is an open question ([11-decisions.md](11-decisions.md)). What M0 fixes:
 
 - The socket speaks JSON Lines: one frame per line in, one envelope per line out, in order. A
-  frame is one of `{ "func", "params"?, "requestId"?, "idempotencyKey"? }` (a call),
+  frame is one of `{ "func", "params"?, "requestId"?, "idempotencyKey"?, "as"? }` (a call, where
+  `as` names the login of a stored principal the frame runs as, with the owner as `actor` and
+  `via: socket`, `not_found` with `keel.error.principal_not_found` for an unknown login),
   `{ "describe": "<func>" }` (the descriptor projected for the caller), `{ "i18n": "<lang>" }`
-  (the catalogue) and `{ "boot": true }` (the `/boot` payload). A JSON line of another shape
-  answers `422 validation` with `keel.error.frame_unknown`; a line that is not JSON answers
-  `keel.error.body_not_json`. A line is limited to the same 1 MiB as an HTTP body, measured
-  without the delimiter. The idempotent replay marker is an HTTP header and has no counterpart
-  on the socket.
+  (the catalogue) and `{ "boot": true }` (the `/boot` payload); only the call frame takes `as`.
+  A JSON line of another shape answers `422 validation` with `keel.error.frame_unknown`; a line
+  that is not JSON answers `keel.error.body_not_json`. A line is limited to the same 1 MiB as an
+  HTTP body, measured without the delimiter. The idempotent replay marker is an HTTP header and
+  has no counterpart on the socket.
 - The socket file is created with mode `0600` in a directory the kernel creates when missing; a
   stale file no process answers on is replaced, a file that answers makes the start fail. Only
-  the kernel's own uid is admitted, checked with `SO_PEERCRED`; every frame runs as the owner
-  principal: nil id, login `owner`, level `owner`, the root account, `via: socket`.
+  the kernel's own uid is admitted, checked with `SO_PEERCRED`; every frame without `as` runs
+  as the owner principal: nil id, login `owner`, level `owner`, the root account, `via: socket`.
 - `keel ctl <func> key=value …` builds the parameters from the pairs: a value that parses as
   JSON is that value (`ttl=300`, `ids=["a","b"]`, `dnssec=true`), anything else is a string, and
   the last of repeated keys wins. `--out json` prints the envelope; `--out table` renders a
   `kind: list` result as a grid whose headers are `<module>.<entity>.column.<key>` translated
   through the catalogue in `--lang` (`en` by default), an object as two columns of member and
   value, an error as `error: <code> <key> <params>` with one line per field entry and the
-  request id. `--socket <path>` overrides the socket named by the configuration; the global
-  `--config <path>` or `KEEL_CONFIG` names the configuration file.
+  request id. `--as <login>` sends the frame's `as`; `--socket <path>` overrides the socket
+  named by the configuration; the global `--config <path>` or `KEEL_CONFIG` names the
+  configuration file.
 - Exit codes: `0` for `ok: true`, `1` for an error envelope or a failure to reach the socket,
   `2` for a usage error.
 
@@ -452,7 +460,8 @@ raw routes, views, migrations, menu nodes, i18n catalogues, permission keys, hoo
 patches, services and contributions — is listed in [05-modules.md](05-modules.md). The
 composition above is abbreviated; the full list of system modules, the bundle fields, the
 `bridges` field the `panel` bundle adds and the `demo` feature are in the example at the end of
-that document. At M0 `main.rs` is `keel::Runtime::new().product(&keel_demo::MANIFEST).run()`.
+that document. Since M1 `main.rs` composes `auth`, `settings` and `audit` and the `demo` bundle
+behind the `demo` feature.
 
 ## Plugin manifest and frames
 
@@ -632,7 +641,7 @@ descriptors are cached under.
 | `keel` | version of the installation, which is the version of every product on it, and the API version |
 | `products` | the enabled products in composition order: `id`, `name` (the brand name key), `edition` and the product's own `brand`, with its logo at `/brand/<id>/logo.svg`; `edition` is the licensed edition once a lease exists and the bundle's default edition, or `null` for a bundle without editions, while none does |
 | `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 220, chroma 0.08 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; replaced per hostname by a `ManifestPatch` for white-label |
-| `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. Until `settings` and `auth` exist, `tz` is `null` and `totp` is `false`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
+| `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. `tz` is `null` while the principal has no `tz` preference and on the socket; `totp` is `false` for the owner and while no module provides a `SecondFactorSource`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
 | `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
 | `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |
 | `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |

@@ -109,6 +109,9 @@ jobs:
       - name: Dependency boundaries
         run: hack/check-deps.sh
 
+      - name: Documents against the code
+        run: hack/check-docs.sh
+
       - name: Find the baseline of the facade
         id: baseline
         run: |

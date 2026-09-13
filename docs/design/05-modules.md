@@ -167,9 +167,10 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   [10-contracts.md](10-contracts.md).
 - Start and stop hooks, `r.start(|ctx| async move { … })` and `r.stop(|| async { … })`, one of
   each per module. `ctx` is the module's `Context`: `ctx.spawn` for background work,
-  `ctx.contributions::<T>()` for the typed bag, `ctx.require::<dyn Trait>()` for services. The
-  context carries no database handle in M0; a module that needs one at start gets it with the
-  milestone that needs it.
+  `ctx.contributions::<T>()` for the typed bag, `ctx.require::<dyn Trait>()` for services,
+  `ctx.config::<T>()` for the module's own `ConfigSection`. The public context carries no
+  database handle; a system module that needs one outside a call, the `audit` worker being the
+  first, reads it through the hidden `ContextExt::db()` of `keel_sdk::system`.
 - Services, `r.provide::<dyn Trait>(Arc::new(...))`, consumed elsewhere with
   `call.require::<dyn Trait>()`. Which module provides an implementation is decided by the
   enabled set: `hosting-web` declares `DnsProvider`, and the panel bundle's bridge loads
@@ -186,7 +187,7 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 
 | Type | What is contributed | Consumed by |
 |------|---------------------|-------------|
-| `SettingDef` | A product setting: key, JSON Schema, default, level; rendered as an automatic form | `settings` |
+| `SettingDef` | A product setting: key, JSON Schema, default, level; listed with its schema by `settings.list`, from which the shell renders the settings form | `settings` |
 | `CronJob` | A periodic job: id, schedule, handler | `cron` |
 | `DashboardWidget` | A widget for the `dashboard` block of `GET /api/v1/boot` | the shell ([08-frontend.md](08-frontend.md)) |
 | `ProblemSource` | A source of problems for the problem registry | `notify` |
@@ -194,7 +195,7 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `ConfigTemplate` | A configuration file template with its validate command, overridable in `/etc/keel/templates/`; ids are unique across the loaded set | `keel-host` ([06-host.md](06-host.md)) |
 | `AgentOp` | A typed host-agent operation: argument and result schemas, handler, policy class | `keel-host` ([06-host.md](06-host.md)) |
 | `BackupSource` | The module's own data in a backup archive | `backup` |
-| `ConfigSection` | The module's own section of `config.yaml` | configuration loading ([09-operations.md](09-operations.md)) |
+| `ConfigSection` | The module's own section of `config.yaml`, validated against the type's schema and typed at freeze, `T::default()` when absent | configuration loading ([09-operations.md](09-operations.md)) |
 | `PermissionSource` | Fine-grained permission keys and their defaults | `auth` |
 | `ManifestPatch` | A patch of the effective brand and of the bundle fields served in `/boot`, for example white-label branding by hostname | `settings` |
 | `ServiceKind` | A service type for billing: `Params`, `State` and `Account` schemas with `schema_version` | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
@@ -203,9 +204,12 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `StatCollector` | A metric: key, unit, collection interval | `stats` |
 | `InstanceInfoSource` | Extra fields of `GET /api/v1/instance`, for example `serviceKinds` | the instance endpoint ([07-ecosystem.md](07-ecosystem.md)) |
 
-`LimitDef` and `AccountLifecycle` are part of what the SDK gives every module and are described
-with the account model; the other points are declared by modules in their `pub mod api`. The last
-column names where each contribution is consumed.
+`LimitDef`, `AccountLifecycle`, `SettingDef` and `ConfigSection` are part of what the SDK gives
+every module: a product module contributes a setting or claims a section of `config.yaml` without
+naming `settings` in `requires`, as the `dns` example at the end of this document does, and the
+resolution of a setting is the public trait `SettingsSource` behind `call.setting::<T>(key)`. The
+other points are declared by modules in their `pub mod api`. The last column names where each
+contribution is consumed.
 
 ## Isolation rules
 
@@ -237,14 +241,16 @@ column names where each contribution is consumed.
 The SDK is an interface, not an implementation: it knows nothing of axum, the Postgres pool or
 cookies; even `ctx.spawn` hands the task to a spawner the kernel implements, so the SDK carries no
 runtime. What module code sees is `ModuleDef`, `Registrar`, `Context` and `Call<P>` with `params()`,
-`principal()`, `tx()`, `invoke`, `emit`, `after_commit`, `require::<dyn Trait>()`, `check_limit`
-and `extra` (values of patched fields); `Principal`, `Account` and `Level`; `KeelError` with an
-i18n key, an optional field and a source; `ListQuery`, `Page` and `ListSource`; `MenuNode`;
-`Secret`; `Id`; the `Owned` trait with `scope_by_account`, `resolve_account`, `LimitDef` and
-`AccountLifecycle`; `ProductManifest` with `Brand`, `MenuGroup`, `LevelLabels` and `Edition`;
-and the `Clock` service, `call.require::<dyn Clock>()`, from which the dispatcher, the `keel`
-module and every module stamp times, so that a test can freeze it. The crates the surface is
-expressed in, `chrono` among them, are re-exported under their own names. The function builder
+`principal()`, `tx()`, `invoke`, `emit`, `after_commit`, `require::<dyn Trait>()`, `check_limit`,
+`extra` (values of patched fields), `setting::<T>(key)`, `config::<T>()` and `tz()`; `Principal`,
+`Account` and `Level`; `KeelError` with an i18n key, an optional field and a source; `ListQuery`,
+`Page` and `ListSource`, with `fetch_page` for a module source that narrows its own query;
+`MenuNode`; `Secret`; `Id`; the `Owned` trait with `scope_by_account`, `resolve_account`,
+`LimitDef` and `AccountLifecycle`; `SettingDef`, `SettingsSource` and `ConfigSection`;
+`ProductManifest` with `Brand`, `MenuGroup`, `LevelLabels` and `Edition`; and the `Clock`
+service, `call.require::<dyn Clock>()`, from which the dispatcher, the `keel` module and every
+module stamp times, so that a test can freeze it. The crates the surface is expressed in,
+`chrono` and `chrono-tz` among them, are re-exported under their own names. The function builder
 is specified in [02-functions.md](02-functions.md), the account helpers in
 [03-access.md](03-access.md), `Secret` and `Id` in [04-storage.md](04-storage.md).
 
@@ -262,11 +268,14 @@ example SSO in place of `auth`, or a different `notify` for billing.
 
 ### Hidden hooks
 
-Hooks needed only by system modules, `Authenticator`, `TransportRegistry`, `StorageSnapshot` and
-`OutboxSubscriber`, live in `keel_sdk::system`, marked `#[doc(hidden)]` and exempt from semver
-until 1.0. They are the seams behind which authentication, the transports, backup and the outbox
-consumers plug in; a product module has no reason to touch them. The public `keel-sdk` is frozen
-at 1.0 (M7); until then only `keel_sdk::system` is exempt from semver.
+Hooks needed only by system modules — `Authenticator` with `Client`, `Authenticated` and
+`SessionChange`, `PrincipalSource`, `AccountSource`, `SecretCipher`, `SecondFactorSource`,
+`PreferenceSource`, `LanguageSource`, `ContextExt`, `AuditSink` with `AuditEvent`, and later
+`TransportRegistry`, `StorageSnapshot` and `OutboxSubscriber` — live in `keel_sdk::system`,
+marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
+authentication, the transports, backup and the outbox consumers plug in; a product module has no
+reason to touch them. The public `keel-sdk` is frozen at 1.0 (M7); until then only
+`keel_sdk::system` is exempt from semver.
 
 The authentication seam is a chain, not a single service: a module registers its authenticator
 through the contribution bag, `r.contribute(Arc<dyn Authenticator>)`, so that several modules
@@ -283,6 +292,21 @@ without `Set-Cookie`. `PrincipalSource { by_id, by_login }` is the kernel's look
 `keel_principal`, answering the stored principal with `via: internal`, no actor and the full
 scope, so that `auth` resolves logins and session rows to principals without SQL on a kernel
 table.
+
+The kernel provides its own hidden services under the name of the platform before the
+requirements of the modules are checked at freeze, so a module may `r.require` one at `init` and
+a module providing one of them is reported as a second provider rather than replacing the
+kernel: `PrincipalSource`; `AccountSource { ancestry }`, the chain from an account up to the
+root read from `keel_account.path`; `SecretCipher { seal, open }` over the data key the kernel
+opens from `keel_kv.secret_key`, whose sealed form is the same JSON text as the wrapped key, so a
+`TEXT` column holds nothing the key does not unlock and a composition without a key provides no
+cipher; and `LanguageSource`, the languages the frozen catalogue serves. A module provides the
+others: `SecondFactorSource { enrolled }` from `auth`, from which `GET /api/v1/boot` fills
+`principal.totp`, `false` for a guest, for the owner and while none is provided;
+`PreferenceSource { preferences }` from `settings`, from which the HTTP transport resolves once
+per request the language it overlays on the principal and the zone it hands to `Call::tz()`; and
+`AuditSink { record }` from `audit`, fed the `AuditEvent` of every write call. `ContextExt::db()`
+is the pool handle a module reads outside any call, the `audit` worker being its first consumer.
 
 ## Versioning
 
@@ -310,17 +334,25 @@ The storage counterpart of the data plane, additive-only migrations inside a maj
 boots a bundle with the modules it names. The harness links `keel-kernel` to boot the module in
 process, which is why it is the one L2 crate with a kernel dependency. Every test gets a
 temporary Postgres database created from a template with `CREATE DATABASE`
-(`keel_testkit::TestDatabase`), taken from the server `KEEL_TEST_DATABASE_URL` names; CI
-provides the server as a service until testcontainers replace it in M1, and
+(`keel_testkit::TestDatabase`), taken from the server `KEEL_TEST_DATABASE_URL` names or, when
+the variable is unset, from the `postgres:16` container `keel-testkit-postgres` the testkit
+starts through testcontainers and keeps running for the next test process, printing the URL it
+uses once. CI keeps its Postgres service, because `hack/prove-binary.sh`, `hack/conformance.sh`
+and `hack/check-test-databases.sh` need a server that outlives one process, proves the container
+path by running the testkit's own tests with the variable unset, and
 `hack/check-test-databases.sh` asserts that no test database remains. The harness seeds a
 fixture account tree and the principals `Who::{Guest, Service, Owner, Admin, Reseller, A1, A2,
 Unrelated}`, and offers `call_as(Level::Reseller, "dns.zone.list", json!({}))`, which picks the
 fixture of that level (`A1` for `user`), `call(Who, ..)` for a named fixture, a clock frozen at
-boot (`harness.clock()`), and `snapshot_descriptors(level, dir)`, one snapshot file per function
-and level, kernel functions excluded. For HTTP tests the harness registers a test
-`Authenticator` that resolves the header `X-Keel-Test-Principal` to a fixture principal, a
-test-only arrangement; `harness.socket()` and `TestSocket::at(path)` drive the control socket
-with `call`, `boot`, `ctl_json` and `ctl_table`. The two standard tests of the module template
+boot (`harness.clock()`), a data key generated per harness so every composition has the
+`SecretCipher`, `Harness::new().section(key, json)` for a section of `config.yaml`, and
+`snapshot_descriptors(level, dir)`, one snapshot file per function and level, kernel functions
+excluded. For HTTP tests the harness contributes a test `Authenticator` that resolves the header
+`X-Keel-Test-Principal` to a fixture principal, a test-only arrangement that coexists with the
+authenticators of the composed modules; `harness.socket()` and `TestSocket::at(path)` drive the
+control socket with `call`, `call_as` (a frame with `as`), `boot`, `ctl_json` and `ctl_table`;
+`harness.stop()` stops the kernel and keeps the database, for a test of what a stop leaves
+behind. The two standard tests of the module template
 are the helpers `assert_reseller_sees_only_subtree(func_list, &fixture)` and
 `assert_user_cannot_edit_foreign_row(func_edit, &fixture)`, where a `Fixture` creates a row in
 a given account; a module's permission defaults must list `reseller` for the reseller to hold
@@ -337,8 +369,15 @@ settings from the registry.
 
 `keel-conformance` runs against the started `keel` binary with any set of products enabled: boot,
 auth, the list contract, errors, idempotency, webhooks and `svc.*`, plus the check that a field
-shown by the descriptor is accepted by the server. The skeleton exists from M1 and is a mandatory
-CI job, run with each first-party bundle alone and with all of them.
+shown by the descriptor is accepted by the server. It is a black-box client typed with
+`keel-types` and nothing else of the workspace, takes `--url`, the admin's credentials and the
+login of a user in another account, prints one line per check and exits non-zero on any failure.
+The skeleton — the health routes, boot as a guest, the auth cycle with `su`, a token scoped to
+one function, the list contract on `keel.account.list` and `note.list`, and the error shapes —
+exists from M1 as the mandatory CI job `hack/conformance.sh`, run against the built binary with
+the `demo` bundle; it runs with each first-party bundle alone and with all of them once there is
+more than one (M4), and idempotency, webhooks, `svc.*` and the field-shown-iff-accepted check
+join it with their milestones.
 
 `keel-client` is the Rust client of a peer, typed with `keel-types`; it retries only requests that
 carry an `Idempotency-Key`. Other languages use the OpenAPI document generated from the function
@@ -385,41 +424,110 @@ function attribute ([06-host.md](06-host.md)).
   enabled; the `__Host-` prefix is why the installation listens on TLS only from its first start
   ([09-operations.md](09-operations.md)).
 - `auth.login` is a function of level `guest`, so rate limiting, audit and hooks apply to it
-  like to any other function.
-- Sessions can be listed and revoked; there is a password policy, lockout after N failed
-  attempts, and password reset through `notify`.
+  like to any other function. Passwords are argon2id PHC strings in `auth_password`; an unknown
+  login and a wrong password are one answer, `auth.error.credentials`, after the same argon2
+  work, since a login without a row is verified against a decoy hash. Login methods are the
+  module's own extension point, `LoginMethod` in `auth::api`, `local` being the built-in one.
+- The second factor is TOTP, RFC 6238 over HMAC-SHA1 with six digits and a 30-second step:
+  `auth.totp.enroll` answers the secret and its `otpauth://` URI once, `auth.totp.confirm {
+  code }` answers ten single-use recovery codes once, `auth.login` for an enrolled principal
+  answers `{ state: "totp", challenge }` without a cookie and `auth.totp.verify { challenge,
+  code }` completes the login as `auth.login` would; the secret is stored sealed through the
+  kernel's `SecretCipher`, recovery codes and challenges as hashes; a challenge lives five
+  minutes and admits five attempts; a step, once matched, is never accepted again.
+- API tokens: `auth.token.create { name, level?, scope?, ipAllow?, expiresAt? }` answers the
+  plaintext once; a call under a token runs as the token's principal at the lower of its level
+  and the ceiling, with the row's scope, and may not create a token wider than itself; the
+  dispatcher's scope guard answers `403` `keel.error.token_scope` outside the masks and
+  `keel.error.token_read_only` for a write under `ReadOnly` ([02-functions.md](02-functions.md)).
+- Sessions can be listed and revoked, `auth.session.list` and `auth.session.revoke`, each
+  principal its own below `reseller`; revoking a session takes its `su` child. The password
+  policy refuses a password shorter than `auth.password.min_length` or equal to the login. The
+  lockout counts failures per `(login, client address)` pair: `auth.lockout.threshold` failures
+  within `auth.lockout.minutes` lock that pair alone, so an attacker locks only its own address
+  out of a login and the victim from another address is unaffected; failures for an unknown
+  login are counted the same way, so `auth.error.locked` says nothing about whether the login
+  exists; a wrong second-factor code counts as a failure of the pair; `auth.unlock { login }`
+  clears the pairs of a login. The rate limit gives every guest call from one address
+  `auth.rate.guest_per_minute` tokens a minute, `429` beyond. IP rules, `auth.ip_rule.*`, are
+  `allow | deny` rows per CIDR applying to callers at or above their level, enforced by a module
+  guard that never checks a call without a client address — the socket — which is how an
+  operator undoes a rule that locked the browser out. Password reset through `notify` arrives
+  with M3.
+- Rate limits, lockouts and second-factor attempts are counted in the process's memory, not in
+  a table: a failed `auth.login` is a failed call whose transaction rolls back, so a counter the
+  handler wrote would vanish with it, and a background writer arrives with `tasks` in M3. The
+  counters live in instances the module's `init` creates, are timed by the kernel's `Clock`
+  read at each check, and evict entries whose window has passed, so a map is bounded by the
+  distinct keys of one window; a restart clears them, while IP rules, revocations and login keys
+  are rows and survive it.
 - OIDC is a login method for corporate installations and the single sign-on path between
   products ([07-ecosystem.md](07-ecosystem.md)).
 - Fine-grained permissions, keys such as `dns.zone.manage` with defaults per level, are stored by
-  `auth` through `PermissionSource`. `su` goes only down the ladder, as a separate session with
-  an `actor`; audit records both sides ([03-access.md](03-access.md)).
-- One-time login keys: `auth.key.issue { external_id, ttl <= 300, redirect }` returns a `kok_`
-  key, redeemed by a same-origin `POST auth.key.redeem`; the key dies on first use
+  `auth` through `PermissionSource` (M2). `su` goes only down the ladder, as a separate session
+  with an `actor`; audit records both sides ([03-access.md](03-access.md)).
+- One-time login keys: `auth.key.issue { principal, ttl <= 300, redirect }` returns a `kok_`
+  key and the relative `url` `/login?key=…`, redeemed by a same-origin `POST auth.key.redeem`
+  that answers `{ redirect, principal, issuedBy }`; the key dies on first use. The `peers`
+  module adds `externalId`, resolved against `(origin, external_id)` for the peer that carries
+  an `origin`, and a public-URL setting makes the `url` absolute (M6)
   ([07-ecosystem.md](07-ecosystem.md)).
 - M1 scope: argon2id, opaque sessions, `__Host-` cookie with CSRF checks, Bearer, TOTP, tokens
   with scope and IP restrictions, `su`, login keys, IP rules, rate limit, session management,
-  password policy, lockout.
+  password policy, lockout. Until TLS arrives in M3 the installation listens on plain HTTP and
+  the clients of M1 — the testkit, `hack/prove-binary.sh`, `keel-conformance` — keep and return
+  the `Secure` cookie themselves; a browser is not a client before M2.
 
 ### settings
 
-- `SettingDef` contributions turn into an automatic form.
-- `settings_pref` holds per-principal preferences: columns, widget order, language, time zone,
-  theme.
-- Values inherit from admin to reseller.
-- White-label by hostname through `ManifestPatch`; the brand goes out in `GET /api/v1/boot`.
+- `SettingDef` contributions are listed by `settings.list` as rows `{ key, module, schema,
+  default, level, value, scope }`, cut to the definitions at or below the caller's level with
+  the value resolved for the caller's account, read by `settings.get { key }` and written by
+  `settings.set { key, value }`, which validates the value against the definition's schema and
+  refuses a definition above the caller's level; the shell renders the settings form from those
+  rows and submits it through `settings.set` (M2). A module reads a setting through
+  `call.setting::<T>(key)`, behind the public `SettingsSource` this module provides; a
+  composition without the module answers the contributed defaults.
+- `settings_pref` holds per-principal preferences, read and written by `settings.pref.get` and
+  `settings.pref.set { key, value }` on the caller's own row: `lang` (a language the catalogue
+  carries), `tz` (a zone name the `chrono-tz` table knows), `theme` and `columns.<function>`
+  (column order and visibility); the widget order arrives with the `DashboardWidget`
+  contributions (M3). The HTTP transport reads them once per request through the hidden
+  `PreferenceSource`: the language is overlaid on the principal, the zone reaches `Call::tz()`
+  and `/boot`; `keel_principal.lang` stays the fallback and what `keel.principal.*` edit.
+- Values inherit from admin to reseller: a key resolves to the nearest value up the account
+  path from the caller's account to the root, then to the contributed default; an admin writes
+  the root scope, a reseller its own account.
+- White-label by hostname through `ManifestPatch`; the brand goes out in `GET /api/v1/boot`
+  (M2).
 - Everything editable from the UI lives here; `config.yaml` holds only what the process needs to
   start ([09-operations.md](09-operations.md)).
 
 ### audit
 
 - Subscribes to the in-process audit event emitted after commit or rollback and writes in
-  batches from a background worker, so a call's response is not lengthened. Functions with
+  batches from a background worker, so a call's response is not lengthened: `record` pushes onto
+  a bounded channel of 10 000 events and returns at once, the worker writes batches of up to 200
+  rows or every 250 milliseconds with one multi-row insert into `audit_call`, a full channel
+  drops the event and counts it in the log rather than slowing a call, and `stop` drains the
+  channel; `api::Flush` awaits the worker for tests and for the support bundle. Functions with
   `mode: read` are not audited by default.
 - Masking follows the `secret` attribute in the schema; the same flag drives logs and the
   support bundle. Failed calls are recorded too, with the password masked.
-- An optional `subject` and before/after snapshots for form functions feed the "object history"
-  screen.
-- For `su`, both the principal and the actor are recorded.
+- The dispatcher fills `subject` with the key parameter of a keyed function and `after` with
+  the masked result of a committed form function that has a key, `once` fields masked as well,
+  so an object edit records what it left behind while the results of key-less forms — the
+  plaintext of a token, recovery codes, a login key — never reach the trail; the `before`
+  snapshot stays `NULL` at M1, since it costs a read before the handler and nothing reads it
+  until the "object history" screen the two snapshots feed.
+- For `su`, both the principal and the actor are recorded; so are the actor of a socket frame
+  with `as`, the request id, the client address and `via`. The trail has no foreign keys,
+  because it outlives the principals and accounts it names.
+- `audit.list`, owned by `account_id` under `audit.read` for user and reseller, sorted by `at`
+  descending and filterable on function, principal, status, request id and `at` under the
+  day-boundary rule ([10-contracts.md](10-contracts.md)), and `audit.get`; the menu node
+  `system/audit`. A guest's failed login lands in the root account and is therefore visible to
+  admins alone.
 
 ### tasks and cron
 
@@ -594,7 +702,7 @@ modules above are illustrative. The composition lists the system modules, which 
 names, and every first-party bundle; each bundle names its own module crates, `keel-host`
 included where a product manages the host, so `.module()` never repeats what a manifest says.
 The embedded frontend is the one shell application built in the repository
-([08-frontend.md](08-frontend.md)); at M0, before any system module or frontend exists, the
-whole of `main.rs` is `keel::Runtime::new().product(&keel_demo::MANIFEST).run()` behind the
-`demo` feature. The function descriptor this module produces and the envelope of a call are in
+([08-frontend.md](08-frontend.md)); since M1 `main.rs` composes `auth`, `settings` and `audit`
+and the `demo` bundle behind the `demo` feature, and `embed_frontend!` arrives with M2. The
+function descriptor this module produces and the envelope of a call are in
 [10-contracts.md](10-contracts.md).

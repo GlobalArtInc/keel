@@ -11,13 +11,13 @@ database per host; one binary `keel` per host with the frontend embedded.
 
 ## Status
 
-The design is in `docs/design/`, the order of work in `docs/plan.md`. M0 is built; the
-milestones after it are designed, not yet built.
+The design is in `docs/design/`, the order of work in `docs/plan.md`. M0 and M1 are built; the
+milestones after them are designed, not yet built.
 
 | Milestone | Scope | State |
 |---|---|---|
 | M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` bundle | done: the binary `keel` serves the `keel` module and the `demo` bundle over HTTP and the control socket, with every check of the M0 exit checklist in `docs/plan.md` green |
-| M1 | Identity, access and audit: `auth`, `settings`, `audit`, conformance skeleton | |
+| M1 | Identity, access and audit: `auth`, `settings`, `audit`, conformance skeleton | done: the binary composes `auth`, `settings` and `audit`; login, tokens, TOTP, `su`, login keys, IP rules, rate limit, lockout, settings, preferences and the audit trail are served over HTTP and the control socket, `keel-conformance` is green against the built binary, and every check of the M1 exit checklist in `docs/plan.md` is green |
 | M2 | Frontend runtime `@globalart/keel` and the host agent spike | |
 | M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | |
 | M4 | Operator plane, `keel-host`, KeelDNS alpha | |
@@ -66,13 +66,17 @@ hack/prove-binary.sh target/debug/keel
 hack/conformance.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
+hack/check-docs.sh
 ```
 
-CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job runs the
-`keel-system` matrix, `cargo clippy` and `cargo test -p keel-system --no-default-features
---features <set>` for each module alone (`auth`, `settings`, `audit`) and for the crate without
-each in turn (`settings,audit`, `auth,audit`, `auth,settings`); a test of the crate declares the
-modules it needs as `required-features` and is skipped when they are off.
+`hack/check-docs.sh` holds the documents to the code: the names M1 introduced are found under
+both `docs/design/` and `crates/`, every test and command the M1 exit checklist of `docs/plan.md`
+cites exists, and the list above, the "How we work" section of the plan and `ci.yml` name the same
+commands. CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job
+runs the `keel-system` matrix, `cargo clippy` and `cargo test -p keel-system
+--no-default-features --features <set>` for each module alone (`auth`, `settings`, `audit`) and
+for the crate without each in turn (`settings,audit`, `auth,audit`, `auth,settings`); a test of
+the crate declares the modules it needs as `required-features` and is skipped when they are off.
 
 `cargo build -p keel-bin` produces `target/debug/keel` with the `demo` bundle compiled in, since
 the feature `demo` of `keel-bin` is on by default; `--no-default-features` builds the binary a
@@ -114,4 +118,4 @@ of the kernel under `contracts/fixtures/descriptors/` are refreshed with
 - `docs/design/09-operations.md` — delivery, systemd, updates, backups, support
 - `docs/design/10-contracts.md` — wire contracts with examples
 - `docs/design/11-decisions.md` — decisions, alternatives, risks, open questions
-- `docs/plan.md` — milestones and the M0 work breakdown
+- `docs/plan.md` — milestones, the M0 and M1 work breakdowns and their exit checklists

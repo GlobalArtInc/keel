@@ -1,9 +1,9 @@
 # Plan
 
-This document orders the work: the milestones M0 to M8 with their scope and exit criteria, a
-breakdown of M0 into PR-sized steps, the working rules of the repository, and the M0 exit
-checklist. The design itself lives in `design/`; this document only says in which order it is
-built and how each step is shown to be done. Nothing here carries a date or a duration.
+This document orders the work: the milestones M0 to M8 with their scope and exit criteria, the
+breakdowns of M0 and M1 into PR-sized steps, the working rules of the repository, and the M0 and
+M1 exit checklists. The design itself lives in `design/`; this document only says in which order
+it is built and how each step is shown to be done. Nothing here carries a date or a duration.
 
 ## Milestones
 
@@ -58,7 +58,9 @@ Scope:
   password policy, lockout.
 - `settings`, `audit`.
 - Skeleton of `keel-conformance`: boot, lists, errors.
-- Postgres through testcontainers in CI.
+- Postgres through testcontainers in `keel-testkit` when `KEEL_TEST_DATABASE_URL` names no server,
+  proved by CI in a step of its own; CI keeps its Postgres service for the checks that need a
+  server outliving one process.
 - `ConfigSection`.
 
 Done when:
@@ -294,8 +296,9 @@ directory skeleton for the fixtures of step 2. Step 12 extends the workspace mem
 `contracts/`.
 
 **Out of scope.** The musl target and the `ldd` check, the release workflow, npm publishing,
-the frontend workspace, `keel-dev`, `keel-conformance`, testcontainers (M1 replaces the service
-container with them).
+the frontend workspace, `keel-dev`, `keel-conformance`, testcontainers (M1 adds them to the
+testkit for a run without a named server; the service container stays for the checks that need a
+server outliving one process).
 
 **Acceptance.**
 
@@ -702,7 +705,7 @@ reservation of `system` exists.
 constants, schema name, enabled set in the loader, i18n, menu, boot, meta-version,
 `keel.product.*`), `crates/keel/` (reading the enabled set), `contracts/fixtures/`.
 
-**Out of scope.** `ManifestPatch` and white-label by hostname (`settings`, M1); dashboard
+**Out of scope.** `ManifestPatch` and white-label by hostname (`settings`, M2); dashboard
 widgets, problems and license state (M3, M5); custom views in `views` (M2); OwnLate export at
 build time and `keel-dev i18n missing` in CI (M2); the `PhxIconName` check (M2); the lease check
 in `keel.product.enable` (M5); the restart after enable or disable, `--switch-remote` and the
@@ -859,8 +862,10 @@ says so; this breakdown and the later ones name their steps that way, and the M1
 `hack/check-docs.sh` cite a step by that name. The steps derive strictly from the design; where a
 step names a mechanism the design leaves open, it says so, and the commit message of the step
 records the choice. Where a step diverges from a sentence of the design, it amends that sentence in
-the same change, as the repository rule requires, and names the file in its Touches; step 9 collects
-none of those edits and keeps the exit checklist, `hack/check-docs.sh` and a final consistency pass.
+the same change, as the repository rule requires, and names the file in its Touches; steps 1a and 2
+did so, steps 3a to 8b recorded the sentences they owed in their commit messages and left them to
+step 9, which applied them together with the exit checklist, `hack/check-docs.sh` and the final
+consistency pass.
 
 Five remarks apply to the whole breakdown.
 
@@ -1782,11 +1787,17 @@ the frontend (M2); idempotency, webhooks and `svc.*` (M3, M6); `GET /api/v1/inst
 **Goal.** Close the milestone the way the M0 checklist did. Run every M1 "Done when" item by hand or
 through the conformance suite and record for each the test name or the command that shows it; add
 the section "M1 exit checklist" after the M0 checklist, in the same form; and make the final
-consistency pass over `docs/design/` and this plan against the built M1. Each code step has already
-amended the sentences it diverged from, so what remains is the plan's own notes — the opening
-paragraph of this plan, which still names only the M0 breakdown, and the `ManifestPatch` note of M0
-step 10, which now points at M2 — and any one-line mismatch the pass reveals. `README.md` follows
-the code and is edited by step 8b, whose command list this step only re-checks. The check is
+consistency pass over `docs/design/` and this plan against the built M1. Steps 1a and 2 amended
+the sentences they diverged from in their own change; steps 3a to 8b left theirs to this step —
+the delegation paragraph of the access design, the `as` frame and the day-boundary sentence of
+the contracts, the `auth`, `settings`, `audit`, hidden-hooks, contribution-table and testkit
+paragraphs of the module design, the one-click login example, the `after`-only snapshot, the
+testing paragraph of the storage design and the `hack/` row of the overview — next to the plan's
+own notes: the opening paragraph of this plan, which named only the M0 breakdown, the M1 scope
+line and the note of M0 step 1 on testcontainers, the `ManifestPatch` note of M0 step 10, which
+now points at M2, and any one-line mismatch the pass reveals. `README.md` follows the code and
+is edited by step 8b, whose command list this step re-checks and extends by `hack/check-docs.sh`;
+its M1 row is set to done. The check is
 `hack/check-docs.sh`, which carries the list of M1 names — the authenticator chain, `Client`,
 `Authenticated`, `SessionChange`, `SecretCipher`, `SecondFactorSource`, `parent_id_hash`,
 `su_id_hash`, `SettingDef`, `SettingsSource`, `PreferenceSource`, `Call::tz`, `ConfigSection`,
@@ -1796,8 +1807,8 @@ cites exists under `hack/` or in `.github/workflows/ci.yml`, and that every comm
 check list is a `run:` command of `ci.yml` and is named in the "How we work" section; CI runs it
 after `hack/check-deps.sh`.
 
-**Touches.** `docs/plan.md`, `docs/design/*.md` (the consistency pass), `hack/check-docs.sh`,
-`.github/workflows/ci.yml`.
+**Touches.** `docs/plan.md`, `docs/design/*.md` (the consistency pass), `README.md` (the M1 row,
+`hack/check-docs.sh` in the command list), `hack/check-docs.sh`, `.github/workflows/ci.yml`.
 
 **Out of scope.** Any code change beyond what a document alignment reveals as a one-line mismatch;
 anything of M2.
@@ -1819,10 +1830,12 @@ anything of M2.
 - One task is one PR-sized change; a task is not split across branches.
 - Verify with the same commands CI runs before pushing: `cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the
-  Postgres server `KEEL_TEST_DATABASE_URL` names, `cargo test -p keel-bin --no-default-features`,
-  `cargo build -p keel-bin` and `hack/prove-binary.sh target/debug/keel`, then
-  `hack/check-test-databases.sh` and `hack/check-deps.sh`; the README lists them in CI's order.
-  Once `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
+  Postgres server `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p
+  keel-testkit` against the container the testkit starts, `cargo test -p keel-bin
+  --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel` and
+  `hack/conformance.sh target/debug/keel`, then `hack/check-test-databases.sh`,
+  `hack/check-deps.sh` and `hack/check-docs.sh`; the README lists them in CI's order. Once
+  `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
 - No comments in code. Explanations go into the commit message or into `docs/`; the only
   exception is a link to an RFC next to the code that implements it.
@@ -1860,3 +1873,116 @@ with and without the `demo` feature, and `hack/prove-binary.sh` against the buil
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` is green.
 - [x] `cargo test --workspace` is green against Postgres, and `hack/check-test-databases.sh`
       finds no database left behind.
+
+## M1 exit checklist
+
+Every item below is checked by CI on `main`: the tests of the workspace, the `keel-system`
+matrix, the testkit's own tests against the container it starts, the build of `keel-bin` with and
+without the `demo` feature, `hack/prove-binary.sh` and `hack/conformance.sh` against the built
+binary, and `hack/check-docs.sh` over this checklist.
+
+- [x] Over HTTP: login, then boot, then `keel.account.list`, then `auth.su`, after which the
+      list is narrowed and `actor` is filled, then `su.exit`
+      (`login_boot_list_su_narrows_the_list_and_fills_the_actor_then_su_exit_returns` in
+      `crates/system/tests/auth_su.rs`; the auth group of `hack/conformance.sh`; the `su`
+      sequence of `hack/prove-binary.sh`).
+- [x] A token scoped to one function receives `403` on another
+      (`a_token_scoped_to_one_function_is_admitted_there_and_refused_elsewhere_after_the_level_guard`
+      in `crates/system/tests/auth_tokens.rs`;
+      `a_token_scoped_to_note_edit_alone_edits_a_note_through_its_nested_invokes` in
+      `products/demo/tests/tokens.rs` for the nested invokes; the token group of
+      `hack/conformance.sh`; `note.edit` under a token in `hack/prove-binary.sh`).
+- [x] Writing a field above the caller's level yields `forbidden_field`
+      (`login_sets_the_cookie_and_the_session_drives_boot_lists_and_forbidden_field` in
+      `crates/system/tests/auth_sessions.rs`, over a real session; the errors group of
+      `hack/conformance.sh`).
+- [x] The audit trail contains both sides of `su` and masks the password, including for
+      failed calls (`the_su_sequence_records_both_sides_of_su_and_the_calls_made_inside_it` and
+      `logins_and_password_changes_are_masked_and_no_session_token_key_or_factor_reaches_the_trail`
+      in `crates/system/tests/audit.rs`;
+      `a_wrong_password_and_an_unknown_login_are_one_answer_and_the_audit_masks_the_password` in
+      `crates/system/tests/auth_sessions.rs` for the event of the failed call; the `audit_call`
+      queries of `hack/prove-binary.sh`).
+- [x] The conformance skeleton is green against the built binary (`hack/conformance.sh
+      target/debug/keel` in CI after `hack/prove-binary.sh`; a broken expectation exits non-zero:
+      `a_broken_expectation_makes_the_suite_exit_non_zero_with_one_line_per_check` in
+      `crates/conformance/tests/exit_code.rs`).
+- [x] `auth`: argon2id passwords
+      (`the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2id` in
+      `crates/system/tests/auth_passwords.rs`); opaque sessions and the `__Host-` cookie with the
+      cross-site check (`login_is_refused_cross_site_and_replaces_the_session_it_arrived_with` and
+      `a_session_slides_with_every_request_and_ends_after_the_idle_and_absolute_lifetimes` in
+      `crates/system/tests/auth_sessions.rs`;
+      `every_request_without_a_bearer_token_is_checked_for_cross_site` and
+      `authenticators_are_asked_in_module_order_until_one_answers_or_fails` in
+      `crates/kernel/tests/http.rs`); Bearer tokens with scope and IP restrictions
+      (`ip_rules_revocation_expiry_and_last_used_govern_a_token_and_the_plaintext_is_shown_once`
+      in `crates/system/tests/auth_tokens.rs`); TOTP with recovery codes
+      (`a1_enrols_confirms_and_logs_in_through_a_challenge_with_the_step_moving_forward_only` and
+      `a_recovery_code_logs_in_once_without_moving_the_step_and_is_stored_as_its_hash` in
+      `crates/system/tests/auth_totp.rs`, the sealed secret through
+      `a_handler_seals_through_the_cipher_and_only_the_composition_with_the_same_key_opens_it` in
+      `crates/kernel/tests/cipher.rs`); login keys
+      (`a_key_issued_for_a1_is_redeemed_once_and_refused_when_spent_expired_or_made_up` in
+      `crates/system/tests/auth_keys.rs`); the socket side of delegation
+      (`a_frame_with_as_runs_as_the_named_principal_with_the_owner_as_actor_via_socket` in
+      `crates/kernel/tests/socket.rs`); IP rules
+      (`ip_rules_refuse_by_address_and_level_take_effect_at_once_and_never_apply_to_the_socket`
+      in `crates/system/tests/auth_guards.rs`, and the rule surviving a restart in the second run
+      of `hack/prove-binary.sh`); rate limiting
+      (`the_thirty_first_guest_call_from_one_address_within_a_minute_is_rate_limited_and_the_bucket_leaves_with_its_window`);
+      lockout and unlock
+      (`five_wrong_passwords_lock_the_login_from_that_address_only_until_the_window_passes_or_the_admin_unlocks`
+      and `five_wrong_codes_lock_the_challenge_pair_for_the_address_and_the_code_passes_from_another`);
+      the session list and revocation
+      (`each_principal_lists_its_own_sessions_the_reseller_its_subtree_the_admin_all_and_the_current_row_is_marked`
+      and `revoking_a_parent_takes_its_su_child_and_revoking_the_child_alone_ends_the_delegation`
+      in `crates/system/tests/auth_session_list.rs`); the password policy
+      (`the_policy_refuses_a_short_password_and_one_equal_to_the_login_wherever_it_is_set` in
+      `crates/system/tests/auth_policy.rs`).
+- [x] `settings`: values, inheritance and `Call::setting`
+      (`the_admin_lists_the_six_auth_definitions_and_a_raised_minimum_makes_the_password_refuse_twelve_characters`
+      and
+      `a_value_inherits_from_the_root_down_the_account_path_and_a_composition_without_settings_resolves_the_default`
+      in `crates/system/tests/settings.rs`;
+      `without_a_settings_module_the_platform_answers_the_contributed_defaults_and_a_provided_source_replaces_it`
+      in `crates/kernel/tests/settings.rs`); preferences and the caller's time zone
+      (`a1_sets_tz_and_lang_and_boot_and_the_catalogue_follow_while_a2_reads_nothing_of_it` in
+      `crates/system/tests/settings_pref.rs`;
+      `the_transport_overlays_the_preferred_language_and_hands_the_zone_to_every_call_of_the_request`
+      in `crates/kernel/tests/preferences.rs`;
+      `a_bare_date_filter_takes_the_day_boundary_in_the_callers_zone_and_utc_without_one` in
+      `products/demo/tests/day_boundary.rs`).
+- [x] `audit`: the trail from a background worker, flushed and drained
+      (`flush_returns_after_the_batch_is_written_and_a_stop_leaves_no_event_unwritten` and
+      `audit_list_filters_by_function_principal_status_request_and_time_within_the_callers_scope`
+      in `crates/system/tests/audit.rs`;
+      `a_read_leaves_no_row_a_replay_leaves_no_second_row_and_request_id_ip_and_via_are_filled`).
+- [x] `ConfigSection`: a section validated and typed at freeze
+      (`a_valid_section_reaches_start_and_the_handlers_an_absent_one_yields_the_defaults` and
+      `a_section_of_the_wrong_shape_fails_the_boot_naming_the_module_the_section_and_the_path` in
+      `crates/sdk-probe/tests/harness.rs`;
+      `a_claimed_section_is_parsed_into_the_services_and_an_unclaimed_key_is_logged` and
+      `a_section_claimed_twice_and_one_of_the_wrong_shape_are_freeze_problems` in
+      `crates/kernel/src/loader/freeze.rs`; the unclaimed `host` section of
+      `hack/prove-binary.sh`).
+- [x] Postgres through testcontainers when no server is named
+      (`the_server_is_the_named_one_when_the_variable_is_set_and_a_started_container_otherwise` in
+      `crates/testkit/tests/harness.rs`, run by CI as
+      `env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit`).
+- [x] The `keel-system` matrix is green: the `system` job of `.github/workflows/ci.yml` runs
+      `cargo clippy` and `cargo test -p keel-system --no-default-features --features <set>` for
+      `auth`, `settings`, `audit`, `settings,audit`, `auth,audit` and `auth,settings`
+      (`settings_alone_boots_with_its_tables_and_the_admin_lists_and_sets_a_value_over_http` in
+      `crates/system/tests/settings_alone.rs`,
+      `audit_alone_boots_with_its_table_and_one_owner_write_leaves_one_row_after_a_flush` in
+      `crates/system/tests/audit_alone.rs`).
+- [x] `cargo fmt --all --check` is green.
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` is green.
+- [x] `cargo test --workspace` is green against Postgres, and `hack/check-test-databases.sh`
+      finds no database left behind.
+- [x] `hack/check-deps.sh` is green: `keel-system` depends on `keel-sdk` alone and
+      `keel-conformance` on `keel-types` alone.
+- [x] `hack/check-docs.sh` is green: every M1 name it carries is found under both `docs/design/`
+      and `crates/`, every test name this checklist cites is defined, every command it cites
+      exists, and the README's check list, the "How we work" section and `ci.yml` agree.

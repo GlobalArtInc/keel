@@ -105,8 +105,8 @@ fn main() -> keel::ExitCode {
 The kernel's own module `keel` is composed first by the loader and is never listed. The `demo`
 bundle and its `note` module join the composition behind the cargo feature `demo` of `bin/keel`,
 which is on by default so that the workspace, CI and `hack/prove-binary.sh` carry it, and off in
-release builds through `--no-default-features`. At M0 the composition is the two lines
-`keel::Runtime::new().product(&keel_demo::MANIFEST).run()`; `embed_frontend!` arrives with M2.
+release builds through `--no-default-features`. Since M1 the composition lists the three system
+modules `auth`, `settings` and `audit` and the `demo` bundle; `embed_frontend!` arrives with M2.
 
 On a host the binary is one installation with the subcommands `serve`, `ctl`, `product`,
 `privileged`, `migrate`, `backup`, `restore`, `doctor` and `support-bundle`. Which bundles are
@@ -189,9 +189,10 @@ of modules listed in its own `requires`; importing anything else is an error rep
 `keel-dev check`. `keel-system` depends only on `keel-sdk`, which cargo verifies, and CI runs the
 matrix "each system module alone, and the composition without each module in turn" plus the test
 "a composition of the kernel alone starts and answers on the socket". Hooks needed only by
-system modules (`Authenticator`, `TransportRegistry`, `StorageSnapshot`, `OutboxSubscriber`) live
-in `keel_sdk::system`, which is `#[doc(hidden)]` and exempt from semver until 1.0. Details are in
-[05-modules.md](05-modules.md).
+system modules (the `Authenticator` chain, `PrincipalSource`, `SecretCipher`,
+`SecondFactorSource`, `PreferenceSource`, `AuditSink`; later `TransportRegistry`,
+`StorageSnapshot`, `OutboxSubscriber`) live in `keel_sdk::system`, which is `#[doc(hidden)]` and
+exempt from semver until 1.0. Details are in [05-modules.md](05-modules.md).
 
 The frontend layer mirrors the same split: `@globalart/keel/meta` carries the wire types with no
 Angular dependency, `/client`, `/forms`, `/renderer` and `/shell` build on it, and phoenix-ui
@@ -241,14 +242,14 @@ lists them with the product they belong to, not as a fixed path.
 | `contracts/` | `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots); later `protocol.md`, the prose of the contract, and the generated `openapi.json` committed for diffs (M2) — neither exists at M0 |
 | `plugins/` | Python plugin SDK and example plugins |
 | `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` with a section per product, the public release keys |
-| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `vm-test.sh` and `release.py` with the operator plane |
+| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `conformance.sh` and `check-docs.sh` from M1; `vm-test.sh` and `release.py` with the operator plane |
 | `docs/` | operator, module developer, plugin protocol, descriptor and migration documentation |
 | `.github/workflows/` | `ci.yml`, `release.yml`, `publish-npm.yml` |
 
 Crates are created lazily: about fourteen in total, seven at M0, which needs `keel-types`,
 `keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`,
 plus the probe module `crates/sdk-probe` (`keel-sdk-probe`) that CI builds against `keel-sdk`
-alone ([05-modules.md](05-modules.md)). A
+alone ([05-modules.md](05-modules.md)); M1 adds `keel-system` and `keel-conformance`. A
 product without custom screens keeps no frontend code at all; the one shell application renders
 its screens from descriptors.
 
