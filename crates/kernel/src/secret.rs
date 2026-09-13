@@ -2,6 +2,8 @@ use std::fmt;
 
 use aes_gcm::aead::{Aead, Nonce};
 use aes_gcm::{Aes256Gcm, KeyInit};
+use keel_sdk::KeelError;
+use keel_sdk::system::SecretCipher;
 use rand::TryRng;
 use rand::rngs::SysRng;
 use serde::{Deserialize, Serialize};
@@ -102,6 +104,41 @@ impl fmt::Debug for Key {
     }
 }
 
+pub struct DataKeyCipher {
+    key: Key,
+}
+
+impl DataKeyCipher {
+    pub fn new(key: Key) -> Self {
+        Self { key }
+    }
+}
+
+impl fmt::Debug for DataKeyCipher {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DataKeyCipher(***)")
+    }
+}
+
+impl SecretCipher for DataKeyCipher {
+    fn seal(&self, plaintext: &[u8]) -> keel_sdk::Result<String> {
+        let sealed = self
+            .key
+            .seal(plaintext)
+            .map_err(|error| KeelError::internal("keel.error.secret_seal").source(error))?;
+        serde_json::to_string(&sealed)
+            .map_err(|error| KeelError::internal("keel.error.secret_seal").source(error))
+    }
+
+    fn open(&self, sealed: &str) -> keel_sdk::Result<Vec<u8>> {
+        let sealed: Sealed = serde_json::from_str(sealed)
+            .map_err(|error| KeelError::internal("keel.error.secret_open").source(error))?;
+        self.key
+            .open(&sealed)
+            .map_err(|error| KeelError::internal("keel.error.secret_open").source(error))
+    }
+}
+
 fn encode_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -165,6 +202,27 @@ mod tests {
         let second = key.seal(b"x").unwrap();
         assert_ne!(first.nonce, second.nonce);
         assert_ne!(first.data, second.data);
+    }
+
+    #[test]
+    fn the_cipher_seals_to_json_text_that_only_its_own_key_opens() {
+        let key = Key::generate().unwrap();
+        let cipher = DataKeyCipher::new(key.clone());
+        let sealed = cipher.seal(b"JBSWY3DPEHPK3PXP").unwrap();
+        assert!(!sealed.contains("JBSWY3DPEHPK3PXP"));
+        let parsed: Sealed = serde_json::from_str(&sealed).unwrap();
+        assert_eq!(key.open(&parsed).unwrap(), b"JBSWY3DPEHPK3PXP");
+        assert_eq!(cipher.open(&sealed).unwrap(), b"JBSWY3DPEHPK3PXP");
+        let other = DataKeyCipher::new(Key::generate().unwrap());
+        assert_eq!(
+            other.open(&sealed).unwrap_err().key(),
+            "keel.error.secret_open"
+        );
+        assert_eq!(
+            cipher.open("not json").unwrap_err().key(),
+            "keel.error.secret_open"
+        );
+        assert_eq!(format!("{cipher:?}"), "DataKeyCipher(***)");
     }
 
     #[test]

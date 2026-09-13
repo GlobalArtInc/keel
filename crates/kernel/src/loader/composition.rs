@@ -7,6 +7,7 @@ use keel_sdk::{ModuleDef, ProductManifest};
 use crate::clock::{Clock, SystemClock};
 use crate::keel;
 use crate::keel::SYSTEM_KIND;
+use crate::secret::Key;
 
 pub const LEDGER_PREFIX: &str = "keel_migration_";
 pub const API: u32 = keel_types::DESCRIPTOR_VERSION;
@@ -17,6 +18,7 @@ pub struct Composition {
     enabled: Option<Vec<String>>,
     version: String,
     clock: Arc<dyn Clock>,
+    key: Option<Key>,
 }
 
 #[derive(Clone)]
@@ -26,6 +28,7 @@ pub struct Graph {
     products: Vec<&'static ProductManifest>,
     version: String,
     clock: Arc<dyn Clock>,
+    key: Option<Key>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -92,6 +95,7 @@ impl Default for Composition {
             enabled: None,
             version: env!("CARGO_PKG_VERSION").to_owned(),
             clock: Arc::new(SystemClock),
+            key: None,
         }
     }
 }
@@ -127,6 +131,11 @@ impl Composition {
 
     pub fn clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.clock = clock;
+        self
+    }
+
+    pub fn key(mut self, key: Key) -> Self {
+        self.key = Some(key);
         self
     }
 
@@ -254,6 +263,7 @@ impl Composition {
                 products,
                 version: self.version,
                 clock: self.clock,
+                key: self.key,
             })
         } else {
             Err(CompositionError { problems })
@@ -417,6 +427,10 @@ impl Graph {
 
     pub fn clock(&self) -> &Arc<dyn Clock> {
         &self.clock
+    }
+
+    pub fn key(&self) -> Option<&Key> {
+        self.key.as_ref()
     }
 }
 

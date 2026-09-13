@@ -1,5 +1,6 @@
-use keel_sdk::{KeelError, ProductManifest};
-use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Principal};
+use keel_sdk::system::SecondFactorSource;
+use keel_sdk::{Db, KeelError, ProductManifest};
+use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Level, Principal};
 use sea_orm::DatabaseConnection;
 
 use crate::dispatcher;
@@ -73,7 +74,10 @@ pub(crate) fn features(registry: &Registry) -> Vec<String> {
     features
 }
 
-pub(crate) fn principal(principal: &Principal) -> Result<Option<BootPrincipal>, KeelError> {
+pub(crate) fn principal(
+    principal: &Principal,
+    totp: bool,
+) -> Result<Option<BootPrincipal>, KeelError> {
     let Some(meta) = dispatcher::meta_principal(principal)? else {
         return Ok(None);
     };
@@ -85,8 +89,26 @@ pub(crate) fn principal(principal: &Principal) -> Result<Option<BootPrincipal>, 
         actor: meta.actor,
         lang: principal.lang.clone(),
         tz: None,
-        totp: false,
+        totp,
     }))
+}
+
+pub(crate) async fn second_factor(
+    registry: &Registry,
+    db: &DatabaseConnection,
+    principal: &Principal,
+) -> Result<bool, KeelError> {
+    if principal.level == Level::Guest || principal.level >= Level::Owner {
+        return Ok(false);
+    }
+    match registry.services().get::<dyn SecondFactorSource>() {
+        Some(source) => {
+            source
+                .enrolled(principal.id, &Db::from_connection(db.clone()))
+                .await
+        }
+        None => Ok(false),
+    }
 }
 
 pub(crate) async fn payload(
@@ -95,11 +117,12 @@ pub(crate) async fn payload(
     principal: &Principal,
 ) -> Result<Boot, KeelError> {
     let meta = meta::version(registry, db, principal).await?;
+    let totp = second_factor(registry, db, principal).await?;
     Ok(Boot {
         keel: registry.platform().clone(),
         products: products(registry),
         brand: brand(registry),
-        principal: self::principal(principal)?,
+        principal: self::principal(principal, totp)?,
         features: features(registry),
         license: None,
         menu: menu::project(registry, principal),
@@ -135,14 +158,20 @@ mod tests {
 
     #[test]
     fn a_guest_has_no_boot_principal_and_a_user_carries_the_account_and_language() {
-        assert!(principal(&someone(Level::Guest)).unwrap().is_none());
-        let user = principal(&someone(Level::User)).unwrap().unwrap();
+        assert!(principal(&someone(Level::Guest), false).unwrap().is_none());
+        let user = principal(&someone(Level::User), false).unwrap().unwrap();
         assert_eq!(user.login, "alice");
         assert_eq!(user.account, Id::ROOT_ACCOUNT);
         assert_eq!(user.lang, "ru");
         assert!(user.actor.is_none());
         assert!(user.tz.is_none());
         assert!(!user.totp);
+        assert!(
+            principal(&someone(Level::User), true)
+                .unwrap()
+                .unwrap()
+                .totp
+        );
         let brand = platform_brand();
         assert_eq!(brand.name, PLATFORM_BRAND);
         assert!(brand.logo.is_none());
@@ -152,7 +181,7 @@ mod tests {
     fn an_actor_that_arrived_without_delegation_is_an_internal_error_not_a_guest() {
         let mut user = someone(Level::User);
         user.actor = Some(Box::new(someone(Level::Admin)));
-        let error = principal(&user).unwrap_err();
+        let error = principal(&user, false).unwrap_err();
         assert_eq!(error.code(), ErrorCode::Internal);
         assert_eq!(error.key(), "keel.error.actor_not_delegated");
         assert_eq!(error.params()["via"], json!("http"));

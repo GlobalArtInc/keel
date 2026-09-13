@@ -6,7 +6,7 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError,
 };
-use keel_sdk::system::PrincipalSource;
+use keel_sdk::system::{PrincipalSource, SecretCipher};
 use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
@@ -23,6 +23,7 @@ use crate::keel::StoredPrincipals;
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry};
+use crate::secret::DataKeyCipher;
 
 const PLATFORM: &str = "the platform";
 
@@ -334,6 +335,7 @@ impl Initialised {
                 stop: registrations.stop,
             });
         }
+        freezer.platform(&self.graph);
         for (module, required) in requirements {
             freezer.require(&module, &required);
         }
@@ -356,6 +358,17 @@ impl Initialised {
 }
 
 impl Freezer {
+    fn platform(&mut self, graph: &Graph) {
+        let mut services = Services::new();
+        services.provide(Arc::new(Composed::new(graph.manifests())));
+        services.provide::<dyn Clock>(graph.clock().clone());
+        services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
+        if let Some(key) = graph.key() {
+            services.provide::<dyn SecretCipher>(Arc::new(DataKeyCipher::new(key.clone())));
+        }
+        self.provide(PLATFORM, services);
+    }
+
     fn provide(&mut self, module: &str, provides: Services) {
         for key in provides.keys() {
             match self.providers.get(&key) {
@@ -710,10 +723,6 @@ impl Freezer {
                 version: def.version.to_owned(),
             })
             .collect();
-        let mut services = self.services;
-        services.provide(Arc::new(Composed::new(graph.manifests())));
-        services.provide::<dyn Clock>(graph.clock().clone());
-        services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         let registry = Registry {
             platform: Platform {
                 version: graph.version().to_owned(),
@@ -728,7 +737,7 @@ impl Freezer {
             permissions: self.permissions,
             guards: self.guards,
             i18n: self.catalogue.into_languages(),
-            services: Arc::new(services),
+            services: Arc::new(self.services),
             contributions: Arc::new(self.contributions),
             invoker: self.invoker.map(|(_, invoker)| invoker),
         };

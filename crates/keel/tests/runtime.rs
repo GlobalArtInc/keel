@@ -2,11 +2,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 use keel::sdk::prelude::*;
+use keel::sdk::system::SecretCipher;
 use keel::sdk::{Registrar, migrator};
 use keel::types::{Envelope, ErrorCode};
 use keel::{Change, Config, Error, ExitCode, Runtime};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::dispatcher::CallOptions;
+use keel_kernel::secret::{DataKeyCipher, Key, Sealed};
 use keel_kernel::socket::{Client, OWNER_LOGIN};
 use keel_testkit::TestDatabase;
 use tempfile::TempDir;
@@ -19,6 +21,17 @@ struct Nothing {}
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Pong {
     login: String,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Plain {
+    value: String,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Round {
+    sealed: String,
+    opened: String,
 }
 
 static PROBE_MIGRATIONS: migrator::Migrations =
@@ -44,7 +57,23 @@ fn init(r: &mut Registrar) -> Result<()> {
                     login: call.principal().login.clone(),
                 })
             }),
-    );
+    )
+    .function(
+        function::<Plain, Round>("probe.seal")
+            .kind(Kind::Action)
+            .level(Level::User)
+            .unowned()
+            .handler(|call: Call<Plain>| async move {
+                let cipher = call.require::<dyn SecretCipher>()?;
+                let sealed = cipher.seal(call.params().value.as_bytes())?;
+                let opened = cipher.open(&sealed)?;
+                Ok(Round {
+                    sealed,
+                    opened: String::from_utf8_lossy(&opened).into_owned(),
+                })
+            }),
+    )
+    .require::<dyn SecretCipher>();
     Ok(())
 }
 
@@ -477,6 +506,58 @@ async fn an_enabled_bundle_loads_its_modules_and_a_disabled_one_leaves_them_orph
         ])
         .await,
         ExitCode::FAILURE
+    );
+    site.finish().await;
+}
+
+#[tokio::test]
+async fn the_runtime_provides_the_cipher_over_the_data_key_the_instance_keeps_in_keel_kv() {
+    let site = site().await;
+    let runtime = site.runtime();
+    runtime.enable_product(&site.config, "probe").await.unwrap();
+    let running = runtime
+        .start(&site.config)
+        .await
+        .expect("the runtime starts");
+    let mut client = Client::connect(running.socket()).await.unwrap();
+    let answer = client
+        .call(
+            "probe.seal",
+            json!({ "value": "JBSWY3DPEHPK3PXP" }),
+            CallOptions::default(),
+        )
+        .await
+        .unwrap();
+    let Envelope::Ok { data, .. } = answer else {
+        panic!("{answer:?}");
+    };
+    assert_eq!(data["opened"], json!("JBSWY3DPEHPK3PXP"));
+    let sealed = data["sealed"].as_str().expect("the sealed text").to_owned();
+    assert!(!sealed.contains("JBSWY3DPEHPK3PXP"), "{sealed}");
+    running.stop().await.expect("the runtime stops");
+
+    let file_key = Key::parse_hex(
+        &std::fs::read_to_string(site.config.data_dir.join("secret.key"))
+            .expect("the secret key file"),
+    )
+    .expect("a key");
+    let wrapped = site
+        .database
+        .rows("SELECT value::text FROM keel_kv WHERE key = 'secret_key'")
+        .await;
+    let wrapped: Sealed = serde_json::from_str(&wrapped[0]).expect("the wrapped data key");
+    let data_key = Key::from_slice(&file_key.open(&wrapped).expect("the file key opens it"))
+        .expect("a data key");
+    assert_eq!(
+        DataKeyCipher::new(data_key).open(&sealed).expect("opens"),
+        b"JBSWY3DPEHPK3PXP"
+    );
+    assert_eq!(
+        DataKeyCipher::new(file_key)
+            .open(&sealed)
+            .unwrap_err()
+            .key(),
+        "keel.error.secret_open"
     );
     site.finish().await;
 }

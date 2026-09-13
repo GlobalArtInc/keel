@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use keel_kernel::http::BODY_LIMIT;
 use keel_kernel::loader::Migrated;
+use keel_kernel::secret::Key;
 use keel_kernel::socket::Serving;
 use keel_kernel::{
     Config, Dispatcher, Http, HttpOptions, Instance, Kernel, Readiness, Served, Socket, Storage,
@@ -72,7 +73,9 @@ impl Runtime {
             },
         );
         let served = http.clone().bind(config.listen).await?;
-        let booted = self.boot(config, storage, &enabled, &http).await;
+        let booted = self
+            .boot(config, storage, &enabled, instance.key().clone(), &http)
+            .await;
         match booted {
             Ok((kernel, socket)) => {
                 readiness.migrated();
@@ -107,9 +110,10 @@ impl Runtime {
         config: &Config,
         storage: &Storage,
         enabled: &[String],
+        key: Key,
         http: &Http,
     ) -> Result<(Kernel, Serving), Error> {
-        let composition = self.composition(enabled)?;
+        let composition = self.composition(enabled)?.key(key);
         let kernel = Kernel::boot(composition, storage).await?;
         let dispatcher = Arc::new(Dispatcher::new(
             kernel.registry().clone(),

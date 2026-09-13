@@ -53,6 +53,16 @@ pub trait PrincipalSource: Send + Sync {
     async fn by_login(&self, login: &str, db: &Db) -> Result<Option<Principal>>;
 }
 
+pub trait SecretCipher: Send + Sync {
+    fn seal(&self, plaintext: &[u8]) -> Result<String>;
+    fn open(&self, sealed: &str) -> Result<Vec<u8>>;
+}
+
+#[async_trait]
+pub trait SecondFactorSource: Send + Sync {
+    async fn enrolled(&self, principal: Id, db: &Db) -> Result<bool>;
+}
+
 pub trait CallExt {
     fn client(&self) -> Option<&Client>;
     fn session(&self, change: SessionChange);

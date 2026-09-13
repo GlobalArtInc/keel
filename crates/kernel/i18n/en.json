@@ -173,6 +173,8 @@
       "token_read_only": "The token is read-only and {function} writes",
       "cross_site": "The request comes from another site",
       "unauthenticated_route": "The route serves calls without the authentication middleware",
+      "secret_seal": "The value could not be sealed under the data key",
+      "secret_open": "The sealed value does not open under the data key",
       "method_not_allowed": "The function {function} is called with {allowed}",
       "body_too_large": "The request body is above {limit} bytes",
       "body_not_json": "The request body is not JSON",

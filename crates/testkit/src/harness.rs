@@ -6,6 +6,7 @@ use axum::Router;
 use chrono::{DateTime, Utc};
 use keel_kernel::dispatcher::SchemaError;
 use keel_kernel::loader::BootError;
+use keel_kernel::secret::{Key, KeyError};
 use keel_kernel::{
     CallOptions, Composition, Dispatcher, Http, HttpOptions, Kernel, Readiness, Registry, Reply,
     Storage,
@@ -55,6 +56,8 @@ pub enum Error {
     Stop(#[from] keel_kernel::loader::StopError),
     #[error(transparent)]
     Storage(#[from] keel_kernel::StorageError),
+    #[error("the data key of the test composition could not be generated: {0}")]
+    Key(#[from] KeyError),
 }
 
 impl Harness {
@@ -96,6 +99,7 @@ impl Builder {
         });
         let mut composition = Composition::new()
             .clock(clock.clone())
+            .key(Key::generate()?)
             .module(&auth::MODULE);
         for module in self.modules {
             composition = composition.module(module);
