@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use keel_kernel::http::BODY_LIMIT;
+use keel_kernel::http::{BODY_LIMIT, Frontend};
 use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::secret::Key;
 use keel_kernel::socket::Serving;
@@ -20,6 +20,7 @@ use crate::error::Error;
 pub struct Runtime {
     pub(crate) modules: Vec<&'static ModuleDef>,
     pub(crate) products: Vec<&'static ProductManifest>,
+    pub(crate) frontend: Option<Frontend>,
 }
 
 pub struct Running {
@@ -47,6 +48,11 @@ impl Runtime {
         self
     }
 
+    pub fn frontend(mut self, frontend: Frontend) -> Self {
+        self.frontend = Some(frontend);
+        self
+    }
+
     pub async fn start(&self, config: &Config) -> Result<Running, Error> {
         let storage = Storage::connect(config).await?;
         let outcome = self.start_with(config, &storage).await;
@@ -70,6 +76,7 @@ impl Runtime {
             readiness.clone(),
             HttpOptions {
                 body_limit: BODY_LIMIT,
+                frontend: self.frontend.clone(),
             },
         );
         let served = http.clone().bind(config.listen).await?;

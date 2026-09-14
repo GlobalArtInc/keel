@@ -120,7 +120,12 @@ mod demo {
         panic!("the socket {} never came up", path.display());
     }
 
-    async fn http(addr: SocketAddr, method: &str, path: &str, body: &str) -> (u16, Value) {
+    async fn fetch(
+        addr: SocketAddr,
+        method: &str,
+        path: &str,
+        body: &str,
+    ) -> (u16, String, String) {
         let mut stream = TcpStream::connect(addr)
             .await
             .expect("the listener answers");
@@ -146,7 +151,111 @@ mod demo {
             .nth(1)
             .and_then(|code| code.parse().ok())
             .expect("a status");
-        (status, serde_json::from_str(body).expect("a JSON body"))
+        (status, head.to_owned(), body.to_owned())
+    }
+
+    async fn http(addr: SocketAddr, method: &str, path: &str, body: &str) -> (u16, Value) {
+        let (status, _, body) = fetch(addr, method, path, body).await;
+        (status, serde_json::from_str(&body).expect("a JSON body"))
+    }
+
+    fn header_of<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+        head.lines().find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case(name).then(|| value.trim())
+        })
+    }
+
+    fn shell_file(name: &str) -> String {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../frontend/dist/shell")
+            .join(name);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display()))
+    }
+
+    fn elements(html: &str) -> Vec<&str> {
+        html.match_indices('<')
+            .map(|(start, _)| {
+                let rest = &html[start..];
+                &rest[..rest.find('>').map_or(rest.len(), |end| end + 1)]
+            })
+            .collect()
+    }
+
+    fn inline_handler(element: &str) -> bool {
+        element.split_whitespace().any(|attribute| {
+            attribute
+                .strip_prefix("on")
+                .and_then(|rest| rest.split_once('='))
+                .is_some_and(|(name, _)| {
+                    !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_alphabetic())
+                })
+        })
+    }
+
+    fn foreign_origin(element: &str) -> bool {
+        ["href=\"", "src=\""].iter().any(|attribute| {
+            element
+                .split(attribute)
+                .skip(1)
+                .filter_map(|rest| rest.split('"').next())
+                .any(|value| value.contains("://") || value.starts_with("//"))
+        })
+    }
+
+    fn policy_violations(index: &str) -> Vec<String> {
+        let mut violations = Vec::new();
+        for element in elements(index) {
+            if element.starts_with("<script") && !element.contains(" src=\"") {
+                violations.push(format!("an inline script: {element}"));
+            }
+            if element.starts_with("<style") {
+                violations.push(format!("a style element: {element}"));
+            }
+            if inline_handler(element) {
+                violations.push(format!("an inline handler: {element}"));
+            }
+            if foreign_origin(element) {
+                violations.push(format!("a foreign origin: {element}"));
+            }
+        }
+        violations
+    }
+
+    fn hashed_main(index: &str) -> String {
+        elements(index)
+            .into_iter()
+            .filter(|element| element.starts_with("<script"))
+            .filter_map(|element| element.split("src=\"").nth(1)?.split('"').next())
+            .find(|src| src.starts_with("main-") && src.ends_with(".js"))
+            .expect("the index loads a hashed main")
+            .to_owned()
+    }
+
+    #[test]
+    fn the_policy_scan_catches_what_the_content_security_policy_refuses() {
+        let clean = "<!doctype html><html><head><script src=\"theme-boot.js\"></script><link rel=\"stylesheet\" href=\"styles-X.css\"></head><body><keel-shell></keel-shell><script src=\"main-X.js\" type=\"module\"></script></body></html>";
+        assert_eq!(policy_violations(clean), Vec::<String>::new());
+        let inlined = "<head><style>body{margin:0}</style><link rel=\"stylesheet\" href=\"styles-X.css\" media=\"print\" onload=\"this.media='all'\"><script>window.x=1</script><script src=\"https://cdn.example/x.js\"></script></head>";
+        let violations = policy_violations(inlined);
+        assert_eq!(violations.len(), 4, "{violations:?}");
+        assert!(
+            violations[0].starts_with("a style element"),
+            "{violations:?}"
+        );
+        assert!(
+            violations[1].starts_with("an inline handler"),
+            "{violations:?}"
+        );
+        assert!(
+            violations[2].starts_with("an inline script"),
+            "{violations:?}"
+        );
+        assert!(
+            violations[3].starts_with("a foreign origin"),
+            "{violations:?}"
+        );
     }
 
     #[tokio::test]
@@ -214,6 +323,48 @@ mod demo {
         let (status, body) = http(site.listen, "GET", "/api/v1/boot", "").await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["products"][0]["id"], json!("demo"));
+
+        let index = shell_file("index.html");
+        let (status, head, served) = fetch(site.listen, "GET", "/", "").await;
+        assert_eq!(status, 200, "{served}");
+        assert_eq!(served, index);
+        assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
+        assert_eq!(
+            header_of(&head, "content-security-policy"),
+            Some(
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            )
+        );
+        assert_eq!(header_of(&head, "x-content-type-options"), Some("nosniff"));
+        assert_eq!(header_of(&head, "referrer-policy"), Some("same-origin"));
+        assert_eq!(policy_violations(&served), Vec::<String>::new());
+        assert!(served.contains("<keel-shell>"), "{served}");
+        assert!(
+            served.contains("<script src=\"theme-boot.js\"></script>"),
+            "{served}"
+        );
+        let (status, _, fallback) = fetch(site.listen, "GET", "/f/note.list", "").await;
+        assert_eq!(status, 200);
+        assert_eq!(fallback, index);
+        let main = hashed_main(&served);
+        let (status, head, script) = fetch(site.listen, "GET", &format!("/{main}"), "").await;
+        assert_eq!(status, 200, "{main}");
+        assert_eq!(script, shell_file(&main));
+        assert_eq!(
+            header_of(&head, "cache-control"),
+            Some("public, max-age=31536000, immutable"),
+            "{main}"
+        );
+        assert_eq!(
+            header_of(&head, "content-type"),
+            Some("text/javascript; charset=utf-8")
+        );
+        let (status, head, _) = fetch(site.listen, "GET", "/theme-boot.js", "").await;
+        assert_eq!(status, 200);
+        assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
+        let (status, body) = http(site.listen, "GET", "/missing.png", "").await;
+        assert_eq!(status, 404, "{body}");
+        assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
 
         let pid = serve.id().expect("the service has a pid").to_string();
         let signalled = Command::new("kill")

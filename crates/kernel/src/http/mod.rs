@@ -1,3 +1,4 @@
+mod assets;
 mod auth;
 mod boot;
 mod call;
@@ -31,6 +32,7 @@ use crate::registry::Registry;
 
 use live::Live;
 
+pub use assets::Frontend;
 pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
 pub use i18n::Catalogue;
@@ -42,15 +44,17 @@ pub(crate) use reply::acceptable_request_id;
 pub(crate) const API_PREFIX: &str = "/api/v1";
 pub const BODY_LIMIT: usize = 1024 * 1024;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct HttpOptions {
     pub body_limit: usize,
+    pub frontend: Option<Frontend>,
 }
 
 impl Default for HttpOptions {
     fn default() -> Self {
         Self {
             body_limit: BODY_LIMIT,
+            frontend: None,
         }
     }
 }
@@ -254,7 +258,13 @@ async fn readyz(State(state): State<Arc<Shared>>) -> Response {
         .into_response()
 }
 
-async fn fallback(request: Request) -> Response {
+async fn fallback(State(state): State<Arc<Shared>>, request: Request) -> Response {
+    if let Some(frontend) = &state.options.frontend
+        && let Some(response) =
+            frontend.answer(request.method(), request.uri().path(), request.headers())
+    {
+        return response;
+    }
     let request_id = reply::request_id_in(request.extensions());
     reply::error(
         KeelError::not_found("keel.error.route_not_found").param("path", request.uri().path()),

@@ -74,6 +74,28 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install the frontend dependencies
+        working-directory: frontend
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the shell the binary embeds
+        working-directory: frontend
+        run: pnpm build
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -258,3 +280,12 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Stamp the version of @globalart/keel
+        run: node tools/stamp.mjs
+
+      - name: Dry run of the publication of @globalart/keel
+        working-directory: frontend/dist/keel
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm publish --dry-run --no-git-checks

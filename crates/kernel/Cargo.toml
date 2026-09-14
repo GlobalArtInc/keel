@@ -16,6 +16,7 @@ jsonschema = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }
 rand = { workspace = true }
+rust-embed = { workspace = true }
 schemars = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }

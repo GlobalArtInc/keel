@@ -44,6 +44,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-musl-
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install the frontend dependencies
+        working-directory: frontend
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the shell the binary embeds
+        working-directory: frontend
+        run: pnpm build
+
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin
 
@@ -55,6 +77,16 @@ jobs:
             exit 1
           fi
           target/x86_64-unknown-linux-musl/release/keel --version
+
+      - name: The binary with the demo bundle and the frontend is under 40 MB
+        run: |
+          size=$(stat -c %s target/x86_64-unknown-linux-musl/release/keel)
+          mb=$(awk -v bytes="$size" 'BEGIN { printf "%.1f", bytes / 1000000 }')
+          echo "keel with the demo bundle and the frontend: $size bytes ($mb MB)"
+          if [ "$size" -ge 40000000 ]; then
+            echo "the binary is 40 MB or larger" >&2
+            exit 1
+          fi
 
       - name: Package
         run: |

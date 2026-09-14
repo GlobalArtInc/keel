@@ -172,6 +172,28 @@ http() {
   echo "$status"
 }
 
+index_is_served() {
+  local file=$1
+  if ! grep -q '<keel-shell>' "$file"; then
+    echo "  the body carries no <keel-shell> element" >&2
+    return 1
+  fi
+  local name expected actual
+  for name in cache-control content-security-policy x-content-type-options referrer-policy; do
+    case "$name" in
+      cache-control) expected="no-store" ;;
+      content-security-policy) expected="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" ;;
+      x-content-type-options) expected="nosniff" ;;
+      referrer-policy) expected="same-origin" ;;
+    esac
+    actual=$(header_of "$file.headers" "$name")
+    if [ "$actual" != "$expected" ]; then
+      echo "  $name: expected '$expected', got '$actual'" >&2
+      return 1
+    fi
+  done
+}
+
 http_is() {
   local out=$1 expected=$2 method=$3 path=$4 body=${5:-} credential=${6:-} extra=${7:-}
   local status
@@ -327,6 +349,12 @@ check "ctl keel.account.create kind=user" keel_ok "$site/account.json" ctl keel.
 check "keel.account.create answers ok with an id" json_is "$site/account.json" 'doc["ok"] is True and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
 check "GET /healthz is 200" http_is "$site/healthz.json" 200 GET /healthz
 check "healthz reports ok" json_is "$site/healthz.json" 'doc == {"status": "ok"}'
+check "GET / is 200" http_is "$site/index.html" 200 GET /
+check "the root answers the shell's index no-store with the policy headers" index_is_served "$site/index.html"
+check "GET /f/note.list is 200" http_is "$site/screen.html" 200 GET /f/note.list
+check "a screen path falls back to the same index" cmp -s "$site/index.html" "$site/screen.html"
+check "GET /missing.png is 404" http_is "$site/missing.json" 404 GET /missing.png
+check "a missing asset answers the route_not_found envelope" json_is "$site/missing.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.route_not_found"'
 check "GET /api/v1/boot is 200" http_is "$site/boot.json" 200 GET /api/v1/boot
 check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "demo" for p in doc["products"])'
 check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150 and doc["brand"]["chroma"] == 0.1'

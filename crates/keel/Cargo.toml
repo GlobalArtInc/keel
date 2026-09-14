@@ -11,6 +11,7 @@ clap = { workspace = true }
 keel-kernel = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }
+rust-embed = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

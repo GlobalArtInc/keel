@@ -5,7 +5,7 @@ use keel::sdk::prelude::*;
 use keel::sdk::system::SecretCipher;
 use keel::sdk::{Registrar, migrator};
 use keel::types::{Envelope, ErrorCode};
-use keel::{Change, Config, Error, ExitCode, Runtime};
+use keel::{Change, Config, Error, ExitCode, Frontend, Runtime};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::dispatcher::CallOptions;
 use keel_kernel::secret::{DataKeyCipher, Key, Sealed};
@@ -172,7 +172,7 @@ impl Site {
     }
 }
 
-async fn http_get(addr: SocketAddr, path: &str) -> (u16, Value) {
+async fn http_fetch(addr: SocketAddr, path: &str) -> (u16, String, String) {
     let mut stream = TcpStream::connect(addr)
         .await
         .expect("the listener answers");
@@ -195,7 +195,19 @@ async fn http_get(addr: SocketAddr, path: &str) -> (u16, Value) {
         .nth(1)
         .and_then(|code| code.parse().ok())
         .expect("a status");
-    (status, serde_json::from_str(body).expect("a JSON body"))
+    (status, head.to_owned(), body.to_owned())
+}
+
+async fn http_get(addr: SocketAddr, path: &str) -> (u16, Value) {
+    let (status, _, body) = http_fetch(addr, path).await;
+    (status, serde_json::from_str(&body).expect("a JSON body"))
+}
+
+fn header_of<'a>(head: &'a str, name: &str) -> Option<&'a str> {
+    head.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.eq_ignore_ascii_case(name).then(|| value.trim())
+    })
 }
 
 #[tokio::test]
@@ -238,6 +250,46 @@ async fn a_runtime_of_the_bare_kernel_with_no_products_starts_on_a_temporary_soc
     running.stop().await.expect("the runtime stops");
     assert!(!site.config.socket.exists());
     assert!(TcpStream::connect(addr).await.is_err());
+    site.finish().await;
+}
+
+#[tokio::test]
+async fn a_runtime_with_an_embedded_frontend_serves_the_index_and_its_assets_beside_the_api() {
+    let site = site().await;
+    let frontend: Frontend = keel::embed_frontend!("tests/frontend");
+    let running = Runtime::new()
+        .frontend(frontend)
+        .start(&site.config)
+        .await
+        .expect("the kernel with a frontend starts");
+    let addr = running.http_addr();
+    let (status, head, body) = http_fetch(addr, "/").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, include_str!("frontend/index.html"));
+    assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
+    assert!(
+        header_of(&head, "content-security-policy")
+            .is_some_and(|policy| policy.starts_with("default-src 'self'")),
+        "{head}"
+    );
+    let (status, _, screen) = http_fetch(addr, "/f/keel.account.list").await;
+    assert_eq!(status, 200);
+    assert_eq!(screen, body);
+    let (status, head, script) = http_fetch(addr, "/main-abc123.js").await;
+    assert_eq!(status, 200, "{script}");
+    assert_eq!(script, include_str!("frontend/main-abc123.js"));
+    assert_eq!(
+        header_of(&head, "cache-control"),
+        Some("public, max-age=31536000, immutable")
+    );
+    let (status, body) = http_get(addr, "/missing.png").await;
+    assert_eq!(status, 404, "{body}");
+    assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
+    let (status, body) = http_get(addr, "/api/v1/call/keel.account.list").await;
+    assert_eq!(status, 401, "{body}");
+    let (status, body) = http_get(addr, "/readyz").await;
+    assert_eq!(status, 200, "{body}");
+    running.stop().await.expect("the runtime stops");
     site.finish().await;
 }
 

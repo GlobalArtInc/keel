@@ -1053,7 +1053,10 @@ async fn session_cookie_requests_are_checked_for_cross_site_and_other_requests_a
 async fn the_body_limit_is_enforced_and_a_non_json_body_is_refused() {
     let bench = bench_with(
         Composition::new().module(&PROBE),
-        HttpOptions { body_limit: 64 },
+        HttpOptions {
+            body_limit: 64,
+            ..HttpOptions::default()
+        },
     )
     .await;
     let small = bench.call("probe.ping", None, json!({})).await;

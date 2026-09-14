@@ -1,0 +1,64 @@
+name: Publish @globalart/keel
+
+on:
+  push:
+    tags:
+      - 'keel-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to publish; it must be the binary's, the default
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: '@globalart/keel to Nexus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm exec ng build keel
+
+      - name: Version
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-${TAG#keel-v}}"
+          node tools/stamp.mjs ${version:+"$version"}
+
+      - name: Publish
+        working-directory: frontend/dist/keel
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: |
+          echo "//nexus.globalart.hu/repository/npm-hosted/:_authToken=${NEXUS_NPM_TOKEN}" >> ~/.npmrc
+          pnpm publish --no-git-checks
