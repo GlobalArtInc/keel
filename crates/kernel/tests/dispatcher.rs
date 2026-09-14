@@ -7,7 +7,7 @@ use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client};
 use keel_sdk::{Registrar, migrator};
-use keel_testkit::TestDatabase;
+use keel_testkit::{FixedClock, TestDatabase};
 use keel_types::{Check, ErrorCode, Scope, Via};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 
@@ -415,9 +415,13 @@ struct Bench {
 }
 
 async fn bench() -> Bench {
+    bench_with(Composition::new()).await
+}
+
+async fn bench_with(composition: Composition) -> Bench {
     let database = TestDatabase::create().await;
     let storage = database.storage().await;
-    let kernel = Kernel::boot(Composition::new().module(&SHELF), &storage)
+    let kernel = Kernel::boot(composition.module(&SHELF), &storage)
         .await
         .expect("the kernel boots");
     for (id, kind, parent, path) in [
@@ -1105,6 +1109,63 @@ async fn idempotency_replays_the_same_body_rejects_a_different_body_and_ignores_
     assert_eq!(
         bench.count("SELECT count(*) FROM keel_idempotency").await,
         2
+    );
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_idempotency_record_expires_by_the_kernel_clock_and_not_by_the_database_clock() {
+    let clock = Arc::new(FixedClock::at(
+        "2026-01-01T00:00:00Z".parse().expect("an instant"),
+    ));
+    let bench = bench_with(Composition::new().clock(clock.clone())).await;
+    let id = bench
+        .save(
+            Level::User,
+            CUSTOMER,
+            json!({ "title": "dated", "pages": 1 }),
+        )
+        .await;
+    let alice = principal(Level::User, CUSTOMER);
+    let key = || CallOptions {
+        idempotency_key: Some("order-2".into()),
+        ..CallOptions::default()
+    };
+    let body = json!({ "id": id, "title": "dated", "pages": 2 });
+    let first = bench
+        .call_with(alice.clone(), "shelf.book.edit", body.clone(), key())
+        .await;
+    assert!(!first.replay);
+    assert_eq!(first.data().unwrap()["receipt"], json!("rcpt-dated"));
+
+    let again = bench
+        .call_with(alice.clone(), "shelf.book.edit", body.clone(), key())
+        .await;
+    assert!(
+        again.replay,
+        "a record dated by a clock that runs behind wall time is still live"
+    );
+    assert_eq!(again.data().unwrap()["receipt"], json!("***"));
+
+    clock.advance(chrono::Duration::hours(24));
+    let lapsed = bench.call_with(alice, "shelf.book.edit", body, key()).await;
+    assert!(
+        !lapsed.replay,
+        "the record lapses once the kernel clock passes its expiry"
+    );
+    let lapsed = lapsed
+        .data()
+        .unwrap_or_else(|| panic!("the call runs again: {:?}", lapsed.error()));
+    assert_eq!(lapsed["receipt"], json!("rcpt-dated"));
+    assert_eq!(
+        bench.count("SELECT count(*) FROM keel_outbox").await,
+        3,
+        "the create and the two executed updates each wrote an event"
+    );
+    assert_eq!(
+        bench.count("SELECT count(*) FROM keel_idempotency").await,
+        1,
+        "the lapsed row is taken over by the new response"
     );
     bench.finish().await;
 }

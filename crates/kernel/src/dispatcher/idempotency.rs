@@ -50,12 +50,17 @@ pub async fn lookup<C: ConnectionTrait>(
     db: &C,
     principal: Id,
     key: &str,
+    now: DateTime<Utc>,
 ) -> Result<Option<Record>, KeelError> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT func, request_hash, response_json FROM keel_idempotency WHERE principal_id = $1 AND key = $2 AND expires_at > now()",
-            [DbValue::from(principal.to_string()), DbValue::from(key)],
+            "SELECT func, request_hash, response_json FROM keel_idempotency WHERE principal_id = $1 AND key = $2 AND expires_at > $3",
+            [
+                DbValue::from(principal.to_string()),
+                DbValue::from(key),
+                DbValue::from(now),
+            ],
         ))
         .await?;
     row.map(|row| {
@@ -85,7 +90,7 @@ pub async fn record<C: ConnectionTrait>(
              ON CONFLICT (principal_id, key) DO UPDATE \
              SET func = EXCLUDED.func, request_hash = EXCLUDED.request_hash, status = EXCLUDED.status, \
                  response_json = EXCLUDED.response_json, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at \
-             WHERE keel_idempotency.expires_at <= now()",
+             WHERE keel_idempotency.expires_at <= $7",
             [
                 DbValue::from(principal.to_string()),
                 DbValue::from(key),

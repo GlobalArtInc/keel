@@ -393,7 +393,9 @@ impl Inner {
             && let Some(key) = key
         {
             let hash = idempotency::hash(&params);
-            if let Some(record) = idempotency::lookup(&self.db, principal.id, key).await? {
+            if let Some(record) =
+                idempotency::lookup(&self.db, principal.id, key, self.clock.now()).await?
+            {
                 return replay(record, def.name(), &hash);
             }
             idempotency = Some((key.to_owned(), hash));
@@ -495,7 +497,9 @@ impl Inner {
                 match failure {
                     Failure::Error(error) => Err(error),
                     Failure::Race { key, hash } => {
-                        match idempotency::lookup(&self.db, principal.id, &key).await? {
+                        match idempotency::lookup(&self.db, principal.id, &key, self.clock.now())
+                            .await?
+                        {
                             Some(record) => replay(record, target.function.name(), &hash),
                             None => Err(KeelError::conflict("keel.error.idempotency_race")),
                         }
