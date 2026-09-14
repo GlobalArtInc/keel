@@ -28,6 +28,7 @@ static MANIFEST: ProductManifest = ProductManifest {
     account_kinds: &["user"],
     editions: &[],
     i18n: &[("en", r#"{ "product": { "probe": { "brand": "Probe" } } }"#)],
+    assets: &[],
 };
 
 struct ItemFixture;

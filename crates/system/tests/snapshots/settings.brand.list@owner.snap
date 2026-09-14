@@ -1,0 +1,167 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.brand.list
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "settings.brand.list",
+  "module": "settings",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "host",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_BrandRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/BrandRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "BrandRow": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hue": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "chroma": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "updatedAt",
+          "updatedBy"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "settings.brand.list.title",
+    "search": [
+      "host",
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "host",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "name",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "hue",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "chroma",
+        "type": "number"
+      },
+      {
+        "key": "updatedAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "settings.brand.set",
+        "icon": "plus"
+      },
+      {
+        "id": "set",
+        "role": "edit",
+        "screen": "settings.brand.set",
+        "icon": "pencil",
+        "params": {
+          "host": "$id"
+        }
+      },
+      {
+        "id": "delete",
+        "role": "button",
+        "function": "settings.brand.delete",
+        "params": {
+          "host": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "set",
+      "delete"
+    ],
+    "empty": {
+      "title": "settings.brand.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "settings.brand.*"
+    ]
+  }
+}

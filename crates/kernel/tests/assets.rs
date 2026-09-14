@@ -238,12 +238,15 @@ async fn a_missing_asset_is_404_while_the_api_keeps_its_envelope_and_the_probes_
     assert_eq!(body["error"]["code"], json!("not_found"));
     assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
     assert!(body["error"]["requestId"].is_string());
-    let brand = bench.get("/brand/logo.svg").await;
+    let brand = bench.get("/brand/other.png").await;
     assert_eq!(brand.status, StatusCode::NOT_FOUND);
     assert_eq!(
         brand.json()["error"]["key"],
         json!("keel.error.route_not_found")
     );
+    let logo = bench.get("/brand/logo.svg").await;
+    assert_eq!(logo.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(logo.json()["error"]["key"], json!("keel.error.unavailable"));
     let posted = bench.send(Method::POST, "/f/note.list", &[]).await;
     assert_eq!(posted.status, StatusCode::NOT_FOUND);
     assert_eq!(

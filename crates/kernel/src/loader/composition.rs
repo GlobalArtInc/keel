@@ -743,6 +743,7 @@ mod tests {
                 account_kinds: &[$($kind),*],
                 editions: &[],
                 i18n: &[],
+                assets: &[],
             };
         };
     }

@@ -1,0 +1,142 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: settings.brand.set
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "settings.brand.set",
+  "module": "settings",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "key": "host",
+  "params": {
+    "title": "BrandSet",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 253,
+        "x-keel": {
+          "check": "domain"
+        }
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 120
+      },
+      "logo": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 65536,
+        "x-ui": {
+          "control": "code"
+        }
+      },
+      "hue": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint16",
+        "minimum": 0,
+        "maximum": 359
+      },
+      "chroma": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "format": "double",
+        "minimum": 0.0,
+        "maximum": 0.4
+      }
+    },
+    "required": [
+      "host"
+    ]
+  },
+  "result": {
+    "title": "BrandRow",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string"
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "logo": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "hue": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "chroma": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "format": "double"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedBy": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "host",
+      "updatedAt",
+      "updatedBy"
+    ]
+  },
+  "ui": {
+    "title": "settings.brand.set.title",
+    "read": "settings.brand.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "host",
+          "name",
+          "logo",
+          "hue",
+          "chroma"
+        ]
+      }
+    ],
+    "fields": {
+      "host": {
+        "readonly_if": {
+          "eq": [
+            "$mode",
+            "edit"
+          ]
+        }
+      }
+    }
+  }
+}

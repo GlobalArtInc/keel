@@ -87,6 +87,7 @@ static ATLAS_BUNDLE: ProductManifest = ProductManifest {
     account_kinds: &["user"],
     editions: &[],
     i18n: &[("en", BUNDLE_EN)],
+    assets: &[],
 };
 
 fn atlas_items(boot: &Boot) -> Vec<(&str, &str, Option<Kind>, Option<&str>)> {

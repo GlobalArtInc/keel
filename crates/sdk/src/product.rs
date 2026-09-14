@@ -16,6 +16,7 @@ pub struct ProductManifest {
     pub account_kinds: &'static [&'static str],
     pub editions: &'static [Edition],
     pub i18n: &'static [(&'static str, &'static str)],
+    pub assets: &'static [Asset],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -23,6 +24,23 @@ pub struct Brand {
     pub logo: &'static str,
     pub hue: u16,
     pub chroma: f64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Asset {
+    pub id: &'static str,
+    pub content_type: &'static str,
+    pub bytes: &'static [u8],
+}
+
+impl fmt::Debug for Asset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Asset")
+            .field("id", &self.id)
+            .field("content_type", &self.content_type)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +71,14 @@ impl ProductManifest {
     pub fn default_edition(&self) -> Option<&'static Edition> {
         self.editions.first()
     }
+
+    pub fn asset(&self, id: &str) -> Option<&'static Asset> {
+        self.assets.iter().find(|asset| asset.id == id)
+    }
+
+    pub fn logo(&self) -> Option<&'static Asset> {
+        self.asset(self.brand.logo)
+    }
 }
 
 impl fmt::Debug for ProductManifest {
@@ -71,6 +97,10 @@ impl fmt::Debug for ProductManifest {
             .field(
                 "i18n",
                 &self.i18n.iter().map(|(lang, _)| *lang).collect::<Vec<_>>(),
+            )
+            .field(
+                "assets",
+                &self.assets.iter().map(|asset| asset.id).collect::<Vec<_>>(),
             )
             .finish()
     }
@@ -127,6 +157,11 @@ mod tests {
             },
         ],
         i18n: &[("en", r#"{ "product": { "demo": { "brand": "Demo" } } }"#)],
+        assets: &[Asset {
+            id: "product.demo.logo",
+            content_type: "image/svg+xml",
+            bytes: b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        }],
     };
 
     #[test]
@@ -151,5 +186,23 @@ mod tests {
         assert!(debug.contains("modules: [\"note\"]"), "{debug}");
         assert!(debug.contains("hue: 150"), "{debug}");
         assert!(debug.contains("i18n: [\"en\"]"), "{debug}");
+        assert!(debug.contains("assets: [\"product.demo.logo\"]"), "{debug}");
+    }
+
+    #[test]
+    fn a_bundle_finds_its_assets_by_id_and_the_logo_through_the_brand() {
+        let logo = DEMO.logo().expect("the logo asset");
+        assert_eq!(logo.id, "product.demo.logo");
+        assert_eq!(logo.content_type, "image/svg+xml");
+        assert!(logo.bytes.starts_with(b"<svg"));
+        assert!(std::ptr::eq(logo, DEMO.asset("product.demo.logo").unwrap()));
+        assert!(DEMO.asset("product.demo.icon").is_none());
+        assert_eq!(
+            format!("{logo:?}"),
+            format!(
+                "Asset {{ id: \"product.demo.logo\", content_type: \"image/svg+xml\", bytes: {} }}",
+                logo.bytes.len()
+            )
+        );
     }
 }

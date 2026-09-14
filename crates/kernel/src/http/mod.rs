@@ -1,6 +1,7 @@
 mod assets;
 mod auth;
 mod boot;
+mod brand;
 mod call;
 mod cookie;
 mod descriptors;
@@ -154,6 +155,8 @@ impl Http {
         Router::new()
             .route("/healthz", get(healthz))
             .route("/readyz", get(readyz))
+            .route("/brand/logo.svg", get(brand::effective))
+            .route("/brand/{id}/logo.svg", get(brand::product))
             .nest(API_PREFIX, api)
             .fallback(fallback)
             .layer(middleware::from_fn(reply::request_id))

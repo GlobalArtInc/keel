@@ -216,6 +216,7 @@ static PROBE_BUNDLE: ProductManifest = ProductManifest {
         },
     ],
     i18n: &[("en", BUNDLE_EN), ("ru", BUNDLE_RU)],
+    assets: &[],
 };
 
 struct Bench {

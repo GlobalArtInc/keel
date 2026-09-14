@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use axum::Extension;
 use axum::extract::State;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, Uri};
 use axum::response::{IntoResponse, Json, Response};
 use keel_types::Principal;
 
 use super::Shared;
 use super::auth::Zone;
+use super::brand::host_name;
 use super::live::Live;
 use super::reply::{self, RequestId};
 use crate::boot;
@@ -19,11 +20,14 @@ pub(super) async fn serve(
     Extension(principal): Extension<Principal>,
     Extension(Zone(tz)): Extension<Zone>,
     headers: HeaderMap,
+    uri: Uri,
 ) -> Response {
-    let payload = match boot::payload(&live.registry, &state.db, &principal, tz).await {
-        Ok(payload) => payload,
-        Err(error) => return reply::error(error, &request_id),
-    };
+    let host = host_name(&headers, &uri);
+    let payload =
+        match boot::payload(&live.registry, &state.db, &principal, tz, host.as_deref()).await {
+            Ok(payload) => payload,
+            Err(error) => return reply::error(error, &request_id),
+        };
     if reply::matches_etag(&headers, &payload.meta) {
         return reply::not_modified(&payload.meta);
     }

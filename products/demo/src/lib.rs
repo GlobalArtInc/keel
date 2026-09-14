@@ -2,13 +2,15 @@ use keel::prelude::*;
 
 pub mod note;
 
+pub const LOGO: &str = "product.demo.logo";
+
 pub static MANIFEST: ProductManifest = ProductManifest {
     id: "demo",
     name: "product.demo.brand",
     version: env!("CARGO_PKG_VERSION"),
     api: keel::types::DESCRIPTOR_VERSION,
     brand: Brand {
-        logo: "product.demo.logo",
+        logo: LOGO,
         hue: 150,
         chroma: 0.1,
     },
@@ -29,6 +31,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         ("en", include_str!("../i18n/en.json")),
         ("ru", include_str!("../i18n/ru.json")),
     ],
+    assets: &[Asset {
+        id: LOGO,
+        content_type: "image/svg+xml",
+        bytes: include_bytes!("../brand/logo.svg"),
+    }],
 };
 
 #[cfg(test)]
@@ -50,6 +57,11 @@ mod tests {
         assert_eq!(MANIFEST.levels, LevelLabels::default());
         let languages: Vec<&str> = MANIFEST.i18n.iter().map(|(lang, _)| *lang).collect();
         assert_eq!(languages, ["en", "ru"]);
+        let logo = MANIFEST.logo().expect("the logo asset");
+        assert_eq!(logo.id, LOGO);
+        assert_eq!(logo.content_type, "image/svg+xml");
+        assert_eq!(logo.bytes, include_bytes!("../brand/logo.svg"));
+        assert!(std::str::from_utf8(logo.bytes).is_ok_and(|svg| svg.starts_with("<svg")));
         for (_, json) in MANIFEST.i18n {
             let messages: Value = serde_json::from_str(json).expect("a JSON dictionary");
             assert_eq!(

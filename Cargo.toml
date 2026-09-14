@@ -39,6 +39,7 @@ migrator = { package = "sqlmig", version = "0.2.1" }
 rand = "0.10"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+roxmltree = "0.21"
 rust-embed = { version = "8", features = ["debug-embed"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 schemars = { version = "1", features = ["chrono04"] }

@@ -1,3 +1,4 @@
+mod brand;
 mod entity;
 mod functions;
 mod pref;
@@ -6,22 +7,28 @@ mod store;
 use std::sync::Arc;
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::{AccountSource, LanguageSource, PreferenceSource};
+use keel_sdk::system::{AccountSource, LanguageSource, ManifestSource, PreferenceSource};
 
+use brand::Brands;
 use pref::Prefs;
 use store::Store;
 
 pub use functions::{PERMISSION_MANAGE as MANAGE, PERMISSION_READ as READ, SettingRow, scope_of};
 pub use pref::{LANG as PREF_LANG, THEME as PREF_THEME, TZ as PREF_TZ};
 
-pub const FUNCTIONS: [&str; 5] = [
+pub const FUNCTIONS: [&str; 9] = [
     "settings.list",
     "settings.get",
     "settings.set",
     "settings.pref.get",
     "settings.pref.set",
+    "settings.brand.list",
+    "settings.brand.get",
+    "settings.brand.set",
+    "settings.brand.delete",
 ];
 pub const MENU_PATH: &str = "system/settings";
+pub const BRAND_MENU_PATH: &str = "system/brand";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/settings").table("keel_migration_settings");
@@ -40,18 +47,28 @@ fn init(r: &mut Registrar) -> Result<()> {
     let prefs = Arc::new(Prefs::default());
     r.provide::<dyn SettingsSource>(store.clone())
         .provide::<dyn PreferenceSource>(prefs.clone())
+        .provide::<dyn ManifestSource>(Arc::new(Brands))
         .require::<dyn LanguageSource>()
         .function(functions::list(store.clone()))
         .function(functions::get(store.clone()))
         .function(functions::set(store.clone()))
         .function(pref::get())
         .function(pref::set(prefs.clone()))
+        .function(brand::functions::list())
+        .function(brand::functions::get())
+        .function(brand::functions::set())
+        .function(brand::functions::delete())
         .permission(READ, &[Level::Reseller])
         .permission(MANAGE, &[Level::Reseller])
         .menu(
             MenuNode::new(MENU_PATH, "settings.list")
                 .icon("sliders")
                 .order(40),
+        )
+        .menu(
+            MenuNode::new(BRAND_MENU_PATH, brand::functions::LIST)
+                .icon("palette")
+                .order(45),
         )
         .i18n("en", include_str!("../../i18n/settings/en.json"))
         .i18n("ru", include_str!("../../i18n/settings/ru.json"))
@@ -89,6 +106,15 @@ mod tests {
                 ("settings.set", Kind::Form, Mode::Write, Level::Reseller),
                 ("settings.pref.get", Kind::Get, Mode::Read, Level::User),
                 ("settings.pref.set", Kind::Form, Mode::Write, Level::User),
+                ("settings.brand.list", Kind::List, Mode::Read, Level::Admin),
+                ("settings.brand.get", Kind::Get, Mode::Read, Level::Admin),
+                ("settings.brand.set", Kind::Form, Mode::Write, Level::Admin),
+                (
+                    "settings.brand.delete",
+                    Kind::Action,
+                    Mode::Write,
+                    Level::Admin
+                ),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
@@ -108,9 +134,11 @@ mod tests {
                 (MANAGE, &[Level::Reseller][..])
             ]
         );
-        assert_eq!(registrations.menu.len(), 1);
+        assert_eq!(registrations.menu.len(), 2);
         assert_eq!(registrations.menu[0].path(), MENU_PATH);
         assert_eq!(registrations.menu[0].func(), "settings.list");
+        assert_eq!(registrations.menu[1].path(), BRAND_MENU_PATH);
+        assert_eq!(registrations.menu[1].func(), "settings.brand.list");
         let languages: Vec<&str> = registrations
             .i18n
             .iter()
@@ -124,6 +152,7 @@ mod tests {
                 .get::<dyn PreferenceSource>()
                 .is_some()
         );
+        assert!(registrations.provides.get::<dyn ManifestSource>().is_some());
         assert_eq!(
             registrations.requires,
             [keel_sdk::runtime::ServiceKey::of::<dyn LanguageSource>()]

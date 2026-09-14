@@ -107,6 +107,7 @@ static PROBE: ProductManifest = ProductManifest {
         "en",
         r#"{ "product": { "probe": { "brand": "Probe" } }, "menu": { "probe": "Probe" } }"#,
     )],
+    assets: &[],
 };
 
 struct Site {

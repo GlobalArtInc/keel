@@ -239,6 +239,8 @@ pub enum FreezeProblem {
         lang: String,
         reason: String,
     },
+    #[error("product {product}: the asset {asset} is shipped twice")]
+    AssetTwice { product: String, asset: String },
     #[error("{owner}: the {REQUIRED_LANGUAGE} dictionary has no entry for {key}")]
     Translation { owner: String, key: String },
     #[error(
@@ -656,6 +658,15 @@ impl Freezer {
         groups.sort_by_key(|group| group.order);
         for group in groups {
             self.group(&owner, Some(bundle.id), group);
+        }
+        let mut assets = BTreeSet::new();
+        for asset in bundle.assets {
+            if !assets.insert(asset.id) {
+                self.problems.push(FreezeProblem::AssetTwice {
+                    product: bundle.id.to_owned(),
+                    asset: asset.id.to_owned(),
+                });
+            }
         }
     }
 
@@ -1166,6 +1177,7 @@ mod tests {
             ),
             ("ru", r#"{ "product": { "base": { "brand": "ru:Base" } } }"#),
         ],
+        assets: &[],
     };
 
     fn base_init(r: &mut Registrar) -> Result<()> {
@@ -1311,6 +1323,7 @@ mod tests {
             "en",
             r#"{ "product": { "ordered": { "brand": "Ordered" } }, "menu": { "late": "Late", "early": "Early" } }"#,
         )],
+        assets: &[],
     };
 
     #[test]
@@ -1363,6 +1376,7 @@ mod tests {
             "ru",
             r#"{ "product": { "again": { "brand": "ru:Again" } } }"#,
         )],
+        assets: &[],
     };
 
     #[test]
@@ -1477,10 +1491,22 @@ mod tests {
             ("ru", r#"[1, 2]"#),
             ("de", r#"{ not json"#),
         ],
+        assets: &[
+            Asset {
+                id: "product.shout.logo",
+                content_type: "image/svg+xml",
+                bytes: b"<svg/>",
+            },
+            Asset {
+                id: "product.shout.logo",
+                content_type: "image/png",
+                bytes: b"",
+            },
+        ],
     };
 
     #[test]
-    fn placeholders_outside_the_single_brace_form_fail_freeze_in_every_dictionary() {
+    fn placeholders_outside_the_single_brace_form_and_a_twice_shipped_asset_fail_freeze() {
         assert_eq!(
             problems(&[], &[&SHOUTING_BUNDLE]),
             [
@@ -1491,6 +1517,7 @@ mod tests {
                 "product shout: the en entry product.shout.brand carries the placeholder \"%d\"; placeholders are written {name}",
                 "product shout: the ru dictionary is not a JSON object: the document is not an object",
                 "product shout: the de dictionary is not a JSON object: key must be a string at line 1 column 3",
+                "product shout: the asset product.shout.logo is shipped twice",
             ]
         );
     }

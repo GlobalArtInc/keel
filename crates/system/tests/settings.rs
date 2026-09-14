@@ -389,8 +389,20 @@ async fn the_settings_descriptors_match_their_snapshots() {
             &[]
         } else if level < Level::Reseller {
             &["settings.pref.get", "settings.pref.set"]
+        } else if level < Level::Admin {
+            &[
+                "settings.get",
+                "settings.list",
+                "settings.pref.get",
+                "settings.pref.set",
+                "settings.set",
+            ]
         } else {
             &[
+                "settings.brand.delete",
+                "settings.brand.get",
+                "settings.brand.list",
+                "settings.brand.set",
                 "settings.get",
                 "settings.list",
                 "settings.pref.get",

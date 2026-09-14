@@ -1,5 +1,5 @@
 use chrono_tz::Tz;
-use keel_sdk::system::SecondFactorSource;
+use keel_sdk::system::{ManifestPatch, ManifestSource, SecondFactorSource};
 use keel_sdk::{Db, KeelError, ProductManifest};
 use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Level, Principal};
 use sea_orm::DatabaseConnection;
@@ -34,6 +34,32 @@ pub(crate) fn brand(registry: &Registry) -> BootBrand {
         },
         _ => platform_brand(),
     }
+}
+
+pub(crate) fn apply(brand: &mut BootBrand, patch: &ManifestPatch) {
+    if let Some(name) = &patch.name {
+        brand.name = name.clone();
+    }
+    if patch.logo.is_some() {
+        brand.logo = Some(EFFECTIVE_LOGO.to_owned());
+    }
+    if let Some(hue) = patch.hue {
+        brand.hue = hue;
+    }
+    if let Some(chroma) = patch.chroma {
+        brand.chroma = chroma;
+    }
+}
+
+pub(crate) async fn patch(
+    registry: &Registry,
+    db: &DatabaseConnection,
+    host: Option<&str>,
+) -> Result<Option<ManifestPatch>, KeelError> {
+    let (Some(host), Some(source)) = (host, registry.services().get::<dyn ManifestSource>()) else {
+        return Ok(None);
+    };
+    source.patch(host, &Db::from_connection(db.clone())).await
 }
 
 pub(crate) fn product_brand(manifest: &ProductManifest) -> BootBrand {
@@ -128,13 +154,18 @@ pub(crate) async fn payload(
     db: &DatabaseConnection,
     principal: &Principal,
     tz: Option<Tz>,
+    host: Option<&str>,
 ) -> Result<Boot, KeelError> {
     let meta = meta::version(registry, db, principal).await?;
     let totp = second_factor(registry, db, principal).await?;
+    let mut brand = brand(registry);
+    if let Some(patch) = patch(registry, db, host).await? {
+        apply(&mut brand, &patch);
+    }
     Ok(Boot {
         keel: registry.platform().clone(),
         products: products(registry),
-        brand: brand(registry),
+        brand,
         principal: self::principal(principal, totp, tz)?,
         features: features(registry),
         license: None,
@@ -196,6 +227,37 @@ mod tests {
         let brand = platform_brand();
         assert_eq!(brand.name, PLATFORM_BRAND);
         assert!(brand.logo.is_none());
+    }
+
+    #[test]
+    fn a_patch_replaces_only_the_members_it_carries_and_a_logo_points_at_the_effective_route() {
+        let mut brand = platform_brand();
+        apply(&mut brand, &ManifestPatch::default());
+        assert_eq!(brand, platform_brand());
+        apply(
+            &mut brand,
+            &ManifestPatch {
+                name: Some("Panel Example".into()),
+                hue: Some(12),
+                ..ManifestPatch::default()
+            },
+        );
+        assert_eq!(brand.name, "Panel Example");
+        assert_eq!(brand.hue, 12);
+        assert_eq!(brand.chroma, PLATFORM_CHROMA);
+        assert!(brand.logo.is_none());
+        apply(
+            &mut brand,
+            &ManifestPatch {
+                logo: Some("<svg/>".into()),
+                chroma: Some(0.3),
+                ..ManifestPatch::default()
+            },
+        );
+        assert_eq!(brand.logo.as_deref(), Some(EFFECTIVE_LOGO));
+        assert_eq!(brand.chroma, 0.3);
+        assert_eq!(brand.name, "Panel Example");
+        assert!(ManifestPatch::default().is_empty());
     }
 
     #[test]

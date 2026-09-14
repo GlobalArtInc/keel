@@ -172,6 +172,23 @@ http() {
   echo "$status"
 }
 
+svg_is_served() {
+  local file=$1
+  local name expected actual
+  for name in content-type cache-control x-content-type-options; do
+    case "$name" in
+      content-type) expected="image/svg+xml" ;;
+      cache-control) expected="no-store" ;;
+      x-content-type-options) expected="nosniff" ;;
+    esac
+    actual=$(header_of "$file.headers" "$name")
+    if [ "$actual" != "$expected" ]; then
+      echo "  $name: expected '$expected', got '$actual'" >&2
+      return 1
+    fi
+  done
+}
+
 index_is_served() {
   local file=$1
   if ! grep -q '<keel-shell>' "$file"; then
@@ -365,6 +382,26 @@ check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "d
 check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150 and doc["brand"]["chroma"] == 0.1'
 check "boot names the keel version" json_is "$site/boot.json" "doc['keel']['version'] == '$version' and doc['keel']['api'] == 1"
 check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": None, "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 150, "chroma": 0.1}}'
+check "GET /brand/logo.svg is 200" http_is "$site/logo.svg" 200 GET /brand/logo.svg
+check "the effective logo is the demo's SVG" cmp -s "$site/logo.svg" products/demo/brand/logo.svg
+check "the effective logo is served as image/svg+xml no-store" svg_is_served "$site/logo.svg"
+check "GET /brand/demo/logo.svg is 200" http_is "$site/logo-demo.svg" 200 GET /brand/demo/logo.svg
+check "the demo's logo route answers the same SVG" cmp -s "$site/logo-demo.svg" products/demo/brand/logo.svg
+check "GET /brand/nothing/logo.svg is 404" http_is "$site/logo-nothing.json" 404 GET /brand/nothing/logo.svg
+check "an unknown product's logo answers not_found" json_is "$site/logo-nothing.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.not_found"'
+check "ctl settings.brand.set for panel.example" keel_ok "$site/brand-set.json" ctl settings.brand.set host=panel.example name="Panel Example" hue=350 chroma=0.2 logo="$(cat crates/kernel/assets/keel.svg)"
+check "settings.brand.set answers the row" json_is "$site/brand-set.json" 'doc["ok"] is True and doc["data"]["host"] == "panel.example" and doc["data"]["hue"] == 350'
+check "GET /api/v1/boot for panel.example is 200" http_is "$site/boot-brand.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
+check "boot for panel.example carries the patched brand" json_is "$site/boot-brand.json" 'doc["brand"] == {"name": "Panel Example", "logo": "/brand/logo.svg", "hue": 350, "chroma": 0.2}'
+check "boot for another host keeps the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand"'
+check "GET /brand/logo.svg for panel.example is 200" http_is "$site/logo-brand.svg" 200 GET /brand/logo.svg '' '' 'Host: panel.example'
+check "the effective logo for panel.example is the patched SVG" stdout_is "$site/logo-brand.svg" "$(cat crates/kernel/assets/keel.svg)"
+check "ctl settings.brand.set with a script element is refused" keel_fails "$site/brand-script.json" ctl settings.brand.set host=panel.example logo='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+check "the scripted logo answers 422 on logo" json_is "$site/brand-script.json" 'doc["ok"] is False and doc["error"]["code"] == "validation" and doc["error"]["fields"][0]["path"] == "logo" and doc["error"]["fields"][0]["key"] == "settings.error.brand_svg"'
+check "ctl settings.brand.delete for panel.example" keel_ok "$site/brand-delete.json" ctl settings.brand.delete host=panel.example
+check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'
+check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$site/boot-brand-gone.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
+check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150'
 check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x
 check "note.edit answers the saved note" json_is "$site/edit.json" 'doc["ok"] is True and doc["data"]["title"] == "x" and doc["meta"]["principal"]["login"] == "owner"'
 check "ctl note.list --out json" keel_ok "$site/notes.json" ctl note.list --out json
@@ -555,6 +592,10 @@ echo "--- run 2: no bundle enabled"
 check "product disable demo" keel_ok "$site/disable.out" product disable demo
 check "product disable demo prints demo: disabled" stdout_is "$site/disable.out" "demo: disabled"
 start_serve bare
+check "GET /brand/logo.svg without a product is 200" http_is "$site/logo-bare.svg" 200 GET /brand/logo.svg
+check "the effective logo without a product is the kernel's mark" cmp -s "$site/logo-bare.svg" crates/kernel/assets/keel.svg
+check "GET /brand/demo/logo.svg of the disabled bundle is 200" http_is "$site/logo-demo-bare.svg" 200 GET /brand/demo/logo.svg
+check "the disabled bundle's logo route still answers its asset" cmp -s "$site/logo-demo-bare.svg" products/demo/brand/logo.svg
 check "ctl keel.account.list" keel_ok "$site/accounts.json" ctl keel.account.list
 check "keel.account.list answers the accounts" json_is "$site/accounts.json" 'doc["ok"] is True and len(doc["data"]["data"]) >= 2'
 check "POST /api/v1/call/auth.login as alice below the rule's level is 200" http_is "$site/login-2.json" 200 POST /api/v1/call/auth.login '{"login":"alice","password":"correct-horse"}'

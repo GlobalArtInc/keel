@@ -36,12 +36,15 @@ async fn settings_alone_boots_with_its_tables_and_the_admin_lists_and_sets_a_val
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_settings")
         .await;
-    assert_eq!(applied, ["2"]);
+    assert_eq!(applied, ["3"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'settings\\_%' ORDER BY table_name")
         .await;
-    assert_eq!(tables, ["settings_pref", "settings_value"]);
+    assert_eq!(
+        tables,
+        ["settings_brand", "settings_pref", "settings_value"]
+    );
 
     let http = harness.http().await;
     let listed = http

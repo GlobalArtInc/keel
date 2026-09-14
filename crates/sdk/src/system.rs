@@ -86,6 +86,25 @@ pub trait LanguageSource: Send + Sync {
     fn languages(&self) -> Vec<String>;
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ManifestPatch {
+    pub name: Option<String>,
+    pub logo: Option<String>,
+    pub hue: Option<u16>,
+    pub chroma: Option<f64>,
+}
+
+impl ManifestPatch {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.logo.is_none() && self.hue.is_none() && self.chroma.is_none()
+    }
+}
+
+#[async_trait]
+pub trait ManifestSource: Send + Sync {
+    async fn patch(&self, host: &str, db: &Db) -> Result<Option<ManifestPatch>>;
+}
+
 pub trait SecretCipher: Send + Sync {
     fn seal(&self, plaintext: &[u8]) -> Result<String>;
     fn open(&self, sealed: &str) -> Result<Vec<u8>>;

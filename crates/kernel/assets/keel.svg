@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 32" width="128" height="32" role="img" aria-label="Keel">
+  <path d="M3 4h5v10.5L18.5 4h6.5L13 16l12.5 12H19L8 17.5V28H3z" fill="#2f5fc4"/>
+  <path d="M31 4h16v4.5H36V14h10v4.5H36v5h11.5V28H31z" fill="#2f5fc4"/>
+  <path d="M52 4h16v4.5H57V14h10v4.5H57v5h11.5V28H52z" fill="#2f5fc4"/>
+  <path d="M73 4h5v19.5h10V28H73z" fill="#2f5fc4"/>
+  <path d="M94 26c8-1 16-3 24-8-6 8-14 12-24 12z" fill="#7fa4e6"/>
+  <path d="M94 22c8-1 16-3 24-8-6 8-14 12-24 12z" fill="#2f5fc4"/>
+</svg>

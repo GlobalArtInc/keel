@@ -147,9 +147,16 @@ impl TestHttp {
             path: path.to_owned(),
             source,
         };
+        let host = headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("host"))
+            .map_or(HOST, |(_, value)| *value);
         let mut request =
-            format!("{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nConnection: close\r\n");
-        for (name, value) in headers {
+            format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n");
+        for (name, value) in headers
+            .iter()
+            .filter(|(name, _)| !name.eq_ignore_ascii_case("host"))
+        {
             request.push_str(&format!("{name}: {value}\r\n"));
         }
         let body = body.unwrap_or_default();
