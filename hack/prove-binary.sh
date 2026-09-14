@@ -218,6 +218,11 @@ print("%06d" % ((struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF)
 EOF
 }
 
+header_matches() {
+  local file=$1 name=$2 pattern=$3
+  header_of "$file" "$name" | grep -qi "$pattern"
+}
+
 session_cookie_of() {
   local file=$1
   local value
@@ -418,7 +423,7 @@ check "POST /api/v1/call/auth.login is 200" http_is "$site/login.json" 200 POST 
 check "auth.login answers the authenticated state for alice" json_is "$site/login.json" 'doc["ok"] is True and doc["data"]["state"] == "authenticated" and doc["data"]["principal"]["login"] == "alice"'
 cookie=$(session_cookie_of "$site/login.json.headers") || fail "auth.login sets the session cookie"
 check "auth.login sets the session cookie" test -n "$cookie"
-check "the cookie carries the fixed attributes" grep -qi '^set-cookie: __Host-keel_session=ks_[0-9a-f]*; Path=/; Secure; HttpOnly; SameSite=Lax\r\{0,1\}$' "$site/login.json.headers"
+check "the cookie carries the fixed attributes" header_matches "$site/login.json.headers" set-cookie '^__Host-keel_session=ks_[0-9a-f]*; Path=/; Secure; HttpOnly; SameSite=Lax$'
 check "GET /api/v1/boot with the cookie is 200" http_is "$site/boot-alice.json" 200 GET /api/v1/boot '' "$cookie"
 check "boot names alice as the principal" json_is "$site/boot-alice.json" 'doc["principal"]["login"] == "alice" and doc["principal"]["level"] == "user"'
 check "boot answers no zone before a preference is set" json_is "$site/boot-alice.json" 'doc["principal"]["tz"] is None and doc["principal"]["lang"] == "en"'
@@ -518,7 +523,7 @@ check "auth.totp.disable answers disabled" json_is "$site/disable.json" 'doc["ok
 check "GET /api/v1/boot after the disable shows totp off" http_is "$site/boot-disabled.json" 200 GET /api/v1/boot '' "$verified_cookie"
 check "boot answers principal.totp false" json_is "$site/boot-disabled.json" 'doc["principal"]["totp"] is False'
 check "POST /api/v1/call/auth.logout with the cookie is 200" http_is "$site/logout.json" 200 POST /api/v1/call/auth.logout '{}' "$cookie"
-check "auth.logout clears the cookie" grep -qi '^set-cookie: __Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0\r\{0,1\}$' "$site/logout.json.headers"
+check "auth.logout clears the cookie" header_matches "$site/logout.json.headers" set-cookie '^__Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0$'
 check "POST /api/v1/call/note.list with the revoked cookie is 401" http_is "$site/revoked.json" 401 POST /api/v1/call/note.list '{}' "$cookie"
 check "POST /api/v1/call/note.list with the token after the logout is 200" http_is "$site/notes-token-after.json" 200 POST /api/v1/call/note.list '{}' "$token"
 check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
