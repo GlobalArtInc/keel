@@ -1,0 +1,117 @@
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { KeelClient, type Fetched } from '@globalart/keel/client';
+import type { Boot } from '@globalart/keel/meta';
+import { KeelShellComponent, KeelStartup, keelProviders, plainClick } from '@globalart/keel/shell';
+import { KeelMockClient } from '@globalart/keel/testing';
+import { throwError, type Observable } from 'rxjs';
+
+const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
+const BOOT = JSON.parse(readFileSync(join(FIXTURES, 'boot-none.json'), 'utf8')) as Boot;
+
+const MESSAGES = {
+  menu: { system: 'System' },
+  keel: {
+    account: { list: { title: 'Accounts' } },
+    principal: { list: { title: 'Principals' } },
+    product: { list: { title: 'Products' } },
+    shell: { boot_failed: 'The installation did not answer; reload the page' },
+  },
+  phx: { retry: 'Try again', loading: 'Loading' },
+};
+
+class FlakyClient extends KeelMockClient {
+  down = true;
+
+  override boot(): Observable<Fetched<Boot> | null> {
+    return this.down ? throwError(() => new Error('connection refused')) : super.boot();
+  }
+}
+
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  await fixture.whenStable();
+  await new Promise((done) => setTimeout(done, 0));
+  fixture.detectChanges();
+}
+
+function configure(client: KeelMockClient): ComponentFixture<KeelShellComponent> {
+  TestBed.configureTestingModule({
+    providers: [...keelProviders(), { provide: KeelClient, useValue: client }],
+  });
+  const fixture = TestBed.createComponent(KeelShellComponent);
+  fixture.detectChanges();
+  return fixture;
+}
+
+describe('KeelShellComponent', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('shows the loader until the boot answers, the failure with a retry when it does not, and the layout with the menu once it does', async () => {
+    const client = new FlakyClient({ boot: BOOT, catalogue: { lang: 'en', messages: MESSAGES } });
+    const fixture = configure(client);
+    const router = TestBed.inject(Router);
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.getAttribute('data-startup')).toBe('loading');
+    expect(element.querySelector('phx-loader')).not.toBeNull();
+
+    const loads = jest.spyOn(client, 'boot');
+    const failed = router.navigateByUrl('/f/keel.account.list');
+    await expect(failed).resolves.toBe(false);
+    await settle(fixture);
+    expect(loads).toHaveBeenCalledTimes(1);
+    expect(element.getAttribute('data-startup')).toBe('failed');
+    expect(element.querySelector('phx-error .text')?.textContent?.trim()).toBe(
+      'keel.shell.boot_failed',
+    );
+    expect(TestBed.inject(KeelStartup).failure()).toBeInstanceOf(Error);
+    expect(element.querySelector('router-outlet')).toBeNull();
+    await expect(router.navigateByUrl('/')).resolves.toBe(false);
+    expect(loads).toHaveBeenCalledTimes(1);
+
+    client.down = false;
+    const retry = element.querySelector<HTMLButtonElement>('phx-error button');
+    expect(retry?.textContent?.trim()).toBe('Retry');
+    retry?.click();
+    await settle(fixture);
+    await settle(fixture);
+    expect(loads).toHaveBeenCalledTimes(2);
+    expect(element.getAttribute('data-startup')).toBe('ready');
+    expect(router.url).toBe('/f/keel.account.list');
+    expect(TestBed.inject(KeelStartup).failure()).toBeNull();
+
+    const items = [...element.querySelectorAll('keel-layout phx-sidebar-item')];
+    expect(items.map((item) => item.querySelector('.label')?.textContent)).toEqual([
+      'Accounts',
+      'Principals',
+      'Products',
+    ]);
+    expect(items.map((item) => item.querySelector('a')?.getAttribute('href'))).toEqual([
+      '/f/keel.account.list',
+      '/f/keel.principal.list',
+      '/f/keel.product.list',
+    ]);
+    expect(items.map((item) => item.querySelector('a')?.classList.contains('item_active'))).toEqual(
+      [true, false, false],
+    );
+    expect(element.querySelector('nav.menu')?.getAttribute('aria-label')).toBe('System');
+
+    const link = items[1].querySelector<HTMLAnchorElement>('a');
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link?.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    await settle(fixture);
+    expect(router.url).toBe('/f/keel.principal.list');
+    expect(items[1].querySelector('a')?.classList.contains('item_active')).toBe(true);
+
+    const withKey = new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true });
+    items[2].dispatchEvent(withKey);
+    expect(withKey.defaultPrevented).toBe(false);
+    await settle(fixture);
+    expect(router.url).toBe('/f/keel.principal.list');
+    expect(plainClick(withKey)).toBe(false);
+    expect(plainClick(new MouseEvent('click', { button: 1 }))).toBe(false);
+    expect(plainClick(new MouseEvent('click', { button: 0 }))).toBe(true);
+  });
+});

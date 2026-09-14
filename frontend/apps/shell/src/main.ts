@@ -1,4 +1,4 @@
-import { bootstrapApplication } from '@angular/platform-browser';
-import { AppComponent } from './app/app.component';
+import { bootstrapKeel } from '@globalart/keel/shell';
+import { SHELL_PRODUCTS } from './products';
 
-bootstrapApplication(AppComponent).catch((error: unknown) => console.error(error));
+bootstrapKeel({ products: SHELL_PRODUCTS }).catch((error: unknown) => console.error(error));
