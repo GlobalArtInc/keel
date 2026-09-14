@@ -47,15 +47,73 @@ export {
   provideKeelLabels,
 } from './labels';
 export type { LabelName } from './labels';
+export { BOOT_FAILED_KEY, KeelShellComponent } from './shell';
 export {
-  BOOT_FAILED_KEY,
+  ACTING_AS_KEY,
+  ACTING_EXIT_KEY,
   KeelLayoutComponent,
-  KeelShellComponent,
   MENU_KEY,
-  menuEntries,
+  SIDEBAR_STORAGE_KEY,
   plainClick,
-} from './shell';
-export type { MenuEntry } from './shell';
+} from './layout/layout.component';
+export {
+  PLATFORM_LEVEL_PREFIX,
+  PRODUCT_PREFIX,
+  brandOf,
+  levelKey,
+  levelLabel,
+  menuEntries,
+  platformGroups,
+  productGroups,
+  sidebarOf,
+} from './layout/sidebar';
+export type {
+  BrandView,
+  MenuEntry,
+  SidebarGroup,
+  SidebarSection,
+  Translate,
+} from './layout/sidebar';
+export { BASE_CHROMA, applyBrand, chromaScale } from './layout/theme';
+export {
+  ACT_AS_ENTRY,
+  KeelRailComponent,
+  LANGUAGES,
+  LANGUAGE_PREFIX,
+  LANG_PREF,
+  LOGOUT_ENTRY,
+  PREF_SET,
+  RAIL_HELP_KEY,
+  RAIL_LATER_KEY,
+  RAIL_NOTIFICATIONS_KEY,
+  RAIL_TASKS_KEY,
+  SECURITY_FUNCTION,
+  SESSIONS_FUNCTION,
+  THEME_PREF,
+  TOKENS_FUNCTION,
+  USER_ACT_AS_KEY,
+  USER_LANGUAGE_KEY,
+  USER_LOGOUT_KEY,
+  USER_SCREENS,
+  USER_SECURITY_KEY,
+  USER_SESSIONS_KEY,
+  USER_THEME_KEY,
+  USER_TOKENS_KEY,
+  languageOptions,
+  userMenuItems,
+} from './rail/rail.component';
+export {
+  ACT_AS_EMPTY_KEY,
+  ACT_AS_ENTER_KEY,
+  ACT_AS_PAGE_SIZE,
+  ACT_AS_SEARCH_KEY,
+  ACT_AS_TITLE_KEY,
+  KeelActAsComponent,
+  PRINCIPAL_LIST,
+  principalQuery,
+} from './rail/act-as.component';
+export type { ActAsState, PrincipalRow } from './rail/act-as.component';
+export { KeelSu } from './rail/su';
 export {
   KeelNotFoundComponent,
   NOT_FOUND_HOME_KEY,

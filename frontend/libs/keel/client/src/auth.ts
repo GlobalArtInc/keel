@@ -3,6 +3,7 @@ import type { Envelope, Id, MetaPrincipal } from '@globalart/keel/meta';
 import { firstValueFrom } from 'rxjs';
 import { KeelBoot } from './boot';
 import { KeelClient } from './client';
+import { KeelDescriptors } from './descriptors';
 
 export const AUTH_LOGIN = 'auth.login';
 export const AUTH_TOTP_VERIFY = 'auth.totp.verify';
@@ -51,6 +52,7 @@ export interface Delegation {
 export class KeelAuth {
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
+  private readonly descriptors = inject(KeelDescriptors);
 
   login(params: LoginParams): Promise<Envelope<LoggedIn>> {
     return this.run<LoggedIn>(AUTH_LOGIN, params);
@@ -79,6 +81,7 @@ export class KeelAuth {
   private async run<T>(func: string, params: unknown): Promise<Envelope<T>> {
     const envelope = await firstValueFrom(this.client.call<T>(func, params));
     if (envelope.ok) {
+      this.descriptors.drop();
       await this.boot.load();
     }
     return envelope;

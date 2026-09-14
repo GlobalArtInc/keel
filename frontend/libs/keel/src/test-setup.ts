@@ -9,6 +9,23 @@ if (typeof Element.prototype.scrollIntoView !== 'function') {
   Element.prototype.scrollIntoView = () => undefined;
 }
 
+if (typeof globalThis.ResizeObserver !== 'function') {
+  class IdleResizeObserver implements ResizeObserver {
+    observe(): void {
+      return;
+    }
+
+    unobserve(): void {
+      return;
+    }
+
+    disconnect(): void {
+      return;
+    }
+  }
+  globalThis.ResizeObserver = IdleResizeObserver;
+}
+
 const CSS_PARSING = 'Could not parse CSS stylesheet';
 const reportError = console.error.bind(console);
 console.error = (...args: unknown[]) => {

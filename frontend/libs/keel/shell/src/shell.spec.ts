@@ -4,8 +4,16 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { KeelClient, type Fetched } from '@globalart/keel/client';
 import type { Boot } from '@globalart/keel/meta';
-import { KeelShellComponent, KeelStartup, keelProviders, plainClick } from '@globalart/keel/shell';
+import {
+  BASE_CHROMA,
+  KeelShellComponent,
+  KeelStartup,
+  chromaScale,
+  keelProviders,
+  plainClick,
+} from '@globalart/keel/shell';
 import { KeelMockClient } from '@globalart/keel/testing';
+import { PhxThemeService } from '@globalart/phoenix-ui';
 import { throwError, type Observable } from 'rxjs';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
@@ -81,6 +89,11 @@ describe('KeelShellComponent', () => {
     expect(router.url).toBe('/f/keel.account.list');
     expect(TestBed.inject(KeelStartup).failure()).toBeNull();
 
+    const theme = TestBed.inject(PhxThemeService);
+    expect(theme.hue()).toBe(BOOT.brand.hue);
+    expect(theme.chroma()).toBeCloseTo(BOOT.brand.chroma / BASE_CHROMA);
+    expect(chromaScale(BASE_CHROMA)).toBe(1);
+
     const items = [...element.querySelectorAll('keel-layout phx-sidebar-item')];
     expect(items.map((item) => item.querySelector('.label')?.textContent)).toEqual([
       'Accounts',
@@ -95,7 +108,9 @@ describe('KeelShellComponent', () => {
     expect(items.map((item) => item.querySelector('a')?.classList.contains('item_active'))).toEqual(
       [true, false, false],
     );
-    expect(element.querySelector('nav.menu')?.getAttribute('aria-label')).toBe('System');
+    expect(element.querySelector('phx-sidebar nav.menu')?.getAttribute('aria-label')).toBe(
+      'System',
+    );
 
     const link = items[1].querySelector<HTMLAnchorElement>('a');
     const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });

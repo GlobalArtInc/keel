@@ -14,7 +14,7 @@ import {
 import { KeelLoginComponent } from './login/login.component';
 import { KeelNotFoundComponent } from './not-found';
 import { KeelProducts } from './products';
-import { KeelLayoutComponent } from './shell';
+import { KeelLayoutComponent } from './layout/layout.component';
 
 export const FUNC_PARAM = 'func';
 

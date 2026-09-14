@@ -3,11 +3,14 @@ import { join, resolve } from 'node:path';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { KeelAuth, KeelBoot, provideKeelClient } from '@globalart/keel/client';
-import type { Boot, Envelope, MetaPrincipal } from '@globalart/keel/meta';
+import { KeelAuth, KeelBoot, KeelDescriptors, provideKeelClient } from '@globalart/keel/client';
+import type { Boot, Descriptor, Envelope, MetaPrincipal } from '@globalart/keel/meta';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 const BOOT = JSON.parse(readFileSync(join(FIXTURES, 'boot.json'), 'utf8')) as Boot;
+const LIST = JSON.parse(
+  readFileSync(join(FIXTURES, 'descriptor-dns-zone-list.json'), 'utf8'),
+) as Descriptor;
 
 const PRINCIPAL: MetaPrincipal = {
   id: '01J9Q3W6B1R8N5X2K4T7M0V9A1',
@@ -98,15 +101,31 @@ describe('KeelAuth', () => {
     expect(redeemed.ok && redeemed.data.redirect).toBe('/f/dns.zone.list');
   });
 
-  it('logout, su and suExit post to their names', async () => {
+  it('logout, su and suExit post to their names and drop the descriptors of the principal', async () => {
+    const descriptors = TestBed.inject(KeelDescriptors);
+    const cached = descriptors.get('dns.zone.list');
+    http.expectOne('/api/v1/functions/dns.zone.list').flush(LIST);
+    expect(await cached).toEqual(LIST);
+
     await answer('auth.logout', {}, { revoked: true }, auth.logout());
+    const again = descriptors.get('dns.zone.list');
+    http.expectOne('/api/v1/functions/dns.zone.list').flush(LIST);
+    expect(await again).toEqual(LIST);
+
     await answer(
       'auth.su',
       { principal: PRINCIPAL.id },
       { principal: PRINCIPAL },
       auth.su({ principal: PRINCIPAL.id }),
     );
+    const delegated = descriptors.get('dns.zone.list');
+    http.expectOne('/api/v1/functions/dns.zone.list').flush(LIST);
+    expect(await delegated).toEqual(LIST);
+
     await answer('auth.su.exit', {}, { principal: PRINCIPAL }, auth.suExit());
+    const returned = descriptors.get('dns.zone.list');
+    http.expectOne('/api/v1/functions/dns.zone.list').flush(LIST);
+    expect(await returned).toEqual(LIST);
   });
 
   it('a refused login is answered as its envelope without a boot reload', async () => {
