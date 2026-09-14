@@ -2039,6 +2039,7 @@ dependencies = [
  "base32",
  "futures",
  "hmac 0.13.0",
+ "insta",
  "ipnet",
  "jsonschema",
  "keel-sdk",

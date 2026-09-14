@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use keel_sdk::async_trait::async_trait;
 use keel_sdk::runtime::Db;
+use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use keel_sdk::system::{AccountSource, PrincipalSource};
 use keel_sdk::{KeelError, Result};
@@ -59,6 +62,21 @@ impl PrincipalSource for StoredPrincipals {
             .map(from_row)
             .transpose()
     }
+
+    async fn touch_acl(&self, id: Id, db: &Db) -> Result<()> {
+        let touched = principal::Entity::update_many()
+            .col_expr(
+                principal::Column::AclGen,
+                Expr::col(principal::Column::AclGen).add(1),
+            )
+            .filter(principal::Column::Id.eq(id.to_string()))
+            .exec(db)
+            .await?;
+        if touched.rows_affected == 0 {
+            return Err(KeelError::not_found("keel.error.not_found"));
+        }
+        Ok(())
+    }
 }
 
 fn from_row(row: principal::Model) -> Result<Principal> {
@@ -87,6 +105,7 @@ fn from_row(row: principal::Model) -> Result<Principal> {
         external_id: row.external_id,
         origin: row.origin,
         lang: row.lang,
+        grants: BTreeMap::new(),
     })
 }
 

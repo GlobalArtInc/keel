@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use keel_kernel::http::{GUEST_LOGIN, guest};
@@ -156,6 +157,7 @@ pub(crate) fn stored_principal(
         external_id: None,
         origin: None,
         lang: lang.to_owned(),
+        grants: BTreeMap::new(),
     }
 }
 

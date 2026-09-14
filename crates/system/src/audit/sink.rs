@@ -206,6 +206,8 @@ pub fn via_text(via: &Via) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use std::time::Duration;
 
     use keel_sdk::sea_orm::ActiveValue;
@@ -227,6 +229,7 @@ mod tests {
             external_id: None,
             origin: None,
             lang: "en".into(),
+            grants: BTreeMap::new(),
         }
     }
 

@@ -232,3 +232,33 @@ pub mod ip_rule {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod grant {
+    use keel_sdk::Owned;
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_grant")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub principal_id: String,
+        pub account_id: String,
+        pub key: String,
+        pub granted: bool,
+        pub created_at: DateTimeUtc,
+        pub created_by: String,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+
+    impl Owned for Entity {
+        fn account_column() -> Self::Column {
+            Column::AccountId
+        }
+    }
+}

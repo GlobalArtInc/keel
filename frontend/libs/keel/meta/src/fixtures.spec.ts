@@ -23,6 +23,7 @@ const FIXTURES = join(CONTRACTS, 'fixtures');
 const SCHEMA = join(CONTRACTS, 'schema');
 
 const KNOWN = [
+  'boot-none.json',
   'boot.json',
   'check-cases.json',
   'descriptor-dns-zone-edit.json',
@@ -130,6 +131,16 @@ describe('contracts/fixtures', () => {
 
   it('boot.json validates against Boot', () => {
     expectValid('Boot', load('boot.json'), 'boot.json');
+  });
+
+  it('boot-none.json validates against Boot with no product, no view and the system group alone', () => {
+    const boot = load('boot-none.json') as Boot;
+    expectValid('Boot', boot, 'boot-none.json');
+    expect(boot.products).toEqual([]);
+    expect(boot.views).toEqual([]);
+    expect(boot.brand.name).toBe('keel.brand');
+    expect(boot.menu.map((group) => [group.id, group.product])).toEqual([['system', null]]);
+    expect(boot.menu[0].items.every((item) => item.kind !== undefined)).toBe(true);
   });
 
   it('a boot with a view and its menu item without a kind validates against Boot', () => {

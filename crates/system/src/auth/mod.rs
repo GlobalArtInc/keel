@@ -3,6 +3,7 @@ pub mod api;
 mod authenticator;
 mod entity;
 mod functions;
+mod grant;
 mod ip_rule;
 mod key;
 mod limits;
@@ -17,11 +18,15 @@ use std::sync::{Arc, OnceLock};
 
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
-use keel_sdk::system::{Authenticator, PrincipalSource, SecondFactorSource, SecretCipher};
+use keel_sdk::system::{
+    Authenticator, PermissionCatalogue, PermissionSource, PrincipalSource, SecondFactorSource,
+    SecretCipher,
+};
 
 use api::{Lockout, LoginMethod, RateLimit};
 use authenticator::CredentialAuthenticator;
 use functions::Local;
+use grant::Grants;
 use ip_rule::IpRules;
 use password::Passwords;
 use totp::challenge::Attempts;
@@ -45,6 +50,7 @@ pub use totp::code::{
     step_at as totp_step,
 };
 
+use grant::{PERMISSION_MANAGE as GRANT_MANAGE, PERMISSION_READ as GRANT_READ};
 use session::functions::{PERMISSION_MANAGE as SESSION_MANAGE, PERMISSION_READ as SESSION_READ};
 use token::functions::{PERMISSION_MANAGE as TOKEN_MANAGE, PERMISSION_READ as TOKEN_READ};
 use totp::functions::PERMISSION_MANAGE as TOTP_MANAGE;
@@ -101,7 +107,9 @@ fn init(r: &mut Registrar) -> Result<()> {
     let ip_rules = Arc::new(IpRules::default());
     r.require::<dyn SecretCipher>()
         .require::<dyn SettingsSource>()
+        .require::<dyn PermissionCatalogue>()
         .provide::<dyn SecondFactorSource>(Arc::new(totp::SecondFactor))
+        .provide::<dyn PermissionSource>(Arc::new(Grants))
         .provide::<RateLimit>(rate_limit.clone())
         .provide::<Lockout>(lockout.clone())
         .guard(ip_rules.clone())
@@ -126,6 +134,9 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(ip_rule::functions::delete(ip_rules))
         .function(session::functions::list())
         .function(session::functions::revoke_function())
+        .function(grant::functions::list())
+        .function(grant::functions::set())
+        .function(grant::functions::delete())
         .permission("auth.password.manage", &[Level::User, Level::Reseller])
         .permission(TOKEN_READ, &[Level::User, Level::Reseller])
         .permission(TOKEN_MANAGE, &[Level::User, Level::Reseller])
@@ -134,6 +145,32 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission(KEY_ISSUE, &[Level::Reseller])
         .permission(SESSION_READ, &[Level::User, Level::Reseller])
         .permission(SESSION_MANAGE, &[Level::User, Level::Reseller])
+        .permission(GRANT_READ, &[Level::Reseller])
+        .permission(GRANT_MANAGE, &[Level::Reseller])
+        .menu(
+            MenuNode::new("system/sessions", "auth.session.list")
+                .icon("monitor")
+                .order(40)
+                .label("auth.session.list.title"),
+        )
+        .menu(
+            MenuNode::new("system/tokens", "auth.token.list")
+                .icon("key")
+                .order(50)
+                .label("auth.token.list.title"),
+        )
+        .menu(
+            MenuNode::new("system/ip-rules", "auth.ip_rule.list")
+                .icon("shield")
+                .order(60)
+                .label("auth.ip_rule.list.title"),
+        )
+        .menu(
+            MenuNode::new("system/grants", "auth.grant.list")
+                .icon("user-cog")
+                .order(70)
+                .label("auth.grant.list.title"),
+        )
         .contribute(local)
         .contribute(contributed)
         .i18n("en", include_str!("../../i18n/auth/en.json"))
@@ -161,7 +198,7 @@ fn init(r: &mut Registrar) -> Result<()> {
 mod tests {
     use super::*;
 
-    const FUNCTIONS: [&str; 20] = [
+    const FUNCTIONS: [&str; 23] = [
         "auth.password.set",
         "auth.login",
         "auth.logout",
@@ -182,6 +219,9 @@ mod tests {
         "auth.ip_rule.delete",
         "auth.session.list",
         "auth.session.revoke",
+        "auth.grant.list",
+        "auth.grant.set",
+        "auth.grant.delete",
     ];
 
     #[test]
@@ -229,6 +269,14 @@ mod tests {
                     Mode::Write,
                     Level::User
                 ),
+                ("auth.grant.list", Kind::List, Mode::Read, Level::Reseller),
+                ("auth.grant.set", Kind::Form, Mode::Write, Level::Reseller),
+                (
+                    "auth.grant.delete",
+                    Kind::Action,
+                    Mode::Write,
+                    Level::Reseller
+                ),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
@@ -252,6 +300,42 @@ mod tests {
                 (KEY_ISSUE, &[Level::Reseller][..]),
                 (SESSION_READ, &[Level::User, Level::Reseller][..]),
                 (SESSION_MANAGE, &[Level::User, Level::Reseller][..]),
+                (GRANT_READ, &[Level::Reseller][..]),
+                (GRANT_MANAGE, &[Level::Reseller][..]),
+            ]
+        );
+        let menu: Vec<(&str, &str, Option<&str>, Option<&str>)> = registrations
+            .menu
+            .iter()
+            .map(|node| (node.path(), node.func(), node.icon_name(), node.label_key()))
+            .collect();
+        assert_eq!(
+            menu,
+            [
+                (
+                    "system/sessions",
+                    "auth.session.list",
+                    Some("monitor"),
+                    Some("auth.session.list.title")
+                ),
+                (
+                    "system/tokens",
+                    "auth.token.list",
+                    Some("key"),
+                    Some("auth.token.list.title")
+                ),
+                (
+                    "system/ip-rules",
+                    "auth.ip_rule.list",
+                    Some("shield"),
+                    Some("auth.ip_rule.list.title")
+                ),
+                (
+                    "system/grants",
+                    "auth.grant.list",
+                    Some("user-cog"),
+                    Some("auth.grant.list.title")
+                ),
             ]
         );
         let languages: Vec<&str> = registrations
@@ -307,11 +391,18 @@ mod tests {
         );
         assert!(registrations.provides.get::<RateLimit>().is_some());
         assert!(registrations.provides.get::<Lockout>().is_some());
+        assert!(
+            registrations
+                .provides
+                .get::<dyn PermissionSource>()
+                .is_some()
+        );
         assert_eq!(
             registrations.requires,
             [
                 keel_sdk::runtime::ServiceKey::of::<dyn SecretCipher>(),
-                keel_sdk::runtime::ServiceKey::of::<dyn SettingsSource>()
+                keel_sdk::runtime::ServiceKey::of::<dyn SettingsSource>(),
+                keel_sdk::runtime::ServiceKey::of::<dyn PermissionCatalogue>()
             ]
         );
         assert_eq!(MODULE.sdk, VERSION);

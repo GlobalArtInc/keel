@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -19,6 +20,7 @@ use super::Shared;
 use super::cookie;
 use super::live::Live;
 use super::reply;
+use crate::grants;
 use crate::loader::REQUIRED_LANGUAGE;
 use crate::registry::Registry;
 
@@ -76,6 +78,7 @@ pub fn guest(lang: &str) -> Principal {
         external_id: None,
         origin: None,
         lang: lang.to_owned(),
+        grants: BTreeMap::new(),
     }
 }
 
@@ -107,6 +110,9 @@ pub(super) async fn authenticate(
                     match preferences(&live.registry, &principal, &db).await {
                         Ok(preferred) => zone = overlay(&live.registry, &mut principal, preferred),
                         Err(error) => return reply::error(error, &request_id),
+                    }
+                    if let Err(error) = grants::overlay(&live.registry, &mut principal, &db).await {
+                        return reply::error(error, &request_id);
                     }
                     principal
                 }

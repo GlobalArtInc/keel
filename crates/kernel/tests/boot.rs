@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
 use axum::Router;
@@ -19,6 +22,8 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 const CUSTOMER: &str = "01J8A0000000000000000000A2";
+const BOOT_NONE_FIXTURE: &str = "../../contracts/fixtures/boot-none.json";
+const UPDATE_SNAPSHOTS: &str = "KEEL_UPDATE_SNAPSHOTS";
 
 const EN: &str = r#"{
     "probe": { "item": { "list": { "title": "Items" }, "empty": "No items", "public": { "title": "Public" } } },
@@ -118,6 +123,7 @@ fn principal(level: Level, account: Id, lang: &str) -> Principal {
         external_id: None,
         origin: None,
         lang: lang.to_owned(),
+        grants: BTreeMap::new(),
     }
 }
 
@@ -467,6 +473,26 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
         )]
     );
     assert_eq!(boot.keel.version, env!("CARGO_PKG_VERSION"));
+    assert!(boot.views.is_empty());
+    let mut rendered = serde_json::to_string_pretty(&boot).expect("the boot payload serialises");
+    rendered.push('\n');
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(BOOT_NONE_FIXTURE);
+    if std::env::var_os(UPDATE_SNAPSHOTS).is_some() {
+        fs::write(&path, &rendered).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    } else {
+        let committed = fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e}; run the test with {UPDATE_SNAPSHOTS}=1 to write the fixture",
+                path.display()
+            )
+        });
+        assert_eq!(
+            committed,
+            rendered,
+            "{} differs from the served payload; review the change and run the test with {UPDATE_SNAPSHOTS}=1",
+            path.display()
+        );
+    }
     bench.finish().await;
 }
 
@@ -581,6 +607,24 @@ async fn the_catalogue_merges_the_bundle_dictionaries_and_ru_falls_back_to_en_pe
     let kernel_ru: Value = serde_json::from_str(KERNEL_RU).expect("the kernel ru dictionary");
     assert_eq!(messages["menu"]["system"], kernel_ru["menu"]["system"]);
     assert_ne!(messages["menu"]["system"], json!("System"));
+    assert_eq!(messages["phx"]["close"], kernel_ru["phx"]["close"]);
+    assert_ne!(messages["phx"]["close"], json!("Close"));
+    assert_eq!(
+        messages["keel"]["shell"]["login"]["title"],
+        kernel_ru["keel"]["shell"]["login"]["title"]
+    );
+    assert_ne!(
+        messages["keel"]["shell"]["login"]["title"],
+        json!("Sign in")
+    );
+    let english = &en.body["data"]["messages"];
+    assert_eq!(english["phx"]["close"], json!("Close"));
+    assert_eq!(english["phx"]["nothingFound"], json!("Nothing found"));
+    assert_eq!(english["keel"]["shell"]["login"]["title"], json!("Sign in"));
+    assert_eq!(
+        english["phx"].as_object().map(|labels| labels.len()),
+        messages["phx"].as_object().map(|labels| labels.len())
+    );
     assert_ne!(ru.etag, en.etag);
     let again = bench
         .get("/api/v1/i18n?lang=ru", None, ru.etag.as_deref())

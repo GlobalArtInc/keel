@@ -65,6 +65,8 @@ fn init(r: &mut Registrar) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -149,6 +151,7 @@ mod tests {
             external_id: None,
             origin: None,
             lang: "en".into(),
+            grants: BTreeMap::new(),
         };
         assert_eq!(scope_of(&principal(Level::Reseller)), reseller);
         assert_eq!(scope_of(&principal(Level::Admin)), Id::ROOT_ACCOUNT);

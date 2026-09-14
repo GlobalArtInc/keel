@@ -15,6 +15,7 @@ pub mod socket;
 pub mod storage;
 
 mod boot;
+mod grants;
 mod kv;
 mod menu;
 mod meta;

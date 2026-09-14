@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use keel_sdk::sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use keel_sdk::types::{Scope, Via};
 use keel_sdk::{Id, Level, Principal};
@@ -108,6 +110,7 @@ pub fn principal(level: Level, account: &str) -> Principal {
         external_id: None,
         origin: None,
         lang: "en".into(),
+        grants: BTreeMap::new(),
     }
 }
 

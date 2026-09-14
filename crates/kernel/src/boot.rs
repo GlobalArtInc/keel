@@ -148,6 +148,8 @@ pub(crate) async fn payload(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use keel_types::{ErrorCode, Id, Level, Scope, Via};
     use serde_json::json;
 
@@ -166,6 +168,7 @@ mod tests {
             external_id: None,
             origin: None,
             lang: "ru".into(),
+            grants: BTreeMap::new(),
         }
     }
 

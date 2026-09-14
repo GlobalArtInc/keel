@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use keel_types::{Id, Level, Principal, Scope, Via};
 
 use crate::loader::REQUIRED_LANGUAGE;
@@ -33,6 +35,7 @@ pub fn owner() -> Principal {
         external_id: None,
         origin: None,
         lang: REQUIRED_LANGUAGE.to_owned(),
+        grants: BTreeMap::new(),
     }
 }
 

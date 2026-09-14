@@ -161,6 +161,12 @@ async fn login_of<P>(call: &Call<P>, id: Id) -> Result<String> {
 }
 
 pub(super) async fn below_caller<P>(call: &Call<P>, target: Id) -> Result<Id> {
+    below_caller_with_account(call, target)
+        .await
+        .map(|(target, _)| target)
+}
+
+pub(super) async fn below_caller_with_account<P>(call: &Call<P>, target: Id) -> Result<(Id, Id)> {
     let row = call
         .invoke("keel.principal.get", json!({ "id": target }))
         .await?;
@@ -173,7 +179,15 @@ pub(super) async fn below_caller<P>(call: &Call<P>, target: Id) -> Result<Id> {
             .param("level", level.as_str())
             .param("caller", call.principal().level.as_str()));
     }
-    Ok(target)
+    let account: Id = row["accountId"]
+        .as_str()
+        .and_then(|account| account.parse().ok())
+        .ok_or_else(|| {
+            KeelError::internal("keel.principal.error.account_unknown")
+                .param("id", target.to_string())
+                .param("account", row["accountId"].to_string())
+        })?;
+    Ok((target, account))
 }
 
 pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {

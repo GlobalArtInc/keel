@@ -1,4 +1,7 @@
-use keel_sdk::runtime::{Db, Ownership};
+use std::collections::BTreeMap;
+
+use keel_sdk::runtime::{Db, Ownership, PermissionDef};
+use keel_sdk::system::PermissionCatalogue;
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
 use keel_types::{Access, Id, Level, Mode, Principal};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
@@ -42,10 +45,39 @@ pub fn scope(function: &str, mode: Mode, principal: &Principal) -> Result<(), Ke
 }
 
 pub fn holds(registry: &Registry, key: &str, principal: &Principal) -> bool {
-    principal.level >= Level::Admin
-        || registry
-            .permission(key)
-            .is_some_and(|def| def.defaults.contains(&principal.level))
+    held(registry.permissions(), key, principal)
+}
+
+fn held(permissions: &BTreeMap<String, PermissionDef>, key: &str, principal: &Principal) -> bool {
+    if principal.level >= Level::Admin {
+        return true;
+    }
+    match principal.grants.get(key) {
+        Some(granted) => *granted,
+        None => permissions
+            .get(key)
+            .is_some_and(|def| def.defaults.contains(&principal.level)),
+    }
+}
+
+pub struct RegisteredPermissions {
+    permissions: BTreeMap<String, PermissionDef>,
+}
+
+impl RegisteredPermissions {
+    pub fn new(permissions: BTreeMap<String, PermissionDef>) -> Self {
+        Self { permissions }
+    }
+}
+
+impl PermissionCatalogue for RegisteredPermissions {
+    fn registered(&self, key: &str) -> bool {
+        self.permissions.contains_key(key)
+    }
+
+    fn holds(&self, principal: &Principal, key: &str) -> bool {
+        held(&self.permissions, key, principal)
+    }
 }
 
 pub async fn owned(
@@ -126,6 +158,8 @@ fn not_found() -> KeelError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use keel_types::{ErrorCode, Scope, Via};
 
     use super::*;
@@ -143,6 +177,7 @@ mod tests {
             external_id: None,
             origin: None,
             lang: "en".into(),
+            grants: BTreeMap::new(),
         }
     }
 
@@ -177,6 +212,42 @@ mod tests {
             &principal(Level::User),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_stored_grant_answers_over_the_default_and_admins_hold_every_key() {
+        let permissions = BTreeMap::from([(
+            "dns.zone.manage".to_owned(),
+            PermissionDef {
+                key: "dns.zone.manage".into(),
+                defaults: vec![Level::Reseller],
+            },
+        )]);
+        let catalogue = RegisteredPermissions::new(permissions.clone());
+        let user = principal(Level::User);
+        let reseller = principal(Level::Reseller);
+        assert!(!held(&permissions, "dns.zone.manage", &user));
+        assert!(held(&permissions, "dns.zone.manage", &reseller));
+        assert!(!held(&permissions, "dns.zone.unknown", &reseller));
+        let mut granted = principal(Level::User);
+        granted.grants.insert("dns.zone.manage".into(), true);
+        granted.grants.insert("dns.zone.unknown".into(), true);
+        assert!(held(&permissions, "dns.zone.manage", &granted));
+        assert!(held(&permissions, "dns.zone.unknown", &granted));
+        let mut denied = principal(Level::Reseller);
+        denied.grants.insert("dns.zone.manage".into(), false);
+        assert!(!held(&permissions, "dns.zone.manage", &denied));
+        assert!(!catalogue.holds(&denied, "dns.zone.manage"));
+        assert!(catalogue.holds(&granted, "dns.zone.manage"));
+        assert!(catalogue.registered("dns.zone.manage"));
+        assert!(!catalogue.registered("dns.zone.unknown"));
+        for level in [Level::Admin, Level::Owner] {
+            let mut top = principal(level);
+            top.grants.insert("dns.zone.manage".into(), false);
+            assert!(held(&permissions, "dns.zone.manage", &top));
+            assert!(held(&permissions, "dns.zone.unknown", &top));
+            assert!(catalogue.holds(&top, "dns.zone.unknown"));
+        }
     }
 
     #[test]

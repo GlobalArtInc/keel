@@ -8,6 +8,7 @@ use crate::fixtures::Who;
 use crate::harness::Harness;
 
 const DEFAULT_KEY: &str = "id";
+const LEVEL_KEY: &str = "keel.error.level";
 
 #[async_trait]
 pub trait Fixture: Send + Sync {
@@ -89,6 +90,12 @@ impl Harness {
 
     async fn listed_keys(&self, who: Who, func_list: &str, key: &str) -> BTreeSet<String> {
         let reply = self.call(who, func_list, json!({})).await;
+        if reply
+            .error()
+            .is_some_and(|error| error.code == ErrorCode::Forbidden && error.key == LEVEL_KEY)
+        {
+            return BTreeSet::new();
+        }
         let Some(data) = reply.data() else {
             panic!(
                 "{func_list}: {who} cannot list: {:?}",

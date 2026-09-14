@@ -88,6 +88,8 @@ fn init(r: &mut Registrar) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use keel_sdk::serde_json::{self, Value};
+
     use super::*;
 
     #[test]
@@ -117,5 +119,65 @@ mod tests {
         assert_eq!(languages, ["en", "ru"]);
         assert_eq!(MODULE.sdk, keel_sdk::VERSION);
         assert!(MODULE.migrations.is_none());
+    }
+
+    fn leaves_under(dictionary: &str, path: &[&str]) -> Vec<(String, Value)> {
+        let mut messages: Value = serde_json::from_str(dictionary).expect("the dictionary is JSON");
+        for segment in path {
+            messages = messages[*segment].take();
+        }
+        let Value::Object(map) = messages else {
+            panic!("{} is not an object", path.join("."));
+        };
+        crate::loader::leaves(&map)
+    }
+
+    #[test]
+    fn the_dictionaries_carry_the_phoenix_labels_and_the_shell_strings_in_both_languages() {
+        let en = include_str!("../../i18n/en.json");
+        let ru = include_str!("../../i18n/ru.json");
+        for path in [&["phx"][..], &["keel", "shell"][..]] {
+            let english = leaves_under(en, path);
+            let russian = leaves_under(ru, path);
+            assert!(english.len() >= 40, "{}: {}", path.join("."), english.len());
+            let keys = |leaves: &[(String, Value)]| -> Vec<String> {
+                leaves.iter().map(|(key, _)| key.clone()).collect()
+            };
+            assert_eq!(keys(&english), keys(&russian), "{}", path.join("."));
+            for ((key, english), (_, russian)) in english.iter().zip(&russian) {
+                assert!(english.is_string(), "{key} in en");
+                assert!(russian.is_string(), "{key} in ru");
+                assert_ne!(english, russian, "{key} is not translated");
+            }
+        }
+        let phx = leaves_under(en, &["phx"]);
+        for label in [
+            "close",
+            "cancel",
+            "search",
+            "nothingFound",
+            "loadFailed",
+            "retry",
+            "perPage",
+            "selectAll",
+            "save",
+        ] {
+            assert!(
+                phx.iter().any(|(key, _)| key == label),
+                "phx.{label} is missing"
+            );
+        }
+        let shell = leaves_under(en, &["keel", "shell"]);
+        for key in [
+            "login.title",
+            "acting_as.banner",
+            "user.logout",
+            "security.title",
+        ] {
+            assert!(
+                shell.iter().any(|(leaf, _)| leaf == key),
+                "keel.shell.{key}"
+            );
+        }
     }
 }

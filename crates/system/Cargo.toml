@@ -38,6 +38,7 @@ tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures = { workspace = true }
+insta = { workspace = true }
 keel-testkit = { workspace = true }
 
 [[test]]
@@ -47,6 +48,10 @@ required-features = ["auth", "audit"]
 [[test]]
 name = "audit_alone"
 required-features = ["audit"]
+
+[[test]]
+name = "auth_grants"
+required-features = ["auth"]
 
 [[test]]
 name = "auth_guards"

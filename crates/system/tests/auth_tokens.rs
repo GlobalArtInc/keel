@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use keel_sdk::chrono::Duration;
@@ -570,6 +571,7 @@ async fn tokens_are_the_credential_of_their_principal_and_the_standard_invariant
         external_id: None,
         origin: None,
         lang: "en".into(),
+        grants: BTreeMap::new(),
     };
     let (id, _) = issue(&harness, Who::A1, json!({ "name": "mine" })).await;
     let mine = harness.call(Who::A1, "auth.token.list", json!({})).await;

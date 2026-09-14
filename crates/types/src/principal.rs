@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +21,8 @@ pub struct Principal {
     pub external_id: Option<String>,
     pub origin: Option<String>,
     pub lang: String,
+    #[serde(skip)]
+    pub grants: BTreeMap<String, bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -193,12 +197,14 @@ mod tests {
                 external_id: None,
                 origin: None,
                 lang: "en".into(),
+                grants: BTreeMap::new(),
             })),
             scope: Scope::Functions(vec!["dns.*".into()]),
             via: Via::Http,
             external_id: Some("client-42".into()),
             origin: Some("bill:01J9A".into()),
             lang: "ru".into(),
+            grants: BTreeMap::new(),
         }
     }
 

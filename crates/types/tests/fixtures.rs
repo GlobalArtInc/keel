@@ -9,7 +9,8 @@ use keel_types::{
 use serde::Deserialize;
 use serde_json::Value;
 
-const KNOWN: [&str; 12] = [
+const KNOWN: [&str; 13] = [
+    "boot-none.json",
     "boot.json",
     "check-cases.json",
     "descriptor-dns-zone-edit.json",
@@ -271,6 +272,31 @@ fn event_fixture_round_trips() {
     assert_eq!(event.module, "dns");
     assert_eq!(event.seq, 8812);
     assert_eq!(event.subject.expect("subject").kind, "dns.zone");
+}
+
+#[test]
+fn boot_none_fixture_round_trips_with_no_product_no_view_and_the_platform_group_alone() {
+    let boot: Boot = round_trip(load("boot-none.json"));
+    assert_eq!(boot.keel.api, keel_types::DESCRIPTOR_VERSION);
+    assert!(boot.products.is_empty());
+    assert!(boot.views.is_empty());
+    assert_eq!(boot.brand.name, "keel.brand");
+    assert!(boot.brand.logo.is_none());
+    assert_eq!(boot.brand.hue, 220);
+    let principal = boot.principal.expect("the owner");
+    assert_eq!(principal.level, Level::Owner);
+    assert!(principal.actor.is_none());
+    let groups: Vec<(&str, Option<&str>)> = boot
+        .menu
+        .iter()
+        .map(|group| (group.id.as_str(), group.product.as_deref()))
+        .collect();
+    assert_eq!(groups, [("system", None)]);
+    assert!(boot.menu[0].items.iter().all(|item| item.kind.is_some()));
+    assert!(boot.features.is_empty());
+    assert!(boot.dashboard.is_empty());
+    assert!(boot.license.is_none());
+    assert!(boot.problems.is_none());
 }
 
 #[test]

@@ -47,7 +47,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["9"]);
+    assert_eq!(applied, ["10"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
@@ -55,6 +55,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
     assert_eq!(
         tables,
         [
+            "auth_grant",
             "auth_ip_rule",
             "auth_login_challenge",
             "auth_login_key",
@@ -278,6 +279,9 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             Level::Reseller => &[
+                "auth.grant.delete",
+                "auth.grant.list",
+                "auth.grant.set",
                 "auth.key.issue",
                 "auth.key.redeem",
                 "auth.login",
@@ -296,6 +300,9 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             _ => &[
+                "auth.grant.delete",
+                "auth.grant.list",
+                "auth.grant.set",
                 "auth.ip_rule.create",
                 "auth.ip_rule.delete",
                 "auth.ip_rule.list",

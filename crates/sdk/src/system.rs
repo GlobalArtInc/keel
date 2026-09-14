@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::Duration;
 
@@ -52,6 +53,17 @@ pub trait Authenticator: Send + Sync {
 pub trait PrincipalSource: Send + Sync {
     async fn by_id(&self, id: Id, db: &Db) -> Result<Option<Principal>>;
     async fn by_login(&self, login: &str, db: &Db) -> Result<Option<Principal>>;
+    async fn touch_acl(&self, id: Id, db: &Db) -> Result<()>;
+}
+
+#[async_trait]
+pub trait PermissionSource: Send + Sync {
+    async fn grants(&self, principal: Id, db: &Db) -> Result<BTreeMap<String, bool>>;
+}
+
+pub trait PermissionCatalogue: Send + Sync {
+    fn registered(&self, key: &str) -> bool;
+    fn holds(&self, principal: &Principal, key: &str) -> bool;
 }
 
 #[async_trait]

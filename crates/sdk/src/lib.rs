@@ -57,6 +57,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::collections::BTreeMap;
+
     use keel_types::{Level, Principal, Scope, Via};
     use sea_orm::DatabaseConnection;
 
@@ -75,6 +77,7 @@ pub(crate) mod tests {
             external_id: None,
             origin: None,
             lang: "en".into(),
+            grants: BTreeMap::new(),
         }
     }
 

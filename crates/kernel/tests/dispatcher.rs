@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -512,6 +513,7 @@ fn principal(level: Level, account: &str) -> Principal {
         external_id: None,
         origin: None,
         lang: "en".into(),
+        grants: BTreeMap::new(),
     }
 }
 

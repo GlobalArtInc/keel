@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use keel_kernel::dispatcher::{CallOptions, Dispatcher, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
@@ -35,6 +37,7 @@ fn principal(level: Level, account: Id) -> Principal {
         external_id: None,
         origin: None,
         lang: "en".into(),
+        grants: BTreeMap::new(),
     }
 }
 

@@ -97,6 +97,8 @@ impl ScopePolicy for DefaultScopePolicy {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use keel_types::{Scope, Via};
     use sea_orm::{DbBackend, QueryTrait};
@@ -140,6 +142,7 @@ mod tests {
             external_id: None,
             origin: None,
             lang: "en".into(),
+            grants: BTreeMap::new(),
         }
     }
 

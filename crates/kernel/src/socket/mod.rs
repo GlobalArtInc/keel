@@ -24,6 +24,7 @@ use tokio::task::{JoinHandle, JoinSet};
 
 use crate::boot;
 use crate::dispatcher::{CallOptions, Dispatcher, generate_request_id};
+use crate::grants;
 use crate::http::{Projection, acceptable_request_id, catalogue};
 use crate::keel::StoredPrincipals;
 
@@ -318,6 +319,7 @@ impl Socket {
         };
         principal.via = Via::Socket;
         principal.actor = Some(Box::new(owner()));
+        grants::overlay(self.dispatcher.registry(), &mut principal, &db).await?;
         Ok(principal)
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -112,6 +113,7 @@ async fn stored(db: &Db, login: &str) -> Result<Option<Principal>> {
         external_id: None,
         origin: None,
         lang: row.try_get("", "lang")?,
+        grants: BTreeMap::new(),
     }))
 }
 
@@ -133,6 +135,7 @@ fn principal(level: Level, account: Id) -> Principal {
         external_id: None,
         origin: None,
         lang: "en".into(),
+        grants: BTreeMap::new(),
     }
 }
 

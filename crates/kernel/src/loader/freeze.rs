@@ -6,7 +6,9 @@ use keel_sdk::runtime::{
     Contributions, Guard, HookDef, Invoker, PermissionDef, ServiceKey, Services, StartHook,
     StopHook, UiError, ViewDef,
 };
-use keel_sdk::system::{AccountSource, LanguageSource, PrincipalSource, SecretCipher};
+use keel_sdk::system::{
+    AccountSource, LanguageSource, PermissionCatalogue, PrincipalSource, SecretCipher,
+};
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenUi};
@@ -21,6 +23,7 @@ use super::init::Initialised;
 use super::settings::DefaultSettings;
 use super::{keys, patch, section};
 use crate::clock::Clock;
+use crate::dispatcher::guards::RegisteredPermissions;
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -413,6 +416,9 @@ impl Freezer {
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
         services.provide::<dyn LanguageSource>(Arc::new(Languages(self.catalogue.languages())));
+        services.provide::<dyn PermissionCatalogue>(Arc::new(RegisteredPermissions::new(
+            self.permissions.clone(),
+        )));
         if let Some(key) = graph.key() {
             services.provide::<dyn SecretCipher>(Arc::new(DataKeyCipher::new(key.clone())));
         }

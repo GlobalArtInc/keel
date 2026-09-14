@@ -12,6 +12,8 @@ mod settings;
 pub use composition::{Composition, CompositionError, Graph, LEDGER_PREFIX, Problem, Sections};
 pub use freeze::{FreezeError, FreezeProblem, Frozen};
 pub use i18n::REQUIRED_LANGUAGE;
+#[cfg(test)]
+pub(crate) use i18n::leaves;
 pub use init::{InitError, Initialised};
 pub use lifecycle::{Kernel, StartError, StopError};
 pub use migrate::{ACTIVE, MigrateError, Migrated, ORPHANED};
