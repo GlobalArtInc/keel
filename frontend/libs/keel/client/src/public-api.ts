@@ -8,9 +8,11 @@ export {
   LANG_PARAM,
   META_VERSION_HEADER,
   REQUEST_ID_HEADER,
+  UNAUTHENTICATED_KEY,
   callHeaders,
   isEnvelope,
   requestIdOf,
+  sessionExpired,
 } from './client';
 export type { CallOptions, Catalogue, Fetched } from './client';
 export { KeelBoot } from './boot';

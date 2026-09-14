@@ -24,6 +24,10 @@ const CROSS_SITE: Envelope = {
   ok: false,
   error: { code: 'forbidden', key: 'keel.error.cross_site', requestId: 'req-403' },
 };
+const WRONG_CODE: Envelope = {
+  ok: false,
+  error: { code: 'unauthenticated', key: 'auth.error.code', requestId: 'req-code' },
+};
 
 interface Harness {
   client: KeelClient;
@@ -121,7 +125,7 @@ describe('KeelHttpClient', () => {
     await without;
   });
 
-  it('a 401 emits unauthenticated once and a 403 cross_site is returned as the envelope', async () => {
+  it('a 401 keel.error.unauthenticated emits unauthenticated once, while a 401 of a function and a 403 cross_site are returned as the envelope', async () => {
     const { client, http, boot } = harness();
     const state = { bursts: 0 };
     client.unauthenticated.subscribe(() => {
@@ -148,6 +152,14 @@ describe('KeelHttpClient', () => {
     expect(state.bursts).toBe(1);
 
     await boot();
+    const wrongCode = call(client, 'auth.totp.confirm', { code: '000000' });
+    http
+      .expectOne('/api/v1/call/auth.totp.confirm')
+      .flush(WRONG_CODE, { status: 401, statusText: 'Unauthorized' });
+    expect(await wrongCode).toEqual(WRONG_CODE);
+    expect(state.bursts).toBe(1);
+    expect(client.lastRequestId()).toBe('req-code');
+
     const later = call(client, 'dns.zone.list', {});
     http
       .expectOne('/api/v1/call/dns.zone.list')

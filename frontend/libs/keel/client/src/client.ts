@@ -17,6 +17,7 @@ export const META_VERSION_HEADER = 'X-Keel-Meta-Version';
 export const IDEMPOTENT_REPLAY_HEADER = 'X-Keel-Idempotent-Replay';
 export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
 export const LANG_PARAM = 'lang';
+export const UNAUTHENTICATED_KEY = 'keel.error.unauthenticated';
 
 const IF_NONE_MATCH = 'If-None-Match';
 const ETAG = 'ETag';
@@ -93,6 +94,10 @@ export function callHeaders(options: CallOptions): HttpHeaders {
     headers = headers.set(AUTHORIZATION, `Bearer ${options.bearer}`);
   }
   return headers;
+}
+
+export function sessionExpired(body: unknown): boolean {
+  return !isEnvelope(body) || body.ok || body.error.key === UNAUTHENTICATED_KEY;
 }
 
 function isNetworkFailure(error: unknown): boolean {
@@ -212,7 +217,7 @@ export class KeelHttpClient extends KeelClient {
       }),
       catchError((error: unknown) => {
         if (error instanceof HttpErrorResponse) {
-          this.observe(error.headers, error.status);
+          this.observe(error.headers, error.status, error.error);
           if (error.status === NOT_MODIFIED) {
             return of(null);
           }
@@ -232,7 +237,7 @@ export class KeelHttpClient extends KeelClient {
     body: unknown,
     func: string,
   ): Envelope<T> {
-    this.observe(headers, status);
+    this.observe(headers, status, body);
     if (!isEnvelope(body)) {
       throw new TypeError(`${func} answered something other than a call envelope`);
     }
@@ -245,13 +250,13 @@ export class KeelHttpClient extends KeelClient {
     return envelope;
   }
 
-  private observe(headers: HttpHeaders, status: number): void {
+  private observe(headers: HttpHeaders, status: number, body?: unknown): void {
     const requestId = headers.get(REQUEST_ID_HEADER);
     if (requestId !== null) {
       this.requestId.set(requestId);
     }
     if (status === UNAUTHENTICATED) {
-      if (this.armed) {
+      if (this.armed && sessionExpired(body)) {
         this.armed = false;
         this.bursts.next();
       }

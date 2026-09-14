@@ -122,4 +122,59 @@ export {
   pathOf,
 } from './not-found';
 
+export { SHELL_VIEWS, provideKeelShellViews } from './views';
+export {
+  KEY_FIELD,
+  SETTINGS_DEFAULT_KEY,
+  SETTINGS_GET,
+  SETTINGS_SET,
+  SETTINGS_TITLE_KEY,
+  VALUE_FIELD,
+  isSettingRow,
+  settingKeyOf,
+  valueDescriptor,
+  valueSchema,
+  valuesOf,
+} from './settings-value/setting';
+export type { SettingRow } from './settings-value/setting';
+export { KeelSettingsValueComponent } from './settings-value/settings-value.component';
+export type { SettingState } from './settings-value/settings-value.component';
+export {
+  CODE_LABEL_KEY,
+  DISABLE_TITLE_KEY,
+  ENROLL_TITLE_KEY,
+  PASSWORD_FIELDS,
+  PASSWORD_SET,
+  QUIET_ZONE,
+  SECURITY_CONFIRM_KEY,
+  SECURITY_DISABLE_KEY,
+  SECURITY_ENROLLED_KEY,
+  SECURITY_ENROLL_KEY,
+  SECURITY_NOT_ENROLLED_KEY,
+  SECURITY_PASSWORD_HINT_KEY,
+  SECURITY_PASSWORD_KEY,
+  SECURITY_RECOVERY_HINT_KEY,
+  SECURITY_RECOVERY_KEY,
+  SECURITY_SECRET_HINT_KEY,
+  SECURITY_SECRET_KEY,
+  SECURITY_TITLE_KEY,
+  SECURITY_TOTP_KEY,
+  TOTP_CONFIRM,
+  TOTP_DISABLE,
+  TOTP_ENROLL,
+  isEnrolled,
+  ownPasswordDescriptor,
+  qrOf,
+  recoveryCodesOf,
+  viewBoxOf,
+} from './security/totp';
+export type { Enrolled, QrImage } from './security/totp';
+export { CODE_FIELD, codeErrorOf, codeForm } from './security/code';
+export type { CodeForm } from './security/code';
+export { KeelSecurityComponent, MODAL_WIDTH } from './security/security.component';
+export type { PasswordState } from './security/security.component';
+export { KeelTotpEnrollComponent } from './security/enroll.component';
+export type { EnrollStage } from './security/enroll.component';
+export { KeelTotpDisableComponent } from './security/disable.component';
+
 export const KEEL_SHELL_VERSION = '0.1.0';

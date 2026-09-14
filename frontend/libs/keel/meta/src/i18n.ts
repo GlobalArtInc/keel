@@ -61,12 +61,17 @@ export function entityPrefix(func: string): string {
   return dot < 0 ? func : func.slice(0, dot);
 }
 
-export function sharedKey(key: string): string | undefined {
+const PREFIX_DEPTHS: readonly number[] = [2, 1];
+
+export function sharedKeys(key: string): string[] {
   const segments = key.split('.');
-  if (segments.length < 3) {
-    return undefined;
-  }
-  return `${SHARED_PREFIX}.${segments.slice(2).join('.')}`;
+  return PREFIX_DEPTHS.filter((depth) => segments.length > depth)
+    .map((depth) => `${SHARED_PREFIX}.${segments.slice(depth).join('.')}`)
+    .filter((shared) => shared !== key);
+}
+
+export function sharedKey(key: string): string | undefined {
+  return sharedKeys(key)[0];
 }
 
 export function lookup(catalogue: Messages, key: string): string | undefined {
@@ -74,9 +79,13 @@ export function lookup(catalogue: Messages, key: string): string | undefined {
   if (typeof own === 'string') {
     return own;
   }
-  const shared = sharedKey(key);
-  const inherited = shared === undefined ? undefined : find(catalogue, shared);
-  return typeof inherited === 'string' ? inherited : undefined;
+  for (const shared of sharedKeys(key)) {
+    const inherited = find(catalogue, shared);
+    if (typeof inherited === 'string') {
+      return inherited;
+    }
+  }
+  return undefined;
 }
 
 export function format(message: string, params: Record<string, unknown> = {}): string {

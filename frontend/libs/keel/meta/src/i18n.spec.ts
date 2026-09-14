@@ -6,6 +6,7 @@ import {
   format,
   lookup,
   sharedKey,
+  sharedKeys,
   type Descriptor,
   type Messages,
 } from '@globalart/keel/meta';
@@ -121,7 +122,12 @@ describe('lookup', () => {
   const catalogue: Messages = {
     dns: { zone: { list: { title: 'Zones' }, empty: 'No zones', column: { name: 'Zone' } } },
     'dns.zone.edit.title': 'Zone',
-    keel: { column: { createdAt: 'Created' }, name: 'Name' },
+    keel: {
+      column: { createdAt: 'Created' },
+      name: 'Name',
+      page: { main: 'Main' },
+      title: 'Title',
+    },
     menu: { dns: 'DNS' },
   };
 
@@ -131,8 +137,18 @@ describe('lookup', () => {
     expect(lookup(catalogue, 'dns.zone.column.name')).toBe('Zone');
     expect(lookup(catalogue, 'dns.zone.name')).toBe('Name');
     expect(lookup(catalogue, 'dns.zone.column.updatedAt')).toBeUndefined();
-    expect(sharedKey('menu.dns')).toBeUndefined();
+    expect(sharedKey('menu.dns')).toBe('keel.dns');
     expect(lookup(catalogue, 'menu.other')).toBeUndefined();
+  });
+
+  it('a function without an entity segment inherits the tail after its module, as the kernel derives it', () => {
+    expect(sharedKeys('settings.page.main')).toEqual(['keel.main', 'keel.page.main']);
+    expect(lookup(catalogue, 'settings.page.main')).toBe('Main');
+    expect(lookup(catalogue, 'note.title')).toBe('Title');
+    expect(sharedKeys('keel.page.main')).toEqual(['keel.main']);
+    expect(sharedKeys('keel.account.kind')).toEqual(['keel.kind']);
+    expect(sharedKeys('title')).toEqual([]);
+    expect(lookup(catalogue, 'keel.page.other')).toBeUndefined();
   });
 
   it('walks nested objects and flat entries alike, as the kernel does', () => {

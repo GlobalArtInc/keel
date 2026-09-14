@@ -23,7 +23,7 @@ describe('KeelBoot', () => {
 
   afterEach(() => http.verify());
 
-  it('load keeps the payload as signals and a refetch sends If-None-Match', async () => {
+  it('load keeps the payload as signals, a refetch sends If-None-Match and refresh does not', async () => {
     expect(boot.loaded()).toBe(false);
     expect(boot.menu()).toEqual([]);
 
@@ -55,6 +55,17 @@ describe('KeelBoot', () => {
     expect(await third).toEqual(changed);
     expect(boot.views()).toEqual(['hosting.file-manager']);
     expect(TestBed.inject(KeelClient).metaVersion()).toBe('m-next');
+
+    const enrolled = boot.refresh();
+    const unconditional = http.expectOne('/api/v1/boot');
+    expect(unconditional.request.headers.has('If-None-Match')).toBe(false);
+    unconditional.flush(
+      { ...changed, principal: { ...changed.principal, totp: true } },
+      { headers: { ETag: '"m-next"' } },
+    );
+    await enrolled;
+    expect(boot.principal()?.totp).toBe(true);
+    expect(boot.loaded()).toBe(true);
 
     boot.drop();
     expect(boot.loaded()).toBe(false);

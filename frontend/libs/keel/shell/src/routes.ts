@@ -15,6 +15,7 @@ import { KeelLoginComponent } from './login/login.component';
 import { KeelNotFoundComponent } from './not-found';
 import { KeelProducts } from './products';
 import { KeelLayoutComponent } from './layout/layout.component';
+import { provideKeelShellViews } from './views';
 
 export const FUNC_PARAM = 'func';
 
@@ -26,6 +27,7 @@ export function keelRoutes(): Routes {
   const startup = inject(KeelStartup);
   const products = inject(KeelProducts);
   const widgets = provideKeelWidgets(injectKeelWidgets());
+  const views = provideKeelShellViews();
   return [
     { path: LOGIN_PATH, component: KeelLoginComponent, canActivate: [keelReady] },
     { path: LOGOUT_PATH, canActivate: [keelLogout], children: [] },
@@ -42,7 +44,7 @@ export function keelRoutes(): Routes {
             startup
               .ready()
               .then((boot) => products.load(boot))
-              .then((loaded) => screenRoutes([widgets, ...loaded])),
+              .then((loaded) => screenRoutes([widgets, views, ...loaded])),
         },
         { path: '**', component: KeelNotFoundComponent },
       ],

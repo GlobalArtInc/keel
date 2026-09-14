@@ -26,6 +26,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { LOGOUT_PATH, screenUrl } from '../guard';
 import { levelLabel, type Translate } from '../layout/sidebar';
+import { TOTP_ENROLL } from '../security/totp';
 import { ACT_AS_TITLE_KEY, KeelActAsComponent } from './act-as.component';
 import { KeelSu } from './su';
 
@@ -47,7 +48,7 @@ export const USER_SECURITY_KEY = 'keel.shell.user.security';
 export const USER_LOGOUT_KEY = 'keel.shell.user.logout';
 export const SESSIONS_FUNCTION = 'auth.session.list';
 export const TOKENS_FUNCTION = 'auth.token.list';
-export const SECURITY_FUNCTION = 'auth.totp.enroll';
+export const SECURITY_FUNCTION = TOTP_ENROLL;
 
 export const ACT_AS_ENTRY = 'act_as';
 export const LOGOUT_ENTRY = 'logout';

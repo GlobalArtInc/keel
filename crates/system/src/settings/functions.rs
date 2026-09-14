@@ -172,6 +172,7 @@ pub fn list(store: Arc<Store>) -> FunctionDef {
         .kind(Kind::List)
         .access(Level::Reseller, PERMISSION_READ)
         .unowned()
+        .key("key")
         .ui(List::new("settings.list.title")
             .search(["key", "module"])
             .column(Column::new("key", ColumnType::Text).sortable().primary())
@@ -186,7 +187,7 @@ pub fn list(store: Arc<Store>) -> FunctionDef {
             .action(
                 Action::new("set", ActionRole::Edit)
                     .screen("settings.set")
-                    .params([("key", "$key")])
+                    .params([("key", "$id")])
                     .icon("pencil"),
             )
             .row_actions(["set"])

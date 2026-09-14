@@ -18,18 +18,26 @@ export class KeelBoot {
   readonly features = computed(() => this.payload()?.features ?? []);
   readonly meta = computed(() => this.payload()?.meta ?? null);
 
-  async load(): Promise<Boot> {
+  load(): Promise<Boot> {
+    return this.fetch(this.held()?.etag ?? null);
+  }
+
+  refresh(): Promise<Boot> {
+    return this.fetch(null);
+  }
+
+  drop(): void {
+    this.held.set(null);
+  }
+
+  private async fetch(etag: string | null): Promise<Boot> {
     const held = this.held();
-    const fetched = await firstValueFrom(this.client.boot(held?.etag ?? null));
+    const fetched = await firstValueFrom(this.client.boot(etag));
     const next = fetched ?? held;
     if (next === null) {
       throw new TypeError('the boot answered not modified before any payload was held');
     }
     this.held.set(next);
     return next.body;
-  }
-
-  drop(): void {
-    this.held.set(null);
   }
 }
