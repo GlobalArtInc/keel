@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/.angular/',
       '**/coverage/',
       '**/storybook-static/',
+      '**/e2e/test-results/',
     ],
   },
   {

@@ -9,13 +9,14 @@
   },
   "scripts": {
     "generate": "node tools/generate.mjs && node tools/icons.mjs && node tools/boot.mjs",
-    "lint": "eslint .",
+    "lint": "eslint . && tsc -p e2e/tsconfig.json",
     "test": "node --no-sparkplug node_modules/jest/bin/jest.js",
     "build": "ng build keel && ng build demo && ng build shell && node tools/theme-boot.mjs dist/shell && node tools/compress.mjs dist/shell",
     "format": "prettier --check .",
     "storybook": "ng run keel:storybook",
     "build-storybook": "ng run keel:build-storybook",
-    "test-storybook": "test-storybook --url http://127.0.0.1:6006 --ci"
+    "test-storybook": "test-storybook --url http://127.0.0.1:6006 --ci",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@angular/animations": "~19.1.8",
@@ -41,6 +42,7 @@
     "@angular/cli": "~19.1.9",
     "@angular/compiler-cli": "~19.1.8",
     "@eslint/js": "^9.26.0",
+    "@playwright/test": "^1.62.0",
     "@storybook/addon-a11y": "^10.6.0",
     "@storybook/addon-themes": "^10.6.0",
     "@storybook/angular": "^10.6.0",
@@ -59,6 +61,7 @@
     "jest-preset-angular": "~14.4.2",
     "json-schema-to-typescript": "16.0.0",
     "ng-packagr": "^19.2.2",
+    "otpauth": "^9.5.2",
     "playwright": "^1.62.0",
     "prettier": "^3.5.0",
     "storybook": "^10.6.0",

@@ -4,6 +4,7 @@
 /frontend/.angular
 /frontend/coverage
 /frontend/storybook-static
+/frontend/e2e/test-results
 *.log
 *.snap.new
 .DS_Store

@@ -2,7 +2,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const REGISTRY = 'https://nexus.globalart.hu/repository/npm-hosted/';
-const ENTRY_POINTS = ['meta', 'client', 'forms', 'renderer', 'shell', 'testing'];
+const ENTRY_POINTS = [
+  'meta',
+  'client',
+  'forms',
+  'renderer',
+  'shell',
+  'testing',
+  'testing/playwright',
+];
 const PACKAGE = resolve(import.meta.dirname, '../dist/keel/package.json');
 const WORKSPACE = resolve(import.meta.dirname, '../../Cargo.toml');
 

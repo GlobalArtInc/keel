@@ -72,6 +72,9 @@ importers:
       '@eslint/js':
         specifier: ^9.26.0
         version: 9.39.5
+      '@playwright/test':
+        specifier: ^1.62.0
+        version: 1.63.0
       '@storybook/addon-a11y':
         specifier: ^10.6.0
         version: 10.6.0(storybook@10.6.0(prettier@3.9.6)(react@19.3.0))
@@ -126,6 +129,9 @@ importers:
       ng-packagr:
         specifier: ^19.2.2
         version: 19.2.2(@angular/compiler-cli@19.1.8(@angular/compiler@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1)))(typescript@5.7.3))(tslib@2.8.1)(typescript@5.7.3)
+      otpauth:
+        specifier: ^9.5.2
+        version: 9.5.2
       playwright:
         specifier: ^1.62.0
         version: 1.63.0
@@ -176,6 +182,9 @@ importers:
       '@globalart/phoenix-ui':
         specifier: 0.2.2
         version: 0.2.2(1a8f5b340420e1a8522f51e307146c5d)
+      '@playwright/test':
+        specifier: ^1.62.0
+        version: 1.63.0
       lucide-angular:
         specifier: ^1.0.0
         version: 1.0.0(@angular/common@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))
@@ -2328,6 +2337,10 @@ packages:
       typescript: '>=5.5 <5.8'
       webpack: ^5.54.0
 
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -2699,6 +2712,11 @@ packages:
   '@pkgr/core@0.3.6':
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
+
+  '@playwright/test@1.63.0':
+    resolution: {integrity: sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   '@rollup/plugin-json@6.1.0':
     resolution: {integrity: sha512-EGI2te5ENk1coGeADSIwZ7G2Q8CJS2sF120T7jLw4xFw9n7wIOXHo+kIYRAoVpJAN+kmqZSoO3Fp4JtoNF4ReA==}
@@ -6299,6 +6317,9 @@ packages:
   os-homedir@1.0.2:
     resolution: {integrity: sha512-B5JU3cabzk8c67mRRd3ECmROafjYMXbuzlwtqdM8IbS8ktlTix8aFGb2bAGKrSRIlnfKwovGUUr72JUPyOb6kQ==}
     engines: {node: '>=0.10.0'}
+
+  otpauth@9.5.2:
+    resolution: {integrity: sha512-GQ5emWR/x1tcExT62IBT0UfO95wZzJZyxYOJOGVeQF47SYEN9vmh0vISvDZaNMuFJRG+IaWCKtfm+t9Bfoal6w==}
 
   oxc-parser@0.127.0:
     resolution: {integrity: sha512-bkgD4qHlN7WxLdX8bLXdaU54TtQtAIg/ZBAfm0aje/mo3MRDo3P0hZSgr4U7O3xfX+fQmR5AP04JS/TGcZLcFA==}
@@ -10215,6 +10236,8 @@ snapshots:
       typescript: 5.7.3
       webpack: 5.97.1(@swc/core@1.16.2)(esbuild@0.24.2)(postcss@8.4.49)
 
+  '@noble/hashes@2.4.0': {}
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -10473,6 +10496,10 @@ snapshots:
     optional: true
 
   '@pkgr/core@0.3.6': {}
+
+  '@playwright/test@1.63.0':
+    dependencies:
+      playwright: 1.63.0
 
   '@rollup/plugin-json@6.1.0(rollup@4.63.2)':
     dependencies:
@@ -14790,6 +14817,10 @@ snapshots:
     optional: true
 
   os-homedir@1.0.2: {}
+
+  otpauth@9.5.2:
+    dependencies:
+      '@noble/hashes': 2.4.0
 
   oxc-parser@0.127.0:
     dependencies:
