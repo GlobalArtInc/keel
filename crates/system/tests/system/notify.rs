@@ -1,9 +1,12 @@
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
+use keel_sdk::db::Db;
 use keel_sdk::prelude::*;
+use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
 use keel_sdk::serde_json;
 use keel_sdk::system::{Caller, CallerOptions, Frame, PrincipalSource};
 use keel_sdk::types::{Envelope, NotificationFrame, NotificationLevel, Via};
@@ -23,15 +26,36 @@ const PATIENCE: Duration = Duration::from_secs(15);
 const QUIET: Duration = Duration::from_millis(500);
 const SOURCE: &str = "probe.disk";
 
-static REPORTED: Mutex<Vec<Raise>> = Mutex::new(Vec::new());
-static BROKEN: Mutex<bool> = Mutex::new(false);
+static REPORTED: Mutex<Option<HashMap<String, Vec<Raise>>>> = Mutex::new(None);
+static BROKEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-fn report(raises: Vec<Raise>) {
-    *REPORTED.lock().unwrap_or_else(PoisonError::into_inner) = raises;
+fn report(harness: &Harness, raises: Vec<Raise>) {
+    REPORTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get_or_insert_with(HashMap::new)
+        .insert(harness.database().name().to_owned(), raises);
 }
 
-fn breaking(broken: bool) {
-    *BROKEN.lock().unwrap_or_else(PoisonError::into_inner) = broken;
+fn breaking(harness: &Harness, broken: bool) {
+    let mut set = BROKEN.lock().unwrap_or_else(PoisonError::into_inner);
+    let set = set.get_or_insert_with(HashSet::new);
+    if broken {
+        set.insert(harness.database().name().to_owned());
+    } else {
+        set.remove(harness.database().name());
+    }
+}
+
+async fn database_name(db: &Db) -> Result<String> {
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT current_database() AS name",
+        ))
+        .await?
+        .ok_or_else(|| KeelError::internal("probe.error.no_database"))?;
+    Ok(row.try_get::<String>("", "name")?)
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -49,14 +73,22 @@ static PROBE: ModuleDef = ModuleDef {
 };
 
 fn init(r: &mut Registrar) -> Result<()> {
-    r.contribute(ProblemSource::new(SOURCE, |_db| async {
-        if *BROKEN.lock().unwrap_or_else(PoisonError::into_inner) {
+    r.contribute(ProblemSource::new(SOURCE, |db| async move {
+        let name = database_name(&db).await?;
+        if BROKEN
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|set| set.contains(&name))
+        {
             return Err(KeelError::unavailable("probe.error.unreachable"));
         }
         Ok(REPORTED
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone())
+            .as_ref()
+            .and_then(|map| map.get(&name).cloned())
+            .unwrap_or_default())
     }))
     .function(
         function::<Nothing, Nothing>("probe.notify.fail")
@@ -87,8 +119,6 @@ fn snapshots_dir() -> PathBuf {
 }
 
 async fn boot() -> Harness {
-    report(Vec::new());
-    breaking(false);
     Harness::new()
         .module(&keel_system::cron::MODULE)
         .module(&MODULE)
@@ -334,10 +364,13 @@ async fn a_source_polled_by_the_cron_job_raises_what_it_reports_and_clears_what_
 {
     let harness = boot().await;
     let a1 = harness.fixtures().accounts.a1;
-    report(vec![
-        Raise::new("probe.disk", "/", Severity::Warning),
-        Raise::new("probe.quota", &a1.to_string(), Severity::Warning).account(a1),
-    ]);
+    report(
+        &harness,
+        vec![
+            Raise::new("probe.disk", "/", Severity::Warning),
+            Raise::new("probe.quota", &a1.to_string(), Severity::Warning).account(a1),
+        ],
+    );
     run_poll(&harness).await;
     assert_eq!(
         open_problems(&harness).await,
@@ -351,7 +384,10 @@ async fn a_source_polled_by_the_cron_job_raises_what_it_reports_and_clears_what_
     assert_eq!(messages(&harness, Who::A1).await.len(), 1);
     assert_eq!(messages(&harness, Who::A2).await.len(), 0);
 
-    report(vec![Raise::new("probe.disk", "/", Severity::Warning)]);
+    report(
+        &harness,
+        vec![Raise::new("probe.disk", "/", Severity::Warning)],
+    );
     run_poll(&harness).await;
     assert_eq!(open_problems(&harness).await, ["probe.disk / 2"]);
     assert_eq!(messages(&harness, Who::A1).await.len(), 2);
@@ -359,12 +395,12 @@ async fn a_source_polled_by_the_cron_job_raises_what_it_reports_and_clears_what_
         messages(&harness, Who::A1).await[1].starts_with(&format!("{KEY_PROBLEM_CLEARED} info "))
     );
 
-    breaking(true);
+    breaking(&harness, true);
     run_poll(&harness).await;
     assert_eq!(open_problems(&harness).await, ["probe.disk / 2"]);
-    breaking(false);
+    breaking(&harness, false);
 
-    report(Vec::new());
+    report(&harness, Vec::new());
     run_poll(&harness).await;
     assert!(open_problems(&harness).await.is_empty());
     assert_eq!(events(&harness, EVENT_PROBLEM_RAISED).await.len(), 2);
