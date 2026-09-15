@@ -328,6 +328,21 @@ impl Harness {
         )
     }
 
+    pub fn snapshot_descriptors_of(
+        &self,
+        level: Level,
+        dir: impl AsRef<Path>,
+        module: &str,
+    ) -> Vec<String> {
+        snapshots::snapshot_descriptors_of(
+            self.registry(),
+            self.fixtures.at(level),
+            level,
+            dir.as_ref(),
+            Some(module),
+        )
+    }
+
     pub fn router(&self) -> Router {
         let http = Http::new(
             self.db().clone(),

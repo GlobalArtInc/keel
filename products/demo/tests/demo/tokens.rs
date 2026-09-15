@@ -1,5 +1,4 @@
 use keel::prelude::*;
-use keel_demo::MANIFEST;
 use keel_testkit::{Answer, Harness, TestHttp, Who, tokio};
 
 const JSON: (&str, &str) = ("content-type", "application/json");
@@ -32,12 +31,14 @@ async fn call(http: &TestHttp, func: &str, token: &str, body: Value) -> Answer {
 
 #[tokio::test]
 async fn a_token_scoped_to_note_edit_alone_edits_a_note_through_its_nested_invokes() {
-    let harness = Harness::new()
-        .product(&MANIFEST)
+    let harness = crate::demo()
         .module(&keel_system::auth::MODULE)
         .boot()
         .await;
-    assert_eq!(harness.modules(), ["keel", "auth", "note", "testkit"]);
+    assert_eq!(
+        harness.modules(),
+        ["keel", "auth", "task", "note", "testkit"]
+    );
     let http = harness.http().await;
     let token = issue(&harness, json!({ "functions": ["note.edit"] })).await;
 

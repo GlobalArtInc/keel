@@ -6,7 +6,7 @@ use keel::sdk::sea_orm::{
 use keel::sdk::serde_json::{self, Map};
 use keel::types::{AccountState, ErrorCode};
 
-use super::{Batch, Deleted, NoteEdit, NoteKind, Pick, item};
+use super::{Batch, DELETE_BATCH_THRESHOLD, Deleted, NoteEdit, NoteKind, Pick, item};
 
 pub const DUE_AHEAD_DAYS: u64 = 7;
 
@@ -80,6 +80,12 @@ pub fn list() -> FunctionDef {
                         items: Some("title".to_owned()),
                         input: Some(ConfirmInput::Count),
                     }),
+            )
+            .action(
+                Action::new("export_task", ActionRole::Button)
+                    .function("note.export")
+                    .params([("format", "csv")])
+                    .icon("download"),
             )
             .row_actions(["edit", "delete"])
             .empty("note.empty", Some("create"))
@@ -184,6 +190,7 @@ pub fn delete() -> FunctionDef {
         .access(Level::User, "note.manage")
         .key("ids")
         .owned::<item::Entity>()
+        .batch_threshold(DELETE_BATCH_THRESHOLD)
         .handler(|call: Call<Batch>| async move {
             let ids: Vec<String> = call.params().ids.iter().map(ToString::to_string).collect();
             let deleted = item::Entity::delete_many()

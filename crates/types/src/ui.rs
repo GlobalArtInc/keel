@@ -171,9 +171,10 @@ pub enum ConfirmInput {
     Count,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
+    #[default]
     Csv,
     Json,
 }

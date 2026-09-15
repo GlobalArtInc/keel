@@ -67,6 +67,28 @@ impl FromStr for TaskState {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TaskRef {
+    pub task: TaskLink,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TaskLink {
+    pub id: Id,
+}
+
+impl TaskRef {
+    pub fn new(id: Id) -> Self {
+        Self {
+            task: TaskLink { id },
+        }
+    }
+
+    pub fn id(&self) -> Id {
+        self.task.id
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskProgress {
@@ -106,6 +128,21 @@ mod tests {
             .filter(|state| !state.is_final())
             .collect();
         assert_eq!(open, [TaskState::Queued, TaskState::Running]);
+    }
+
+    #[test]
+    fn a_task_ref_answers_the_job_under_task() {
+        let id: Id = "01J9Q3W6B1R8N5X2K4T7M0V9Z3".parse().unwrap();
+        let reference = TaskRef::new(id);
+        assert_eq!(reference.id(), id);
+        assert_eq!(
+            serde_json::to_value(reference).unwrap(),
+            json!({ "task": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } })
+        );
+        let parsed: TaskRef =
+            serde_json::from_value(json!({ "task": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } }))
+                .unwrap();
+        assert_eq!(parsed, reference);
     }
 
     #[test]

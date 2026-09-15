@@ -1,0 +1,61 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.export
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "note.export",
+  "module": "note",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.read"
+  },
+  "params": {
+    "title": "Export",
+    "type": "object",
+    "properties": {
+      "format": {
+        "$ref": "#/$defs/ExportFormat",
+        "default": "csv"
+      },
+      "pace": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0,
+        "maximum": 2000,
+        "default": 0
+      }
+    },
+    "$defs": {
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "json"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Exported",
+    "type": "object",
+    "properties": {
+      "exported": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "exported"
+    ]
+  },
+  "ui": {
+    "title": "note.export.title",
+    "result": "task"
+  }
+}

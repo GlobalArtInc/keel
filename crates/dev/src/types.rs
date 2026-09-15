@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use keel_types::{
     Account, ActionRole, Boot, CallError, Check, Choices, ColumnType, Context, Control, Descriptor,
     Envelope, ErrorCode, Event, Expr, KeelAttrs, Kind, Level, ListQuery, Mode, OptionsQuery, Page,
-    Principal, ScreenResult, ScreenUi, TaskProgress, TaskState, Tone, Total, UiAttrs,
+    Principal, ScreenResult, ScreenUi, TaskProgress, TaskRef, TaskState, Tone, Total, UiAttrs,
 };
 use schemars::generate::SchemaSettings;
 use schemars::transform::{Transform, transform_subschemas};
@@ -148,6 +148,7 @@ pub fn document() -> Result<Document, Error> {
         root::<Total>(&mut generator)?,
         root::<ScreenResult>(&mut generator)?,
         root::<TaskProgress>(&mut generator)?,
+        root::<TaskRef>(&mut generator)?,
         root::<TaskState>(&mut generator)?,
     ];
     let definitions = generator.take_definitions(false);
@@ -291,7 +292,7 @@ mod tests {
         assert_eq!(document.schema["$schema"], json!(META_SCHEMA));
         assert_eq!(document.schema["$id"], json!(DOCUMENT));
         let definitions = document.schema["$defs"].as_object().unwrap();
-        assert_eq!(document.roots.len(), 29);
+        assert_eq!(document.roots.len(), 30);
         for root in &document.roots {
             assert!(definitions.contains_key(root), "{root} is under $defs");
         }
@@ -367,7 +368,7 @@ mod tests {
     #[test]
     fn every_per_type_file_is_one_ref_into_the_document() {
         let files = files().unwrap();
-        assert_eq!(files.len(), 30);
+        assert_eq!(files.len(), 31);
         for (name, content) in &files {
             if name == DOCUMENT {
                 continue;
@@ -420,11 +421,11 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let out = temporary.path().join("schema");
         let outcome = run(&out, false).unwrap();
-        assert_eq!(outcome.files.len(), 30);
+        assert_eq!(outcome.files.len(), 31);
         assert!(
             outcome
                 .to_string()
-                .starts_with("30 schema files written to")
+                .starts_with("31 schema files written to")
         );
         let stale = out.join("Gone.json");
         fs::write(&stale, "{}\n").unwrap();

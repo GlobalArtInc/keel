@@ -13,4 +13,5 @@ mod preferences;
 mod settings;
 mod socket;
 mod storage;
+mod tasks;
 mod views;

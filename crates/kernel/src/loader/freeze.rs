@@ -8,11 +8,11 @@ use keel_sdk::runtime::{
 };
 use keel_sdk::system::{
     AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, ParamMasker,
-    PermissionCatalogue, PrincipalSource, SecretCipher,
+    PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
-use keel_types::ui::{ColumnFilter, ScreenUi};
+use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
 use keel_types::{Access, Descriptor, Kind, Platform};
 use schemars::Schema;
 use serde_json::Value;
@@ -26,6 +26,7 @@ use super::settings::DefaultSettings;
 use super::{keys, patch, section};
 use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
+use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle};
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
@@ -160,6 +161,18 @@ pub enum FreezeProblem {
         function: String,
         #[source]
         source: UiError,
+    },
+    #[error(
+        "module {module}: function {function} answers a task, and no module provides a task runner"
+    )]
+    TaskRunnerMissing { module: String, function: String },
+    #[error(
+        "module {module}: function {function} can become a job, whose stored parameters would hold the secret field {field}"
+    )]
+    TaskStoresSecret {
+        module: String,
+        function: String,
+        field: String,
     },
     #[error(
         "function {function}: field {field} carries an invalid {namespace} attribute: {reason}"
@@ -449,6 +462,7 @@ impl Initialised {
         }
         freezer.group(PLATFORM, None, &SYSTEM_GROUP);
         freezer.references();
+        freezer.tasks();
         freezer.translations(self.graph.products());
         freezer.finish(self.graph)
     }
@@ -843,6 +857,35 @@ impl Freezer {
             }
         }
         self.problems.extend(problems);
+    }
+
+    fn tasks(&mut self) {
+        let runner = self.services.contains(&ServiceKey::of::<dyn TaskRunner>());
+        for function in self.functions.values() {
+            let answers_task = function
+                .descriptor
+                .ui
+                .as_ref()
+                .is_some_and(|ui| ui.result == Some(ScreenResult::Task));
+            let batches = function.def.limits().batch_threshold.is_some();
+            if !answers_task && !batches {
+                continue;
+            }
+            let module = function.module().to_owned();
+            if answers_task && !runner {
+                self.problems.push(FreezeProblem::TaskRunnerMissing {
+                    module: module.clone(),
+                    function: function.name().to_owned(),
+                });
+            }
+            for field in Plan::of_params(&function.descriptor).secret_fields() {
+                self.problems.push(FreezeProblem::TaskStoresSecret {
+                    module: module.clone(),
+                    function: function.name().to_owned(),
+                    field,
+                });
+            }
+        }
     }
 
     fn translations(&mut self, products: &[&'static ProductManifest]) {

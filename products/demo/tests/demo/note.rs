@@ -101,9 +101,9 @@ async fn counts(harness: &Harness) -> (String, String) {
 
 #[tokio::test]
 async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_account() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     assert_eq!(harness.registry().product_ids(), ["demo"]);
-    assert_eq!(harness.modules(), ["keel", "note", "testkit"]);
+    assert_eq!(harness.modules(), ["keel", "task", "note", "testkit"]);
 
     let saved = harness
         .call(
@@ -180,7 +180,7 @@ async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_acco
 
 #[tokio::test]
 async fn the_standard_invariants_hold_for_notes() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let notes = NoteFixture::new();
     harness
         .assert_reseller_sees_only_subtree("note.list", &notes)
@@ -201,7 +201,7 @@ async fn the_standard_invariants_hold_for_notes() {
 
 #[tokio::test]
 async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_note_is_locked() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let alpha = create(&harness, Who::A1, "alpha").await;
     let beta = create(&harness, Who::A1, "beta").await;
     let locked = create(&harness, Who::A1, &format!("{LOCKED_PREFIX} gamma")).await;
@@ -286,7 +286,7 @@ async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_n
 
 #[tokio::test]
 async fn note_edit_refuses_a_note_above_the_account_limit_inside_the_transaction() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let mut first = None;
     for index in 0..MAX_PER_ACCOUNT {
         let id = create(&harness, Who::A1, &format!("note {index}")).await;
@@ -332,7 +332,7 @@ async fn note_edit_refuses_a_note_above_the_account_limit_inside_the_transaction
 
 #[tokio::test]
 async fn a_nested_invoke_reuses_the_transaction_of_the_call_on_note_edit() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let saved = harness
         .call(Who::A1, "note.edit", json!({ "title": "read back" }))
         .await;
@@ -380,15 +380,16 @@ async fn a_nested_invoke_reuses_the_transaction_of_the_call_on_note_edit() {
 
 #[tokio::test]
 async fn the_note_descriptors_match_their_snapshots_per_level() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     for level in Level::ALL {
-        let names = harness.snapshot_descriptors(level, snapshots_dir());
+        let names = harness.snapshot_descriptors_of(level, snapshots_dir(), "note");
         let expected: &[&str] = if level < Level::User {
             &[]
         } else {
             &[
                 "note.delete",
                 "note.edit",
+                "note.export",
                 "note.get",
                 "note.import",
                 "note.import.check",
@@ -431,7 +432,7 @@ fn leaves(messages: &Map<String, Value>, prefix: &str, into: &mut Vec<String>) {
 
 #[tokio::test]
 async fn the_ru_dictionaries_name_every_key_of_the_en_dictionaries_freeze_requires() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let registry = harness.registry();
     for key in [
         MANIFEST.name,
@@ -478,7 +479,7 @@ async fn the_ru_dictionaries_name_every_key_of_the_en_dictionaries_freeze_requir
 
 #[tokio::test]
 async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo_brand_and_menu() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let server = harness.http().await;
     let saved = server
         .post(
@@ -569,7 +570,7 @@ fn column_headers(lang: &str) -> [String; 6] {
 
 #[tokio::test]
 async fn ctl_note_list_out_table_shows_translated_headers_in_en_and_ru() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     create(&harness, Who::A1, "tabled").await;
     let socket = harness.socket().await;
     for lang in ["en", "ru"] {
@@ -612,7 +613,7 @@ fn field_error(reply: &Reply, path: &str) -> keel::types::FieldError {
 
 #[tokio::test]
 async fn note_edit_refuses_a_second_note_with_the_same_title_as_a_field_error_on_title() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let first = create(&harness, Who::A1, "groceries").await;
     let second = harness
         .call(Who::A1, "note.edit", json!({ "title": "groceries" }))
@@ -724,8 +725,7 @@ async fn recompute(harness: &Harness, who: Who, tz: chrono_tz::Tz, params: Value
 #[tokio::test]
 async fn note_recompute_fills_due_a_week_ahead_when_kind_turns_todo_and_patches_nothing_otherwise()
 {
-    let harness = Harness::new()
-        .product(&MANIFEST)
+    let harness = crate::demo()
         .clock("2026-09-13T20:00:00Z".parse().expect("an instant"))
         .boot()
         .await;
@@ -788,7 +788,7 @@ async fn note_recompute_fills_due_a_week_ahead_when_kind_turns_todo_and_patches_
 
 #[tokio::test]
 async fn note_import_checks_the_source_page_and_creates_one_note_per_line_inside_the_limit() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     let empty = harness
         .call(Who::A1, "note.import.check", json!({ "text": "\n  \n" }))
         .await;
@@ -972,7 +972,7 @@ fn tag_rows(page: &Value) -> Vec<(String, i64)> {
 
 #[tokio::test]
 async fn note_tag_list_counts_tags_within_the_callers_scope_with_a_sum_total() {
-    let harness = Harness::new().product(&MANIFEST).boot().await;
+    let harness = crate::demo().boot().await;
     for (who, title, tags) in [
         (Who::A1, "a", vec!["work", "urgent"]),
         (Who::A1, "b", vec!["work"]),

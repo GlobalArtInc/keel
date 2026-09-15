@@ -1842,6 +1842,17 @@
         "desc"
       ]
     },
+    "TaskLink": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
     "TaskProgress": {
       "type": "object",
       "properties": {
@@ -1879,6 +1890,17 @@
         "function",
         "state",
         "done"
+      ]
+    },
+    "TaskRef": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/TaskLink"
+        }
+      },
+      "required": [
+        "task"
       ]
     },
     "TaskState": {

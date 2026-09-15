@@ -178,6 +178,15 @@ info:
           "items": "title",
           "input": "count"
         }
+      },
+      {
+        "id": "export_task",
+        "role": "button",
+        "function": "note.export",
+        "icon": "download",
+        "params": {
+          "format": "csv"
+        }
       }
     ],
     "row_actions": [

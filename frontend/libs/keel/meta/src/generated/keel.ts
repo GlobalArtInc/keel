@@ -409,6 +409,9 @@ export interface Principal {
   origin?: string | null;
   lang: string;
 }
+export interface TaskLink {
+  id: Id;
+}
 export interface TaskProgress {
   id: Id;
   function: string;
@@ -416,6 +419,9 @@ export interface TaskProgress {
   done: number;
   total?: number | null;
   message?: string | null;
+}
+export interface TaskRef {
+  task: TaskLink;
 }
 export interface UiAttrs {
   control?: Control | null;

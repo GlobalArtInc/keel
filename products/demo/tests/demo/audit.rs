@@ -1,5 +1,4 @@
 use keel::prelude::*;
-use keel_demo::MANIFEST;
 use keel_system::audit::api::Flush;
 use keel_testkit::{Harness, Who, tokio};
 
@@ -17,15 +16,14 @@ async fn flush(harness: &Harness) {
 #[tokio::test]
 async fn note_edit_records_the_id_as_subject_and_the_masked_result_as_after_while_token_create_records_neither()
  {
-    let harness = Harness::new()
-        .product(&MANIFEST)
+    let harness = crate::demo()
         .module(&keel_system::auth::MODULE)
         .module(&keel_system::audit::MODULE)
         .boot()
         .await;
     assert_eq!(
         harness.modules(),
-        ["keel", "audit", "auth", "note", "testkit"]
+        ["keel", "audit", "auth", "task", "note", "testkit"]
     );
     let created = harness
         .call(

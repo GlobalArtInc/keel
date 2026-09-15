@@ -65,6 +65,12 @@ impl Plan {
         mask(&self.0, value, &|attrs| attrs.once);
     }
 
+    pub fn secret_fields(&self) -> Vec<String> {
+        let mut paths = Vec::new();
+        collect_secret(&self.0, &mut String::new(), &mut paths);
+        paths
+    }
+
     pub fn row_visible(&self, key: &str, level: Level) -> bool {
         self.0
             .fields
@@ -123,6 +129,25 @@ fn mask(tree: &Tree, value: &mut Value, flagged: &dyn Fn(&KeelAttrs) -> bool) {
             }
         }
         _ => {}
+    }
+}
+
+fn collect_secret(tree: &Tree, path: &mut String, into: &mut Vec<String>) {
+    for (name, node) in &tree.fields {
+        let start = path.len();
+        push_segment(path, name);
+        if node.attrs.secret {
+            into.push(path.clone());
+        } else {
+            collect_secret(&node.nested, path, into);
+        }
+        path.truncate(start);
+    }
+    if let Some(items) = &tree.items {
+        let start = path.len();
+        path.push_str("[]");
+        collect_secret(items, path, into);
+        path.truncate(start);
     }
 }
 
@@ -286,6 +311,12 @@ mod tests {
         let mut scalar = json!(7);
         plan.strip(Level::Guest, &mut scalar);
         assert_eq!(scalar, json!(7));
+    }
+
+    #[test]
+    fn the_secret_fields_of_a_plan_are_listed_by_path() {
+        assert_eq!(Plan::of_params(&form()).secret_fields(), ["password"]);
+        assert!(Plan::of_result(&list()).secret_fields().is_empty());
     }
 
     #[test]

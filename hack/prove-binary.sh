@@ -90,7 +90,7 @@ json_get() {
 import json, sys
 with open(sys.argv[1]) as handle:
     doc = json.load(handle)
-print(eval(sys.argv[2], {"doc": doc}))
+print(eval(sys.argv[2], {"doc": doc, "json": json}))
 EOF
 }
 
@@ -306,6 +306,25 @@ stop_serve() {
 
 socket_is_gone() {
   [ ! -e "$site/run/core.sock" ]
+}
+
+task_reaches() {
+  local out=$1 id=$2 state=$3 at_least=${4:-0}
+  local waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if run_keel ctl task.get "id=$id" >"$out" 2>"$site/stderr" && json_is "$out" "doc['ok'] is True and doc['data']['state'] == '$state' and doc['data']['done'] >= $at_least" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  echo "  task $id did not reach $state within ${timeout}s" >&2
+  sed 's/^/  /' "$out" >&2
+  return 1
+}
+
+task_sql() {
+  psql "$(database_url "$admin_url" "$database")" -qAt -c "$1"
 }
 
 unclaimed_section_logged() {
@@ -565,6 +584,27 @@ check "POST /api/v1/call/auth.logout with the cookie is 200" http_is "$site/logo
 check "auth.logout clears the cookie" header_matches "$site/logout.json.headers" set-cookie '^__Host-keel_session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0$'
 check "POST /api/v1/call/note.list with the revoked cookie is 401" http_is "$site/revoked.json" 401 POST /api/v1/call/note.list '{}' "$cookie"
 check "POST /api/v1/call/note.list with the token after the logout is 200" http_is "$site/notes-token-after.json" 200 POST /api/v1/call/note.list '{}' "$token"
+echo "--- note.export as a task"
+check "ctl task.list --out json before the first export" keel_ok "$site/tasks-before.json" ctl task.list --out json
+check "task.list answers an empty page" json_is "$site/tasks-before.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "ctl note.export format=csv" keel_ok "$site/export.json" ctl note.export format=csv
+check "note.export answers a task ref" json_is "$site/export.json" 'doc["ok"] is True and list(doc["data"]) == ["task"] and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["task"]["id"])'
+export_id=$(json_get "$site/export.json" 'doc["data"]["task"]["id"]')
+check "task.get answers done within ${timeout}s" task_reaches "$site/export-done.json" "$export_id" done
+check "task.get answers the note count as progress, the exported count and a log line per note" json_is "$site/export-done.json" 'doc["data"]["function"] == "note.export" and doc["data"]["class"] == "export" and doc["data"]["progress"] == "4/4" and doc["data"]["result"] == {"exported": 4} and sorted(line.split(" ", 1)[1] for line in doc["data"]["logTail"]) == ["exported alpha", "exported beta", "exported hers", "exported x"]'
+check "the export file holds the header and one record per note" test "$(cut -d, -f2 "$site/lib/tasks/$export_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
+check "ctl note.export format=csv pace=500" keel_ok "$site/export-paced.json" ctl note.export format=csv pace=500
+check "the paced export answers a task ref" json_is "$site/export-paced.json" 'doc["ok"] is True and list(doc["data"]) == ["task"]'
+paced_id=$(json_get "$site/export-paced.json" 'doc["data"]["task"]["id"]')
+check "task.get answers running after the first note of the paced export" task_reaches "$site/export-running.json" "$paced_id" running 1
+check "keel serve stops on SIGTERM while the export runs" stop_serve
+check "the export is interrupted with its checkpoint kept" test "$(task_sql "SELECT state || ' ' || (checkpoint_json->>'written' = progress_done::text)::text FROM keel.task_job WHERE id = '$paced_id'")" = "interrupted true"
+start_serve resumed
+check "task.get answers done after the restart" task_reaches "$site/export-resumed.json" "$paced_id" done
+check "the resumed export answers the note count with each exported line exactly once" json_is "$site/export-resumed.json" 'doc["data"]["state"] == "done" and doc["data"]["progress"] == "4/4" and doc["data"]["result"] == {"exported": 4} and doc["data"]["error"] is None and sorted(line.split(" ", 1)[1] for line in doc["data"]["logTail"]) == ["exported alpha", "exported beta", "exported hers", "exported x"]'
+check "the resumed export file holds each record once" test "$(cut -d, -f2 "$site/lib/tasks/$paced_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
+check "ctl note.delete of two ids runs inline" keel_ok "$site/delete-inline.json" ctl note.delete "ids=$(json_get "$site/import.json" 'json.dumps(doc["data"]["ids"])')"
+check "note.delete answers the deleted count" json_is "$site/delete-inline.json" 'doc["ok"] is True and doc["data"] == {"deleted": 2}'
 check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
 check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["ok"] is True and doc["data"]["action"] == "deny" and doc["data"]["cidr"] == "127.0.0.1/32" and doc["data"]["level"] == "user" and doc["data"]["comment"] == "prove" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
 ip_rule_id=$(json_get "$site/ip-rule.json" 'doc["data"]["id"]')
@@ -613,7 +653,7 @@ check "audit.list answers the su row with root as the principal" json_is "$site/
 check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
-check "task.list answers an empty page" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "task.list keeps the two finished exports after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 2 and [(row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]] == [("note.export", "done", "4/4")] * 2'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

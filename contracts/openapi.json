@@ -3716,6 +3716,88 @@
         }
       }
     },
+    "/api/v1/call/note.export": {
+      "post": {
+        "operationId": "note.export",
+        "tags": [
+          "note"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "note.read"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Export",
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "$ref": "#/components/schemas/ExportFormat",
+                    "default": "csv"
+                  },
+                  "pace": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "maximum": 2000,
+                    "default": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Exported",
+                      "type": "object",
+                      "properties": {
+                        "exported": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "exported"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/note.get": {
       "post": {
         "operationId": "note.get",
@@ -5747,6 +5829,13 @@
           "unavailable",
           "peer",
           "internal"
+        ]
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "json"
         ]
       },
       "FieldError": {

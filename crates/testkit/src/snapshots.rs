@@ -15,6 +15,16 @@ pub fn snapshot_descriptors(
     level: Level,
     dir: &Path,
 ) -> Vec<String> {
+    snapshot_descriptors_of(registry, principal, level, dir, None)
+}
+
+pub fn snapshot_descriptors_of(
+    registry: &Registry,
+    principal: &Principal,
+    level: Level,
+    dir: &Path,
+    module: Option<&str>,
+) -> Vec<String> {
     assert!(
         dir.is_absolute(),
         "the snapshot directory must be absolute, build it from CARGO_MANIFEST_DIR: {}",
@@ -29,7 +39,10 @@ pub fn snapshot_descriptors(
     let mut names = Vec::new();
     settings.bind(|| {
         for function in registry.functions() {
-            if is_platform_module(function.module()) || projection.admit(function).is_err() {
+            if is_platform_module(function.module())
+                || module.is_some_and(|module| module != function.module())
+                || projection.admit(function).is_err()
+            {
                 continue;
             }
             let descriptor = projection.project(function);

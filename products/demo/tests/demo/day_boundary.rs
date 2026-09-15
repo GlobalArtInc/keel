@@ -1,6 +1,5 @@
 use keel::prelude::*;
-use keel_demo::MANIFEST;
-use keel_testkit::{Answer, Harness, TestHttp, Who, tokio};
+use keel_testkit::{Answer, TestHttp, Who, tokio};
 
 const JSON: (&str, &str) = ("content-type", "application/json");
 
@@ -24,8 +23,7 @@ async fn list(http: &TestHttp, who: Who, key: &str, op: &str, value: &str) -> Ve
 
 #[tokio::test]
 async fn a_bare_date_filter_takes_the_day_boundary_in_the_callers_zone_and_utc_without_one() {
-    let harness = Harness::new()
-        .product(&MANIFEST)
+    let harness = crate::demo()
         .module(&keel_system::auth::MODULE)
         .module(&keel_system::settings::MODULE)
         .clock("2026-09-13T20:00:00Z".parse().expect("an instant"))

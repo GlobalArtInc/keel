@@ -3,6 +3,7 @@
     "list": { "title": "Notes" },
     "edit": { "title": "Note" },
     "import": { "title": "Import notes" },
+    "export": { "title": "Export notes" },
     "tag": {
       "list": { "title": "Tags" },
       "empty": "No tags yet",
@@ -21,6 +22,10 @@
     "tags": "Tags",
     "due": "Due",
     "text": "Lines",
+    "format": "Format",
+    "format.csv": "CSV",
+    "format.json": "JSON",
+    "pace": "Pause after each note, ms",
     "account": "Account",
     "page": {
       "main": "Note",
@@ -39,7 +44,8 @@
     "action": {
       "create": "New note",
       "edit": "Edit",
-      "delete": "Delete"
+      "delete": "Delete",
+      "export_task": "Export"
     },
     "error": {
       "locked": "The note {title} is locked and cannot be deleted",
@@ -47,7 +53,9 @@
       "account_suspended": "Notes cannot be changed while the account is suspended",
       "exists": "A note titled {title} already exists",
       "line_too_long": "Line {line} is longer than {max} characters",
-      "empty": "There is no line to import"
+      "empty": "There is no line to import",
+      "export_inline": "The export runs as a task alone",
+      "export_output": "The export file could not be written"
     }
   }
 }

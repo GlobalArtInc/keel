@@ -387,6 +387,36 @@ impl From<Form> for UiDef {
 }
 
 #[derive(Clone, Debug)]
+pub struct ActionScreen {
+    def: UiDef,
+}
+
+impl ActionScreen {
+    pub fn new(title: &str) -> Self {
+        Self {
+            def: UiDef {
+                screen: ScreenUi {
+                    title: title.to_owned(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn result(mut self, result: ScreenResult) -> Self {
+        self.def.screen.result = Some(result);
+        self
+    }
+}
+
+impl From<ActionScreen> for UiDef {
+    fn from(action: ActionScreen) -> Self {
+        action.def
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct List {
     def: UiDef,
 }
@@ -868,6 +898,21 @@ mod tests {
         assert_eq!(screen.pages[0].validate.as_deref(), Some("m.w.check"));
         assert_eq!(screen.pages[1].validate, None);
         assert_eq!(screen.result, Some(ScreenResult::Task));
+    }
+
+    #[test]
+    fn an_action_screen_carries_its_title_and_result_alone() {
+        let def: UiDef = ActionScreen::new("note.export.title")
+            .result(ScreenResult::Task)
+            .into();
+        let screen = def.compile(&known([])).unwrap();
+        assert_eq!(
+            serde_json::to_value(&screen).unwrap(),
+            json!({ "title": "note.export.title", "result": "task" })
+        );
+        let bare: UiDef = ActionScreen::new("note.export.title").into();
+        assert_eq!(bare.screen().result, None);
+        assert!(bare.field_names().is_empty());
     }
 
     #[test]

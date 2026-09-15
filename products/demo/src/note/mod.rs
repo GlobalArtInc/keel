@@ -1,3 +1,4 @@
+mod export;
 mod functions;
 mod hooks;
 mod import;
@@ -10,7 +11,8 @@ use keel::sdk::chrono::NaiveDate;
 pub const MAX_PER_ACCOUNT: u64 = 20;
 pub const MAX_LINE: usize = 200;
 pub const LOCKED_PREFIX: &str = "locked";
-pub const FUNCTIONS: [&str; 8] = [
+pub const DELETE_BATCH_THRESHOLD: u32 = 10;
+pub const FUNCTIONS: [&str; 9] = [
     "note.list",
     "note.get",
     "note.edit",
@@ -19,7 +21,13 @@ pub const FUNCTIONS: [&str; 8] = [
     "note.import",
     "note.import.check",
     "note.tag.list",
+    "note.export",
 ];
+
+pub use export::{
+    CLASS as EXPORT_CLASS, CSV_HEADER as EXPORT_CSV_HEADER, LOG_PREFIX as EXPORT_LOG_PREFIX,
+    MAX_PACE_MS as EXPORT_MAX_PACE_MS,
+};
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations").table("keel_migration_note");
@@ -28,7 +36,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "note",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &[],
+    requires: &["task"],
     migrations: Some(&MIGRATIONS),
     init,
 };
@@ -102,6 +110,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(import::import())
         .function(import::check())
         .function(tags::list())
+        .function(export::export())
         .permission("note.read", &[Level::User, Level::Reseller])
         .permission("note.manage", &[Level::User, Level::Reseller])
         .menu(
@@ -148,6 +157,7 @@ mod tests {
                 ("note.import", Kind::Wizard, Mode::Write),
                 ("note.import.check", Kind::Action, Mode::Read),
                 ("note.tag.list", Kind::List, Mode::Read),
+                ("note.export", Kind::Action, Mode::Read),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, _, _)| *name).collect();
@@ -186,6 +196,16 @@ mod tests {
         assert_eq!(languages, ["en", "ru"]);
         assert_eq!(registrations.before[0].function, "note.delete");
         assert_eq!(registrations.within[0].function, "note.edit");
+        let delete = registrations
+            .functions
+            .iter()
+            .find(|def| def.name() == "note.delete")
+            .expect("note.delete");
+        assert_eq!(
+            delete.limits().batch_threshold,
+            Some(DELETE_BATCH_THRESHOLD)
+        );
+        assert_eq!(MODULE.requires, ["task"]);
         assert_eq!(MODULE.sdk, VERSION);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),
