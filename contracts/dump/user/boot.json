@@ -39,14 +39,14 @@
       "id": "demo",
       "product": "demo",
       "label": "menu.demo",
-      "icon": "notebook",
+      "icon": "book-open",
       "items": [
         {
           "path": "demo/notes",
           "label": "note.list.title",
           "func": "note.list",
           "kind": "list",
-          "icon": "notebook"
+          "icon": "book-open"
         },
         {
           "path": "demo/tags",
@@ -89,7 +89,7 @@
           "label": "audit.list.title",
           "func": "audit.list",
           "kind": "list",
-          "icon": "scroll-text"
+          "icon": "history"
         },
         {
           "path": "system/tokens",

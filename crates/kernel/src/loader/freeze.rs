@@ -19,6 +19,7 @@ use serde_json::Value;
 use super::composition::Sections;
 use super::composition::{API, Graph};
 use super::i18n::{Catalogue, REQUIRED_LANGUAGE, leaves, placeholder_fault};
+use super::icons::{ICONS_FILE, IconSet};
 use super::init::Initialised;
 use super::settings::DefaultSettings;
 use super::{keys, patch, section};
@@ -165,6 +166,32 @@ pub enum FreezeProblem {
         namespace: &'static str,
         reason: String,
     },
+    #[error("{ICONS_FILE} embedded in the kernel is not a JSON array of icon names: {reason}")]
+    IconSet { reason: String },
+    #[error(
+        "function {function}: {member} names the icon {icon}, which is outside the phoenix icon set"
+    )]
+    Icon {
+        function: String,
+        member: String,
+        icon: String,
+    },
+    #[error(
+        "module {module}: menu node {path} names the icon {icon}, which is outside the phoenix icon set"
+    )]
+    MenuIcon {
+        module: String,
+        path: String,
+        icon: String,
+    },
+    #[error(
+        "{owner}: the menu group {group} names the icon {icon}, which is outside the phoenix icon set"
+    )]
+    GroupIcon {
+        owner: String,
+        group: String,
+        icon: String,
+    },
     #[error("function {function}: {member} names {target}, which is not registered")]
     Reference {
         function: String,
@@ -293,6 +320,7 @@ fn kind(kind: Kind) -> &'static str {
 
 struct Freezer {
     problems: Vec<FreezeProblem>,
+    icons: IconSet,
     services: Services,
     providers: HashMap<ServiceKey, String>,
     invoker: Option<(String, Arc<dyn Invoker>)>,
@@ -317,8 +345,16 @@ struct Freezer {
 
 impl Initialised {
     pub fn freeze(self) -> Result<Frozen, FreezeError> {
+        let mut problems = Vec::new();
+        let icons = IconSet::embedded().unwrap_or_else(|error| {
+            problems.push(FreezeProblem::IconSet {
+                reason: error.to_string(),
+            });
+            IconSet::any()
+        });
         let mut freezer = Freezer {
-            problems: Vec::new(),
+            problems,
+            icons,
             services: Services::new(),
             providers: HashMap::new(),
             invoker: None,
@@ -603,6 +639,15 @@ impl Freezer {
         }
         self.menu_owners
             .insert(node.path().to_owned(), module.to_owned());
+        if let Some(icon) = node.icon_name()
+            && !self.icons.admits(icon)
+        {
+            self.problems.push(FreezeProblem::MenuIcon {
+                module: module.to_owned(),
+                path: node.path().to_owned(),
+                icon: icon.to_owned(),
+            });
+        }
         self.menu.push(node);
     }
 
@@ -681,6 +726,13 @@ impl Freezer {
         }
         self.group_owners
             .insert(group.id.to_owned(), owner.to_owned());
+        if !self.icons.admits(group.icon) {
+            self.problems.push(FreezeProblem::GroupIcon {
+                owner: owner.to_owned(),
+                group: group.id.to_owned(),
+                icon: group.icon.to_owned(),
+            });
+        }
         self.groups.push(Group {
             id: group.id.to_owned(),
             label: group.label.to_owned(),
@@ -747,6 +799,7 @@ impl Freezer {
                 function: function.name(),
                 known: &self.known,
                 permissions: &self.permissions,
+                icons: &self.icons,
                 problems: &mut problems,
             };
             checker.descriptor(&function.descriptor);
@@ -918,6 +971,7 @@ struct References<'a> {
     function: &'a str,
     known: &'a BTreeMap<String, Kind>,
     permissions: &'a BTreeMap<String, PermissionDef>,
+    icons: &'a IconSet,
     problems: &'a mut Vec<FreezeProblem>,
 }
 
@@ -981,6 +1035,9 @@ impl References<'_> {
             }
             if let Some(screen) = &action.screen {
                 self.function(&format!("action {} screen", action.id), screen, None);
+            }
+            if let Some(icon) = &action.icon {
+                self.icon(&format!("action {}", action.id), icon);
             }
         }
         for column in &ui.columns {
@@ -1052,6 +1109,16 @@ impl References<'_> {
                 function: self.function.to_owned(),
                 member: member.to_owned(),
                 permission: permission.to_owned(),
+            });
+        }
+    }
+
+    fn icon(&mut self, member: &str, icon: &str) {
+        if !self.icons.admits(icon) {
+            self.problems.push(FreezeProblem::Icon {
+                function: self.function.to_owned(),
+                member: member.to_owned(),
+                icon: icon.to_owned(),
             });
         }
     }
@@ -1161,7 +1228,7 @@ mod tests {
         menu: &[MenuGroup {
             id: "base",
             label: "menu.base",
-            icon: "box",
+            icon: "boxes",
             order: 10,
         }],
         levels: LevelLabels {
@@ -1207,7 +1274,7 @@ mod tests {
         )
         .permission("base.item.read", &[Level::User])
         .permission("base.item.manage", &[Level::User])
-        .menu(MenuNode::new("base/items", "base.item.list").icon("box"))
+        .menu(MenuNode::new("base/items", "base.item.list").icon("boxes"))
         .i18n("en", EN)
         .provide::<dyn Clock>(Arc::new(Fixed))
         .contribute(Widget("base"))
@@ -1362,7 +1429,7 @@ mod tests {
             MenuGroup {
                 id: "base",
                 label: "menu.base",
-                icon: "box",
+                icon: "boxes",
                 order: 2,
             },
         ],
@@ -1916,6 +1983,82 @@ mod tests {
                 "function dangling.item.list: ui.row_actions names the action ghost, which the screen does not have",
                 "function dangling.item.wrong: ui.read names dangling.item.list, which is a list function, not get",
                 "module dangling: menu node system/dangling points at dangling.item.nowhere, which is not registered",
+            ]
+        );
+    }
+
+    fn iconic_init(r: &mut Registrar) -> Result<()> {
+        r.function(
+            function::<ListQuery, Page<Item>>("iconic.item.list")
+                .kind(Kind::List)
+                .unowned()
+                .ui(List::new("iconic.item.list.title")
+                    .column(Column::new("title", ColumnType::Text))
+                    .action(
+                        Action::new("new", ActionRole::New)
+                            .screen("iconic.item.list")
+                            .icon("plus"),
+                    )
+                    .action(
+                        Action::new("weigh", ActionRole::Button)
+                            .function("iconic.item.list")
+                            .icon("scale-balanced"),
+                    ))
+                .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
+        )
+        .menu(MenuNode::new("iconic/items", "iconic.item.list").icon("notebook"))
+        .menu(
+            MenuNode::new("iconic/tags", "iconic.item.list")
+                .label("iconic.tags")
+                .icon("tag"),
+        )
+        .i18n(
+            "en",
+            r#"{ "iconic": { "item": { "list": { "title": "Items" }, "action": { "new": "New", "weigh": "Weigh" } }, "tags": "Tags" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(ICONIC, "iconic", [], iconic_init);
+
+    static ICONIC_BUNDLE: ProductManifest = ProductManifest {
+        id: "iconic",
+        name: "product.iconic.brand",
+        version: "0.1.0",
+        api: API,
+        brand: Brand {
+            logo: "product.iconic.logo",
+            hue: 200,
+            chroma: 0.1,
+        },
+        modules: &[&ICONIC],
+        menu: &[MenuGroup {
+            id: "iconic",
+            label: "menu.iconic",
+            icon: "flask",
+            order: 10,
+        }],
+        levels: LevelLabels {
+            labels: &[],
+            disabled: &[],
+        },
+        account_kinds: &[],
+        editions: &[],
+        i18n: &[(
+            "en",
+            r#"{ "product": { "iconic": { "brand": "Iconic" } }, "menu": { "iconic": "Iconic" } }"#,
+        )],
+        assets: &[],
+    };
+
+    #[test]
+    fn an_icon_outside_the_phoenix_set_in_a_descriptor_or_a_menu_node_fails_freeze() {
+        assert_eq!(
+            problems(&[], &[&ICONIC_BUNDLE]),
+            [
+                "module iconic: menu node iconic/items names the icon notebook, which is outside the phoenix icon set",
+                "product iconic: the menu group iconic names the icon flask, which is outside the phoenix icon set",
+                "function iconic.item.list: action weigh names the icon scale-balanced, which is outside the phoenix icon set",
             ]
         );
     }

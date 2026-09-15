@@ -82,7 +82,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(edit())
         .menu(
             MenuNode::new("memo/items", "memo.item.list")
-                .icon("notebook")
+                .icon("book-open")
                 .order(10),
         )
         .i18n("en", include_str!("memo/i18n/en.json"))

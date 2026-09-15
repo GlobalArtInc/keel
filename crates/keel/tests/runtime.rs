@@ -91,7 +91,7 @@ static PROBE: ProductManifest = ProductManifest {
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",
-        icon: "flask",
+        icon: "target",
         order: 10,
     }],
     levels: LevelLabels {

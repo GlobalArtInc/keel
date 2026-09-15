@@ -138,7 +138,7 @@ mod tests {
         menu: &[MenuGroup {
             id: "demo",
             label: "menu.demo",
-            icon: "note",
+            icon: "book-open",
             order: 10,
         }],
         levels: LevelLabels {

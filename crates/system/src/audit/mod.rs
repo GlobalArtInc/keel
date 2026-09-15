@@ -38,7 +38,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission(READ, &[Level::User, Level::Reseller])
         .menu(
             MenuNode::new(MENU_PATH, "audit.list")
-                .icon("scroll-text")
+                .icon("history")
                 .order(50),
         )
         .i18n("en", include_str!("../../i18n/audit/en.json"))

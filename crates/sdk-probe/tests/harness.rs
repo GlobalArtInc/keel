@@ -18,7 +18,7 @@ static MANIFEST: ProductManifest = ProductManifest {
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",
-        icon: "notebook",
+        icon: "book-open",
         order: 10,
     }],
     levels: LevelLabels {

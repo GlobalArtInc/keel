@@ -172,7 +172,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     .permission("probe.item.read", &[Level::User])
     .menu(
         MenuNode::new("probe/items", "probe.item.list")
-            .icon("notebook")
+            .icon("book-open")
             .order(20)
             .badge("probe.item_stale"),
     )
@@ -197,7 +197,7 @@ static PROBE_BUNDLE: ProductManifest = ProductManifest {
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",
-        icon: "flask",
+        icon: "target",
         order: 10,
     }],
     levels: LevelLabels {
@@ -425,12 +425,12 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
     let probe = &boot.menu[0];
     assert_eq!(probe.id, "probe");
     assert_eq!(probe.label, "menu.probe");
-    assert_eq!(probe.icon, "flask");
+    assert_eq!(probe.icon, "target");
     assert_eq!(probe.items[0].label, "probe.item.public.title");
     assert_eq!(probe.items[0].kind, Some(Kind::List));
     assert!(probe.items[0].icon.is_none());
     assert_eq!(probe.items[1].func, "probe.item.list");
-    assert_eq!(probe.items[1].icon.as_deref(), Some("notebook"));
+    assert_eq!(probe.items[1].icon.as_deref(), Some("book-open"));
     assert_eq!(
         probe.items[1]
             .badge

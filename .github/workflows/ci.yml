@@ -266,10 +266,10 @@ jobs:
           NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
 
-      - name: Generate the wire types
+      - name: Generate the wire types and the icon set
         run: pnpm generate
 
-      - name: The generated wire types are committed
+      - name: The generated wire types and the icon set are committed
         run: git diff --exit-code
 
       - name: Lint

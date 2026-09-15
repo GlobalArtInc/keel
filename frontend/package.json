@@ -8,7 +8,7 @@
     "pnpm": "11"
   },
   "scripts": {
-    "generate": "node tools/generate.mjs",
+    "generate": "node tools/generate.mjs && node tools/icons.mjs",
     "lint": "eslint .",
     "test": "node --no-sparkplug node_modules/jest/bin/jest.js",
     "build": "ng build keel && ng build demo && ng build shell && node tools/theme-boot.mjs dist/shell && node tools/compress.mjs dist/shell",

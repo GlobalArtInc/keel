@@ -25,6 +25,11 @@ The wire contract of the platform, in a form both sides can check against.
   version and the enabling instant name the run and are replaced by fixed placeholders. CI runs
   `keel-dev descriptors check` against it and `keel-dev views share` over it; after reviewing a
   change, `KEEL_UPDATE_DUMP=1 hack/descriptors.sh target/debug/keel` rewrites it.
+- `icons.json` — the sorted names of the icon set the shell renders, written from
+  `PHX_ICON_NAMES` of `@globalart/phoenix-ui` by `node tools/icons.mjs`, the second half of
+  `pnpm generate` in `frontend/`. The kernel embeds the file and refuses at start a descriptor
+  action, a menu node or a menu group naming an icon outside it, so the shell never receives an
+  unknown icon; the job `frontend` regenerates the file and fails on a difference.
 - `openapi.json` — the OpenAPI description of the call surface, written from the admin dump by
   `keel-dev openapi --dump contracts/dump --out contracts/openapi.json`: one
   `POST /api/v1/call/<func>` per function, the parameter schema as its request body, the

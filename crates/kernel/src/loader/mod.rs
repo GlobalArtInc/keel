@@ -1,6 +1,7 @@
 mod composition;
 mod freeze;
 mod i18n;
+mod icons;
 mod init;
 mod keys;
 mod lifecycle;

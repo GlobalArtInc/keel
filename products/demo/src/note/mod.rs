@@ -106,7 +106,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission("note.manage", &[Level::User, Level::Reseller])
         .menu(
             MenuNode::new("demo/notes", "note.list")
-                .icon("notebook")
+                .icon("book-open")
                 .order(10),
         )
         .menu(

@@ -62,7 +62,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission(MANAGE, &[Level::Reseller])
         .menu(
             MenuNode::new(MENU_PATH, "settings.list")
-                .icon("sliders")
+                .icon("sliders-horizontal")
                 .order(40),
         )
         .menu(
