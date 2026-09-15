@@ -4,18 +4,20 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::Router;
 use chrono::{DateTime, Utc};
-use keel_kernel::dispatcher::SchemaError;
+use keel_kernel::dispatcher::{LiveBus, SchemaError};
 use keel_kernel::loader::BootError;
 use keel_kernel::secret::{Key, KeyError};
 use keel_kernel::{
     CallOptions, Composition, Dispatcher, Http, HttpOptions, Kernel, Readiness, Registry, Reply,
     Storage,
 };
+use keel_sdk::system::Frame;
 use keel_sdk::{ModuleDef, ProductManifest};
 use keel_types::{Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use tempfile::TempDir;
+use tokio::sync::broadcast;
 
 use crate::auth;
 use crate::clock::FixedClock;
@@ -277,6 +279,13 @@ impl Harness {
 
     pub fn data_dir(&self) -> &Path {
         self.data_dir.path()
+    }
+
+    pub fn live_events(&self) -> broadcast::Receiver<Frame> {
+        match self.registry().services().get::<LiveBus>() {
+            Some(bus) => bus.subscribe(),
+            None => panic!("the kernel provides no live events bus"),
+        }
     }
 
     pub async fn call_as(&self, level: Level, func: &str, params: Value) -> Reply {

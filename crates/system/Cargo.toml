@@ -7,8 +7,9 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings", "audit"]
+default = ["auth", "settings", "audit", "tasks"]
 audit = ["dep:tokio", "dep:tracing"]
+tasks = ["dep:tokio", "dep:tracing"]
 settings = ["dep:jsonschema", "dep:roxmltree"]
 auth = [
   "dep:argon2",
@@ -41,3 +42,4 @@ tracing = { workspace = true, optional = true }
 futures = { workspace = true }
 insta = { workspace = true }
 keel-testkit = { workspace = true }
+tempfile = { workspace = true }

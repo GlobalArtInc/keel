@@ -1,0 +1,11 @@
+{
+  "task.error.not_running": "The task worker has not started",
+  "task.error.not_found": "The task does not exist",
+  "task.error.not_local": "The task runs on another node and cannot be cancelled from here",
+  "task.error.finished": "The task has already ended as {state}",
+  "task.error.interrupted": "The task was interrupted by a restart",
+  "task.error.cancelled": "The task was cancelled",
+  "task.error.state": "The stored state {state} of task {id} is unknown",
+  "task.error.principal": "The stored principal of task {id} cannot be read",
+  "task.error.log": "The task log at {path} could not be written"
+}

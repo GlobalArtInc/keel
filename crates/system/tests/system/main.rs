@@ -30,3 +30,5 @@ mod settings_alone;
 mod settings_brand;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings_pref;
+#[cfg(feature = "tasks")]
+mod tasks;
