@@ -74,7 +74,7 @@ jobs:
 
       - name: Find the IPv4 port of Postgres
         run: |
-          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/-> 0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
           test -n "$port"
           echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
 
@@ -253,7 +253,7 @@ jobs:
 
       - name: Find the IPv4 port of Postgres
         run: |
-          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/-> 0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
           test -n "$port"
           echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
 
