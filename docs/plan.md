@@ -115,6 +115,9 @@ Scope:
   renderer; group editing through `ui.multi` with the `{ ids, fields, mask }` request,
   `OwnedGuard` over `ids` element by element, and the multi-row form from the selection bar; a
   batch above `batch_threshold` becomes a task.
+- `keel.account.delete` as a task walking the `AccountLifecycle` contributions with a checkpoint
+  per module, and `keel.account.suspend` and `resume`, which the M0 and M1 breakdowns pointed at
+  M3.
 - Self-signed TLS and `trusted_proxies`.
 - phoenix-ui batch 2.
 - The OwnLate projects for the core and `demo`, `keel-dev i18n pull` at build time and
@@ -126,6 +129,12 @@ Scope:
   screen title of `settings.brand` say white-label by host name, the number fields of `hue` and
   `chroma` say "from the product" when empty rather than "Unlimited", and the demo logo takes
   the palette of the platform.
+- Not in M3, against the `auth` sentence of the design that placed it here: password reset
+  through `notify`, which needs an address per principal that no table of the design carries and
+  a delivery to one recipient that the channels do not make, moves to M5 with `panel`, the first
+  product whose users reach the panel without an operator at hand; the M3 breakdown records the
+  move here so the owner confirms it with the breakdown, and step 15 of the breakdown amends the
+  design sentence and the M5 scope list.
 
 Done when:
 
@@ -133,8 +142,8 @@ Done when:
   `ctl task.get`;
 - cancellation works;
 - a task with a checkpoint survives `systemctl restart`;
-- a cron job raises a problem, the problem is visible on the dashboard and reaches MailHog as an
-  email in the end-to-end test;
+- a cron job raises a problem, the problem is visible on the dashboard and reaches an SMTP
+  catcher as an email in the end-to-end test;
 - a user receives `data.invalidate` only for their own objects.
 
 ### M4 — Operator plane and KeelDNS alpha
@@ -3242,6 +3251,1966 @@ anything of M3.
 - On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's version,
   `/readyz` answers `ready`, and the owner has opened the panel through the port forward and logged
   in, which the checklist records with the date-free note "confirmed by hand on keel-demo".
+
+## M3 work breakdown
+
+M3 is split into thirty-three PR-sized steps in fifteen groups, ordered by dependency; a step is one
+change to `main` and is done when its acceptance holds in CI. The letters of a group (`1a`, `1b`)
+name the steps of one delivery that land separately, as the M1 and M2 breakdowns named them; ten
+groups are split that way, each along the line between a kernel seam and the module that consumes
+it, between a mechanism and the functions or checks that expose it, or between two mechanisms of one
+design section — the tasks module behind its kernel seams and before its functions (1a, 1b, 1c), the
+task entrance beside the kernel's first task (2a, 2b), the notify module into its kernel seams, its
+in-app half, the outbox seam, its channels and the mail catcher (4a to 4e), the webhooks module
+behind the subject rule of `emit` and before its conformance check (5a, 5b, 5c), the event stream
+into its route and its caps (6a, 6b), the download kind beside `keel.export` (7a, 7b), group editing
+beside the upload kind and its first upload (8a, 8b, 8c), TLS into its material, its switch and
+`trusted_proxies` (9a, 9b, 9c), the browser chrome of tasks beside that of notifications (13a, 13b),
+and the list's export beside the multi-row form and the file control (14a, 14b, 14c) — each side
+being a change to one crate or one mechanism, and no other step is above PR size once the server
+half and the browser half of a mechanism are steps of their own. The steps derive strictly from the
+design; where a step names a mechanism the design leaves open, it says so, and the commit message of
+the step records the choice. As in M2, steps 1 to 14 touch nothing under `docs/`: where a step
+diverges from a sentence of the design or fills a gap the design leaves, its commit message names
+the sentence and the choice, and step 15 applies every owed amendment together with the exit
+checklist, `hack/check-docs.sh` and the consistency pass, so the design changes once, against the
+built M3. Steps 9a, 9c, 10 and 11 depend on nothing before them and may land at any point before
+step 12; step 9b lands after 4d and 5b, whose provider lines it removes, and a module step landing
+after 9b does not add the line.
+
+Eight remarks apply to the whole breakdown.
+
+- The four system modules of M3 join `crates/system` as the cargo features `tasks`, `cron`, `notify`
+  and `webhooks`, whose module ids are `task`, `cron`, `notify` and `webhook`, as the table of
+  [design/05-modules.md](design/05-modules.md) fixes. Each exports `pub static MODULE` from
+  `keel_system::<feature>`, embeds its migrations from `crates/system/migrations/<feature>/` under
+  the ledger `keel_migration_<id>` the loader demands, ships `crates/system/i18n/<feature>/en.json`
+  and `ru.json`, and is tested under `crates/system/tests/system/` behind `cfg(feature)` as the M1
+  modules are. The features nest where the modules do: `notify` needs `cron` for its poll job and
+  turns that feature on, `webhooks` needs `notify` for its dead letter; `tasks` and `cron` stand
+  alone. The default feature set and `bin/keel/src/main.rs` compose all four, the testkit boots the
+  ones a test names, and the `keel-system` matrix of `ci.yml` grows with each module by the rule
+  step 1c states.
+- What a module needs from the kernel beyond the public SDK goes into the hidden `keel_sdk::system`,
+  as in M1: `TaskRunner`, `Caller`, `LiveEvents`, `AdvisoryLock` and `ContextExt::data_dir` (step
+  1a), `ProblemCounter` and two lookups on `PrincipalSource` (step 4a), `OutboxSubscriber` (step
+  4c), the name the hidden-hooks list of [design/05-modules.md](design/05-modules.md) reserves for
+  the outbox seam. The public SDK grows by additions alone — `Call::task()` with `TaskHandle` and
+  its `stored`, `Call::spawn_self_as_task`, `Call::emit_about`, `Download` and `DownloadOutcome`,
+  `DashboardWidget`, `AccountLifecycle`, the `resumable`, `class` and `internal` members of the
+  function builder, `keel_sdk::multipart` — and `cargo-semver-checks` on the facade stays green
+  throughout.
+- The outbox is written by the dispatcher alone, inside the transaction of a call, as the "Emit to
+  outbox" stage of [design/02-functions.md](design/02-functions.md) says; `outbox::write` stays
+  private to the dispatcher. A module that needs a row and its event outside a request — the problem
+  registry of step 4b, fed by a cron job — runs an internal function of its own through the hidden
+  `Caller`, so the dispatcher writes both. Three consumers read the outbox in M3, each with a cursor
+  of its own: the channel delivery of `notify` (`notify_cursor`), the deliveries of `webhooks`
+  (`webhook_cursor`) and the browser stream (in memory per connection, resumed by `Last-Event-ID`).
+  They read through the kernel's hidden `OutboxSubscriber`, never by SQL on `keel_outbox`, and `seq`
+  is commit-ordered from step 4c on, so a cursor that passed a `seq` has seen every row below it.
+  Retention of the outbox stays out of M3: nothing discards a row, so no consumer can be left
+  behind, and the retention that consults the cursors arrives with the operator plane of M4.
+- The raw routes of M3 are the kernel's own projection: a `kind: download` or `kind: upload`
+  function registered with `r.function` is served at `/api/v1/x/<module>/<name>`, `<name>` being the
+  function name without its module prefix and the dot, inside the `api` router behind
+  `auth::authenticate`, through the full pipeline and with an audit event whatever its mode. A
+  free-form raw route a module registers itself, for the terminal and VNC of `panel`, waits for that
+  consumer in M5; the design sentence that names raw routes as a module's registration is amended by
+  step 15 to say so.
+- TLS arrives with steps 9a and 9b. Steps 1a to 8c keep the plain listener of M2 and its clients;
+  step 9a lands the certificate material, `Http::bind_tls` and clients that can speak https while
+  the runtime still binds plain, and from step 9b the installation listens on TLS alone, every
+  script and suite of `hack/` speaks https with the generated certificate, and the `__Host-` cookie
+  of M1 is accepted from any origin, which retires the localhost rule the M1 and M2 breakdowns
+  recorded.
+- The frontend keeps its six entry points. `@globalart/phoenix-ui` stays at `0.2.2` until step 11
+  ships batch 2 as `0.3.0`, which step 14a pins as its first commit, being its first consumer; steps
+  12, 13a and 13b build on `0.2.2`, whose `phx-progress-modal`, `phx-drawer` and
+  `phx-notification-center` already exist. The three disabled rail placeholders of M2 come alive in
+  step 13, as the rail sentence of the design says of M3: tasks in step 13a, notifications and help
+  in step 13b — help as an about drawer over `/boot`, the smallest target the sentence admits before
+  the support screen of `panel` in M5, the plan's choice.
+- Every screen of the new modules is a descriptor rendered generically: `task.list` and `task.get`,
+  `cron.job.list` and `cron.run.list`, `notify.problem.list`, `notify.channel.*`,
+  `webhook.subscription.*` and `webhook.delivery.list`. The internal functions of step 4b are the
+  one exception: they have no screen, appear in no menu, dump or OpenAPI document, and answer `403
+  keel.error.internal_only` to every transport. The shell adds chrome, not views: the progress
+  modal, the task drawer, the notification centre and the about drawer hang off the action runner
+  and the rail, and the home screen at `/` renders the widgets `/boot.dashboard` names — the
+  `list`-widget slice of the M5 dashboard renderer the exit criteria pull forward (step 13b), a
+  route without a function, so `frontend/apps/shell/views.json` and the custom-views share, which
+  counts views registered against functions, do not move.
+- The `demo` bundle gains what the exit criteria need and nothing else, in `products/demo`:
+  `note.export` as the first task (step 2a) with its stored file (step 7b), a `batch_threshold` on
+  `note.delete` and `note.edit` and `ui.multi` on `note.edit` (steps 2a and 8a), an
+  `AccountLifecycle` whose `on_delete` drops the notes of a deleted account (step 2b), a
+  `ProblemSource` with the `badge.problem` on its menu node (step 4b), `emit_about` on `note.edit`
+  (step 5a), and the export button, the group edit and the logo in the platform palette driven from
+  the browser (steps 14a to 14c). Where the demo consumes the `api` of a system module it names that
+  module in `requires` and depends on `keel-system` with that feature alone, the rule of
+  [design/05-modules.md](design/05-modules.md) the `dns` example applies to `keel_host::api`;
+  nothing else of the demo changes.
+
+### 1a. tasks: the seams — TaskRunner, Caller, LiveEvents, AdvisoryLock and the testkit's restart
+
+**Goal.** What the `tasks` module of the "tasks and cron" section of
+[design/05-modules.md](design/05-modules.md) needs from the kernel, the SDK and the testkit, landed
+first so that the module of step 1b is a change to `crates/system` alone, as the M1 breakdown opened
+`auth` with the kernel seams. A job is a function call kept for later, so the seams are about
+running a call outside a request and reporting from inside one. The hidden
+`keel_sdk::system::TaskRunner` — `spawn(TaskSpec { function, params, principal, class, resumable,
+request_id }) -> Id`, `progress(id, done, total, message)`, `log(id, line)`, `checkpoint(id,
+state)`, `cancel(id)`, `state(id)` — is the trait the module provides and the dispatcher,
+`keel.export` and the batch rule consume. The hidden `keel_sdk::system::Caller { call(principal,
+func, params, options) }` runs a function under a handed principal through the dispatcher with `via:
+internal`, the `Via` value the principal's actor carries; the kernel provides it as a handle the
+runtime fills once the dispatcher exists, since the dispatcher is built after `Kernel::boot` and a
+start hook must not depend on it, and a call made before it is filled answers `unavailable` with
+`keel.error.caller_unavailable`. The dispatcher's `CallOptions` gain `task: Option<TaskHandle>`, and
+the public `Call::task()` answers that handle to a handler running inside a job — `progress(done,
+total, message)`, `log(line)`, `checkpoint(&Serialize)`, `resume_from::<T>()` with the checkpoint of
+an interrupted run, `is_cancelled()`, `output()` as a writer on `<data_dir>/tasks/<id>.out` for step
+7a — and `None` inline, so one handler serves both entrances; `TaskHandle` is a thin public type
+over an `Arc<dyn TaskSink>` the module implements, so the SDK keeps no runtime.
+`FunctionBuilder::class(&str)` names the worker class of a function's jobs, `default` when absent,
+and `FunctionBuilder::resumable()` marks a function whose job may restart from its checkpoint; both
+reach the descriptor nowhere and `Limits` stays as it is. Progress goes out as `TaskProgress { id,
+function, state, done, total, message }` frames, with `TaskState` the closed enum `queued`,
+`running`, `done`, `failed`, `cancelled`, `interrupted`, both types of `keel-types`, through the
+hidden `keel_sdk::system::LiveEvents { publish(Frame { principal, account, kind, data }) }` the
+kernel provides as an in-process broadcast that step 6a turns into the `task.progress` event;
+without a listener a frame is dropped. The hidden `keel_sdk::system::AdvisoryLock { async fn
+take(&self, key: i64) -> Result<LockGuard> }` is provided by the kernel over the pattern of
+`storage/lock.rs`, since a module sees the database through `keel_sdk::Db` alone and can neither pin
+a pool connection nor keep a transaction open across a `start` hook, and a session lock taken
+through the pooled connection would land on a random connection and leak to its next borrower:
+`take` acquires a `PoolConnection` from the pool, marks it `close_on_drop`, runs `SELECT
+pg_advisory_lock($key)` on it and hands the connection back inside `LockGuard`, whose drop closes
+the connection and so releases the lock; a caller that drops the pending future while blocked closes
+the connection as well, so a waiting taker leaves nothing behind. The keys `keeltask` and `keelcron`
+join the constants of `storage/lock.rs` and its `every_lock_key_is_distinct` test.
+`ContextExt::data_dir()` hands a module the data directory next to `db()`, `Composition` gains
+`.data_dir(path)` and the runtime passes `config.data_dir`; `Running::stop` sets
+`Readiness::draining`, then stops the socket and the listener, then the modules, so `/readyz` is not
+reachable while step 1b drains, and no test polls it during a drain. The testkit gains
+`Harness::new().data_dir(path)` — a temporary directory per harness by default —
+`Harness::new().database(db)`, which boots a second kernel on the `TestDatabase` a `stop()`
+returned, and `Harness::database_handle()`, a `DatabaseHandle` (URL and name, neither dropping nor
+finishing the database) that `Harness::new().database(handle)` also accepts, since `TestDatabase` is
+neither `Clone` nor free of its `Drop`; so a test can restart a composition on its data, or run two
+harnesses on one database while the creating harness keeps ownership and finishes it last.
+
+**Touches.** `crates/sdk/src/system.rs` (`TaskRunner`, `TaskSpec`, `TaskSink`, `Caller`,
+`LiveEvents`, `Frame`, `AdvisoryLock`, `LockGuard`, `ContextExt::data_dir`),
+`crates/sdk/src/task.rs` (`TaskHandle`), `crates/sdk/src/call.rs` (`Call::task`),
+`crates/sdk/src/function.rs` (`class`, `resumable`), `crates/sdk/src/context.rs`,
+`crates/types/src/task.rs` (`TaskProgress`, `TaskState`) with `contracts/schema/` and the generated
+types, `crates/kernel/src/loader/composition.rs` (`data_dir`), `crates/kernel/src/storage/lock.rs`
+(`AdvisoryLock`, the two keys), `crates/kernel/src/dispatcher/mod.rs` (`CallOptions.task`, the
+`Caller` handle, the `LiveEvents` broadcast), `crates/keel/src/runtime.rs` (the data directory, the
+handle), `crates/testkit/src/harness.rs` (`data_dir`, `database`, `database_handle`),
+`crates/testkit/src/database.rs` (`DatabaseHandle`), `crates/kernel/tests/kernel/dispatcher.rs`,
+`crates/kernel/tests/kernel/storage.rs`, `crates/testkit/tests/harness.rs`.
+
+**Out of scope.** The module, its tables, worker and functions (steps 1b and 1c); the `task` and
+batch entrances of the dispatcher (step 2a); the `task.progress` event on the wire (step 6a);
+`output()` having a reader, which is `task.download` (step 7a).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/dispatcher.rs`:
+  `the_caller_runs_as_the_handed_principal_via_internal_and_answers_unavailable_until_filled`;
+  `a_handler_inside_a_job_reports_through_its_task_handle_while_an_inline_call_sees_none` with a
+  `TaskSink` double;
+  `a_published_frame_reaches_every_live_events_listener_and_is_dropped_without_one`.
+- `crates/kernel/tests/kernel/storage.rs`:
+  `a_second_taker_blocks_until_the_guard_drops_and_a_dropped_pending_take_closes_its_connection`.
+- `crates/testkit/tests/harness.rs`:
+  `a_harness_reboots_on_a_returned_database_shares_it_with_another_and_keeps_its_data_dir`;
+  `crates/kernel/src/loader/composition.rs`:
+  `a_composition_without_a_data_dir_hands_modules_the_configured_default`.
+- `pnpm generate` leaves `TaskProgress` and `TaskState` committed in the generated types;
+  `cargo-semver-checks` stays green on the facade, `Call::task`, `TaskHandle`, `class` and
+  `resumable` being additions.
+
+### 1b. tasks: the runner, worker classes, leader and drain
+
+**Goal.** The `tasks` module itself, as the feature `tasks` of `crates/system` with the module id
+`task`, on the seams of step 1a, without its functions, which step 1c adds, so this step is the
+runner alone. The table `task_job` (`id`, `class`, `function`, `params_json`, `principal_id`,
+`account_id`, `state` — the `TaskState` values — `resumable`, `progress_done`, `progress_total`,
+`message`, `checkpoint_json`, `result_json`, `error_json`, `request_id`, `created_at`, `started_at`,
+`finished_at`) holds one row per job, and `task_step` (`job_id`, `seq`, `at`, `done`, `total`,
+`message`, `checkpoint_json`) one row per progress report or checkpoint, so the last step is at hand
+and a restart finds the checkpoint; the log is the file `<data_dir>/tasks/<id>.log`, one line per
+`log` call stamped by the kernel's `Clock`, as the layout table of
+[design/09-operations.md](design/09-operations.md) places it. The module provides `TaskRunner`
+through `r.provide::<dyn TaskRunner>`, implements `TaskSink` for the handles it hands out, and runs
+the stored function under the stored principal through `Caller`, with `CallOptions.task` set. Worker
+classes: the worker runs jobs of distinct classes concurrently and jobs of one class in order, so a
+heavy export never delays a quick batch; the worker itself is single per installation, held on the
+eight-byte key `keeltask` through the `AdvisoryLock` seam of step 1a, the mechanism and the module's
+counterpart of the kernel's keys of [design/04-storage.md](design/04-storage.md); a second process
+on the same database blocks in the same `take` and takes over when the first releases the lock or
+its connection closes, so a waiting takeover needs no poll, and `stop` on the waiting side drops the
+pending call. The guard holds one of the pool's twenty connections for the process lifetime, and the
+leader of step 3 a second; the count is recorded in the commit message. At `start` every `running`
+row is marked `interrupted`; the resumable ones are re-queued with their checkpoint kept, the others
+stay `interrupted` with `task.error.interrupted`. `stop` drains: no queued job starts, running jobs
+see `is_cancelled()` as a request to stop at their next checkpoint, the hook waits up to
+`TASK_STOP_GRACE` for them — `20` seconds, below the unit's `TimeoutStopSec` and the scripts'
+SIGTERM wait, so a checkpoint is written before anything kills the process — and marks what still
+runs `interrupted`. Cancellation is cooperative in the same way: `TaskRunner::cancel(id)` sets the
+flag, and the worker marks `cancelled` when the handler returns `task.error.cancelled` or finishes.
+Every progress report and state change is published as a `TaskProgress` frame to the job's principal
+and account through `LiveEvents`. `api::Drain` awaits the queue for tests, as `audit::api::Flush`
+awaits the sink.
+
+**Touches.** `crates/system/Cargo.toml` (the feature `tasks`), `crates/system/src/lib.rs`,
+`crates/system/src/tasks/` (`mod.rs`, `api.rs`, `entity.rs`, `runner.rs`, `worker.rs`, `leader.rs`,
+`log.rs`), `crates/system/migrations/tasks/`, `crates/system/tests/system/` (`main.rs`, `tasks.rs`).
+
+**Out of scope.** `task.list`, `task.get`, `task.cancel`, the menu node, the dictionaries, the
+matrix sets and `hack/prove-binary.sh` (step 1c); `ui.result = task`, the batch rule and
+`note.export` (step 2a); `task.download` and the export file (step 7a); the drain before an update,
+which arrives with the operator plane of M4; retention of finished jobs and their files; a worker on
+another node (M8).
+
+**Acceptance.**
+
+- `crates/system/tests/system/tasks.rs`, through the runner and the tables, since the functions
+  arrive with step 1c:
+  `a_spawned_job_runs_under_the_stored_principal_and_records_progress_steps_and_log_lines` — a test
+  module registers a function whose handler reports three progress steps and two log lines through
+  `call.task()`; spawned through the runner for A1, the job ends `done` with `task_step` rows,
+  `state(id)` answers `done`, the log file under the harness's data directory holds the two lines,
+  and the frames reached a `LiveEvents` listener;
+  `a_cancelled_job_stops_at_its_next_checkpoint_and_ends_cancelled`;
+  `a_job_running_at_stop_is_interrupted_and_a_resumable_one_restarts_from_its_checkpoint` — the
+  harness stops mid-job, a second harness on the same database and data directory marks the row
+  `interrupted`, re-queues the resumable one, whose handler reads `resume_from` and finishes without
+  repeating the first half, and leaves a non-resumable one `interrupted`;
+  `stop_lets_a_running_job_reach_its_checkpoint_and_leaves_queued_jobs_for_the_next_start`;
+  `jobs_of_two_classes_run_concurrently_while_jobs_of_one_class_run_in_order`;
+  `two_kernels_on_one_database_run_one_worker_and_the_second_takes_over_when_the_first_stops`.
+- `cargo test -p keel-system --features tasks` is green; the matrix of `ci.yml` waits for step 1c.
+
+### 1c. tasks: the functions, the menu node and the matrix
+
+**Goal.** The screens of the `tasks` module over the runner of step 1b, every one a descriptor
+rendered generically: `task.list` (`list`, `Level::User`, permission `task.read` for user and
+reseller, `.owned()` over `task_job.account_id`, columns `function`, `state` as `status` with a tone
+map, `progress` as `text`, `createdAt`, `finishedAt`, a filter on `state`, search on `function`, row
+actions `open` on `task.get` and `cancel` hidden unless the state is `queued` or `running`),
+`task.get { id }` (`get`, the row with `logTail`, the last `TASK_LOG_TAIL` lines of the file),
+`task.cancel { id }` (`action`, permission `task.manage` for user and reseller, calling
+`TaskRunner::cancel`); the menu node `system/tasks`, the node the `/boot` example of
+[design/10-contracts.md](design/10-contracts.md) places in the platform group; the dictionaries
+`crates/system/i18n/tasks/en.json` and `ru.json`. The `keel-system` matrix of `ci.yml` follows one
+rule from here on: every module alone, and the crate without each module in turn, the features a
+removed module implies removed with it; this step adds `tasks` and the four sets without one of
+`auth`, `settings`, `audit` and `tasks`, and every later module step adds its own by the same rule.
+
+**Touches.** `crates/system/src/tasks/functions.rs` and `mod.rs`, `crates/system/i18n/tasks/`,
+`crates/system/tests/system/` (`tasks.rs`, `tasks_alone.rs`, snapshots), `bin/keel/src/main.rs`,
+`.github/workflows/ci.yml` (the matrix), `hack/prove-binary.sh` (`ctl task.list`).
+
+**Out of scope.** `ui.result = task`, the batch rule and `note.export` (step 2a); `task.download`
+(step 7a); the task drawer (step 13a).
+
+**Acceptance.**
+
+- `crates/system/tests/system/tasks.rs` gains
+  `task_get_shows_the_last_step_the_log_tail_and_task_cancel_ends_a_paced_job_cancelled` — the job
+  of the first test of step 1b is read back as A1 with its state, `3/3` and the two lines in
+  `logTail`, and a paced job is cancelled through `task.cancel`; `assert_reseller_sees_only_subtree`
+  and `assert_user_cannot_edit_foreign_row` hold for `task.list` and `task.cancel` with a `Fixture`
+  inserting a job row; every `task.*` descriptor matches its snapshot.
+- `crates/system/tests/system/tasks_alone.rs` boots the module with `auth` alone and answers
+  `task.list` on the socket; the matrix job `keel-system with tasks` is green, and so are
+  `settings,audit,tasks`, `auth,audit,tasks`, `auth,settings,tasks` and `auth,settings,audit`.
+- `hack/prove-binary.sh` runs `ctl task.list` and gets an empty page.
+
+### 2a. tasks: ui.result = task, batch_threshold and note.export
+
+**Goal.** The two rules that turn a call into a job and the first task of the product line.
+`ui.result = task` on an `action` or `wizard` function, the `task` member of `ScreenResult` of
+[design/02-functions.md](design/02-functions.md): the dispatcher runs the stages up to the before
+hooks — resolve, guards, strip and validation, idempotency, before hooks — and then, instead of the
+transaction and the handler, asks the `TaskRunner` of step 1b to spawn the same function with the
+enriched parameters under the caller's principal, in the function's `class`, and answers `{ task: {
+id } }`, the `TaskRef` type of `keel-types`; the worker's call of the function then runs the whole
+pipeline again with `CallOptions.task` set, so a handler sees `call.task()` and reports; the task
+entrance and the batch rule are skipped when `CallOptions.task` is `Some`, and the worker's call
+carries no `Idempotency-Key`, so the stored parameters run once and the job never spawns itself. The
+freeze refuses a function with `ui.result = task` in a composition without a `TaskRunner` provider,
+naming the function and the module, and refuses `ui.result = task` on a function with a `secret`
+field, since a job stores its parameters, the plan's choice for a case the design does not name.
+`batch_threshold` of the limits table of the same document: a `delete` or `group` action whose key
+parameter is an array with more ids than the threshold, after `OwnedGuard` admitted every id,
+becomes a job whose body calls the function once per chunk of `batch_threshold` ids, each chunk one
+call and one transaction, with progress per chunk and a log line per chunk; the answer is a
+`TaskRef`; a composition without a runner runs the batch inline, the threshold being inert without
+one. The demo's `note.export { format, pace }` is the first task, the one the M3 exit criteria name:
+a `kind: action` in `mode: read`, `Level::User`, permission `note.read`, `.unowned()`, whose screen
+block is the new `ActionScreen::new("note.export.title").result(ScreenResult::Task)` of the SDK's
+`ui` builders — `ScreenUi.result` on a `kind: action` is the plan's choice for a gap the design
+leaves: the `ui` table of [design/02-functions.md](design/02-functions.md) has rows for list, form
+and wizard alone and gives `result` to the wizard, while
+[design/05-modules.md](design/05-modules.md) and [design/08-frontend.md](design/08-frontend.md) say
+`ui.result = task` without naming a kind; the commit message records the choice and step 15 adds an
+`action` row to the table — offered from the toolbar of `note.list` as `{ id: "export_task", role:
+"button", function: "note.export", params: { format: "csv" }, icon: "file-down" }`, whose static
+`params` the action runner of M2 posts, and reachable as `/f/note.export?format=csv&pace=300`
+through the action route of M2 once step 13a coerces the route's query values by the descriptor's
+schema, which is how a browser test asks for a slow run; until then the tests of this step ask for
+it over HTTP with a JSON body, since the route of M2 posts a query value as a string and `pace` is
+an integer. `format` is `csv` or `json`, `pace` the milliseconds the job waits after each note, `0`
+by default and at most `2000`; the handler walks the caller's notes in id order, writes one record
+per note into `call.task().output()`, logs `exported <title>`, reports `done/total`, checkpoints `{
+lastId, written }` after every note, resumes from that checkpoint, stops at `is_cancelled()`, and
+answers `{ exported }`, beside which step 7b puts the download of the written file. The function is
+`.resumable()` and in the class `export`. `note.delete` declares `.batch_threshold(10)`, and `note`
+names `tasks` in `requires`, so the runner starts before the demo.
+
+**Touches.** `crates/kernel/src/dispatcher/mod.rs` (the task and batch entrances),
+`crates/kernel/src/loader/freeze.rs` (the two checks), `crates/types/src/task.rs` (`TaskRef`) with
+`contracts/schema/` and the generated types, `crates/sdk/src/ui.rs` (`ActionScreen`),
+`products/demo/` (`Cargo.toml`, `src/note/mod.rs`, `src/note/export.rs`, `src/note/functions.rs`,
+the dictionaries, `tests/demo/tasks.rs`, snapshots), `crates/kernel/tests/kernel/tasks.rs` with a
+runner double, `hack/prove-binary.sh`.
+
+**Out of scope.** The progress modal (step 13a); the download result of `note.export` and
+`task.download` (steps 7a and 7b); the group-edit request over `ids` and its threshold (step 8a);
+`keel.account.delete` as a task (step 2b).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/tasks.rs` with a `TaskRunner` double recording spawns:
+  `a_ui_result_task_function_answers_a_task_ref_and_its_handler_runs_in_the_worker`,
+  `a_composition_with_a_ui_result_task_function_and_no_runner_fails_freeze_naming_the_function`,
+  `a_secret_field_on_a_ui_result_task_function_fails_freeze`,
+  `a_batch_above_the_threshold_becomes_a_job_of_chunks_and_one_at_the_threshold_runs_inline`,
+  `a_batch_with_one_foreign_id_is_not_found_before_any_job_is_spawned`,
+  `a_job_run_by_the_worker_does_not_spawn_a_second_job` — the runner double calls the function back
+  with `CallOptions.task` set and no idempotency key, and the handler runs once with no further
+  spawn.
+- `products/demo/tests/demo/tasks.rs` with the real `tasks` module composed:
+  `note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_checkpoint_after_each` — A1
+  calls `note.export { format: "csv" }` over HTTP, receives a `TaskRef`, and `task.get` ends `done`
+  with `exported` equal to A1's notes, a `logTail` naming them and `task_step` rows for each;
+  `note_export_is_cancelled_between_two_notes_when_paced` — with `pace: 500` in the JSON body,
+  `task.cancel` after the first frame leaves `cancelled` with `exported` below the count;
+  `note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_writes_no_note_twice`;
+  `note_delete_above_ten_ids_becomes_a_task_that_deletes_in_chunks_of_ten`; the `note.export`
+  descriptor matches its snapshot, and `note.list` carries the `export_task` action.
+- `hack/prove-binary.sh`: `ctl note.export format=csv` answers a `TaskRef`, and within the prove
+  timeout `ctl task.get id=<id>` answers `done`, `progress` equal to the note count and the log
+  lines; then, with at least four notes present, the script runs `ctl note.export format=csv
+  pace=500`, reads the `TaskRef`, calls `stop_serve` while `ctl task.get id=<id>` still answers
+  `running`, calls `start_serve resumed`, and within the prove timeout reads `done` from `ctl
+  task.get id=<id>` with `progress` equal to the note count and each `exported <title>` line exactly
+  once in `logTail` — the CI counterpart of `systemctl restart` that the M3 "Done when" and step 15
+  cite; `pnpm generate` leaves `TaskRef` committed.
+
+### 2b. keel.account.delete as a task walking AccountLifecycle, suspend and resume
+
+**Goal.** The `AccountLifecycle` section of [design/03-access.md](design/03-access.md) and the
+`keel.account.delete` sentence of the "tasks and cron" section of
+[design/05-modules.md](design/05-modules.md), which the M0 and M1 breakdowns pointed at M3: the
+kernel's first task, on the entrance of step 2a, needing nothing of `keel-host`. `AccountLifecycle {
+on_suspend, on_resume, on_delete, on_rename }` joins the public SDK as a contribution of `keel-sdk`,
+each member an optional handler of the shape of a `within` hook, `fn(Call<Value>) ->
+Future<Result<()>>`, run inside the call of the kernel function that drives the change, with the
+account as the call's `id` parameter and the module's rows reached through `call.tx()`; `on_rename`
+is a member without a caller in M3, since no account column is a name and a rename arrives with the
+origin sync of M6, and the freeze accepts a contribution without it. `keel.account.suspend { id }`
+and `keel.account.resume { id }` (`action`, `Level::Reseller`, permission `keel.account.manage`,
+`.owned()`) set `state` to `suspended` and `active`, run the matching handler of every contributing
+module in `requires` order inside the transaction, and emit `keel.account.suspended` and
+`keel.account.resumed`; the root account answers `409 keel.account.error.root_immutable` and the
+caller's own account `409 keel.account.error.own_account` to all three functions, and a principal of
+a `suspended` or `deleting` account is refused by the kernel after the authenticator chain with `401
+keel.error.account_suspended`, as a `suspended` principal is. `keel.account.delete { id }` is an
+`action` with `ui.result = task`,
+`ActionScreen::new("keel.account.delete.title").result(ScreenResult::Task)`, `Level::Reseller`,
+`keel.account.manage`, `.owned()`, in the class `default`, `.resumable()`, offered as the row action
+`delete` of `keel.account.list` with `confirm_with(ConfirmDetails { destructive: true, .. })`: the
+call refuses an account with child accounts with `409 keel.account.error.has_children` and sets
+`state` to `deleting` before the job is spawned, so its principals are refused at the authenticator
+at once; the job walks the modules in reverse `requires` order, calling `on_delete` of each with a
+checkpoint `{ done: [module] }` after every module and a log line `deleted <module>`, resumes from
+that checkpoint after an interruption — the job's function runs in `mode: read` and the walk opens a
+transaction of its own per module on the kernel's pool, which the kernel's functions have and a
+module's do not, handing the handler a `Call` built over it, so every `on_delete` commits before its
+checkpoint and a resumed job repeats none — then deletes the account's principals and the
+`keel_account` row and emits `keel.account.deleted`; a module without an `on_delete` whose foreign
+key holds the row makes the last step fail with `task.error.failed` naming the constraint, the loud
+failure the design wants, and a module may refuse up front through `r.within("keel.account.delete",
+…)` as the design shows. The modules that hold rows of an account contribute their handler here:
+`auth` drops the passwords, sessions, tokens, login keys, challenges, second factors, recovery codes
+and grants of the account's principals and the sessions of the account; `settings` drops the values
+scoped to the account and the preferences of its principals; `tasks` drops the account's finished
+jobs with their steps, logs and output files and refuses through a `within` hook with `409
+task.error.jobs_running` while a job of the account is `queued` or `running`; `audit` keeps its
+records, which reference no row; the demo drops the account's notes through `lifecycle::drop_notes`,
+the `dns` example of the design read against `note`. The modules of steps 4b and 5b contribute
+theirs where they land.
+
+**Touches.** `crates/sdk/src/lifecycle.rs` (`AccountLifecycle`, `LifecycleHandler`),
+`crates/sdk/src/lib.rs`, `crates/kernel/src/keel/accounts.rs` (the three functions, the row action),
+`crates/kernel/src/keel/lifecycle.rs` (the walk, the checkpoint), `crates/kernel/src/keel/source.rs`
+(the account state on the principal lookup), `crates/kernel/src/http/live.rs` and
+`crates/kernel/src/socket/mod.rs` (the refusal after the chain),
+`crates/kernel/src/loader/freeze.rs` (the contribution), `crates/kernel/i18n/`,
+`crates/system/src/auth/lifecycle.rs`, `crates/system/src/settings/lifecycle.rs`,
+`crates/system/src/tasks/lifecycle.rs` and the three `mod.rs`, `products/demo/src/note/lifecycle.rs`
+and `mod.rs`, `contracts/fixtures/descriptors/` (the `keel.account.*` snapshots),
+`crates/kernel/tests/kernel/accounts.rs`, `crates/system/tests/system/` (`auth_sessions.rs`,
+`settings.rs`, `tasks.rs`), `products/demo/tests/demo/lifecycle.rs`, `hack/prove-binary.sh`.
+
+**Out of scope.** `on_rename` having a caller (M6); `keel.account.upsert` and the `keel.account.*`
+events of the origin sync (M6); `close` with a retention period for service accounts (M6); the OS
+side of a lifecycle in `keel-host` (M4); a retention of `deleting` accounts whose job failed, which
+the operator plane's `doctor` reports (M4).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/accounts.rs` with two test modules contributing `on_suspend`,
+  `on_resume` and `on_delete` and one contributing nothing:
+  `suspend_and_resume_run_the_handlers_in_requires_order_and_emit_their_events`;
+  `a_principal_of_a_suspended_or_deleting_account_is_refused_after_the_chain_until_resume`;
+  `delete_marks_the_account_deleting_and_the_job_walks_on_delete_in_reverse_order` with a `TaskRef`
+  answered and a checkpoint per module;
+  `an_interrupted_deletion_resumes_with_the_remaining_modules_and_calls_no_handler_twice` on the
+  `database()` builder of step 1a;
+  `rows_without_on_delete_fail_the_job_loudly_and_a_within_hook_refuses_the_call_up_front`;
+  `the_root_account_the_callers_own_account_and_an_account_with_children_are_refused`;
+  `assert_reseller_sees_only_subtree` and `assert_user_cannot_edit_foreign_row` hold for the three
+  functions; the `keel.account.*` descriptors match their snapshots.
+- `crates/system/tests/system/auth_sessions.rs`:
+  `deleting_an_account_drops_the_auth_rows_of_its_principals`; `settings.rs`:
+  `deleting_an_account_drops_its_values_and_its_principals_preferences`; `tasks.rs`:
+  `deleting_an_account_drops_its_finished_jobs_and_files_and_is_refused_while_one_runs`.
+- `products/demo/tests/demo/lifecycle.rs`:
+  `deleting_an_account_drops_its_notes_through_the_demos_on_delete_and_the_account_row_after_them`.
+- `hack/prove-binary.sh` creates a throwaway user account with two notes, deletes it over `ctl
+  keel.account.delete`, and within the prove timeout `ctl task.get id=<id>` answers `done` with
+  `deleted note` in `logTail` and `ctl keel.account.get id=<id>` answers `404`.
+
+### 3. cron: CronJob contributions, the schedule, the leader lock and cron_run
+
+**Goal.** The `cron` module as the feature `cron`, running the `CronJob` contributions of the
+contribution table of [design/05-modules.md](design/05-modules.md). `CronJob` and `JobRun` live in
+`keel_system::cron::api`, since the design keeps the contribution points other than `SettingDef`,
+`LimitDef`, `AccountLifecycle` and `ConfigSection` in the modules' own `api`: `CronJob::new(id,
+schedule, handler)` names a job by an id under the contributing module's prefix, a schedule string
+and a handler `fn(JobRun) -> Future<Result<()>>`; `JobRun` carries the job id, the scheduled time,
+`invoke(func, params)`, which runs a function as the owner principal with `via: internal` through
+the hidden `Caller` of step 1a and is what a product module's job uses, and, behind
+`keel_sdk::system`, `db()` and `caller()` for a system module's job, the latter being how the poll
+job of step 4b reaches the internal functions of `notify`. The schedule is a five-field cron
+expression parsed by `croner`, added to `[workspace.dependencies]` at a pinned major because no
+listed crate parses one and the design fixes the `"0 */6 * * *"` form; the module's `start` parses
+every contributed schedule and fails the boot naming the job on the first one that does not parse.
+Leadership is the key `keelcron` taken through the `AdvisoryLock` seam of step 1a, the follower
+blocking in `take` until the leader lets go, as the worker of step 1b holds `keeltask`; the leader
+ticks every second against the kernel's `Clock`, so the frozen clock of the testkit drives it, runs
+every job whose next occurrence has passed, and records each run in `cron_run` (`id`, `job`,
+`scheduled_at`, `started_at`, `finished_at`, `outcome` — `ok`, `failed`, `skipped`, `interrupted` —
+`error`). A job is single-flight: an occurrence that arrives while the previous run of the same job
+has not finished is recorded `skipped`, and a run left without `finished_at` at start is marked
+`interrupted`. Intervals are overridable through settings by one definition the module contributes
+itself, `cron.overrides`, an object from job id to schedule string at `Level::Admin`, read at every
+tick through `SettingsSource`; an override that does not parse is logged once and the contributed
+schedule stands, the plan's choice, since a `SettingDef` per job cannot be contributed before the
+contributions are known. Functions, all `Level::Admin` and `.unowned()`: `cron.job.list` (`list`
+over the frozen contributions joined with their last run: `id`, `module`, `schedule` as contributed,
+`effective`, `lastRunAt`, `lastOutcome` as `status`, `nextRunAt`; row action `run`), `cron.job.run {
+id }` (`action`, runs the job now on the leader, `409 cron.error.running` while it runs),
+`cron.run.list` (`list` over `cron_run`, sorted by `started_at` descending, filter on `job` and
+`outcome`); the menu node `system/cron` labelled `cron.job.list.title`.
+
+**Touches.** `crates/system/Cargo.toml` (the feature `cron`, `croner`), `Cargo.toml` (`croner`),
+`crates/system/src/cron/` (`mod.rs`, `api.rs`, `entity.rs`, `functions.rs`, `leader.rs`,
+`schedule.rs`, `scheduler.rs`), `crates/system/migrations/cron/`, `crates/system/i18n/cron/`,
+`crates/system/tests/system/` (`cron.rs`, `cron_alone.rs`, snapshots), `.github/workflows/ci.yml`
+(the matrix by the rule of step 1c), `bin/keel/src/main.rs`.
+
+**Out of scope.** The `cron` sections of plugin manifests (M7); the aggregation job of `stats` (M5);
+a job pinned to a node (M8); the poll job of `notify`, which is the first contribution (step 4b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/cron.rs` with a test module contributing two jobs:
+  `a_job_runs_when_the_clock_passes_its_next_occurrence_and_records_an_ok_run` — the frozen clock is
+  advanced past `*/5 * * * *` and the handler runs once with a `cron_run` row;
+  `a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded_skipped`;
+  `a_run_left_unfinished_at_start_is_marked_interrupted`;
+  `two_kernels_on_one_database_elect_one_leader_and_the_other_takes_over_after_a_stop` on the
+  `database()` builder of step 1a;
+  `a_cron_overrides_entry_replaces_the_contributed_schedule_and_an_unparsable_one_is_ignored`;
+  `cron_job_run_starts_a_job_now_and_answers_conflict_while_it_runs`;
+  `a_products_job_invokes_a_function_as_the_owner_through_the_run`;
+  `a_schedule_that_does_not_parse_fails_the_start_naming_the_job`; the `cron.*` descriptors match
+  their snapshots and the reseller is answered `403`.
+- `crates/system/tests/system/cron_alone.rs` boots the module with `auth` alone; the matrix gains
+  `cron` and `auth,settings,audit,tasks` becomes the set without `cron`, the earlier "without" sets
+  gaining `cron`.
+
+### 4a. kernel: DashboardWidget, BootProblems, ProblemCounter and the PrincipalSource lookups
+
+**Goal.** What the in-app half of `notify` needs from the kernel, the SDK and `keel-types`, landed
+alone so that step 4b is a change to `crates/system` and `products/demo`, the line the M1 breakdown
+drew between a seam and its consumer. `DashboardWidget { kind, func, limit }` joins the public SDK
+as a contribution: the kernel fills `/boot.dashboard` from the contributions whose function the
+principal may call — level, permission and feature as the menu applies them — and types it as
+`BootWidget { kind, func, limit }` of `keel-types`, the `dashboard` member of the `/boot` table of
+[design/10-contracts.md](design/10-contracts.md) leaving `Value`. `/boot.problems` becomes
+`BootProblems { open, critical }`, answered by the hidden `keel_sdk::system::ProblemCounter {
+counts(principal, db) }` when a module provides it and `null` without a provider as before. The
+hidden `PrincipalSource` gains `at_or_above(level, db)` and `of_account(account, db)`, the two
+lookups a module needs to address the admins and the principals of an account, over the kernel's own
+`keel_principal`, since a module never reads that table by SQL. The fixtures
+`contracts/fixtures/boot.json` and `boot-none.json` carry the typed members.
+
+**Touches.** `crates/sdk/src/dashboard.rs` (`DashboardWidget`), `crates/sdk/src/lib.rs`,
+`crates/sdk/src/system.rs` (`ProblemCounter`, `PrincipalSource::at_or_above`, `of_account`),
+`crates/types/src/boot.rs` (`BootWidget`, `BootProblems`) with the fixtures, `contracts/schema/` and
+the generated types, `crates/kernel/src/boot.rs` (the widgets, the counter),
+`crates/kernel/src/keel/source.rs` (the two lookups), `crates/kernel/tests/kernel/boot.rs`.
+
+**Out of scope.** The module that provides the counter and contributes the first widget (step 4b);
+the home screen that renders the widgets (step 13b); `stat` widgets and the widget order (M5).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/boot.rs`:
+  `dashboard_widgets_and_problem_counts_come_from_the_contributions_and_stay_empty_without_them` — a
+  test module contributes a `list` widget over a `Level::Admin` list and provides a `ProblemCounter`
+  double; the admin's `/boot` carries the widget and the counts, A1's carries neither, and a
+  composition without them answers `[]` and `null`;
+  `at_or_above_and_of_account_answer_the_principals_the_menu_and_the_scope_rules_would`;
+  `contracts/fixtures/boot.json`, `boot-none.json` and the dump still round-trip with the typed
+  members.
+- `pnpm generate` leaves `BootWidget` and `BootProblems` committed; `cargo-semver-checks` stays
+  green, `DashboardWidget` being an addition.
+
+### 4b. notify: messages, problems and the poll job
+
+**Goal.** The in-app half of the `notify` module of the "notify" section of
+[design/05-modules.md](design/05-modules.md), as the feature `notify` requiring `cron`, on the seams
+of step 4a: the messages, the problem registry with its sources and poll job, and what the dashboard
+and `/boot` show of them. Tables: `notify_message` (`id`, `principal_id`, `account_id`, `key`,
+`params_json`, `level` — `info`, `warning`, `error` — `source`, `problem_id`, `read_at`,
+`created_at`) and `notify_problem` (`id`, `key`, `subject`, `severity` — `warning`, `critical` —
+`params_json`, `account_id`, `source`, `count`, `raised_at`, `updated_at`, `cleared_at`). Every row
+and its event are written by the dispatcher, never by the module outside a call: the module
+registers three internal functions — `notify.problem.raise { key, subject, severity, params,
+account, source }`, `notify.problem.clear { key, subject }` and `notify.message.create { recipients,
+key, params, level, source, problem }` — `kind: action`, `mode: write`, `Level::Admin`,
+`.unowned()`, marked `.internal()`, a new member of the function builder that keeps the function out
+of every menu, the dump and the OpenAPI document and makes the dispatcher answer `403
+keel.error.internal_only` unless the caller's `via` is `internal`, so HTTP and the socket never
+reach them; `keel.error.internal_only` joins the kernel's dictionary. The module's `api` wraps them:
+`Problems { raise(caller, Raise { key, subject, severity, params, account, source }), clear(caller,
+key, subject) }` and `Notifier { notify(caller, Recipients, key, params, level) }` take the hidden
+`Caller` of step 1a and run the internal functions as the owner principal with `via: internal`, so
+the rows, the `notify.message.created` events and the `notify.problem.raised` and
+`notify.problem.cleared` events are written inside one transaction of the dispatcher and pass the
+commit order of step 4c once it lands. `raise` of an open `(key, subject)` pair updates `params`,
+`count` and `updated_at` and notifies nobody twice, `clear` of a pair that is not open is a no-op,
+so both are idempotent under the keys the design names; `notify.message.create` writes one
+`notify_message` per recipient principal, `Recipients` being `Admins`, `Principal(id)` or
+`Account(id)`, resolved through the two lookups of step 4a, and publishes a `NotificationFrame { id,
+key, params, level, createdAt }`, a type of `keel-types`, through `LiveEvents` from an
+`after_commit` callback, so a listener never sees the frame of a rolled-back message.
+`ProblemSource::new(id, poll)`, where `poll(&Db)` answers the `Raise` set the source sees now, is
+the contribution a module makes. A raised problem notifies the admins, an account-scoped one the
+account's principals as well, with `notify.problem.raised` and the problem as params, and a cleared
+one with `notify.problem.cleared`. The poll job `notify.problems.poll`, a `CronJob` on `* * * * *`
+and the first contribution to `cron`, runs every `ProblemSource`, raises what a source reports and
+clears what a source reported before and reports no more, source by source, through the `Caller` its
+`JobRun` carries, and a source that fails keeps its problems and is logged. The module provides the
+`ProblemCounter` of step 4a, counting problems without an account for admins and owners and
+account-scoped ones within the caller's scope, and contributes a `list` widget over
+`notify.problem.list` with `limit: 5`, the problems block of the M3 exit criteria. Functions:
+`notify.message.list` (`list`, `Level::User`, permission `notify.read` for user and reseller,
+`.owned()`, narrowed to the caller's own rows, sorted by `created_at` descending, filter `unread`),
+`notify.message.mark { ids, read }` (`action`, key `ids`, `notify.manage`), `notify.message.clear`
+(`action`, deletes the caller's read messages), `notify.problem.list` (`list`, `Level::User`,
+`notify.read`, the scoping the counter applies, columns `key`, `severity` as `status`, `subject`,
+`count`, `raisedAt`, `clearedAt`, filter `open`) and `notify.problem.get { id }`; the menu node
+`system/problems`. The module contributes `AccountLifecycle { on_delete }` dropping the messages and
+problems of a deleted account, as step 2b demands of every module with an `account_id` column. The
+demo contributes its first source, `note.overdue`, a `ProblemSource` reporting `note.overdue` per
+account with the count of `todo` notes whose `due` has passed, `subject` the account id and
+`severity: warning`, and its menu node `demo/notes` gains `.badge("note.overdue")`; `note` names
+`notify` in `requires` and `products/demo/Cargo.toml` gains `keel-system` with the `notify` feature
+for `notify::api`. The matrix: `notify` alone turns `cron` on, so the set is `notify`; the set
+without `notify` is `auth,settings,audit,tasks,cron`; the sets without `cron` lose `notify` with it,
+`auth,settings,audit,tasks` staying as it is.
+
+**Touches.** `crates/system/Cargo.toml` (`notify = ["cron", ...]`), `crates/system/src/notify/`
+(`mod.rs`, `api.rs`, `entity.rs`, `problems.rs`, `messages.rs`, `poll.rs`, `counter.rs`,
+`lifecycle.rs`, `functions/` with `internal.rs`), `crates/system/migrations/notify/`,
+`crates/system/i18n/notify/`, `crates/system/tests/system/` (`notify.rs`, `notify_alone.rs`,
+snapshots), `crates/sdk/src/function.rs` (`internal`), `crates/kernel/src/dispatcher/mod.rs` (the
+`internal_only` refusal), `crates/kernel/src/http/descriptors.rs` and `crates/kernel/src/boot.rs`
+(internal functions left out of the index and the menu), `crates/kernel/i18n/`,
+`crates/types/src/event.rs` (`NotificationFrame`) with `contracts/schema/` and the generated types,
+`crates/kernel/tests/kernel/dispatcher.rs`, `products/demo/` (`Cargo.toml`, `src/note/mod.rs`,
+`src/note/problems.rs`, `tests/demo/problems.rs`), `.github/workflows/ci.yml`,
+`bin/keel/src/main.rs`.
+
+**Out of scope.** The channels, the templates and the mail (steps 4d and 4e); the `notification`
+event on the wire and the notification centre (steps 6a and 13b); the sources disk, TLS, license,
+migrations, outbox and nodes, which arrive with the operator plane (M4), the license (M5) and the
+cluster (M8); password reset through `notify`, which the M3 scope list moves to M5 with `panel` — it
+needs an address per principal that no table of the design carries and a delivery to one recipient
+that the channels of step 4d do not make, and `panel` is the first product whose users reach the
+panel without an operator at hand — step 15 amending the `auth` sentence of the design that placed
+it in M3 and the M5 scope list gaining it; the `problems` and `widgets` sections of plugin manifests
+(M7).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/dispatcher.rs`:
+  `an_internal_function_admits_the_caller_alone_and_is_absent_from_the_index` — refused over HTTP
+  and the socket with `403 keel.error.internal_only`, run through the `Caller`, missing from
+  `/functions` and the dump.
+- `crates/system/tests/system/notify.rs`:
+  `raise_is_idempotent_by_key_and_subject_and_clear_closes_the_problem_once`;
+  `a_source_polled_by_the_cron_job_raises_what_it_reports_and_clears_what_it_stops_reporting`;
+  `a_raised_problem_notifies_the_admins_once_counts_in_boot_and_feeds_the_dashboard_widget` —
+  `/boot` for the admin carries `problems: { open: 1, critical: 0 }` and a `dashboard` entry `{
+  kind: "list", func: "notify.problem.list", limit: 5 }`, for A1 `problems: { open: 0, critical: 0
+  }` and no widget, and the outbox holds one `notify.message.created` per admin written by the
+  dispatcher;
+  `an_account_scoped_problem_reaches_the_accounts_principals_and_shows_in_their_boot_counts`;
+  `a_notification_frame_is_published_after_commit_and_not_for_a_rolled_back_message`;
+  `notify_message_create_is_refused_over_http_and_the_socket_and_runs_through_the_caller`;
+  `a_user_lists_marks_and_clears_own_messages_only` with `assert_reseller_sees_only_subtree` for
+  `notify.problem.list` and `assert_user_cannot_edit_foreign_row` for `notify.message.mark`;
+  `deleting_an_account_drops_its_messages_and_problems`; the `notify.*` descriptors match their
+  snapshots and the internal functions have none.
+- `products/demo/tests/demo/problems.rs`:
+  `an_overdue_todo_raises_note_overdue_for_its_account_after_the_poll_and_a_done_one_clears_it`, and
+  `/boot` for A1 lists `demo/notes` with `badge.problem` `note.overdue`.
+- `crates/system/tests/system/notify_alone.rs` boots with `auth` alone and its `cron`; the matrix
+  sets `notify`, `auth,settings,audit,tasks,cron` and the others named above are green; `pnpm
+  generate` leaves `NotificationFrame` committed; `hack/descriptors.sh` still prints the same share,
+  the internal functions counting nowhere.
+
+### 4c. kernel: OutboxSubscriber and the commit watch
+
+**Goal.** The seam every outbox consumer of M3 reads through, landed alone as the seams of step 1a
+were, so that step 4d is a change to `crates/system`. The hidden `keel_sdk::system::OutboxSubscriber
+{ after(seq, limit) -> Vec<Event>, latest() -> watch::Receiver<u64> }` — the name the hidden-hooks
+list of [design/05-modules.md](design/05-modules.md) reserves for the seam the outbox consumers plug
+into — is provided by the kernel: the dispatcher publishes the latest `seq` after every commit that
+wrote events, and `after` fills `instanceId` from the instance. `seq` is made commit-ordered:
+`outbox::write` takes `pg_advisory_xact_lock` on the eight-byte key `keeloutbox` before its first
+insert, so transactions that write events commit in `seq` order and `after(seq)` never passes a row
+that is still uncommitted — an identity value is assigned at insert, and without the lock a consumer
+that read past a higher `seq` would lose the lower one committing later — the plan's choice for a
+guarantee the design's "no consumer can be left behind" needs and names no mechanism for; the lock
+serialises the commit tail of the calls that emit events alone, and the key joins the kernel's
+advisory keys in [design/04-storage.md](design/04-storage.md) through step 15. The runtime provides
+the subscriber with the instance id, and a kernel test composes it as the runtime does.
+
+**Touches.** `crates/sdk/src/system.rs` (`OutboxSubscriber`),
+`crates/kernel/src/dispatcher/outbox.rs` (the transaction lock, `after`) and `mod.rs` (the watch),
+`crates/keel/src/runtime.rs` (the subscriber provided with the instance),
+`crates/kernel/tests/kernel/outbox.rs`.
+
+**Out of scope.** Every consumer (steps 4d, 5b and 6a); retention of the outbox (M4).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/outbox.rs`:
+  `outbox_subscriber_answers_events_after_a_seq_with_the_instance_id_and_wakes_a_waiter_on_commit`;
+  `a_transaction_writing_an_event_waits_for_the_earlier_writer_to_commit_so_after_never_skips_a_row`
+  — two transactions, the first writes an event and stays open, the second's write blocks until the
+  first commits, and `after` answers the rows in `seq` order with no gap that fills later.
+
+### 4d. notify: channels, templates and the sender
+
+**Goal.** The delivery half of `notify`: channels, templates, the outbox consumer that feeds them,
+the sender and the test email button, tested against a closed port and a refused connection; the
+mail catcher is step 4e. Tables: `notify_channel` (`id`, `kind` — `email`, `telegram`, `webhook` —
+`name`, `enabled`, `config_json` with its secrets sealed through `SecretCipher`, `last_sent_at`,
+`last_error`, `created_at`, `created_by`), `notify_delivery` (`id`, `channel_id`, `message_id`,
+`attempt`, `state` — `pending`, `sent`, `failed` — `next_at`, `error`, `sent_at`, `created_at`) and
+`notify_cursor` (`consumer`, `seq`). `MailTemplate::new(id, subject, body)` joins the module's
+`api`: a pair of minijinja templates rendered under a `SyntaxConfig` whose variable delimiters are
+`{` and `}`, so a template obeys the one placeholder form of
+[design/08-frontend.md](design/08-frontend.md) and the freeze's placeholder check applies to it,
+with the block delimiters the commit message records; the module ships `notify.problem_raised`,
+`notify.problem_cleared` and `notify.test` under `crates/system/templates/notify/`, and a
+contributed id that collides fails the freeze. The email channel goes over `lettre`, added to
+`[workspace.dependencies]` at a pinned major with its rustls features and without `native-tls`, so
+the musl build stays free of C libraries: `AsyncSmtpTransport` with `host`, `port`, `security`
+(`none`, `starttls`, `tls`), `username`, `password` (sealed), `from` and `to`; the module's `start`
+runs `rustls::crypto::ring::default_provider().install_default()` before the first transport is
+built, ignoring the `Err` of a provider already installed, since the workspace's `rustls` pin
+installs none on its own and a `starttls` or `tls` channel would otherwise fail at its first send —
+the line step 9b moves to the runtime, so a step landing after 9b does not add it; the `telegram`
+and `webhook` kinds are members of the enum, listed by the descriptor, and refused by
+`notify.channel.set` with `422 notify.error.channel_kind_unavailable` on `kind` until their
+milestone. Delivery goes through the outbox, as the design says: a consumer with the cursor
+`channels` wakes on `OutboxSubscriber::latest()` of step 4c, reads the `notify.message.created`
+events after its `seq` and creates one `notify_delivery` per enabled channel for a message whose
+`source` is `problem` or `test`; the sender wakes on a `tokio::sync::Notify` the consumer signals
+and on the clock for the retries, so a message becomes an attempt within a second of its commit and
+the retry ladder alone waits on the clock; it renders the template the message's key names with its
+params and the recipient's language, and retries a failure on the ladder of
+[design/07-ecosystem.md](design/07-ecosystem.md), 1m, 5m, 30m, 2h, 12h, after which the delivery is
+`failed` and `notify.delivery_failed` is raised for the channel through `Problems`, with the
+`Caller` the module took from its context at `start`. The test email button is `notify.channel.test
+{ id }`, an action that writes a message of source `test` to the caller with one delivery on that
+channel, so the outcome shows in `notify.delivery.list` and on the channel row. Functions, all
+`Level::Admin` and `.unowned()`: `notify.channel.list`, `notify.channel.get`, `notify.channel.set {
+id?, kind, name, enabled, email: { host, port, security, username, password, from, to } }` (`form`,
+`password` a `secret`), `notify.channel.delete { id }`, `notify.channel.test { id }` and
+`notify.delivery.list` (columns `channel`, `messageKey`, `state` as `status`, `attempt`, `nextAt`,
+`error`, `sentAt`); the menu node `system/channels`.
+
+**Touches.** `crates/system/Cargo.toml` (`lettre`, `minijinja`, `rustls`), `Cargo.toml` (`lettre`),
+`crates/system/src/notify/` (`channels/` with `mod.rs` and `email.rs`, `templates.rs`,
+`consumer.rs`, `sender.rs`, `functions/channels.rs`, `functions/deliveries.rs`),
+`crates/system/migrations/notify/` (the three tables), `crates/system/i18n/notify/`,
+`crates/system/templates/notify/`, `crates/system/tests/system/` (`notify_channels.rs`, snapshots);
+`deploy/README.md` is untouched until step 15.
+
+**Out of scope.** The mail catcher in CI and `hack/e2e.sh` (step 4e); the telegram and webhook
+channels beyond their declaration; a template per language beyond the catalogue's languages; an
+address per principal (M5, by the note of step 4b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/notify_channels.rs`:
+  `an_unimplemented_channel_kind_is_refused_on_kind_and_the_email_password_is_sealed_and_masked`;
+  `a_template_renders_with_single_brace_placeholders_and_a_double_brace_fails_the_freeze`;
+  `a_message_becomes_a_delivery_per_channel_within_a_second_and_the_cursor_survives_a_restart` on
+  the `database()` builder of step 1a;
+  `a_refused_smtp_connection_follows_the_ladder_and_the_fifth_failure_raises_notify_delivery_failed`
+  under the frozen clock;
+  `a_tls_channel_to_a_closed_port_fails_on_the_connection_and_not_for_want_of_a_provider`; the
+  `notify.channel.*` and `notify.delivery.list` descriptors match their snapshots.
+
+### 4e. notify: the mail catcher in CI and hack/e2e.sh
+
+**Goal.** The email of the M3 exit criteria seen arriving: an SMTP catcher with an HTTP API reaches
+the tests the way Postgres does, and `hack/e2e.sh` walks the cron job, the problem and the mail end
+to end. The catcher is the `mailpit` image, the plan's choice of a maintained catcher with an SMTP
+listener and a JSON API; the M3 "Done when" names no product. `.github/workflows/ci.yml` adds to the
+jobs `check` and `system` the service `mailpit` (that image, `ports: ['1025', '8025']`, the health
+check `/mailpit readyz`, the binary the image ships and checks itself with) and exports
+`KEEL_TEST_SMTP_URL=smtp://127.0.0.1:${{ job.services.mailpit.ports['1025'] }}` and
+`KEEL_TEST_SMTP_API=http://127.0.0.1:${{ job.services.mailpit.ports['8025'] }}` to the steps Test,
+the `keel-system` Test and `hack/e2e.sh`, the arrangement of the Postgres service, so no job starts
+a container on the runner. `crates/system/tests/system/notify_mail.rs` uses the two variables when
+set and starts the image through `testcontainers` otherwise, as the testkit starts Postgres.
+`hack/e2e.sh` reads the two variables and uses that catcher; when both are unset it starts the image
+itself through the CLI of the container runtime `KEEL_CONTAINER_RUNTIME` names, `podman` when it is
+on the path and `docker` otherwise — the daemon `testcontainers` reaches through `DOCKER_HOST` — on
+two `free_port`s published as `-p <port>:1025 -p <port>:8025`, waits for `/readyz` of the API,
+removes the container in `cleanup`, and fails naming the runtime when neither is on the path; the
+`for tool in` check of the script gains the runtime under that condition alone. With the catcher
+reachable the script creates an email channel to it over `ctl notify.channel.set`, creates a `todo`
+note of `alice` with `due` in the past, runs `ctl cron.job.run id=notify.problems.poll`, asserts
+`ctl notify.problem.list` shows `note.overdue`, and polls `GET /api/v1/messages` of the catcher up
+to the prove timeout until it lists one message whose subject names the key, rather than asserting
+once, since the sender of step 4d wakes within a second and the script must not race it;
+`notify_mail.rs` polls the same way.
+
+**Touches.** `.github/workflows/ci.yml` (the catcher service and its variables),
+`crates/system/Cargo.toml` (`testcontainers` as a dev-dependency),
+`crates/system/tests/system/notify_mail.rs`, `hack/e2e.sh`.
+
+**Out of scope.** The browser side of the mail (none; the catcher is checked by the script and the
+test); `deploy/README.md` (step 15).
+
+**Acceptance.**
+
+- `crates/system/tests/system/notify_mail.rs`:
+  `a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_test_email` against the
+  catcher `KEEL_TEST_SMTP_URL` and `KEEL_TEST_SMTP_API` name, the service container in CI, and
+  against one started through `testcontainers` when they are unset; the subject of the received mail
+  is the rendered `notify.problem_raised` in `en`.
+- `hack/e2e.sh target/debug/keel` is green with the catcher, in the job `check` with the service
+  container and locally with the container the script starts: the poll raises `note.overdue` and the
+  catcher lists the email within the prove timeout; with the two variables unset and neither
+  `podman` nor `docker` on the path the script fails naming the runtime.
+
+### 5a. kernel: emit_about and the subject rule
+
+**Goal.** Events need a subject for a subscription and a stream to be scoped, the seam of steps 5b
+and 6a landed alone. The public `Call::emit_about(kind, EventSubject, &data)` names the row an event
+is about, and the dispatcher fills a missing subject for a plain `emit` with `kind` the function
+name without its verb, `id` the key parameter when it is a single id, and `accountId` the account
+the call resolved through `Call::resolve_account`, which the call state records on its last
+successful resolution, and the caller's account when the handler resolved none — the plan's choice
+for the subject rule the design leaves to the emitter, and the resolved account rather than the
+caller's because an owner editing a user's row over `ctl note.edit … account=<alice>`, as
+`hack/prove-binary.sh` does, must produce an event alice's stream and subscriptions match — so
+`keel_outbox.subject_json` is filled from here on, and `note.edit` names the note's account through
+`emit_about`.
+
+**Touches.** `crates/sdk/src/call.rs` (`emit_about`, `Emitted.subject`, the recorded resolution),
+`crates/kernel/src/dispatcher/outbox.rs` and `mod.rs` (the subject fill),
+`crates/kernel/tests/kernel/dispatcher.rs`, `products/demo/src/note/functions.rs` (`emit_about`),
+`products/demo/tests/demo/note.rs`.
+
+**Out of scope.** Every consumer of the subject (steps 5b and 6a).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/dispatcher.rs`:
+  `an_emitted_event_carries_the_subject_the_handler_named_or_the_one_the_dispatcher_derives`;
+  `a_derived_subject_names_the_resolved_account_when_an_admin_acts_on_another_accounts_row`; the
+  outbox fixture of `contracts/fixtures/event.json` still round-trips.
+- `products/demo/tests/demo/note.rs`: `note_saved_names_the_notes_account_as_its_subject` for a note
+  the owner edits in A1's account.
+
+### 5b. webhooks: subscriptions, HMAC signatures, retries and the dead letter
+
+**Goal.** The `webhooks` module of the "webhooks" section of
+[design/05-modules.md](design/05-modules.md) and the event-delivery section of
+[design/07-ecosystem.md](design/07-ecosystem.md), as the feature `webhooks` with the module id
+`webhook`, requiring `notify`; its conformance check is step 5c. Tables: `webhook_subscription`
+(`id`, `account_id`, `principal_id`, `name`, `url`, `secret` sealed through `SecretCipher`, `events`
+as a text array of masks, `enabled`, `created_at`, `created_by`, `updated_at`), `webhook_delivery`
+(`id`, `subscription_id`, `account_id`, `event_id`, `seq`, `attempt`, `state` — `pending`,
+`delivered`, `failed`, `dead` — `next_at`, `last_status`, `last_error`, `delivered_at`,
+`created_at`) and `webhook_cursor` (`consumer`, `seq`). The consumer with the cursor `deliveries`
+reads the outbox through the `OutboxSubscriber` of step 4c and, for every event, creates one
+`webhook_delivery` per enabled subscription whose masks match the event type by the rule of
+`invalidate_on` and whose scope admits the event: a subscription is scoped to its subscriber,
+`AccountScope::of` the principal loaded through `PrincipalSource::by_id`, and an event is admitted
+when its `subject.accountId` of step 5a lies within that scope, an event without one reaching
+admins' subscriptions alone, which is how a user-level subscription is scoped to own events. The
+sender posts due deliveries through `reqwest` over rustls with the event as the body, `Content-Type:
+application/json`, `X-Keel-Event-Id` and `X-Keel-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of
+"<t>.<body>" under the secret>`, the format of the design; `t` is the unix time of the attempt, so a
+retry carries a new `t` and a new `v1`; `signature.rs` exposes `sign(secret, t, body)` and
+`verify(secret, header, body, now)`, where `verify` compares through `hmac::Mac::verify_slice`, the
+constant-time comparison, and refuses a `t` more than 300 seconds from `now`, the window the design
+sketches and the plan fixes, so the inbound check of M6 reuses it. The sender's client is built with
+`redirect(Policy::none())`, ten seconds to connect and thirty in all, a 1 MiB cap on the response
+body it reads, and `last_error` truncated to 512 bytes; a `2xx` marks `delivered`, anything else or
+a transport failure moves `attempt` on and sets `next_at` from the ladder 1m, 5m, 30m, 2h, 12h, and
+the failure after the fifth attempt marks the delivery `dead` and raises `webhook.dead_letter` for
+the subscription through `Problems` of step 4b, with the subscription's account and the `Caller` the
+module took from its context at `start`, which clears when a later `webhook.delivery.retry`
+delivers. The module's `start` installs the ring provider as step 4d does, the line step 9b moves to
+the runtime, so an `https://` subscription does not fail at its first send for want of a
+process-level provider. A subscriber chooses the target, so the module guards the installation's own
+network: the `SettingDef` `webhook.private_targets` (`bool`, `Level::Admin`, default `false`) the
+module contributes and reads through `SettingsSource`, the default standing in a composition without
+`settings`, governs private targets — while it is `false`, `webhook.subscription.set` refuses on
+`url` with `422 webhook.error.url_private` a scheme other than `https`, a host that is an IP
+literal, and a host that resolves through `tokio::net::lookup_host` to a loopback, link-local,
+private (RFC 1918), unique-local or unspecified address, an admin's subscription checked the same
+way; the sender resolves the host through `tokio::net::lookup_host` again at send time, applies the
+same rule to every answered address, marks the attempt failed with `webhook.error.url_private` when
+any is private, and pins the checked addresses on the request through
+`reqwest::ClientBuilder::resolve_to_addrs(host, &addrs)` on a client built per attempt, so the
+connection goes to an address the check saw and to nothing else, and a name that answers differently
+to the check and to the connection — a rebinding name with a zero time to live — reaches nothing.
+`X-Keel-Peer` waits for the peers of M6, since no installation has an identity to name yet.
+Functions: `webhook.subscription.list` (`list`, `Level::User`, permission `webhook.manage` for user
+and reseller, `.owned()`, columns `name`, `url`, `events` as `text`, `enabled` as `toggle` edited
+through `webhook.subscription.toggle`, `createdAt`; row actions `edit`, `deliveries` as a `child`
+screen on `webhook.delivery.list` with `subscription_id`, `delete`), `webhook.subscription.get`,
+`webhook.subscription.set { id?, name, url, secret?, events, enabled, account? }` (`form`; `url`
+under the `url` format and the private-target rule, `events` on the `tags` control with each mask
+checked against the grammar `<module>.*` or a dotted name, `secret` a `secret` generated when absent
+— 32 bytes from the OS RNG encoded base64url — and answered `once`, a caller-chosen one shorter than
+16 bytes answering `422 webhook.error.secret_short` on `secret`), `webhook.subscription.toggle { id,
+enabled }`, `webhook.subscription.delete { id }`, `webhook.delivery.list` (`list`, `.owned()` over
+the copied `account_id`, scoped by `subscription_id`, columns `eventId`, `type`, `state` as
+`status`, `attempt`, `nextAt`, `lastStatus`, `lastError`; row action `retry`),
+`webhook.delivery.get`, `webhook.delivery.retry { id }` (`action`, re-queues a `failed` or `dead`
+delivery); the menu node `system/webhooks`. The module contributes `AccountLifecycle { on_delete }`
+dropping the subscriptions and deliveries of a deleted account, as step 2b demands.
+
+**Touches.** `crates/system/Cargo.toml` (`webhooks = ["notify", ...]`, `reqwest`, `rustls`, `hmac`,
+`sha2`), `crates/system/src/webhooks/` (`mod.rs` with the setting, `entity.rs`, `functions/`,
+`consumer.rs`, `sender.rs`, `signature.rs`, `masks.rs`, `targets.rs`, `lifecycle.rs`),
+`crates/system/migrations/webhooks/`, `crates/system/i18n/webhooks/`, `crates/system/tests/system/`
+(`webhooks.rs`, `webhooks_alone.rs`, snapshots), `.github/workflows/ci.yml` (the matrix),
+`bin/keel/src/main.rs`.
+
+**Out of scope.** The conformance check (step 5c); the peer subscription created at pairing,
+`X-Keel-Peer` and the inbox (M6); the pull feed (M6); a signature check on inbound deliveries (M6),
+which reuses `verify`; retention of delivered rows.
+
+**Acceptance.**
+
+- `crates/system/tests/system/webhooks.rs` with an `axum` listener in the test and
+  `webhook.private_targets` set:
+  `a_subscription_receives_a_signed_delivery_for_a_matching_event_and_the_signature_verifies`;
+  `an_event_outside_the_masks_or_outside_the_subscribers_scope_creates_no_delivery` — A1's
+  subscription to `note.*` receives A1's `note.saved` and not A2's, the admin's receives both, and
+  an event without a subject reaches the admin's alone;
+  `a_failed_delivery_follows_the_ladder_and_its_fifth_failure_is_a_problem_a_retry_clears` under the
+  frozen clock, each retry carrying a later `t`;
+  `the_consumer_resumes_from_its_cursor_after_a_restart` on the `database()` builder;
+  `a_subscription_secret_is_answered_once_sealed_at_rest_and_masked_in_audit`;
+  `a_private_or_plain_url_is_refused_on_url_unless_webhook_private_targets_is_set`;
+  `the_sender_connects_to_the_address_it_checked_and_not_to_one_the_name_answers_later` with a test
+  resolver override answering a public address to the check and a loopback one afterwards;
+  `a_short_secret_is_refused_on_secret_and_a_generated_one_is_32_bytes`;
+  `the_sender_follows_no_redirect` — a listener answering `302` to a second listener leaves the
+  delivery failed and the second untouched;
+  `deleting_an_account_drops_its_subscriptions_and_deliveries`; `assert_reseller_sees_only_subtree`
+  and `assert_user_cannot_edit_foreign_row` for `webhook.subscription.list` and
+  `webhook.subscription.set`; the descriptors match their snapshots. The unit tests of
+  `signature.rs`:
+  `a_signature_verifies_through_verify_slice_and_a_stale_or_tampered_one_is_refused`.
+- `crates/system/tests/system/webhooks_alone.rs` boots with `auth` alone; the matrix gains
+  `webhooks` and `auth,settings,audit,tasks,cron,notify` as the set without it.
+
+### 5c. webhooks: the conformance check
+
+**Goal.** The webhooks check the design binds to `keel-conformance`, over the module of step 5b:
+`suite/webhooks.rs` opens a listener of its own, subscribes as the admin to `note.*` with a secret
+it chose, edits a note through the API, receives the delivery within the suite's timeout, verifies
+the signature with the rule of `signature.rs` — the window and the comparison — asserts a tampered
+body and a stale `t` fail that verification, checks the event id header equals the body's `id`,
+answers `200`, then subscribes as the user, edits a note of the user and one of the admin, and
+receives the user's alone. `hack/conformance.sh` runs `ctl settings.set key=webhook.private_targets
+value=true` before the suite so the suite's loopback listener is reachable.
+
+**Touches.** `crates/conformance/` (`Cargo.toml` with `axum`, `hmac`, `sha2` as dependencies,
+`src/suite/webhooks.rs`, `src/suite/mod.rs`), `hack/conformance.sh` (the setting before the suite),
+`.github/workflows/ci.yml`.
+
+**Out of scope.** An inbound check (M6); a check of the dead letter, which the frozen clock of the
+module tests covers.
+
+**Acceptance.**
+
+- `hack/conformance.sh target/debug/keel` is green with the `webhooks` check printing its lines: the
+  signed delivery verified, the tampered and stale variants refused, the user's subscription
+  receiving the user's event alone; `hack/check-deps.sh` still holds `keel-conformance` to its
+  allowed dependencies.
+
+### 6a. SSE: /api/v1/events with scope filtering and Last-Event-ID
+
+**Goal.** The server-sent event stream of the endpoint map of
+[design/10-contracts.md](design/10-contracts.md) at the provisional path M2 recorded, `GET
+/api/v1/events`, now confirmed, in the kernel's HTTP transport: the route, the filtering and the
+catch-up; the caps, the re-check at keep-alive and `meta.invalidate` are step 6b. The route sits
+behind the authentication middleware: a guest is answered `401`, a cookie session or a Bearer token
+opens a stream of `text/event-stream` with `Cache-Control: no-store`, a `retry: 3000` line and a
+comment every fifteen seconds as keep-alive. Three events here: `data.invalidate`, one frame per
+outbox event the principal may see, `id:` the outbox `seq` and `data:` the event in the shape of
+[design/07-ecosystem.md](design/07-ecosystem.md); `task.progress` and `notification`, live frames
+from the `LiveEvents` broadcast of step 1a — the tasks module publishes `TaskProgress`, `notify`
+publishes `NotificationFrame`, the types steps 1a and 4b put into `keel-types` — without an `id`,
+since they are not outbox rows; the fourth, `meta.invalidate`, `data: { meta }`, is sent by the
+stream itself on a catch-up outside the window here and by the kernel on `touch_acl` from step 6b.
+Filtering is per connection by `ScopePolicy` and principal: a `data.invalidate` is sent when the
+event's `subject.accountId` lies within `AccountScope::of` the stream's principal, an event without
+one to admins and owners alone; a live frame when its `principal` is the stream's principal, or when
+its `account` lies within `AccountScope::of` the stream's principal and that principal is at
+`Level::Reseller` or above, or when the stream's principal is an admin — so a user sees its own jobs
+and notifications alone, a reseller those of its subtree, an admin every one, and a user receives
+`data.invalidate` only for its own objects, the M3 exit criterion. Catch-up: a stream opened with
+`Last-Event-ID`, or with the query member `after`, which the browser client of step 12 sends on a
+reconnect it makes itself, replays the outbox events after that `seq` through the `OutboxSubscriber`
+of step 4c, filtered the same way, before going live, within a window of `SSE_REPLAY_WINDOW` events
+behind the latest `seq`; an id older than the window is answered with one `meta.invalidate` first
+and the stream goes live from the latest `seq`, so the client refetches everything rather than miss
+something. The connection registry watches `Readiness`: when the runtime drains, every stream sends
+a final `retry: 3000` comment and closes, so axum's graceful shutdown completes and `Running::stop`
+never waits on a browser, which would otherwise hold the process until the scripts' and the unit's
+SIGKILL and kill the worker before the checkpoint the drain of step 1b protects. Over `su` the
+stream belongs to the effective principal. The testkit's `TestHttp` gains `events(who,
+last_event_id)`, a reader of frames for tests.
+
+**Touches.** `crates/kernel/src/http/events.rs` and `mod.rs` (the route, the connection registry,
+the `Readiness` watch handed to the registry), `crates/testkit/src/http.rs` (`events`),
+`crates/kernel/tests/kernel/events.rs`.
+
+**Out of scope.** The per-session cap, `SSE_MAX_CLIENTS`, the re-authentication at keep-alive,
+`meta.invalidate` on `touch_acl`, the conformance suite and `hack/prove-binary.sh` (step 6b); the
+browser client and the shell (steps 12, 13a and 13b); the `stream` kind and the log tail (M5); the
+peers feed (M6); a stream on the control socket.
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/events.rs`:
+  `a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admin_receives_every_one` —
+  A1, A2 and the admin hold streams, a test module's owned write in A1's account and one in A2's
+  produce two outbox events, A1's stream carries one frame with `id` equal to its `seq`;
+  `a_reconnect_replays_after_last_event_id_and_an_id_outside_the_window_gets_meta_invalidate`;
+  `the_after_query_member_is_read_like_the_header`;
+  `a_guest_is_refused_and_a_bearer_token_gets_a_stream`;
+  `live_frames_reach_the_addressed_principal_and_the_admins`;
+  `live_frames_of_an_account_reach_its_reseller_and_not_a_user_of_another_account`;
+  `every_open_stream_closes_when_the_runtime_drains_so_stop_returns_within_a_second`.
+- `crates/system/tests/system/tasks.rs` gains
+  `task_progress_frames_of_a_job_arrive_on_the_owners_stream_in_order` and `notify.rs` gains
+  `a_notification_frame_arrives_on_the_recipients_stream_when_a_message_is_written`.
+
+### 6b. SSE: caps, the keep-alive re-check, meta.invalidate and the checks
+
+**Goal.** What makes the stream of step 6a safe to leave open. `meta.invalidate` gains its kernel
+sender: it is published to the principal whose `acl_gen` the kernel bumps through `touch_acl` and to
+every stream of an account it bumps by path, beside the catch-up case of step 6a. A session holds at
+most `SSE_STREAMS_PER_SESSION` streams, `4` as the plan's value, and a token the same, so two tabs
+of one login each keep a stream; the stream beyond the cap closes the oldest of that session, which
+is how a reconnect never leaves a stale connection counted. At every keep-alive the stream re-runs
+the authenticator chain with its credential and closes on `unauthenticated`, so a revoked session, a
+logout or an expired token loses its stream within fifteen seconds, and the tasks and notify frames
+are scoped at send time by the principal the last check answered. The global limit of
+[design/02-functions.md](design/02-functions.md), which that document groups with the body limit, is
+the kernel constant `SSE_MAX_CLIENTS` beside `BODY_LIMIT` in `http/mod.rs`, `1000`, and a member
+`sse_max_clients` of `HttpOptions` the tests lower — not a key of `config.yaml`, which
+[design/09-operations.md](design/09-operations.md) keeps to what the process cannot start without;
+the design names the limit in lower case as a configuration key would be named, and step 15 writes
+the constant into that sentence; the stream beyond it is answered `503 unavailable` with
+`keel.error.sse_limit`. `keel-conformance` gains `suite/events.rs`, which opens the stream as the
+admin and as the user, edits a note of each through the API and asserts each receives its own
+`data.invalidate` and the admin both.
+
+**Touches.** `crates/kernel/src/http/events.rs` and `mod.rs` (`SSE_MAX_CLIENTS`,
+`HttpOptions.sse_max_clients`, the per-session cap, the re-check at keep-alive),
+`crates/kernel/src/keel/source.rs` (`meta.invalidate` on `touch_acl`),
+`crates/kernel/src/keel/acl.rs` (the subtree bump), `crates/kernel/i18n/` (`keel.error.sse_limit`),
+`crates/kernel/tests/kernel/events.rs`, `crates/conformance/src/suite/events.rs`,
+`hack/prove-binary.sh` (the stream answers a frame and survives the stop).
+
+**Out of scope.** The browser client and the shell (steps 12, 13a and 13b); a limit an operator
+edits, which the operator plane of M4 may turn into a `SettingDef` of the `keel` module if an
+installation ever needs another value.
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/events.rs`:
+  `a_session_beyond_its_cap_loses_its_oldest_stream_and_the_one_beyond_sse_max_clients_is_refused`
+  with `HttpOptions.sse_max_clients` at `6` — five streams of one session leave four open with the
+  first closed, and the seventh stream across sessions is refused;
+  `a_revoked_session_loses_its_stream_at_the_next_keep_alive` under the frozen clock;
+  `meta_invalidate_follows_a_touch_acl_of_the_streams_principal_and_a_bump_of_its_account_subtree`;
+  `crates/kernel/src/http/mod.rs`: `sse_max_clients_defaults_to_the_constant`.
+- `hack/conformance.sh` prints the `events` lines green; `hack/prove-binary.sh` opens the stream
+  with the admin's cookie, edits a note over `ctl` and reads a `data.invalidate` frame naming
+  `note.saved` within the timeout, then keeps a stream open through `stop_serve`, and the stop still
+  completes on SIGTERM within the timeout.
+
+### 7a. the download kind, the raw route and task.download
+
+**Goal.** The `download` kind of [design/02-functions.md](design/02-functions.md) in the SDK, the
+kernel and the tasks module; `keel.export` over it is step 7b. A handler of a `kind: download`
+function answers `DownloadOutcome`, either `Body(Download { filename, content_type, body })` with a
+byte stream or `Stored { filename, content_type }` for a body written to `call.task().output()`
+inside a job, the descriptor's `result` being the `{ filename, contentType }` the design fixes; a
+handler of any kind running inside a job hands its output file the same way through the public
+`TaskHandle::stored(filename, content_type)`, which `Stored` calls for a `download` handler, and the
+worker records the job's result as the handler's answer extended with the `download` member of
+`DownloadRef { download: { function: "task.download", params: { id } } }`, a type of `keel-types`,
+when the job has a stored file; the kernel serves every `download` function at `GET` and `POST
+/api/v1/x/<module>/<name>`, the parameters read as the call route reads them, inside the `api`
+router behind `auth::authenticate` as remark 4 places the raw routes, through the whole pipeline,
+and streams the body with `Content-Type`, `Content-Disposition: attachment; filename="…"` with a
+`filename*` for a name outside ASCII, `Cache-Control: no-store` and `X-Keel-Request-Id`, an error
+before the first byte answering the envelope; `/api/v1/call/<name>` and the socket answer `422
+validation` with `keel.error.download_route` naming the raw route, and every `download` and `upload`
+call raises the audit event whatever its mode, the "always behind a guard and an audit event" of the
+design. `task.download { id }` is the tasks module's `kind: download`, `.owned()` over
+`task_job.account_id`, streaming `<data_dir>/tasks/<id>.out` under the filename and content type the
+job recorded and `404` for a job without a file. `note.export` of step 2a stays a `kind: action`
+with `ui.result = task`, so its `ui` block and the `/f/note.export` route step 13a opens stand: its
+handler calls `call.task().stored(filename, content_type)` with the name and type of its `format`
+after its last note and keeps answering `{ exported }`, so the job's result carries `exported` as
+the tests of step 2a assert and the `download` member beside it. `keel ctl` keeps `--out
+json|table`, the surface the design fixes; a download from the terminal goes through the raw route
+with a token.
+
+**Touches.** `crates/sdk/src/download.rs` (`Download`, `DownloadOutcome`), `crates/sdk/src/task.rs`
+(`TaskHandle::stored`), `crates/sdk/src/system.rs` (`TaskSink::stored`),
+`crates/sdk/src/function.rs` (the download builder), `crates/types/src/task.rs` (`DownloadRef`) with
+`contracts/schema/` and the generated types, `crates/kernel/src/http/raw.rs` and `mod.rs` (the raw
+routes of `download` functions), `crates/kernel/src/dispatcher/mod.rs` (the audit rule, the download
+refusal on the call route), `crates/kernel/src/socket/mod.rs` (the refusal), `crates/kernel/i18n/`
+(the error key), `crates/system/src/tasks/` (`download.rs`, the `download` member of the result),
+`products/demo/src/note/export.rs`, `crates/kernel/tests/kernel/download.rs`,
+`crates/system/tests/system/tasks_download.rs`, `products/demo/tests/demo/tasks.rs`.
+
+**Out of scope.** `keel.export` and the row threshold (step 7b); the export button (step 14a); the
+`upload` kind (step 8b); a `download` over the control socket; retention of output files; the
+`stream` kind (M5).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/download.rs` with a test module whose `download` function streams a
+  synthetic body:
+  `a_download_is_served_and_audited_on_its_raw_route_and_refused_on_the_call_route_and_the_socket`;
+  `an_error_before_the_first_byte_answers_the_envelope_and_a_non_ascii_name_gets_filename_star`;
+  `a_guest_is_refused_on_the_raw_route`.
+- `crates/system/tests/system/tasks_download.rs` with the real `tasks` module and a test job whose
+  handler writes to `output()` and calls `stored`:
+  `a_jobs_stored_file_ends_in_a_download_ref_that_task_download_serves`;
+  `task_download_of_another_accounts_job_or_of_a_job_without_a_file_is_not_found`.
+- `products/demo/tests/demo/tasks.rs`:
+  `note_export_ends_with_exported_and_a_download_that_task_download_streams_as_the_callers_csv`; the
+  `note.export` snapshot is unchanged, the function keeping its kind and screen block; `pnpm
+  generate` leaves `DownloadRef` committed.
+
+### 7b. keel.export with the row threshold
+
+**Goal.** The generic export of the lists section of
+[design/10-contracts.md](design/10-contracts.md) over the `download` kind of step 7a. `keel.export {
+func, query, columns, format }` is a `kind: download` in `mode: read` at `Level::User`,
+`.unowned()`, of the `keel` module: `func` must name a `kind: list` function the caller may call —
+level, permission, feature and token scope run as its guards would, an unknown or uncallable one
+answering `not_found` — `query` is a `ListQuery` whose `page` and `pageSize` are ignored, `columns`
+an optional subset of the columns the caller's projected descriptor carries, `422` on `columns`
+otherwise, and `format` the `ExportFormat` enum; the handler streams every page of `max_page_size`
+of the list through the dispatcher under the caller's principal, so the scope of `ListSource` and
+the strip apply as on the screen, and writes `csv` under RFC 4180 with a header row of the column
+labels translated through the catalogue in the caller's language by the key rule of
+[design/08-frontend.md](design/08-frontend.md), or `json` as one array of the stripped rows; the
+file is named `<func>-<date>.<format>`. The row threshold is `.batch_threshold(EXPORT_TASK_ROWS)` on
+`keel.export`, the design's rule read against the `total` of the first page, `10000` as the plan's
+value: above it, and not already inside a job, the handler calls `Call::spawn_self_as_task()`, a
+public SDK addition that spawns the same function with the same parameters under the same principal
+through the runner and answers a `TaskRef`, or `unavailable` with `keel.error.tasks_unavailable`
+when no runner is composed, and the transport answers the `TaskRef` envelope in place of the stream;
+inside the job the handler writes to `output()` with progress per page and answers `Stored`, so the
+job's result is a `DownloadRef`. `keel ctl` gains no `--out csv`; an export from the terminal goes
+through the raw route with a token. The csv writer, `keel_kernel::export::Csv`, is unit-tested once.
+`keel-conformance` gains `suite/export.rs`: the user's csv of `note.list` lacks `accountId`,
+`columns: ["accountId"]` answers `422`, and `Content-Disposition` names the file.
+
+**Touches.** `crates/sdk/src/call.rs` (`spawn_self_as_task`), `crates/kernel/src/export/` (`mod.rs`,
+`csv.rs`, `json.rs`, `function.rs`), `crates/kernel/src/keel/mod.rs` (`keel.export`),
+`crates/kernel/i18n/` (`keel.export.*`, the error keys), `contracts/fixtures/descriptors/` (the
+`keel.export` snapshot), `crates/kernel/tests/kernel/export.rs`,
+`crates/system/tests/system/tasks_download.rs`, `crates/conformance/src/suite/export.rs`,
+`hack/prove-binary.sh`.
+
+**Out of scope.** The export button (step 14a); a third format; retention of output files.
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/export.rs` with a test module whose `ListSource` answers synthetic
+  rows and carries a reseller-level column:
+  `an_export_streams_every_page_under_the_screens_scope_and_strip_with_translated_headers` — A1's
+  `csv` lacks the reseller-level column and holds A1's rows alone, the reseller's holds its subtree,
+  a `columns` entry A1 cannot see answers `422` on `columns`, and `json` is one array;
+  `an_export_above_the_row_threshold_answers_a_task_ref_and_writes_the_file_inside_the_job` with a
+  runner double; `keel_export_of_a_function_the_caller_may_not_call_is_not_found`; the unit test of
+  `crates/kernel/src/export/csv.rs` quotes commas, quotes and line breaks under RFC 4180.
+- `crates/system/tests/system/tasks_download.rs` with the real `tasks` module and a test list of
+  twenty thousand synthetic rows:
+  `an_export_job_above_the_threshold_ends_in_a_download_ref_that_task_download_serves`.
+- `hack/prove-binary.sh` fetches `/api/v1/x/keel/export` for `note.list` as csv with the admin's
+  cookie and reads the header row; `hack/conformance.sh` prints the `export` lines green.
+
+### 8a. group editing through ui.multi
+
+**Goal.** The group-edit request of the form-dynamics table of
+[design/10-contracts.md](design/10-contracts.md). A `form` function whose `ui.multi` is non-empty
+accepts the body `{ ids, fields, mask }` next to its single-row body, told apart by the presence of
+`ids` and the absence of the key parameter; the dispatcher checks `mask` against the projected
+`ui.multi` — `422` on `mask` with `keel.error.multi_field` for a field outside it — and `fields`
+against `mask` and against the schema of each named field, runs `OwnedGuard` over `ids` element by
+element as it already does for an array key, and, inside one transaction, for every id reads the
+current object through the `get` of `ui.read`, merges the masked `fields` over it and runs the
+function's own handler with the merged parameters as an edit, all or nothing, answering `GroupResult
+{ updated }`, a type of `keel-types`; the merge over `ui.read` is the plan's choice for how a
+per-row form applies to several rows, since the design fixes the request and `ui.multi` alone. Above
+`batch_threshold` the group call becomes a job of chunks by the rule of step 2a, each chunk one
+group call, and a foreign id fails the whole batch before any job. The freeze checks `ui.multi`
+against the schema — every name exists, none is the key, none is `secret`. The demo's `note.edit`
+declares `.multi(["kind", "due", "tags"]).batch_threshold(10)`, `due` among them because the handler
+demands a `due` for `kind: todo` and a group edit to `todo` without one would be refused on every
+row.
+
+**Touches.** `crates/kernel/src/dispatcher/` (`group.rs`, `mod.rs`),
+`crates/kernel/src/loader/freeze.rs` (`ui.multi`), `crates/types/src/task.rs` (`GroupResult`) with
+`contracts/schema/` and the generated types, `crates/kernel/i18n/` (the error key),
+`products/demo/src/note/functions.rs`, `products/demo/tests/demo/note.rs`,
+`crates/kernel/tests/kernel/group.rs`.
+
+**Out of scope.** The multi-row form in the browser (step 14b); the upload kind (step 8b).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/group.rs` with a test form carrying `ui.multi`:
+  `a_group_edit_merges_the_masked_fields_over_ui_read_into_every_row_inside_one_transaction`;
+  `a_mask_outside_ui_multi_or_a_field_outside_the_mask_answers_422_on_the_offending_path`;
+  `a_group_edit_with_one_foreign_id_is_not_found_and_changes_nothing`;
+  `a_group_edit_above_the_threshold_becomes_a_job_of_chunks` with the runner double;
+  `ui_multi_naming_the_key_a_secret_or_an_unknown_field_fails_freeze`.
+- `products/demo/tests/demo/note.rs`:
+  `note_edit_as_a_group_sets_kind_due_and_tags_of_the_selected_notes_and_becomes_a_task_above_ten` —
+  two memos become `todo` with one `due`; `pnpm generate` leaves `GroupResult` committed.
+
+### 8b. the upload kind over a guarded raw route
+
+**Goal.** The `upload` kind of [design/02-functions.md](design/02-functions.md) over the raw route
+of remark 4, in the kernel, the SDK, `keel-types` and the testkit; its first consumer is step 8c. A
+`kind: upload` function's parameters arrive as `multipart/form-data` on `POST
+/api/v1/x/<module>/<name>`: a `params` part with the JSON of the other fields and one part per field
+whose `x-ui.control` is `file`; such a field carries `x-keel.file { maxBytes, types }`, a new member
+of `KeelAttrs` the kernel enforces and the freeze demands on every `control: file` field, and the
+kernel checks each part's `Content-Type` against `types` and its size against `maxBytes` while
+reading it, answering `422` on the field's path with `keel.error.file_type` or
+`keel.error.file_too_large`, then places the part into the parameters — the text of a `string`
+field, checked as UTF-8, or base64 for a field whose schema says `contentEncoding: base64` — and
+runs the ordinary pipeline in `mode: write` with `Idempotency-Key` from the header, the audit event
+as for every upload, and the multipart limit the sum of the fields' `maxBytes` plus `64 KiB` for
+`params`, in place of the 1 MiB of a JSON body — the plan's one exception to the body-limit
+constant, which step 15 writes into the three sentences of the design that state it. The raw routes
+sit inside the `api` router behind `auth::authenticate`, so the `Origin` and `Sec-Fetch-Site` check
+of M1 applies to the multipart `POST` as to every browser write. `/api/v1/call/<name>` answers `422`
+`keel.error.upload_route`; over the socket the field value comes inline, the owner's path for `ctl`,
+and the socket applies `maxBytes` to the inline value as the raw route does to the part. An `upload`
+carries a `Form` screen block, so the shell renders it like a form and posts multipart — the plan's
+choice against the `ui` sentence of the descriptor table of
+[design/02-functions.md](design/02-functions.md), which lists `upload` among the kinds without a
+screen, and the `download · upload · stream` row of the form-dynamics table of
+[design/10-contracts.md](design/10-contracts.md): an upload with a second field and a read-only
+parameter needs the pages and conditions of a form, and the shell has one form renderer; the commit
+message names the two sentences and step 15 amends them. The testkit's `TestHttp` gains `upload(who,
+path, params, files)`.
+
+**Touches.** `crates/kernel/src/http/raw.rs` (multipart), `crates/kernel/src/dispatcher/validate.rs`
+(the file checks), `crates/kernel/src/socket/mod.rs` (`maxBytes` inline),
+`crates/kernel/src/loader/freeze.rs` (`x-keel.file`, the `Form` block on an `upload`),
+`crates/types/src/descriptor.rs` (`FileAttrs`) with `contracts/schema/` and the generated types,
+`Cargo.toml` (`axum` with the `multipart` feature), `crates/sdk/src/multipart.rs` (`FileAttrs`
+re-export and the builder helper), `crates/sdk/src/function.rs` (the upload builder),
+`crates/kernel/i18n/` (the error keys), `crates/testkit/src/http.rs` (`upload`),
+`crates/kernel/tests/kernel/upload.rs`.
+
+**Out of scope.** The brand logo (step 8c); the file control's submit in the browser (step 14c); a
+streamed upload to disk beyond `maxBytes`; a free-form raw route (M5).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/upload.rs` with a test upload of a text file:
+  `a_multipart_upload_on_its_raw_route_lands_the_file_in_the_parameters_and_the_audit_record`;
+  `a_part_above_max_bytes_or_of_another_type_or_not_utf8_is_refused_on_the_field`;
+  `a_control_file_field_without_x_keel_file_fails_freeze`;
+  `the_call_route_refuses_an_upload_and_the_socket_takes_the_field_inline_under_max_bytes`;
+  `a_cross_site_multipart_post_is_refused_403`; `an_upload_descriptor_carries_its_form_block`; `pnpm
+  generate` leaves `FileAttrs` committed.
+
+### 8c. the brand logo as the first upload
+
+**Goal.** The brand logo of the M3 scope list as the first `upload`, over step 8b:
+`settings.brand.logo { host, logo }`, `Level::Admin`, `.unowned()`, `logo` a string with `control:
+file` and `x-keel.file { maxBytes: 65536, types: ["image/svg+xml"] }`,
+`Form::new("settings.brand.logo.title").page("main", ["host",
+"logo"]).field("host").readonly_if("$screen.params.host")`; the server sanitises by refusing, the
+plan's choice over rewriting, so an operator never gets a logo other than the one uploaded:
+`check_svg` parses with `ParsingOptions { allow_dtd: false, .. }`, so any document type is refused
+whole, compares namespaces and not local names alone — it refuses a root element outside the
+namespace `http://www.w3.org/2000/svg`, any element outside that namespace, which is what makes
+`foreignObject` content refused whether the element is named or not, and any attribute in a
+namespace other than none, `http://www.w3.org/1999/xlink` and
+`http://www.w3.org/XML/1998/namespace`, so a document that smuggles an `iframe` or a `form` under
+another namespace fails the check itself and not only the `default-src 'none'` of the served page —
+and grows to refuse `script` and `foreignObject` elements, any attribute whose name starts with
+`on`, an `href` or `xlink:href` that is not a fragment reference, an `attributeName` attribute
+naming `href`, `xlink:href` or a name starting with `on` — the `animate` and `set` path to the
+refused attributes — a `style` element or attribute containing `url(` or `@import`, and an
+`xml-stylesheet` processing instruction, each with its reason in `params`; the accepted document is
+stored on `settings_brand.logo` and served from `/brand/logo.svg` for that host as in M2.
+`settings.brand.set` drops `logo` from its parameters and pages, the column staying under the
+additive rule, `settings.brand.list` gains the column `logo` as `boolean` and the row action `{ id:
+"logo", role: "upload", screen: "settings.brand.logo", params: { host: "$id" } }`, and the M2 check
+of `hack/prove-binary.sh` moves to the upload over `ctl`.
+
+**Touches.** `crates/system/src/settings/brand/` (`functions.rs`, `svg.rs`, `mod.rs`),
+`crates/system/i18n/settings/`, `crates/system/tests/system/settings_brand.rs` and snapshots,
+`hack/prove-binary.sh`.
+
+**Out of scope.** The file control and the white-label screen in the browser (step 14c); the brand
+text field's return.
+
+**Acceptance.**
+
+- `crates/system/tests/system/settings_brand.rs`:
+  `a_plain_svg_logo_is_served_for_its_host_and_an_unsafe_one_is_refused_naming_the_reason` through
+  `TestHttp::upload`, each refusal naming its reason;
+  `settings_brand_set_no_longer_takes_a_logo_and_leaves_a_stored_one_in_place`; the unit tests of
+  `svg.rs` gain `an_animate_or_set_element_targeting_href_or_an_event_attribute_is_refused`,
+  `an_element_or_attribute_outside_the_svg_xlink_and_xml_namespaces_is_refused` and
+  `a_document_type_is_refused_whole`; the `settings.brand.*` snapshots follow.
+- `hack/prove-binary.sh` refuses `ctl settings.brand.logo host=panel.example
+  logo='<svg…><script/></svg>'` and accepts a plain one, then fetches it from `/brand/logo.svg` with
+  `Host: panel.example`.
+
+### 9a. TLS material, bind_tls and https-capable clients
+
+**Goal.** The first half of the TLS section of [design/09-operations.md](design/09-operations.md),
+brought forward from the M1 and M2 remarks that kept the plain listener: everything the switch of
+step 9b needs, landed while the runtime still binds plain, so that the clients can speak https
+before the server does and no partial landing reddens CI. `crates/kernel/src/tls.rs` holds the
+material: `tls.cert` and `tls.key` name an operator's PEM pair, one without the other failing the
+start naming the missing key; with both empty the kernel uses `<data_dir>/tls/cert.pem` and
+`key.pem` and generates them with `rcgen` at first start when they are missing, added at a pinned
+major as the design names it: `tls.rs` creates `<data_dir>/tls` with mode `0700`, writes an ECDSA
+P-256 key with mode `0600` and a certificate for ten years whose subject alternative names are the
+host name, `localhost`, `127.0.0.1`, `::1`, the addresses the host name resolves to through std's
+`ToSocketAddrs`, so no interface crate is needed, and the `listen` address when it is neither
+unspecified nor loopback, so the installer's probe of that address and the operator's first visit by
+it match; each PEM goes to a temporary file in `<data_dir>/tls` and is renamed into place, so a
+reader polling `/readyz` with `--cacert` never sees a partial file; the material answers its
+certificate's SHA-256 fingerprint for the log line of step 9b. A non-empty `tls.acme` fails the
+start with `keel.error.acme_unsupported` until the operator plane of M4, the empty string of the
+sample config being unset, so `hack/check-install.sh`'s `migrate` of the sample still passes.
+`Http::bind_tls(addr, TlsMaterial)` binds through `axum-server` with its rustls feature that
+installs no provider, added to `[workspace.dependencies]` at a pinned major because it serves an
+axum router with graceful shutdown and connection info over rustls in one call, and passes a
+five-second grace to `axum_server::Handle::graceful_shutdown`, beside the drain close of step 6a;
+`Served::url` answers the scheme of its binding, so `Http::bind` and `bind_local` keep the plain
+listener for the kernel tests and the testkit, whose `TestHttp` stays on the in-process router. The
+clients learn https without using it yet: `keel-conformance` and `keel-dev descriptors dump` gain
+`--cacert` and add the certificate to their `reqwest` client; the `http()` and `start_serve` helpers
+of `hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh` and `hack/e2e.sh` are
+parameterised on a `scheme` variable that stays `http` and on an optional `cacert` argument;
+`frontend/e2e/playwright.config.ts` passes `--ignore-certificate-errors-spki-list=$KEEL_E2E_SPKI` to
+chromium when `KEEL_E2E_SPKI` is set and keeps `ignoreHTTPSErrors` off, so any other certificate
+still fails the suite; `products/demo/tests/demo/runtime.rs` and `crates/keel/tests/runtime.rs` move
+their `http` helper to a `reqwest` client that trusts a handed certificate and keep asserting
+`http://` until step 9b.
+
+**Touches.** `Cargo.toml` (`axum-server`, `rcgen`), `crates/kernel/Cargo.toml` (`axum-server`,
+`rcgen`, `rustls`), `crates/kernel/src/tls.rs` (the material, the generation, the atomic write, the
+fingerprint), `crates/kernel/src/http/mod.rs` (`bind_tls`, `Served::url` by scheme, the grace),
+`crates/kernel/src/config.rs` (the `acme` refusal, the pair check),
+`crates/kernel/tests/kernel/tls.rs`, `crates/keel/Cargo.toml`, `bin/keel/Cargo.toml` and
+`products/demo/Cargo.toml` (`reqwest` and `rustls` as dev-dependencies),
+`crates/keel/tests/runtime.rs`, `products/demo/tests/demo/runtime.rs`, `crates/conformance/src/`
+(`--cacert`), `crates/dev/src/descriptors.rs` (`--cacert`), `hack/prove-binary.sh`,
+`hack/conformance.sh`, `hack/descriptors.sh`, `hack/e2e.sh` (the `scheme` and `cacert` parameters),
+`frontend/e2e/playwright.config.ts`.
+
+**Out of scope.** The runtime binding TLS, the installer, `hack/check-install.sh` and the scripts'
+switch to https (step 9b); `trusted_proxies` (step 9c); ACME and the certificate button in the
+settings (M4); the TLS expiry problem, which needs the certificate parsed and lands with the same
+operator plane; mTLS between nodes (M8); `sd_notify` and the watchdog (M4).
+
+**Acceptance.**
+
+- `crates/kernel/src/tls.rs`:
+  `a_missing_pair_is_generated_for_host_listen_address_and_loopback_under_0700_with_a_0600_key`;
+  `a_configured_cert_without_its_key_fails_the_start_naming_tls_key`;
+  `an_unreadable_pair_under_data_dir_is_regenerated`; `a_pem_is_written_whole_or_not_at_all`;
+  `crates/kernel/src/config.rs`:
+  `a_non_empty_acme_value_fails_the_start_until_it_is_supported_and_the_empty_string_is_unset`.
+- `crates/kernel/tests/kernel/tls.rs`:
+  `bind_tls_serves_healthz_to_a_client_trusting_the_certificate_and_refuses_one_that_does_not` and
+  `bind_tls_stops_within_its_grace_with_a_stream_open`; `crates/kernel/tests/kernel/http.rs` and
+  `crates/testkit/tests/harness.rs` keep their `http://` assertions on the plain binding.
+- `hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh` and `hack/e2e.sh` are green
+  over `scheme=http` with the parameterised helpers; `keel-conformance --cacert` and `keel-dev
+  descriptors dump --cacert` accept the flag against a plain server and read the file.
+
+### 9b. the installation listens on TLS alone
+
+**Goal.** The switch: from this step the installation listens on TLS from its very first start, as
+the TLS section of [design/09-operations.md](design/09-operations.md) says. `keel serve` binds
+`listen` through `Http::bind_tls` with the material of step 9a, and the ring provider of the
+workspace's `rustls` pin is installed once at start by the runtime — the line steps 4d and 5b
+carried in their modules' `start` until here, removed from `crates/system/src/notify/` and
+`crates/system/src/webhooks/` where it exists, and what `keel-conformance` already does on the
+client side; `keel serve` logs the certificate's SHA-256 fingerprint at every start so an operator
+can recognise it in a browser. There is no plain listener and no redirect port, the plan's choice
+against the redirect sentence of the design, which step 15 amends, and the choice answers the case
+the sentence guards against: the design fears a first visit over plain HTTP by IP address that shows
+a login page whose `__Host-` cookie the browser then refuses to store, leaving the operator unable
+to log in without knowing why; with a single TLS listener a plain request gets no page at all — the
+browser reports a protocol error and the operator corrects the scheme — `deploy/install.sh` prints
+`https://` addresses and the fingerprint, and the operator plane of M4 brings ACME, after which a
+name and not an address is what an operator types; a second port would need a second address the
+single `listen` key of the design does not carry, and a redirect on the same port would need an
+accept loop of our own in front of `axum-server`. Every client of the repository speaks https from
+here: `hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh` and `hack/e2e.sh` set
+`scheme=https` and `--cacert "$site/lib/tls/cert.pem"`, the `tls/` directory of the `data_dir` the
+scripts configure, and the readiness loop of `start_serve` treats a missing certificate file, which
+the first `serve` writes, as not ready; `keel-conformance` and `keel-dev descriptors dump` are run
+with `--cacert`; `products/demo/tests/demo/runtime.rs` and `crates/keel/tests/runtime.rs` assert
+`https://`. The browser suite trusts the generated certificate rather than ignoring certificate
+errors: `hack/e2e.sh` exports `KEEL_E2E_URL=https://127.0.0.1:<port>`, `KEEL_E2E_SPKI`, the base64
+SHA-256 of the certificate's subject public key computed by the script with node's
+`crypto.X509Certificate`, which the browser suite has on the path already, rather than a tool the
+runner need not carry, and `NODE_EXTRA_CA_CERTS=$site/lib/tls/cert.pem` for the fixture's own
+`fetch`. `deploy/install.sh` keeps creating `/var/lib/keel/tls` and generates nothing, adds `curl`
+to the `need` list of `check_host` and installs it with `apt_install curl ca-certificates` when
+absent, waits for `/readyz` with `curl --cacert /var/lib/keel/tls/cert.pem` in place of its raw
+socket, prints `https://` addresses and the fingerprint, and shows the API example over https. The
+`__Host-` cookie of M1 is accepted from any origin from here, which retires the localhost rule.
+
+**Touches.** `crates/keel/src/runtime.rs` (the provider, the material, `bind_tls`, the fingerprint
+line), `crates/system/src/notify/` and `crates/system/src/webhooks/` (the provider line removed),
+`crates/keel/tests/runtime.rs`, `bin/keel/tests/binary.rs`, `products/demo/tests/demo/runtime.rs`,
+`hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh`, `hack/e2e.sh`,
+`deploy/install.sh`, `hack/check-install.sh`, `frontend/libs/keel/testing/src/playwright.ts`.
+
+**Out of scope.** A plain redirect port; `trusted_proxies` (step 9c); ACME (M4); `deploy/README.md`
+(step 15).
+
+**Acceptance.**
+
+- `crates/keel/tests/runtime.rs`:
+  `the_runtime_listens_on_tls_alone_and_a_plain_request_gets_no_http_answer` — a `reqwest` client
+  trusting the generated certificate reads `/healthz`, one that does not is refused, and a plain
+  `http://` request fails at the protocol;
+  `the_runtime_installs_the_ring_provider_before_the_modules_start`; `bin/keel/tests/binary.rs`
+  reads `/healthz` from the built binary over TLS with the certificate the site generated and finds
+  the fingerprint in the log.
+- `hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh`, `hack/check-install.sh` and
+  `hack/e2e.sh` are green over https in the job `check`, the browser suite with `KEEL_E2E_SPKI` set
+  and `ignoreHTTPSErrors` off; `deploy/install.sh` prints the https address and the fingerprint at
+  the end of an installation, and `hack/check-install.sh` asserts that `need` names `curl`, the
+  `--cacert` wait and the https form of the printed address.
+
+### 9c. trusted_proxies
+
+**Goal.** The `trusted_proxies` key of the configuration file of
+[design/09-operations.md](design/09-operations.md). The list of `config.yaml` is parsed as CIDRs at
+load, a bad entry failing the start naming it; `HttpOptions` gains `trusted_proxies: Vec<IpNet>`,
+filled by the runtime from `Config`, since `http/auth.rs::client(headers, extensions)` has no access
+to the configuration and `Shared` carries `HttpOptions` alone; `client` reads the client address
+from `X-Forwarded-For` only when the peer address lies inside one of them — the rightmost entry that
+is not itself a trusted proxy — and, under the same condition, the host for the brand patch and for
+the `Origin` comparison of `cross_site` comes from `X-Forwarded-Host`, the plan's choice for a
+header the design does not name: the host is derived by `host_name` in `http/brand.rs`, which
+`boot.rs` imports, so the forwarded host lands there once, and the CSRF check reads it too because a
+reverse proxy that rewrites `Host` to the upstream would otherwise have every browser `POST` refused
+`403 keel.error.cross_site`, the opposite of the key's purpose. The two headers are input from a
+proxy and are read defensively: an entry that does not parse as an IP address, or a header whose
+every entry is a trusted proxy, leaves `Client.ip` at the peer address and is logged once per
+connection at debug; `X-Forwarded-Host` is taken only when it is a single `host[:port]` authority —
+no scheme, no path, no comma — and the `Host` header stands otherwise; the peer address itself is
+never replaced by anything from an untrusted peer. The IP rules, the lockout and the rate limit of
+`auth` and the audit record read `Client.ip` already and follow.
+
+**Touches.** `crates/kernel/Cargo.toml` (`ipnet`), `crates/kernel/src/config.rs` (`trusted_proxies`
+as CIDRs), `crates/kernel/src/http/mod.rs` (`HttpOptions.trusted_proxies`),
+`crates/kernel/src/http/auth.rs` (`client`, `cross_site`), `crates/kernel/src/http/brand.rs`
+(`host_name`), `crates/keel/src/runtime.rs` (the options from `Config`),
+`crates/kernel/tests/kernel/http.rs`, `crates/system/tests/system/auth_guards.rs`,
+`crates/system/tests/system/settings_brand.rs`.
+
+**Out of scope.** A proxy protocol below HTTP; the peers behind a proxy (M6).
+
+**Acceptance.**
+
+- `crates/kernel/src/config.rs`:
+  `trusted_proxies_are_parsed_as_cidrs_and_a_bad_entry_fails_the_start_naming_it`.
+- `crates/kernel/tests/kernel/http.rs`:
+  `x_forwarded_for_is_honoured_from_a_trusted_proxy_alone_and_the_rightmost_untrusted_entry_wins`;
+  `a_same_site_post_is_admitted_by_the_forwarded_host_behind_a_trusted_proxy_alone`;
+  `a_malformed_forwarded_for_or_host_falls_back_to_the_peer_and_the_host_header`.
+- `crates/system/tests/system/auth_guards.rs`:
+  `an_ip_rule_a_lockout_and_the_audit_record_see_the_forwarded_address_behind_a_trusted_proxy`;
+  `crates/system/tests/system/settings_brand.rs`:
+  `x_forwarded_host_from_a_trusted_proxy_selects_the_brand_patch`.
+
+### 10. OwnLate projects and keel-dev i18n pull and missing
+
+**Goal.** The translation pipeline of the bundles section of
+[design/08-frontend.md](design/08-frontend.md), deferred from M2 with the projects that did not
+exist. Two OwnLate projects in the GlobalArt workspace, `keel-core` for the kernel, the system
+modules, the frontend runtime and the `phx.*` keys, and `keel-demo` for the demo, each with `en` as
+source and `ru` as target, are created and seeded from the committed dictionaries, and
+`contracts/i18n.json` records them: the project ids and the directories a key prefix lands in —
+`keel.*`, `phx.*` and `menu.system` in `crates/kernel/i18n`, `auth.*` in `crates/system/i18n/auth`,
+and so on for every module and for `note.*` and `product.demo.*` in `products/demo/i18n`. Three
+subcommands of `keel-dev`, which stays on `keel-types` alone: `i18n extract --dump contracts/dump
+--out <file>` collects every key the registry emits without a manual list — the derived keys of
+every descriptor of the admin dump by the table of the design, fields, enum values, actions, pages,
+columns and column values, hints and placeholders where `x-ui` names them, the explicit titles,
+empty states and error keys the descriptors carry, the menu labels of `boot.json`, and every key of
+the dump's `i18n/en.json`, so the `keel.error.*` keys of handlers and the shell's `keel.shell.*` are
+covered by the dictionaries that carry them — with the `en` text of each as source, in the flat JSON
+the OwnLate import takes, and `--push` uploads it to the named project with `OWNLATE_URL` and
+`OWNLATE_TOKEN` from the environment; `i18n pull --out .` fetches the latest release of every
+project of `contracts/i18n.json` and writes each language nested by key into the directory its
+prefix names, prettified as the repository keeps them, so `pull` on a repository in sync changes
+nothing; `i18n missing --dump contracts/dump [--langs en,ru]` compares the keys `extract` derives
+with the catalogues of the dump for every language, a derived key satisfied by its own entry or the
+shared `keel.<tail>` as the freeze reads it, prints every key without a translation per language and
+exits non-zero on any. `pull` runs at build time in the sense the design means and the offline rule
+allows: the pulled dictionaries are committed, so a build never reaches out, and
+`.github/workflows/build.yml` runs `pull` before its build when `OWNLATE_TOKEN` is present and fails
+on a difference, the plan's choice for a server that cannot fetch translations at runtime; the job
+`check` runs `missing` after `hack/descriptors.sh`, the CI step the design asks for, which is what
+makes a `ru` gap a red build where the freeze checks `en` alone.
+
+**Touches.** `crates/dev/src/i18n/` (`mod.rs`, `keys.rs`, `extract.rs`, `pull.rs`, `missing.rs`),
+`crates/dev/src/main.rs`, `crates/dev/Cargo.toml`, `contracts/i18n.json`, `.github/workflows/ci.yml`
+(the `missing` step), `.github/workflows/build.yml` (the `pull` step), the dictionaries `pull`
+rewrites where the projects differ from the repository; the OwnLate workspace outside the
+repository.
+
+**Out of scope.** A language beyond `en` and `ru`; `keel-dev check`, `new-module`, `new-product`,
+`migrate create` and `docs`; translations fetched at runtime; a project per plugin (M7).
+
+**Acceptance.**
+
+- `crates/dev/src/i18n/`:
+  `extract_derives_the_keys_of_a_dump_by_the_key_table_and_keeps_its_explicit_ones` over
+  `contracts/dump/admin/`;
+  `missing_reports_a_key_absent_from_ru_and_accepts_a_derived_key_the_shared_fallback_satisfies`;
+  `pull_splits_a_release_by_prefix_into_the_dictionaries_and_leaves_a_synced_tree_unchanged` against
+  a canned release.
+- `cargo run -p keel-dev -- i18n missing --dump contracts/dump` is green in the job `check` after
+  `hack/descriptors.sh`, and a test dictionary with one `ru` key removed makes it exit non-zero
+  naming the key.
+- `keel-core` and `keel-demo` exist in OwnLate with every key of `extract` and the `ru` translations
+  of the repository, and `i18n pull --out .` on the closing commit of the step leaves `git status`
+  clean; `hack/check-deps.sh` still holds `keel-dev` to `keel-types`.
+
+### 11. phoenix-ui batch 2 in the globalart monorepo and its Nexus release
+
+**Goal.** The M3 row of the phoenix-ui batch table of
+[design/08-frontend.md](design/08-frontend.md), made in `platform/frontend/libs/phoenix-ui` of the
+globalart monorepo under its conventions, as batch 1 was in M2, and released as
+`@globalart/phoenix-ui@0.3.0`; this step lives in another repository, and its Keel-side change is
+the pin, which step 14a makes as its first commit. `phx-datetime-field`
+(`src/lib/date/datetime-field.component.ts`): a `ControlValueAccessor` over an RFC 3339 string in
+the zone the consumer hands it, a date picker and a time field side by side. `select` and `number`
+types in `PhxCellEditService` (`src/lib/table/cell-edit-popup.component.ts`):
+`PhxCellEditOptions.type`, the input `edit(anchor, options)` takes, gains `'select'` with `options`
+and `'number'` with `min`, `max` and `step` next to the text input it has. `columnOrder` on
+`phx-list-table` and `phx-data-table`: an input of column keys that orders the rendered columns and
+hides those absent, a header drag that reorders, and the output `columnOrderChange`. The searchable
+remote mode of `phx-column-filter`: a `remote` input with `searchChange`, `loading` and `more`, the
+surface of the remote select. The accessible name of a control inside `phx-form-row`, the heading
+level of the table's empty state under a page title, and `stopPropagation` of the native `search`
+event in `phx-searchbar`, the three findings the M2 renderers recorded. Nothing beyond the row: the
+label a nullable number shows for its null is a matter of `PHX_LABELS`, which step 14c scopes in
+`@globalart/keel`, so the batch table, the contract with the other repository, stands as written.
+Stories with play functions next to each; the labels join `PHX_DEFAULT_LABELS` where a component
+gains one; `libs/phoenix-ui/package.json` is bumped to `0.3.0` and the tag `phoenix-ui-v0.3.0` runs
+`phoenix-ui-publish.yml`.
+
+**Touches.** In the globalart monorepo:
+`platform/frontend/libs/phoenix-ui/src/lib/date/datetime-field.component.ts` and its story,
+`src/lib/table/cell-edit-popup.component.ts`, `list-table.component.ts`, `data-table.component.ts`,
+`column-filter.component.ts` and their stories, `src/lib/form/form-section.component.ts`, where
+`phx-form-row` is declared, `src/lib/navigation/searchbar/`, `src/lib/labels/labels.ts`,
+`src/public-api.ts`, `libs/phoenix-ui/package.json`, the library's `README.md`; the tag
+`phoenix-ui-v0.3.0`. In Keel: nothing; the pin is the first commit of step 14a.
+
+**Out of scope.** Batch 3 (`@globalart/phoenix-ui/code`, `phx-log-view`, `phx-key-value-field`,
+`phx-transfer-list`, the chart additions; M5); persistence of column order, the link between
+selection and bulk actions and export, which stay in `@globalart/keel`; an input phoenix-ui does not
+need for the empty label of a number field.
+
+**Acceptance.**
+
+- In the globalart CI (`phoenix-ui-tests.yml`): `typecheck`, `lint`, `format`, `build-storybook` and
+  `test-storybook` are green with the new stories: `DatetimeField/Default` picks a date and a time
+  and emits one RFC 3339 value, `CellEdit/Select` and `CellEdit/Number` open the popup with their
+  types and resolve the chosen value, `ListTable/ColumnOrder` reorders by drag and emits
+  `columnOrderChange`, `ColumnFilter/Remote` types a query and receives `searchChange`, and the
+  searchbar story asserts the `search` event stops at the component.
+- `pnpm view @globalart/phoenix-ui@0.3.0 --registry
+  https://nexus.globalart.hu/repository/npm-hosted/` with a token answers the version, and the
+  published `package.json` carries no `main` pointing into `src/`.
+
+### 12. @globalart/keel/client: the real SSE subscription and data.invalidate
+
+**Goal.** The SSE bullet of the `/client` section of [design/08-frontend.md](design/08-frontend.md)
+over the stream of steps 6a and 6b, replacing the stub of M2 in
+`frontend/libs/keel/client/src/events.ts` without changing what the renderers consume.
+`KeelEvents.subscribe()` opens an `EventSource` on `KEEL_EVENTS_PATH`, confirmed as
+`/api/v1/events`, with credentials; the shell calls it once the boot answers a principal and
+`close()` on logout and on `unauthenticated`. The four frames are typed from the generated types:
+`taskProgress$` as `Observable<TaskProgress>`, `notification$` as `Observable<NotificationFrame>`,
+`dataInvalidate$` as `Observable<Event>` and `metaInvalidate$`; a frame that does not parse into its
+type is dropped and counted on a signal. Catch-up is the client's part of the design's
+`Last-Event-ID` rule: the service keeps `lastEventId` from every frame that carries an id, relies on
+the browser to resend `Last-Event-ID` on the reconnects `EventSource` makes itself, and, when it
+reconnects on its own after a `closed` state with the doubling backoff of M2, opens
+`${path}?after=${lastEventId}`, so no reconnect loses the position; `meta.invalidate` feeds the same
+path a changed `X-Keel-Meta-Version` does, `KeelClient.metaChanged`, on which `KeelDescriptors`
+drops its cache and the shell refetches `/boot`, the handling that exists since M2.
+`data.invalidate` reaches the lists as before through `invalidations` of the list renderer, which
+now debounces a burst on one list into one refetch within `INVALIDATE_DEBOUNCE_MS`, the plan's
+choice against a refetch per event of a batch; the `state` signal gains `lastEventId` and a
+`reconnects` counter for the drawer of step 13a. The mock event source of `@globalart/keel/testing`
+gains `emit(type, data, id)` and `fail()` so specs and stories drive frames.
+
+**Touches.** `frontend/libs/keel/client/src/` (`events.ts`, `events.spec.ts`, `client.ts` for
+`metaChanged` from the frame, `public-api.ts`), `frontend/libs/keel/renderer/src/list/invalidate.ts`
+and `list.spec.ts`, `frontend/libs/keel/shell/src/shell.ts` (subscribe after boot, close on logout),
+`frontend/libs/keel/testing/src/storybook.ts` (`QuietEventSource` gains `emit` and `fail`),
+`frontend/e2e/events.spec.ts`.
+
+**Out of scope.** The progress modal, the task drawer and the notification centre (steps 13a and
+13b); the export call of the client (step 14a); a stream over a Bearer token in the browser.
+
+**Acceptance.**
+
+- `events.spec.ts` with the fake source: "the subscription opens with credentials after a boot with
+  a principal and closes on logout"; "frames are dispatched by type and typed, and an unparsable one
+  is dropped and counted"; "the last event id is kept and a self-made reconnect passes it as after";
+  "meta.invalidate emits metaChanged, drops the descriptor cache and refetches boot once"; "the
+  backoff doubles from one second to thirty and resets on open".
+- `list.spec.ts`: "a burst of data.invalidate frames matching invalidate_on refetches the table
+  once" and "a frame outside the masks refetches nothing".
+- `frontend/e2e/events.spec.ts`: `alice` has `/f/note.list` open; the spec, through the `keelApi`
+  fixture logged in as `root`, calls `note.edit` on one of her notes with `account` set to her
+  account over the API, and the new title appears without a reload; a note of `res1`'s account
+  edited the same way changes nothing on her screen.
+
+### 13a. shell: the progress modal, the download and the task drawer
+
+**Goal.** The task half of the `/shell` bullets of [design/08-frontend.md](design/08-frontend.md)
+that M3 brings: `ui.result = task` in the browser and the rail's tasks, on
+`@globalart/phoenix-ui@0.2.2`. The progress modal: `KeelTasks.follow(ref, opener)` in `/renderer`,
+called by the action runner, the form and the wizard when an answer is a `TaskRef`, opens
+`PhxModalService.openProgress` with the function's title, `cancelable`, and drives it from
+`taskProgress$` — `done/total` as the value, `message` translated as the status — until a frame
+reports `done`, `failed` or `cancelled`; `cancel` posts `task.cancel { id }`; `done` closes the
+modal and hands back to the opener, which reloads its table or navigates as `redirect` would, and a
+result carrying the `download` member of `DownloadRef` fetches the named download's raw route
+through `KeelClient.download(func, params)`, a `fetch` with credentials that hands a blob to the
+browser through an object URL and an anchor, or shows the envelope's error; `failed` shows the error
+with the request id on a toast; a modal that misses frames for `TASK_POLL_MS` polls `task.get`, so a
+stream that dropped never leaves it hanging. The action route coerces its query values by the
+descriptor's schema before the runner posts them — a `string` that parses as JSON lands typed on an
+`integer`, `number`, `boolean` or `array` field and stays a string otherwise, the rule `from_query`
+applies on the server for GET — in `screen.ts` (`paramsOf(query, schema)`), which is what lets
+`/f/note.export?format=csv&pace=300` of step 2a post `pace` as a number. The task drawer: the rail
+item `tasks` shows the count of the principal's `queued` and `running` jobs as its badge, refreshed
+from frames and from `task.list` at open, and opens a `phx-drawer` listing the recent jobs of
+`task.list` with state, progress and time; a job opens its detail in the same drawer — the row of
+`task.get` on `phx-prop-list`, a `phx-progress-bar`, the `logTail` in a read-only `phx-code-field`
+until `phx-log-view` arrives in M5, refreshed on every frame of that job, and the cancel button
+while it runs; the progress modal offers "details" that opens the drawer on its job. Dictionaries:
+`keel.shell.tasks.*` in the kernel's `en` and `ru`.
+
+**Touches.** `frontend/libs/keel/renderer/src/` (`tasks/` with `follow.ts`, `download.ts`,
+`tasks.spec.ts`; `screen.ts` and `screen.spec.ts` for the coercion; `action/runner.ts`,
+`form/form-screen.component.ts`, `wizard/wizard.component.ts` for the `TaskRef` answer),
+`frontend/libs/keel/client/src/` (`download.ts`, `tasks.ts`), `frontend/libs/keel/shell/src/`
+(`rail/rail.component.ts`, `tasks/` with the drawer, specs and stories), `crates/kernel/i18n/` (the
+keys), `frontend/e2e/tasks.spec.ts`, `hack/e2e.sh` (the paced export before the browser specs).
+
+**Out of scope.** The notification centre, the problem badges, the home dashboard and the about
+drawer (step 13b); the export button, the multi-row form, the file control and the white-label
+screen (steps 14a to 14c); `phx-log-view` (M5).
+
+**Acceptance.**
+
+- `tasks.spec.ts` with `KeelMockClient` and the fake source: "a TaskRef answer opens the progress
+  modal, frames drive value and status, cancel posts task.cancel and done hands back to the opener";
+  "a result with a download member fetches the download route and hands the blob to the browser"; "a
+  failed frame shows the error and the request id"; "a modal without frames polls task.get".
+- `screen.spec.ts`: "a query value on an integer field of the descriptor is posted as a number and
+  one on a string field stays a string".
+- `task-drawer.spec.ts`: "the rail badge counts queued and running jobs and the drawer lists them";
+  "a job's detail shows the prop list, the progress and the log tail refreshed by its frames and
+  offers cancel while it runs"; the story `Shell/Tasks` passes `pnpm test-storybook`.
+- `hack/e2e.sh`: `frontend/e2e/tasks.spec.ts` — `alice` runs `note.export` from the notes toolbar
+  and gets the csv through the modal, then opens `/f/note.export?format=csv&pace=300`, sees the
+  modal advance with the note titles as its status, opens the details and reads the log lines in the
+  drawer, cancels, runs the paced route again to the end, and the drawer lists the three jobs with
+  their states.
+
+### 13b. shell: the notification centre, the problem badges, the home dashboard and the about drawer
+
+**Goal.** The other half of the `/shell` bullets of M3: the rail's notifications and help, the
+dashboard's problems block and the last piece of the menu contract, on
+`@globalart/phoenix-ui@0.2.2`. The notification centre: the rail item `notifications` carries the
+unread count and opens a drawer with `phx-notification-center` fed from `notify.message.list` at
+open and from `notification$` live, `read` posting `notify.message.mark`, `clear` posting
+`notify.message.clear`, `select` navigating to `notify.problem.list` for a message whose params name
+a problem; for a principal who may call `notify.problem.list` the drawer carries a problems section
+from that list, and `KeelProblems` keeps the open problems by key, from which the sidebar fills
+`badge.problem` of every menu item that names a key, the last piece of the menu contract of
+[design/10-contracts.md](design/10-contracts.md). The home dashboard: when `/boot.dashboard` carries
+widgets, `/` renders `KeelHomeComponent`, one `phx-widget-card` per widget over `phx-widget-grid` in
+boot order, a `list` widget titled by its function's `title` and showing the first `limit` rows of
+the list renderer in a compact mode without toolbar or pagination with a link to the full screen —
+the problems block the M3 exit criteria name; with no widget `/` keeps redirecting to the first menu
+item, so a composition without `notify` behaves as in M2. This is the `list`-widget slice of the
+dashboard renderer the renderer table of [design/08-frontend.md](design/08-frontend.md) places in
+M5, pulled forward by the "visible on the dashboard" of the M3 exit criteria; `stat` widgets,
+reordering and the widget order preference stay in M5, and step 15 writes the slice into the table's
+`dashboard` row. Its share accounting is decided here: the home screen is a route without a
+function, so it is neither listed in `frontend/apps/shell/views.json` nor counted in the
+custom-views share, which `keel-dev views share` computes over views registered against functions;
+the drawers are chrome as the rail is. The about drawer: the rail item `help`, the third placeholder
+of M2, opens a `phx-drawer` over `/boot.keel` and `/boot.products` — the platform version and API
+version, the enabled products with their editions — the smallest target the rail sentence of the
+design admits before the support screen of `panel` in M5, the plan's choice, so the sentence is
+closed as written and the three placeholders are alive in M3. Dictionaries:
+`keel.shell.notifications.*`, `keel.shell.home.*` and `keel.shell.about.*` in the kernel's `en` and
+`ru`, the notification centre's labels handed from `phx.*`.
+
+**Touches.** `frontend/libs/keel/renderer/src/list/list.component.ts` (the compact mode),
+`frontend/libs/keel/client/src/` (`notifications.ts`, `problems.ts`),
+`frontend/libs/keel/shell/src/` (`rail/rail.component.ts`, `notifications/` with the centre,
+`about/` with the drawer, `home/` with the home component, `layout/sidebar.ts` for the badges,
+`routes.ts`, `guard.ts`, specs and stories), `crates/kernel/i18n/` (the keys),
+`frontend/e2e/notifications.spec.ts`, `hack/e2e.sh` (the poll before the browser specs).
+
+**Out of scope.** The export button, the multi-row form, the file control and the white-label screen
+(steps 14a to 14c); the dashboard renderer with `stat` widgets, reordering and the widget order
+preference (M5, where step 15 moves the settings sentence that placed the order with
+`DashboardWidget`); the support screen (M5, with `panel`).
+
+**Acceptance.**
+
+- `notifications.spec.ts` (Jest): "the centre lists messages, marks read, clears, and the badge
+  counts unread"; "a notification frame prepends a message"; "open problems fill the sidebar badges
+  by key for a principal who may list them and nothing for one who may not".
+- `home.spec.ts`: "a boot with a list widget renders the home with one card showing the first rows
+  and a link to the screen" and "a boot without widgets redirects to the first menu item";
+  `about.spec.ts`: "the help item opens the about drawer with the version, the API version and the
+  products of the boot"; the stories `Shell/Home`, `Shell/Notifications` and `Shell/About` pass
+  `pnpm test-storybook`; `hack/descriptors.sh` prints the same share and
+  `frontend/apps/shell/views.json` is unchanged.
+- `hack/e2e.sh`: `frontend/e2e/notifications.spec.ts` — after the script's overdue todo and `ctl
+  cron.job.run id=notify.problems.poll`, `root` sees `note.overdue` on the home dashboard's problems
+  card and in the centre, the notes item of `alice`'s sidebar carries the badge `1`, and the help
+  item opens the about drawer naming the platform version.
+
+### 14a. the phoenix-ui 0.3.0 pin, the export button, column order and the cell editor
+
+**Goal.** The first consumers of batch 2, opening with the pin: `frontend/libs/keel/package.json`
+and `frontend/package.json` name `@globalart/phoenix-ui` `0.3.0`, the batch of step 11, and
+`pnpm-lock.yaml` follows, the one Keel-side change of step 11, as the first commit. The export
+button of the list renderer, the `/client` row of the design: the `export` action of a list, hidden
+while `keel.export` is absent from the descriptor index since M2, becomes a toolbar `phx-dropdown`
+of the action's `formats` that calls `KeelClient.download("keel.export", { func, query, columns,
+format })` with the table's current `search`, `sort`, `filters` and `scope` as `query` and the
+visible columns in their order as `columns`; a body of `application/json` is an envelope — a
+`TaskRef` goes to the progress modal of step 13a, an error to a toast — and anything else is the
+file, handed to the browser. Two consumers of batch 2 the M2 breakdown deferred to this milestone
+land here as well: `columnOrder` bound to the preference `columns.<function>` of `settings_pref`,
+read at load and written through `settings.pref.set` on `columnOrderChange`; and a `select` or
+`number` column with `edit` edited in the cell through `PhxCellEditService` with the column's
+options or bounds, as the toggle is since M2.
+
+**Touches.** `frontend/libs/keel/package.json`, `frontend/package.json`, `frontend/pnpm-lock.yaml`
+(the pin), `frontend/libs/keel/client/src/download.ts` (from step 13a, gains export),
+`frontend/libs/keel/renderer/src/` (`list/export.ts`, `list/list.component.ts`, `list/columns.ts`,
+`list/order.ts`, specs and stories), `frontend/e2e/notes.spec.ts`, `hack/e2e.sh`.
+
+**Out of scope.** The multi-row form (step 14b); the file control and the white-label screen (step
+14c); a third format of export; the dashboard renderer and the widget order (M5); the report and
+stream renderers (M5).
+
+**Acceptance.**
+
+- `pnpm install --frozen-lockfile` resolves `@globalart/phoenix-ui@0.3.0` from Nexus and `pnpm
+  build` is green on it.
+- `export.spec.ts` with `KeelMockClient`: "the export dropdown lists the formats and posts
+  keel.export with the table's query and the visible columns in order"; "a TaskRef answer opens the
+  progress modal and a file answer is handed to the browser".
+- `columns.spec.ts`: "the column order comes from columns.<function> and a reorder writes it back"
+  and "a select column with edit opens the cell editor with its options and posts the function".
+- `hack/e2e.sh`: `frontend/e2e/notes.spec.ts` gains "the export button downloads a csv whose header
+  row names the visible columns".
+
+### 14b. the multi-row form
+
+**Goal.** The browser half of group editing over step 8a: when the list's `edit` action names a form
+whose `ui.multi` is non-empty, the selection bar offers `edit`, which opens `KeelMultiFormComponent`
+in a modal — one row per field of `ui.multi` with a "change" toggle that is the `mask` and the
+field's control from the form's mapping, `submit` posting `{ ids, fields, mask }` to the form
+function with an idempotency key, a `422` on `mask` or a field landing on its row, a `TaskRef` going
+to the progress modal of step 13a and a `GroupResult` closing the modal and reloading the table.
+Dictionaries: `keel.shell.multi.*` in the kernel's `en` and `ru`.
+
+**Touches.** `frontend/libs/keel/renderer/src/` (`multi/multi-form.component.ts`,
+`multi/multi-form.spec.ts`, `list/list.component.ts` for the selection bar, stories),
+`crates/kernel/i18n/` (the keys), `frontend/e2e/notes.spec.ts`, `hack/e2e.sh`.
+
+**Out of scope.** The file control and the white-label screen (step 14c); a group edit of a form
+without `ui.multi`.
+
+**Acceptance.**
+
+- `multi-form.spec.ts`: "the selection bar offers edit when the form has ui.multi and the modal
+  posts ids, fields and mask for the toggled fields alone"; "a 422 on mask lands on its row and a
+  GroupResult reloads the table"; the story `Renderer/MultiForm` passes `pnpm test-storybook`.
+- `hack/e2e.sh`: `frontend/e2e/notes.spec.ts` gains "two selected notes are edited as a group to
+  kind todo with a due date".
+
+### 14c. the file control, the upload submit and the white-label screen
+
+**Goal.** The browser half of the upload kind over steps 8b and 8c, and the owner's feedback on the
+M2 panel. The file control: `control: file` renders `phx-file-field` with `accept` from
+`x-keel.file.types` and `maxSize` from `maxBytes`, and a form whose descriptor is `kind: upload`
+submits through `KeelClient.upload(func, params, files)`, multipart to `/api/v1/x/<module>/<name>`
+with the `params` part and one part per file field, `Idempotency-Key` in the header, the envelope
+handled as a submit's; the row action `logo` of `settings.brand.list` opens `/f/settings.brand.logo`
+with `host` from `$id`, the generic form with the file field, `host` read-only. The white-label
+screen: the menu node `system/brand` and the titles of `settings.brand.*` say white-label by host
+name in the `settings` dictionaries, `en` and `ru`; the nullable number fields `hue` and `chroma`
+say "from the product" when empty through the convention `<module>.<entity>.<field>.empty`, a key
+the field component looks up, falling back to `phx.unlimited`, the plan's choice over a new `x-ui`
+member, and hands to `phx-number-field` by providing `PHX_LABELS` at the field component's element
+injector with `unlimited` replaced by the translated key — the injection token phoenix-ui already
+scopes by the nearest provider, so no input is added to the other repository and the batch table of
+the design stands — with `settings.brand.hue.empty` and `settings.brand.chroma.empty` in the
+dictionaries; and `products/demo/brand/logo.svg` takes the palette of the platform, hue 264 and
+chroma 0.18 rendered as one sRGB hex fill the commit message records, so the demo looks like every
+product of the line; the unit test of `products/demo/src/lib.rs` over the embedded logo asserts that
+fill, since the `Shell/OneProduct` story references the file by path and renders nothing of its
+colour.
+
+**Touches.** `frontend/libs/keel/client/src/upload.ts`, `frontend/libs/keel/forms/src/`
+(`field.component.ts` for the file field and the scoped labels, `submit.ts` for multipart,
+`model.ts` for `x-keel.file`, specs and stories), `crates/system/i18n/settings/en.json` and
+`ru.json`, `products/demo/brand/logo.svg`, `products/demo/src/lib.rs` (the fill test),
+`frontend/e2e/system.spec.ts`, `hack/e2e.sh`.
+
+**Out of scope.** A file control outside an `upload` function; a streamed upload; the brand text
+field's return.
+
+**Acceptance.**
+
+- `field.component.spec.ts`: "control file renders phx-file-field with accept and maxSize from
+  x-keel.file"; "a nullable number shows the field's .empty label through the scoped PHX_LABELS when
+  the catalogue has it and phx.unlimited otherwise"; `submit.spec.ts`: "an upload descriptor submits
+  multipart with a params part and one part per file field and the idempotency header".
+- `hack/e2e.sh`: `frontend/e2e/system.spec.ts` gains "the white-label screen says white-label by
+  host name, hue and chroma say from the product when empty, an uploaded svg logo shows after a
+  reload and a scripted one is refused on the field"; `products/demo/src/lib.rs`:
+  `the_demo_logo_is_filled_with_the_platform_palette` — every `fill` of the file other than white is
+  the recorded hex; `hack/descriptors.sh` still prints the same share.
+
+### 15. M3 closure
+
+**Goal.** Close the milestone the way the M0, M1 and M2 checklists did, apply the amendments steps 1
+to 14 owed the design, and put the built M3 in front of the owner. Run every M3 "Done when" item by
+hand or through CI and record for each the test name or the command that shows it; add the section
+"M3 exit checklist" after the M2 checklist, in the same form, citing Rust tests by name, Jest and
+Playwright specs by file, and the commands of `hack/` and `ci.yml`; and make the consistency pass
+over `docs/design/` and this plan against the built M3. The pass applies what the commit messages of
+steps 1 to 14 recorded: the module ledger `keel_migration_task` in the ledger example of
+[design/04-storage.md](design/04-storage.md), the module keys `keeltask` and `keelcron` and the
+kernel's `keeloutbox` beside the kernel's advisory keys, with the commit order of `seq` in the
+`keel_outbox` section and the `AdvisoryLock` seam as the way a module holds a session lock, the
+`pg_advisory_lock` sentences standing as built; `TaskRunner`, `Caller`, `LiveEvents`,
+`AdvisoryLock`, `ProblemCounter` and the `PrincipalSource` lookups beside the `OutboxSubscriber`
+already named in the hidden-hooks list of [design/05-modules.md](design/05-modules.md),
+`ContextExt::data_dir` next to `db()`, `Call::task`, `emit_about` and `spawn_self_as_task` in the
+SDK list, `DashboardWidget` among what the SDK gives every module, the `internal` member of the
+function builder with the functions it hides, and the raw routes as the kernel's projection of
+`download` and `upload` kinds with `r.raw` deferred; the tables, functions, menu nodes and the
+`cron.overrides` setting of the four modules in their sections, the poll job and the internal
+functions the registry writes through, the channel kinds declared and the one implemented, the
+`webhook.private_targets` setting, the pinned-address rule of the sender and the secret rule of
+`webhooks`, `notify.problem.list` in place of the illustrative `problem.list` of the `/boot`
+example, and the `keel.account.delete` walk, `suspend` and `resume` as built in the
+`AccountLifecycle` section of [design/03-access.md](design/03-access.md); the two sentences that
+pointed at M3 and now point elsewhere — "Password reset through `notify` arrives with M3" of the
+`auth` section, moved to M5 with an address per principal, the M5 scope list gaining both, as the M3
+scope list records; and "the widget order arrives with the `DashboardWidget` contributions (M3)" of
+the `settings` section, moved to the dashboard renderer of M5 — and the rail sentence of
+[design/08-frontend.md](design/08-frontend.md), "Notifications, tasks and help are disabled
+placeholders until M3", closed as built with help as the about drawer; the `TaskRef`, `DownloadRef`,
+`GroupResult`, `TaskProgress` and `NotificationFrame` shapes, the `after` query member, the replay
+window, the per-session stream cap, the live-frame scope rule and the re-check at keep-alive of the
+event stream, the subject rule of `emit`, the group-edit merge over `ui.read`, the multipart shape
+with `x-keel.file`, the multipart exception to the 1 MiB body limit, the two raw-route refusals and
+the `download · upload · stream` row of the form-dynamics table saying an `upload` carries a `Form`
+block in [design/10-contracts.md](design/10-contracts.md), the ±300 s window of
+[design/07-ecosystem.md](design/07-ecosystem.md) fixed as built, the `/boot` table's `dashboard` and
+`problems` members now typed and the endpoint map's `/api/v1/events` no longer provisional; in
+[design/02-functions.md](design/02-functions.md) `x-keel.file` in the attribute table,
+`batch_threshold` on `keel.export` as the row threshold, the multipart exception in the body-limit
+sentence, the stream cap named as the platform constant `SSE_MAX_CLIENTS` in that same global
+sentence, the `secret` and `ui.multi` freeze rules, an `action` row in the `ui` table carrying
+`title` and `result`, and the `ui` sentence of the descriptor table naming `get`, `options` and
+`download` alone as the kinds without a screen; the TLS paragraph of
+[design/09-operations.md](design/09-operations.md) — the pair generated by the binary at first
+start, its names and validity, the `0700` directory, no plain listener and no redirect port with the
+reasoning of step 9b, the fingerprint in the log — the installer step that generates nothing, the
+multipart exception in the body-limit sentence, the `X-Forwarded-For` and `X-Forwarded-Host` rule of
+`trusted_proxies` with the forwarded host in the CSRF check and the fallbacks for a malformed
+header, and the "until M3" sentences of the `auth` section of
+[design/05-modules.md](design/05-modules.md), the CSRF section of
+[design/10-contracts.md](design/10-contracts.md) and the TLS section itself, which the built TLS
+closes; in [design/08-frontend.md](design/08-frontend.md) the `/client` row's export and SSE as
+built, the `<field>.empty` convention in the key table with the scoped `PHX_LABELS` as its carrier,
+the home screen, the drawers and the about drawer in the `/shell` section, the `list`-widget slice
+of M3 in the `dashboard` row of the renderer table with the share rule for a route without a
+function, the debounce of `data.invalidate`, the M3 row of the batch table standing as written, the
+M3 row of the frontend table, and the `pull` and `missing` paragraph as built with the committed
+dictionaries and `contracts/i18n.json`; the tooling table and the layout of
+[design/01-overview.md](design/01-overview.md) with the `i18n` subcommands; the M0, M1 and M2
+remarks and notes of this plan that pointed at M3 — the plain listener, the localhost cookie rule,
+the SSE stub, the export button, `ui.multi`, `keel-dev i18n`, column order and the cell editor,
+`keel.account.delete` as a task and `AccountLifecycle` — each marked done in place; the opening
+paragraph of this plan, which gains the M3 breakdown, and the "How we work" section, which gains
+`i18n missing`, the https form of the `hack/` scripts and the grown matrix; and any one-line
+mismatch the pass reveals. `README.md` follows the code: the M3 row set to done, the command list
+with `i18n missing`, the layout table with `crates/dev/src/i18n`, and the https addresses.
+`hack/check-docs.sh` carries the list of M3 names — `TaskRunner`, `TaskHandle`, `Caller`,
+`LiveEvents`, `AdvisoryLock`, `OutboxSubscriber`, `ProblemCounter`, `CronJob`, `ProblemSource`,
+`MailTemplate`, `DashboardWidget`, `AccountLifecycle`, `Download`, `DownloadOutcome`, `FileAttrs`,
+`emit_about`, `spawn_self_as_task`, `SSE_MAX_CLIENTS`, `trusted_proxies`, `KeelEvents`, `KeelTasks`,
+`KeelProblems`, `KeelMultiFormComponent` — and asserts each is found under `docs/design/` and under
+`crates/` or `frontend/libs/keel`, that every Rust test the M3 checklist cites is defined, every
+`*.spec.ts` it cites exists, every command it cites exists, and that the README's check list, "How
+we work" and `ci.yml` agree. `@globalart/keel` is published to Nexus at the closing commit's version
+by `publish-npm.yml` through `workflow_dispatch`. The demo machine is updated by hand: the musl
+artifact of the closing commit's `build.yml` run is unpacked into `/opt/keel/versions/<version>` on
+`keel-demo`, `bin/current` is switched, `keel.service` is restarted, the first start generates the
+certificate under `/var/lib/keel/tls` and logs its fingerprint, `/readyz` answers `ready` over
+https, and the owner opens `https://<host>:<port>/` directly — the SSH port forward of M2 is no
+longer needed — accepts the certificate by its fingerprint, logs in, runs `note.export` and watches
+the modal and the drawer, opens the notification centre, the dashboard and the about drawer, uploads
+a logo for the machine's host name, and confirms the notes item badge after `keel ctl cron.job.run
+id=notify.problems.poll`.
+
+**Touches.** `docs/plan.md`, `docs/design/*.md` (the consistency pass), `README.md`,
+`deploy/README.md` (TLS, the https wait and the mail catcher of the end-to-end script),
+`contracts/README.md` (`i18n.json`), `hack/check-docs.sh`, `.github/workflows/ci.yml`; the demo
+machine `keel-demo`.
+
+**Out of scope.** Any code change beyond what a document alignment reveals as a one-line mismatch;
+anything of M4.
+
+**Acceptance.**
+
+- Every "Done when" item of M3 is ticked in the new checklist with the name of the test, the spec or
+  the command that demonstrates it, and every item is green on `main`: `note.export` as a task with
+  progress and log in the browser (`frontend/e2e/tasks.spec.ts`) and in `ctl task.get`
+  (`hack/prove-binary.sh`); cancellation (`note_export_is_cancelled_between_two_notes_when_paced`,
+  `tasks.spec.ts`); the checkpoint surviving a restart
+  (`note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_writes_no_note_twice`, and
+  the restart check step 2a put into `hack/prove-binary.sh`, which stops `serve` with `SIGTERM`
+  during a paced `note.export`, starts it again and reads `done` with every note written once from
+  `task.get`, the CI counterpart of `systemctl restart`, confirmed by hand on `keel-demo`); the cron
+  job raising a problem that reaches the dashboard and the mail catcher
+  (`an_overdue_todo_raises_note_overdue_for_its_account_after_the_poll_and_a_done_one_clears_it`,
+  `a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_test_email`,
+  `frontend/e2e/notifications.spec.ts` and the catcher check of `hack/e2e.sh`); and
+  `data.invalidate` for own objects alone
+  (`a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admin_receives_every_one`,
+  the `events` check of `hack/conformance.sh`, `frontend/e2e/events.spec.ts`).
+- `hack/check-docs.sh` is green in CI with the M3 names and the new specs; the README's check list,
+  "How we work" and `ci.yml` agree, `i18n missing` and the fourteen-set matrix included.
+- `@globalart/keel` at the closing commit's version answers `pnpm view` against Nexus with the six
+  entry points.
+- On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's version,
+  `/readyz` answers `ready` over https with the generated certificate, and the owner has opened the
+  panel directly, logged in and walked the task, the notification and the white-label screens, which
+  the checklist records with the date-free note "confirmed by hand on keel-demo".
 
 ## How we work
 
