@@ -7,7 +7,7 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, ParamMasker,
+    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, OutboxSubscriber, ParamMasker,
     PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
@@ -29,7 +29,7 @@ use super::{keys, patch, section};
 use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
 use crate::dispatcher::strip::Plan;
-use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle};
+use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -496,6 +496,9 @@ impl Freezer {
         let live = Arc::new(LiveBus::new());
         services.provide::<dyn LiveEvents>(live.clone());
         services.provide::<LiveBus>(live);
+        let outbox = Arc::new(OutboxFeed::new());
+        services.provide::<dyn OutboxSubscriber>(outbox.clone());
+        services.provide::<OutboxFeed>(outbox);
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
         services.provide::<dyn ParamMasker>(self.masks.clone());
         if !self

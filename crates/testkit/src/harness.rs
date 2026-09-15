@@ -13,7 +13,7 @@ use keel_kernel::{
 };
 use keel_sdk::system::Frame;
 use keel_sdk::{ModuleDef, ProductManifest};
-use keel_types::{Level, Principal};
+use keel_types::{Id, Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use tempfile::TempDir;
@@ -85,6 +85,7 @@ impl DataDir {
 
 pub struct Harness {
     clock: Arc<FixedClock>,
+    instance: Id,
     kernel: Mutex<Kernel>,
     dispatcher: Arc<Dispatcher>,
     readiness: Arc<Readiness>,
@@ -205,6 +206,8 @@ impl Builder {
             }
         };
         dispatcher.fill_caller();
+        let instance = Id::generate();
+        dispatcher.fill_outbox(instance);
         let fixtures = if seeded {
             recover(&dispatcher).await
         } else {
@@ -219,6 +222,7 @@ impl Builder {
         };
         Ok(Harness {
             clock,
+            instance,
             kernel: Mutex::new(kernel),
             dispatcher,
             readiness,
@@ -247,6 +251,10 @@ impl Harness {
 
     pub fn clock(&self) -> &FixedClock {
         &self.clock
+    }
+
+    pub fn instance(&self) -> Id {
+        self.instance
     }
 
     pub fn registry(&self) -> &Arc<Registry> {

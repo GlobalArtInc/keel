@@ -16,6 +16,7 @@ pub const SCHEMA: i64 = i64::from_be_bytes(*b"keelschm");
 pub const INSTANCE: i64 = i64::from_be_bytes(*b"keelinst");
 pub const TASKS: i64 = i64::from_be_bytes(*b"keeltask");
 pub const CRON: i64 = i64::from_be_bytes(*b"keelcron");
+pub const OUTBOX: i64 = i64::from_be_bytes(*b"keeloutb");
 
 pub struct MigrationLock {
     connection: PoolConnection<Postgres>,

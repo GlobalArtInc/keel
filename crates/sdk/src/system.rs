@@ -7,9 +7,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use keel_types::{BootProblems, CallError, Id, Level, Mode, Principal, TaskState};
+use keel_types::{BootProblems, CallError, Event, Id, Level, Mode, Principal, TaskState};
 use serde::Serialize;
 use serde_json::Value;
+use tokio::sync::watch;
 
 use crate::call::Call;
 use crate::context::Context;
@@ -285,6 +286,12 @@ impl fmt::Debug for LockGuard {
 #[async_trait]
 pub trait AdvisoryLock: Send + Sync {
     async fn take(&self, key: i64) -> Result<LockGuard>;
+}
+
+#[async_trait]
+pub trait OutboxSubscriber: Send + Sync {
+    async fn after(&self, seq: u64, limit: u32) -> Result<Vec<Event>>;
+    fn latest(&self) -> watch::Receiver<u64>;
 }
 
 #[cfg(test)]

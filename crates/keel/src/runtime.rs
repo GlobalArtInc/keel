@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use keel_kernel::http::{BODY_LIMIT, Frontend};
 use keel_kernel::loader::{Migrated, Sections};
-use keel_kernel::secret::Key;
 use keel_kernel::socket::Serving;
 use keel_kernel::{
     Config, Dispatcher, Http, HttpOptions, Instance, Kernel, Readiness, Served, Socket, Storage,
@@ -80,9 +79,7 @@ impl Runtime {
             },
         );
         let served = http.clone().bind(config.listen).await?;
-        let booted = self
-            .boot(config, storage, &enabled, instance.key().clone(), &http)
-            .await;
+        let booted = self.boot(config, storage, &enabled, &instance, &http).await;
         match booted {
             Ok((kernel, socket)) => {
                 readiness.migrated();
@@ -117,12 +114,12 @@ impl Runtime {
         config: &Config,
         storage: &Storage,
         enabled: &[String],
-        key: Key,
+        instance: &Instance,
         http: &Http,
     ) -> Result<(Kernel, Serving), Error> {
         let composition = self
             .composition(enabled)?
-            .key(key)
+            .key(instance.key().clone())
             .sections(Sections::new(&config.file, config.sections.clone()))
             .data_dir(config.data_dir.clone());
         let kernel = Kernel::boot(composition, storage).await?;
@@ -131,6 +128,7 @@ impl Runtime {
             storage.db().clone(),
         )?);
         dispatcher.fill_caller();
+        dispatcher.fill_outbox(instance.id());
         http.attach(dispatcher.clone())?;
         let socket = match Socket::new(dispatcher).start(&config.socket).await {
             Ok(socket) => socket,

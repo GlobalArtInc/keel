@@ -12,6 +12,7 @@ mod validate;
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -33,6 +34,7 @@ use crate::registry::{Function, Registry};
 pub use caller::CallerHandle;
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
+pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed};
 pub use strip::MASK;
 pub use task::BATCH_LOG_PREFIX;
 pub use validate::SchemaError;
@@ -50,6 +52,7 @@ struct Inner {
     prepared: BTreeMap<String, Prepared>,
     audit: Option<Arc<dyn AuditSink>>,
     runner: Option<Arc<dyn TaskRunner>>,
+    outbox: Option<Arc<OutboxFeed>>,
     clock: Arc<dyn Clock>,
     hook_timeout: Duration,
 }
@@ -173,11 +176,30 @@ fn subject_of(params: &Value, key: &str) -> Option<String> {
     }
 }
 
-type AfterHooks = Arc<Mutex<Vec<AfterCommitHook>>>;
+#[derive(Default)]
+struct CallShared {
+    after: Mutex<Vec<AfterCommitHook>>,
+    outbox: AtomicU64,
+}
+
+type Shared = Arc<CallShared>;
+
+impl CallShared {
+    fn wrote(&self, seq: u64) {
+        self.outbox.fetch_max(seq, Ordering::SeqCst);
+    }
+
+    fn written(&self) -> Option<u64> {
+        match self.outbox.load(Ordering::SeqCst) {
+            0 => None,
+            seq => Some(seq),
+        }
+    }
+}
 
 struct LocalInvoker {
     inner: Arc<Inner>,
-    after: AfterHooks,
+    after: Shared,
 }
 
 enum Failure {
@@ -212,6 +234,7 @@ impl Dispatcher {
         }
         let audit = registry.services().get::<dyn AuditSink>();
         let runner = registry.services().get::<dyn TaskRunner>();
+        let outbox = registry.services().get::<OutboxFeed>();
         let clock = registry
             .services()
             .get::<dyn Clock>()
@@ -223,6 +246,7 @@ impl Dispatcher {
                 prepared,
                 audit,
                 runner,
+                outbox,
                 clock,
                 hook_timeout: HOOK_TIMEOUT,
             }),
@@ -245,6 +269,16 @@ impl Dispatcher {
         match self.inner.registry.services().get::<CallerHandle>() {
             Some(handle) => {
                 handle.fill(self.clone());
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn fill_outbox(&self, instance: Id) -> bool {
+        match &self.inner.outbox {
+            Some(feed) => {
+                feed.fill(self.inner.db.clone(), instance);
                 true
             }
             None => false,
@@ -383,7 +417,7 @@ impl Inner {
         Some(Target { function, prepared })
     }
 
-    fn invoker(self: &Arc<Self>, after: AfterHooks) -> Arc<dyn Invoker> {
+    fn invoker(self: &Arc<Self>, after: Shared) -> Arc<dyn Invoker> {
         match self.registry.invoker() {
             Some(invoker) => invoker.clone(),
             None => Arc::new(LocalInvoker {
@@ -403,7 +437,7 @@ impl Inner {
         origin: Origin,
     ) -> Result<Executed, KeelError> {
         let def = target.function.def();
-        let after = AfterHooks::default();
+        let after = Shared::default();
         let pool = CallBuilder::new(principal.clone(), request_id)
             .services(self.registry.services().clone())
             .invoker(self.invoker(after.clone()))
@@ -444,7 +478,7 @@ impl Inner {
             }
             match def.mode() {
                 Mode::Read => {
-                    let data = self.perform(target, &pool, params).await?;
+                    let data = self.perform(target, &pool, params, &after).await?;
                     Ok(Executed {
                         data,
                         replay: false,
@@ -481,11 +515,11 @@ impl Inner {
         handle: CallHandle,
         params: Value,
         idempotency: Option<(String, String)>,
-        after: &AfterHooks,
+        after: &Shared,
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
         let performed = async {
-            let data = self.perform(target, &handle, params).await?;
+            let data = self.perform(target, &handle, params, after).await?;
             if let Some((key, hash)) = idempotency {
                 let mut stored = data.clone();
                 target.prepared.result.mask_once(&mut stored);
@@ -522,6 +556,9 @@ impl Inner {
                         KeelError::internal("keel.error.write_call_without_transaction")
                     })?;
                 transaction.commit().await?;
+                if let (Some(feed), Some(seq)) = (&self.outbox, after.written()) {
+                    feed.publish(seq);
+                }
                 Ok(Executed {
                     data,
                     replay: false,
@@ -610,6 +647,7 @@ impl Inner {
         target: &Target<'_>,
         handle: &CallHandle,
         params: Value,
+        shared: &Shared,
     ) -> Result<Value, KeelError> {
         let function = target.function;
         let write = function.def().mode() == Mode::Write;
@@ -632,15 +670,16 @@ impl Inner {
                 (patched.store)(handle.call(Value::Null), stored).await?;
             }
             let events = handle.take_events();
-            if !events.is_empty() {
-                outbox::write(
-                    handle.db(),
-                    function.module(),
-                    handle.principal(),
-                    events,
-                    self.clock.now(),
-                )
-                .await?;
+            if let Some(seq) = outbox::write(
+                handle.db(),
+                function.module(),
+                handle.principal(),
+                events,
+                self.clock.now(),
+            )
+            .await?
+            {
+                shared.wrote(seq);
             }
         }
         self.project(target, handle.principal().level, &mut data);
@@ -656,7 +695,7 @@ impl Inner {
         }
     }
 
-    fn nested(self: &Arc<Self>, outer: &CallHandle, after: &AfterHooks) -> CallBuilder {
+    fn nested(self: &Arc<Self>, outer: &CallHandle, after: &Shared) -> CallBuilder {
         CallBuilder::new(outer.principal().clone(), outer.request_id())
             .scope(*outer.account_scope())
             .services(self.registry.services().clone())
@@ -672,7 +711,7 @@ impl Inner {
     async fn invoke_nested(
         self: &Arc<Self>,
         outer: CallHandle,
-        after: AfterHooks,
+        after: Shared,
         func: String,
         params: Value,
     ) -> Result<Value, KeelError> {
@@ -697,8 +736,9 @@ impl Inner {
             .extra(extra)
             .with_db(mode, outer.db().clone());
         drop(outer);
-        let data = self.perform(&target, &handle, params).await?;
+        let data = self.perform(&target, &handle, params, &after).await?;
         after
+            .after
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .extend(handle.take_after_commit());
@@ -706,8 +746,8 @@ impl Inner {
     }
 }
 
-fn take(after: &AfterHooks) -> Vec<AfterCommitHook> {
-    std::mem::take(&mut *after.lock().unwrap_or_else(PoisonError::into_inner))
+fn take(after: &Shared) -> Vec<AfterCommitHook> {
+    std::mem::take(&mut *after.after.lock().unwrap_or_else(PoisonError::into_inner))
 }
 
 fn replay(record: idempotency::Record, func: &str, hash: &str) -> Result<Executed, KeelError> {

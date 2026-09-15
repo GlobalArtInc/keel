@@ -278,6 +278,9 @@
       "masker_unavailable": "The parameters of {function} cannot be masked yet: the registries are not frozen",
       "lock_unavailable": "The lock {key} cannot be taken: the database is not attached",
       "lock_failed": "The lock {key} could not be taken",
+      "outbox_unavailable": "The outbox cannot be read yet: the dispatcher is not attached",
+      "outbox_seq": "The outbox did not answer the sequence number of a written event",
+      "outbox_row": "The outbox row {seq} carries an unreadable {member}",
       "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
       "task_output": "The task output at {path} could not be opened",
       "list": {

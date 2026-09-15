@@ -9,6 +9,7 @@ mod grants;
 mod http;
 mod instance;
 mod modules;
+mod outbox;
 mod preferences;
 mod settings;
 mod socket;
