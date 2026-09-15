@@ -119,6 +119,13 @@ Scope:
 - phoenix-ui batch 2.
 - The OwnLate projects for the core and `demo`, `keel-dev i18n pull` at build time and
   `keel-dev i18n missing` in CI, deferred from M2.
+- File uploads: the `upload` kind over a guarded raw route `/api/v1/x/<module>/…` with size and
+  content-type limits and an audit event, `control: file` rendered by `phx-file-field`, and the
+  brand logo of `settings.brand` becoming an upload of an SVG that the server sanitises, instead
+  of the text field of M2. Owner feedback on the M2 panel, same screen: the menu node and the
+  screen title of `settings.brand` say white-label by host name, the number fields of `hue` and
+  `chroma` say "from the product" when empty rather than "Unlimited", and the demo logo takes
+  the palette of the platform.
 
 Done when:
 
