@@ -9,6 +9,7 @@ pub mod snapshots;
 pub mod socket;
 
 pub use keel_kernel::http::SESSION_COOKIE;
+pub use keel_kernel::secret::Key;
 pub use keel_kernel::{CallOptions, Clock, Dispatcher, Registry, Reply};
 pub use keel_types::{CallError, ErrorCode};
 pub use tokio;

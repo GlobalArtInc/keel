@@ -1,0 +1,204 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: webhook.subscription.set
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "webhook.subscription.set",
+  "module": "webhook",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "webhook.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "SubscriptionSet",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "url": {
+        "type": "string",
+        "format": "uri",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "secret": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Secret"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        }
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "maxItems": 64,
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "x-keel": {
+          "level": "reseller"
+        }
+      }
+    },
+    "required": [
+      "name",
+      "url",
+      "events"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "SubscriptionSaved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdBy": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "accountId": {
+        "type": "string",
+        "x-keel": {
+          "level": "reseller"
+        }
+      },
+      "principalId": {
+        "type": "string",
+        "x-keel": {
+          "level": "reseller"
+        }
+      },
+      "secret": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "url",
+      "events",
+      "enabled",
+      "createdAt",
+      "createdBy",
+      "updatedAt",
+      "accountId",
+      "principalId"
+    ]
+  },
+  "ui": {
+    "title": "webhook.subscription.set.title",
+    "read": "webhook.subscription.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "url",
+          "secret",
+          "events",
+          "enabled"
+        ]
+      },
+      {
+        "id": "owner",
+        "fields": [
+          "account"
+        ],
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ]
+  }
+}

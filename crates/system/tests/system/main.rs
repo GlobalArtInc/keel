@@ -46,3 +46,9 @@ mod settings_pref;
 mod tasks;
 #[cfg(feature = "tasks")]
 mod tasks_alone;
+#[cfg(feature = "webhooks")]
+mod webhooks;
+#[cfg(feature = "webhooks")]
+mod webhooks_alone;
+#[cfg(all(feature = "webhooks", feature = "audit", feature = "settings"))]
+mod webhooks_secret;

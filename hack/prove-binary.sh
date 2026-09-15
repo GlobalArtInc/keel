@@ -446,7 +446,7 @@ check "keel.principal.create answers ok with an id" json_is "$site/principal.jso
 principal_id=$(json_get "$site/principal.json" 'doc["data"]["id"]')
 check "ctl auth.password.set for alice" keel_ok "$site/password.json" ctl auth.password.set "principal=$principal_id" password=correct-horse
 check "ctl settings.list --out json" keel_ok "$site/settings.json" ctl settings.list --out json
-check "settings.list answers the six auth definitions and cron.overrides with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None), "cron.overrides": ({}, {}, None)}'
+check "settings.list answers the six auth definitions, cron.overrides and webhook.private_targets with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None), "cron.overrides": ({}, {}, None), "webhook.private_targets": (False, False, None)}'
 check "ctl settings.set auth.password.min_length=16" keel_ok "$site/setting.json" ctl settings.set key=auth.password.min_length value=16
 check "settings.set answers the root value" json_is "$site/setting.json" 'doc["ok"] is True and doc["data"]["value"] == 16 and doc["data"]["scope"] == "00000000000000000000000000"'
 check "ctl auth.password.set with twelve characters is refused" keel_fails "$site/password-short.json" ctl auth.password.set "principal=$principal_id" password=twelve-chars
@@ -664,6 +664,14 @@ check "ctl notify.message.list --out json" keel_ok "$site/messages.json" ctl not
 check "notify.message.list answers an empty page for the owner" json_is "$site/messages.json" 'doc["ok"] is True and doc["data"]["total"] == 0'
 check "ctl notify.problem.raise is refused on the socket" keel_fails "$site/internal.json" ctl notify.problem.raise key=probe.disk subject=/ severity=warning
 check "notify.problem.raise answers forbidden with internal_only" json_is "$site/internal.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "keel.error.internal_only"'
+check "ctl webhook.subscription.list --out json" keel_ok "$site/webhooks.json" ctl webhook.subscription.list --out json
+check "webhook.subscription.list answers an empty page" json_is "$site/webhooks.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "ctl webhook.subscription.set with a loopback url is refused while private targets are off" keel_fails "$site/webhook-private.json" ctl webhook.subscription.set name=loop url=http://127.0.0.1:9/hook 'events=["note.*"]'
+check "the refused subscription answers webhook.error.url_private on url" json_is "$site/webhook-private.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "url" and doc["error"]["fields"][0]["key"] == "webhook.error.url_private" and doc["error"]["fields"][0]["params"]["reason"] == "scheme"'
+check "ctl webhook.subscription.set with a short secret is refused on secret" keel_fails "$site/webhook-short.json" ctl webhook.subscription.set name=short url=https://hooks.example/in secret=too-short 'events=["note.*"]'
+check "the short secret answers webhook.error.secret_short" json_is "$site/webhook-short.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "secret" and doc["error"]["fields"][0]["key"] == "webhook.error.secret_short"'
+check "ctl webhook.delivery.list --out json" keel_ok "$site/webhook-deliveries.json" ctl webhook.delivery.list --out json
+check "webhook.delivery.list answers an empty page" json_is "$site/webhook-deliveries.json" 'doc["ok"] is True and doc["data"]["total"] == 0'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

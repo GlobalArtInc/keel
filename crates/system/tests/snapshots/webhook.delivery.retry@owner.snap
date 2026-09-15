@@ -1,0 +1,113 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: webhook.delivery.retry
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "webhook.delivery.retry",
+  "module": "webhook",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "webhook.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Delivery",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "subscriptionId": {
+        "type": "string"
+      },
+      "eventId": {
+        "type": "string"
+      },
+      "seq": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "type": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "attempt": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "nextAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "lastStatus": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "lastError": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "deliveredAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "accountId": {
+        "type": "string",
+        "x-keel": {
+          "level": "reseller"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "subscriptionId",
+      "eventId",
+      "seq",
+      "type",
+      "state",
+      "attempt",
+      "nextAt",
+      "createdAt",
+      "accountId"
+    ]
+  }
+}

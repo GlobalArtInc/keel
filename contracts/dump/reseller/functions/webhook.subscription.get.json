@@ -1,0 +1,91 @@
+{
+  "keel": 1,
+  "name": "webhook.subscription.get",
+  "module": "webhook",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "webhook.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Subscription",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdBy": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "accountId": {
+        "type": "string",
+        "x-keel": {
+          "level": "reseller"
+        }
+      },
+      "principalId": {
+        "type": "string",
+        "x-keel": {
+          "level": "reseller"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "url",
+      "events",
+      "enabled",
+      "createdAt",
+      "createdBy",
+      "updatedAt",
+      "accountId",
+      "principalId"
+    ]
+  }
+}

@@ -10,5 +10,7 @@ pub mod notify;
 pub mod settings;
 #[cfg(feature = "tasks")]
 pub mod tasks;
+#[cfg(feature = "webhooks")]
+pub mod webhooks;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

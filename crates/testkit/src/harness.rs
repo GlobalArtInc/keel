@@ -34,6 +34,7 @@ pub struct Builder {
     sections: Vec<(String, Value)>,
     data_dir: Option<PathBuf>,
     database: Option<AttachedDatabase>,
+    key: Option<Key>,
 }
 
 pub enum AttachedDatabase {
@@ -86,6 +87,7 @@ impl DataDir {
 pub struct Harness {
     clock: Arc<FixedClock>,
     instance: Id,
+    key: Key,
     kernel: Mutex<Kernel>,
     dispatcher: Arc<Dispatcher>,
     readiness: Arc<Readiness>,
@@ -157,6 +159,11 @@ impl Builder {
         self
     }
 
+    pub fn key(mut self, key: Key) -> Self {
+        self.key = Some(key);
+        self
+    }
+
     pub async fn boot(self) -> Harness {
         match self.try_boot().await {
             Ok(harness) => harness,
@@ -181,9 +188,13 @@ impl Builder {
             Some(at) => FixedClock::at(at),
             None => FixedClock::frozen_now(),
         });
+        let key = match self.key {
+            Some(key) => key,
+            None => Key::generate()?,
+        };
         let mut composition = Composition::new()
             .clock(clock.clone())
-            .key(Key::generate()?)
+            .key(key.clone())
             .data_dir(data_dir.path())
             .module(&auth::MODULE);
         for module in self.modules {
@@ -223,6 +234,7 @@ impl Builder {
         Ok(Harness {
             clock,
             instance,
+            key,
             kernel: Mutex::new(kernel),
             dispatcher,
             readiness,
@@ -255,6 +267,10 @@ impl Harness {
 
     pub fn instance(&self) -> Id {
         self.instance
+    }
+
+    pub fn key(&self) -> &Key {
+        &self.key
     }
 
     pub fn registry(&self) -> &Arc<Registry> {

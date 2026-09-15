@@ -1,0 +1,196 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: webhook.subscription.list
+  level: reseller
+---
+{
+  "keel": 1,
+  "name": "webhook.subscription.list",
+  "module": "webhook",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "webhook.manage"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Subscription",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Subscription"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Subscription": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "accountId": {
+            "type": "string",
+            "x-keel": {
+              "level": "reseller"
+            }
+          },
+          "principalId": {
+            "type": "string",
+            "x-keel": {
+              "level": "reseller"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "createdAt",
+          "createdBy",
+          "updatedAt",
+          "accountId",
+          "principalId"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "webhook.subscription.list.title",
+    "search": [
+      "name",
+      "url"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "link",
+        "to": {
+          "screen": "webhook.subscription.set",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "url",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "events",
+        "type": "text"
+      },
+      {
+        "key": "enabled",
+        "type": "toggle",
+        "sortable": true,
+        "edit": {
+          "function": "webhook.subscription.toggle"
+        }
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "webhook.subscription.set",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "webhook.subscription.set",
+        "default": true
+      },
+      {
+        "id": "deliveries",
+        "role": "child",
+        "screen": "webhook.delivery.list",
+        "icon": "list",
+        "params": {
+          "subscription_id": "$id"
+        }
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "webhook.subscription.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "name"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "deliveries",
+      "delete"
+    ],
+    "empty": {
+      "title": "webhook.subscription.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "webhook.subscription.*"
+    ]
+  }
+}

@@ -13,6 +13,7 @@ const SCREENS: readonly SystemScreen[] = [
   { label: 'Settings', func: 'settings.list' },
   { label: 'Tasks', func: 'task.list' },
   { label: 'Scheduled jobs', func: 'cron.job.list' },
+  { label: 'Webhooks', func: 'webhook.subscription.list' },
   { label: 'Audit trail', func: 'audit.list' },
   { label: 'Sessions', func: 'auth.session.list' },
   { label: 'API tokens', func: 'auth.token.list' },

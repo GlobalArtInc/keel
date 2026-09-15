@@ -226,12 +226,14 @@ jobs:
           - tasks
           - cron
           - notify
-          - settings,audit,tasks,cron,notify
-          - auth,audit,tasks,cron,notify
-          - auth,settings,tasks,cron,notify
-          - auth,settings,audit,cron,notify
+          - webhooks
+          - settings,audit,tasks,cron,notify,webhooks
+          - auth,audit,tasks,cron,notify,webhooks
+          - auth,settings,tasks,cron,notify,webhooks
+          - auth,settings,audit,cron,notify,webhooks
           - auth,settings,audit,tasks
           - auth,settings,audit,tasks,cron
+          - auth,settings,audit,tasks,cron,notify
 
     services:
       postgres:
