@@ -33,7 +33,7 @@ const RU: &str = r#"{ "probe": { "item": { "list": { "title": "ru:Items" } } }, 
 const BUNDLE_EN: &str =
     r#"{ "product": { "probe": { "brand": "Probe", "level": { "user": "Customer" } } } }"#;
 const BUNDLE_RU: &str = r#"{ "product": { "probe": { "brand": "ru:Probe" } } }"#;
-const KERNEL_RU: &str = include_str!("../i18n/ru.json");
+const KERNEL_RU: &str = include_str!("../../i18n/ru.json");
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Item {

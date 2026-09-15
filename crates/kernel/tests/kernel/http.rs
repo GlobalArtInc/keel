@@ -30,7 +30,7 @@ const CUSTOMER: &str = "01J8A0000000000000000000A2";
 
 const EN: &str = r#"{ "probe": { "greeting": "Hello", "only_en": "English only" } }"#;
 const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
-const KERNEL_RU: &str = include_str!("../i18n/ru.json");
+const KERNEL_RU: &str = include_str!("../../i18n/ru.json");
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}

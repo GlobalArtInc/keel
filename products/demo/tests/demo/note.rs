@@ -547,8 +547,8 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
 
 fn column_headers(lang: &str) -> [String; 6] {
     let messages: Value = serde_json::from_str(match lang {
-        "en" => include_str!("../i18n/note/en.json"),
-        _ => include_str!("../i18n/note/ru.json"),
+        "en" => include_str!("../../i18n/note/en.json"),
+        _ => include_str!("../../i18n/note/ru.json"),
     })
     .expect("a JSON dictionary");
     let header = |key: &str| {

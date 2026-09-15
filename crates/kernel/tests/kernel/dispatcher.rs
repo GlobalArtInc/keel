@@ -184,7 +184,7 @@ impl Guard for Limited {
 }
 
 static MIGRATIONS: migrator::Migrations =
-    migrator::embed!("$CARGO_MANIFEST_DIR/tests/modules/shelf/migrations")
+    migrator::embed!("$CARGO_MANIFEST_DIR/tests/kernel/modules/shelf/migrations")
         .table("keel_migration_shelf");
 
 static SHELF: ModuleDef = ModuleDef {
@@ -934,9 +934,10 @@ async fn validation_answers_422_with_field_paths_and_check_codes_from_the_fixtur
         value: String,
         expect: bool,
     }
-    let cases: Vec<Case> =
-        serde_json::from_str(include_str!("../../../contracts/fixtures/check-cases.json"))
-            .expect("the fixture parses");
+    let cases: Vec<Case> = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/check-cases.json"
+    ))
+    .expect("the fixture parses");
     assert!(cases.len() > 100);
     let bench = bench().await;
     for case in &cases {

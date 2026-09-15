@@ -18,7 +18,7 @@ use tower::ServiceExt;
 
 const EN: &str = r#"{ "probe": { "greeting": "Hello" } }"#;
 const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
-const KERNEL_RU: &str = include_str!("../i18n/ru.json");
+const KERNEL_RU: &str = include_str!("../../i18n/ru.json");
 
 fn kernel_ru() -> Value {
     serde_json::from_str(KERNEL_RU).expect("the kernel ru dictionary")

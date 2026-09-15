@@ -7,7 +7,7 @@ use keel_testkit::{Answer, Harness, TestHttp, Who, tokio};
 
 const DEMO_LOGO: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"3\" fill=\"#1f9d6a\"/></svg>";
 const HOST_LOGO: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><rect width=\"8\" height=\"8\" fill=\"#c41e3a\"/></svg>";
-const KEEL_MARK: &str = include_str!("../assets/keel.svg");
+const KEEL_MARK: &str = include_str!("../../assets/keel.svg");
 const WHITE_LABEL_HOST: &str = "panel.example";
 
 static DEMO_BUNDLE: ProductManifest = ProductManifest {

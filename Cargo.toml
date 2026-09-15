@@ -63,6 +63,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ulid = { version = "3", features = ["serde"] }
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

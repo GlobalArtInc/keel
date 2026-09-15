@@ -952,7 +952,7 @@ cookie.
 authenticator signature and registration), `crates/sdk/src/call.rs` (the client slot read by
 `CallExt::client()` and the `SessionChange` slot), `crates/kernel/src/dispatcher/` (`CallOptions`,
 `Reply`), `crates/kernel/src/http/` (connect info, the authenticator chain, the cross-site rule, the
-cookie), `crates/kernel/tests/http.rs`, `crates/testkit/src/auth.rs` and `http.rs` (contribution
+cookie), `crates/kernel/tests/kernel/http.rs`, `crates/testkit/src/auth.rs` and `http.rs` (contribution
 instead of service, connect info), `docs/design/10-contracts.md` and `docs/design/08-frontend.md`
 (the cross-site rule), `docs/design/05-modules.md` (the hidden hooks).
 
@@ -963,7 +963,7 @@ while no source is composed and M1 composes none.
 
 **Acceptance.**
 
-- In `crates/kernel/tests/http.rs`, a stub authenticator contributed by a test module answers a
+- In `crates/kernel/tests/kernel/http.rs`, a stub authenticator contributed by a test module answers a
   `Session` credential with a principal and `session: Some(…)`; a stub function answering
   `SessionChange::Set` makes the reply carry `Set-Cookie: __Host-keel_session=…; Path=/; Secure;
   HttpOnly; SameSite=Lax` without `Max-Age`, and `Clear` the same cookie with `Max-Age=0`; a stub
@@ -1027,7 +1027,7 @@ the password policy and the session list (steps 5a and 5b); `PermissionSource` a
   neither `keel-system` nor `keel-host`.
 - On a fresh database the ledger `keel_migration_auth` and the table exist; after
   `auth.password.set` the stored hash starts with `$argon2id$`.
-- In `crates/system/tests/auth_passwords.rs`, driven through `X-Keel-Test-Principal` and the socket:
+- In `crates/system/tests/system/auth_passwords.rs`, driven through `X-Keel-Test-Principal` and the socket:
   A1 sets its own password with `current`; A1 without `current` answers `422` on `current`; with a
   wrong `current` `401` `auth.error.credentials`; the admin with `principal` and no `current` sets
   A1's password; `auth.password.set` with `principal` is refused for a target at or above the
@@ -1085,7 +1085,7 @@ and 4c), lockout, rate limiting, IP rules, the password policy and the session l
 
 - On a fresh database `auth_session` exists, and no column of it ever holds a value starting with
   `ks_`.
-- Over HTTP, in `crates/system/tests/auth_sessions.rs`: after an admin sets A1's password, `POST
+- Over HTTP, in `crates/system/tests/system/auth_sessions.rs`: after an admin sets A1's password, `POST
   /api/v1/call/auth.login` as a guest answers `200` with `data.principal` naming A1 and a
   `Set-Cookie` header carrying exactly the attributes of step 1a; `GET /api/v1/boot` with that
   cookie returns A1 as the principal; `keel.account.list` with it returns A1's account only; the
@@ -1173,7 +1173,7 @@ a token — a token acts as the principal that created it.
   scoped to `["keel.*"]` creates one scoped to `["keel.account.list"]` and is refused `["auth.*"]`;
   `auth.logout` under a `kat_` token answers `422` `auth.error.session_only`.
 - A token scoped to `note.edit` alone edits a note whose handler invokes `keel.account.get` and
-  `note.get`, so the scope guard admits nested invokes: `products/demo/tests/tokens.rs`.
+  `note.get`, so the scope guard admits nested invokes: `products/demo/tests/demo/tokens.rs`.
 - `ip_allow: ["10.0.0.0/8"]` answers a request from `127.0.0.1` with `401`; `["127.0.0.0/8"]` with
   `200`; the plaintext appears once, in the result of `auth.token.create`, and nowhere in the table;
   a revoked token answers `401` at its next call; an expired one, by the frozen clock, likewise;
@@ -1323,7 +1323,7 @@ paragraph).
 **Acceptance.**
 
 - `login_boot_list_su_narrows_the_list_and_fills_the_actor_then_su_exit_returns` in
-  `crates/system/tests/auth_su.rs`, the M1 exit sequence over HTTP: login as the admin, `boot`,
+  `crates/system/tests/system/auth_su.rs`, the M1 exit sequence over HTTP: login as the admin, `boot`,
   `keel.account.list` listing every account, `auth.su` into A1 with no `Set-Cookie` in the answer,
   `keel.account.list` listing A1's account only with `meta.principal.actor` the admin and `via:
   "su"`, `boot` with `principal.actor` filled, `auth.su.exit`, after which the actor is `null` and
@@ -1992,7 +1992,7 @@ form alone while the schema stays draft 2020-12 for Ajv, and prettier over the o
 enums arrive as string-literal unions. The generated files are committed, and the job `frontend`
 regenerates them and fails on a difference. The same fixtures Rust loads are loaded by Jest:
 `frontend/libs/keel/meta/src/fixtures.spec.ts` reads `contracts/fixtures/` through the repository
-path, mirrors the `KNOWN` list of `crates/types/tests/fixtures.rs` so that a fixture nobody tests
+path, mirrors the `KNOWN` list of `crates/types/tests/types/fixtures.rs` so that a fixture nobody tests
 fails on both sides, and validates every fixture against its per-type schema with `Ajv2020` from
 `ajv/dist/2020` and `ajv-formats`, `keel.json` registered under its `$id` so the `$ref` resolves,
 since `keel-dev types` writes draft 2020-12, the draft `jsonschema` validates on the kernel side:
@@ -2352,7 +2352,7 @@ the item — with `contracts/schema/keel.json` and the generated types following
 **Touches.** `crates/sdk/src/registrar.rs` and `ui.rs` (`view`, `ViewSpec`),
 `crates/kernel/src/loader/freeze.rs`, `boot.rs`, `menu.rs` and `socket/` (the views in the boot
 payload), `crates/types/src/boot.rs` (`kind` optional on an item) with `contracts/schema/keel.json`
-and the generated types, `crates/kernel/tests/views.rs`.
+and the generated types, `crates/kernel/tests/kernel/views.rs`.
 
 **Out of scope.** The demo's M2 shapes (step 7b); the client half of the registry and the renderers
 (steps 7c to 7e); the feature guard on `needs` (M4); a view registered with `r.view` by a
@@ -2360,7 +2360,7 @@ first-party product (none before `panel`).
 
 **Acceptance.**
 
-- `crates/kernel/tests/views.rs`:
+- `crates/kernel/tests/kernel/views.rs`:
   `a_registered_view_is_listed_in_boot_for_the_levels_its_access_admits_and_menus_without_a_kind`,
   and `a_view_with_a_foreign_prefix_an_unknown_permission_or_an_unknown_group_fails_freeze`;
   `contracts/fixtures/boot.json` still round-trips, and `pnpm generate` leaves the regenerated
@@ -2562,15 +2562,15 @@ and `system/grants` on `auth.grant.list`, each projected by level and permission
 `crates/kernel/i18n/`, since every installation serves them and OwnLate manages them with the core
 project, and the shell's own strings live under `keel.shell.*` in the same dictionaries. The kernel
 test `boot_without_a_product_shows_the_platform_brand_and_the_platform_group_only` in
-`crates/kernel/tests/boot.rs` writes `contracts/fixtures/boot-none.json` under the snapshot rule of
+`crates/kernel/tests/kernel/boot.rs` writes `contracts/fixtures/boot-none.json` under the snapshot rule of
 `contracts/fixtures/descriptors/`, the no-product payload of the design's three `/boot` fixtures,
-and `crates/types/tests/fixtures.rs` and `fixtures.spec.ts` gain it.
+and `crates/types/tests/types/fixtures.rs` and `fixtures.spec.ts` gain it.
 
 **Touches.** `crates/sdk/src/system.rs` (`PermissionSource`, `PrincipalSource::touch_acl`),
 `crates/types/src/principal.rs` (`grants`), `crates/kernel/src/dispatcher/guards.rs`, `http/auth.rs`
 and `socket/` (the overlay), `crates/system/` (auth: the migration, `grant/`, the menu nodes,
 dictionaries, tests, snapshots), `crates/kernel/i18n/en.json` and `ru.json` (`phx.*`,
-`keel.shell.*`), `crates/kernel/tests/boot.rs` and `crates/types/tests/fixtures.rs`
+`keel.shell.*`), `crates/kernel/tests/kernel/boot.rs` and `crates/types/tests/types/fixtures.rs`
 (`boot-none.json`), `contracts/fixtures/boot-none.json`,
 `frontend/libs/keel/meta/src/fixtures.spec.ts` (the mirror entry).
 
@@ -2580,7 +2580,7 @@ peer (M6).
 
 **Acceptance.**
 
-- `crates/system/tests/auth_grants.rs`:
+- `crates/system/tests/system/auth_grants.rs`:
   `a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_away_until_deleted` over
   HTTP — a test module registers a `user`-level function under a permission whose defaults name
   `reseller` alone; the reseller grants that key to A1, whose call is then admitted, a denial row on
@@ -2781,7 +2781,7 @@ headers), `crates/keel/tests/runtime.rs`, `bin/keel/src/main.rs`, `bin/keel/test
 
 **Acceptance.**
 
-- `crates/kernel/tests/assets.rs` with a test `Frontend` of three files: `GET /` and
+- `crates/kernel/tests/kernel/assets.rs` with a test `Frontend` of three files: `GET /` and
   `GET /f/note.list` answer `index.html` with `no-store`, the CSP above, `nosniff` and the referrer
   policy; `GET /main-abc123.js` answers the file `immutable` with a year of `max-age`, and with
   `Accept-Encoding: br` the `.br` twin with `Content-Encoding: br` and `Vary`; `GET /missing.png`
@@ -2824,7 +2824,7 @@ fetches `/boot` fresh on every load and the meta version does not name the host.
 **Touches.** `crates/kernel/src/http/brand.rs`, `crates/kernel/assets/keel.svg`,
 `crates/kernel/src/boot.rs` (the patch), `crates/sdk/src/product.rs` (`Asset`, `assets`) and
 `system.rs` (`ManifestSource`, `ManifestPatch`), `crates/kernel/src/loader/`,
-`crates/kernel/tests/boot.rs`, `crates/keel/tests/runtime.rs` and
+`crates/kernel/tests/kernel/boot.rs`, `crates/keel/tests/runtime.rs` and
 `crates/sdk-probe/tests/harness.rs` (the test bundles gain `assets`), `crates/system/` (settings:
 the migration, `brand/`, the menu node, dictionaries, tests, snapshots), `products/demo/`
 (`brand/logo.svg`, the manifest), `hack/prove-binary.sh` (`/brand/logo.svg`). Kernel routes added:
@@ -2835,10 +2835,10 @@ the migration, `brand/`, the menu node, dictionaries, tests, snapshots), `produc
 
 **Acceptance.**
 
-- `crates/kernel/tests/brand.rs`: `/brand/demo/logo.svg` answers the bundle's asset as
+- `crates/kernel/tests/kernel/brand.rs`: `/brand/demo/logo.svg` answers the bundle's asset as
   `image/svg+xml`, `/brand/logo.svg` the same with one product enabled and the kernel's mark with
   none, and `404` for a product without an asset.
-- `crates/system/tests/settings_brand.rs`:
+- `crates/system/tests/system/settings_brand.rs`:
   `a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_host_alone` — after
   `settings.brand.set` for `panel.example`, `/boot` with `Host: panel.example:1500` carries the
   patched `name`, `hue` and `chroma` and `/brand/logo.svg` the patched SVG, while `Host: 127.0.0.1`
@@ -3286,24 +3286,24 @@ binary, and `hack/check-docs.sh` over this checklist.
 - [x] Over HTTP: login, then boot, then `keel.account.list`, then `auth.su`, after which the
       list is narrowed and `actor` is filled, then `su.exit`
       (`login_boot_list_su_narrows_the_list_and_fills_the_actor_then_su_exit_returns` in
-      `crates/system/tests/auth_su.rs`; the auth group of `hack/conformance.sh`; the `su`
+      `crates/system/tests/system/auth_su.rs`; the auth group of `hack/conformance.sh`; the `su`
       sequence of `hack/prove-binary.sh`).
 - [x] A token scoped to one function receives `403` on another
       (`a_token_scoped_to_one_function_is_admitted_there_and_refused_elsewhere_after_the_level_guard`
-      in `crates/system/tests/auth_tokens.rs`;
+      in `crates/system/tests/system/auth_tokens.rs`;
       `a_token_scoped_to_note_edit_alone_edits_a_note_through_its_nested_invokes` in
-      `products/demo/tests/tokens.rs` for the nested invokes; the token group of
+      `products/demo/tests/demo/tokens.rs` for the nested invokes; the token group of
       `hack/conformance.sh`; `note.edit` under a token in `hack/prove-binary.sh`).
 - [x] Writing a field above the caller's level yields `forbidden_field`
       (`login_sets_the_cookie_and_the_session_drives_boot_lists_and_forbidden_field` in
-      `crates/system/tests/auth_sessions.rs`, over a real session; the errors group of
+      `crates/system/tests/system/auth_sessions.rs`, over a real session; the errors group of
       `hack/conformance.sh`).
 - [x] The audit trail contains both sides of `su` and masks the password, including for
       failed calls (`the_su_sequence_records_both_sides_of_su_and_the_calls_made_inside_it` and
       `logins_and_password_changes_are_masked_and_no_session_token_key_or_factor_reaches_the_trail`
-      in `crates/system/tests/audit.rs`;
+      in `crates/system/tests/system/audit.rs`;
       `a_wrong_password_and_an_unknown_login_are_one_answer_and_the_audit_masks_the_password` in
-      `crates/system/tests/auth_sessions.rs` for the event of the failed call; the `audit_call`
+      `crates/system/tests/system/auth_sessions.rs` for the event of the failed call; the `audit_call`
       queries of `hack/prove-binary.sh`).
 - [x] The conformance skeleton is green against the built binary (`hack/conformance.sh
       target/debug/keel` in CI after `hack/prove-binary.sh`; a broken expectation exits non-zero:
@@ -3311,26 +3311,26 @@ binary, and `hack/check-docs.sh` over this checklist.
       `crates/conformance/tests/exit_code.rs`).
 - [x] `auth`: argon2id passwords
       (`the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2id` in
-      `crates/system/tests/auth_passwords.rs`); opaque sessions and the `__Host-` cookie with the
+      `crates/system/tests/system/auth_passwords.rs`); opaque sessions and the `__Host-` cookie with the
       cross-site check (`login_is_refused_cross_site_and_replaces_the_session_it_arrived_with` and
       `a_session_slides_with_every_request_and_ends_after_the_idle_and_absolute_lifetimes` in
-      `crates/system/tests/auth_sessions.rs`;
+      `crates/system/tests/system/auth_sessions.rs`;
       `every_request_without_a_bearer_token_is_checked_for_cross_site` and
       `authenticators_are_asked_in_module_order_until_one_answers_or_fails` in
-      `crates/kernel/tests/http.rs`); Bearer tokens with scope and IP restrictions
+      `crates/kernel/tests/kernel/http.rs`); Bearer tokens with scope and IP restrictions
       (`ip_rules_revocation_expiry_and_last_used_govern_a_token_and_the_plaintext_is_shown_once`
-      in `crates/system/tests/auth_tokens.rs`); TOTP with recovery codes
+      in `crates/system/tests/system/auth_tokens.rs`); TOTP with recovery codes
       (`a1_enrols_confirms_and_logs_in_through_a_challenge_with_the_step_moving_forward_only` and
       `a_recovery_code_logs_in_once_without_moving_the_step_and_is_stored_as_its_hash` in
-      `crates/system/tests/auth_totp.rs`, the sealed secret through
+      `crates/system/tests/system/auth_totp.rs`, the sealed secret through
       `a_handler_seals_through_the_cipher_and_only_the_composition_with_the_same_key_opens_it` in
-      `crates/kernel/tests/cipher.rs`); login keys
+      `crates/kernel/tests/kernel/cipher.rs`); login keys
       (`a_key_issued_for_a1_is_redeemed_once_and_refused_when_spent_expired_or_made_up` in
-      `crates/system/tests/auth_keys.rs`); the socket side of delegation
+      `crates/system/tests/system/auth_keys.rs`); the socket side of delegation
       (`a_frame_with_as_runs_as_the_named_principal_with_the_owner_as_actor_via_socket` in
-      `crates/kernel/tests/socket.rs`); IP rules
+      `crates/kernel/tests/kernel/socket.rs`); IP rules
       (`ip_rules_refuse_by_address_and_level_take_effect_at_once_and_never_apply_to_the_socket`
-      in `crates/system/tests/auth_guards.rs`, and the rule surviving a restart in the second run
+      in `crates/system/tests/system/auth_guards.rs`, and the rule surviving a restart in the second run
       of `hack/prove-binary.sh`); rate limiting
       (`the_thirty_first_guest_call_from_one_address_within_a_minute_is_rate_limited_and_the_bucket_leaves_with_its_window`);
       lockout and unlock
@@ -3339,26 +3339,26 @@ binary, and `hack/check-docs.sh` over this checklist.
       the session list and revocation
       (`each_principal_lists_its_own_sessions_the_reseller_its_subtree_the_admin_all_and_the_current_row_is_marked`
       and `revoking_a_parent_takes_its_su_child_and_revoking_the_child_alone_ends_the_delegation`
-      in `crates/system/tests/auth_session_list.rs`); the password policy
+      in `crates/system/tests/system/auth_session_list.rs`); the password policy
       (`the_policy_refuses_a_short_password_and_one_equal_to_the_login_wherever_it_is_set` in
-      `crates/system/tests/auth_policy.rs`).
+      `crates/system/tests/system/auth_policy.rs`).
 - [x] `settings`: values, inheritance and `Call::setting`
       (`the_admin_lists_the_six_auth_definitions_and_a_raised_minimum_makes_the_password_refuse_twelve_characters`
       and
       `a_value_inherits_from_the_root_down_the_account_path_and_a_composition_without_settings_resolves_the_default`
-      in `crates/system/tests/settings.rs`;
+      in `crates/system/tests/system/settings.rs`;
       `without_a_settings_module_the_platform_answers_the_contributed_defaults_and_a_provided_source_replaces_it`
-      in `crates/kernel/tests/settings.rs`); preferences and the caller's time zone
+      in `crates/kernel/tests/kernel/settings.rs`); preferences and the caller's time zone
       (`a1_sets_tz_and_lang_and_boot_and_the_catalogue_follow_while_a2_reads_nothing_of_it` in
-      `crates/system/tests/settings_pref.rs`;
+      `crates/system/tests/system/settings_pref.rs`;
       `the_transport_overlays_the_preferred_language_and_hands_the_zone_to_every_call_of_the_request`
-      in `crates/kernel/tests/preferences.rs`;
+      in `crates/kernel/tests/kernel/preferences.rs`;
       `a_bare_date_filter_takes_the_day_boundary_in_the_callers_zone_and_utc_without_one` in
-      `products/demo/tests/day_boundary.rs`).
+      `products/demo/tests/demo/day_boundary.rs`).
 - [x] `audit`: the trail from a background worker, flushed and drained
       (`flush_returns_after_the_batch_is_written_and_a_stop_leaves_no_event_unwritten` and
       `audit_list_filters_by_function_principal_status_request_and_time_within_the_callers_scope`
-      in `crates/system/tests/audit.rs`;
+      in `crates/system/tests/system/audit.rs`;
       `a_read_leaves_no_row_a_replay_leaves_no_second_row_and_request_id_ip_and_via_are_filled`).
 - [x] `ConfigSection`: a section validated and typed at freeze
       (`a_valid_section_reaches_start_and_the_handlers_an_absent_one_yields_the_defaults` and
@@ -3376,9 +3376,9 @@ binary, and `hack/check-docs.sh` over this checklist.
       `cargo clippy` and `cargo test -p keel-system --no-default-features --features <set>` for
       `auth`, `settings`, `audit`, `settings,audit`, `auth,audit` and `auth,settings`
       (`settings_alone_boots_with_its_tables_and_the_admin_lists_and_sets_a_value_over_http` in
-      `crates/system/tests/settings_alone.rs`,
+      `crates/system/tests/system/settings_alone.rs`,
       `audit_alone_boots_with_its_table_and_one_owner_write_leaves_one_row_after_a_flush` in
-      `crates/system/tests/audit_alone.rs`).
+      `crates/system/tests/system/audit_alone.rs`).
 - [x] `cargo fmt --all --check` is green.
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` is green.
 - [x] `cargo test --workspace` is green against Postgres, and `hack/check-test-databases.sh`

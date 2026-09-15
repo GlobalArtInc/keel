@@ -80,8 +80,9 @@ cites exists, and the list above, the "How we work" section of the plan and `ci.
 commands. CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job
 runs the `keel-system` matrix, `cargo clippy` and `cargo test -p keel-system
 --no-default-features --features <set>` for each module alone (`auth`, `settings`, `audit`) and
-for the crate without each in turn (`settings,audit`, `auth,audit`, `auth,settings`); a test of
-the crate declares the modules it needs as `required-features` and is skipped when they are off.
+for the crate without each in turn (`settings,audit`, `auth,audit`, `auth,settings`); every
+integration test of the crate is a module of the one test binary `tests/system/main.rs`, gated with
+`#[cfg(feature = ...)]` on the modules it needs, so a test is skipped when they are off.
 
 `cargo build -p keel-bin` produces `target/debug/keel` with the `demo` bundle compiled in, since
 the feature `demo` of `keel-bin` is on by default; `--no-default-features` builds the binary a

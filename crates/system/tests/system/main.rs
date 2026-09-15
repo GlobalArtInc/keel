@@ -1,0 +1,32 @@
+#[cfg(all(feature = "auth", feature = "audit"))]
+mod audit;
+#[cfg(feature = "audit")]
+mod audit_alone;
+#[cfg(feature = "auth")]
+mod auth_grants;
+#[cfg(feature = "auth")]
+mod auth_guards;
+#[cfg(feature = "auth")]
+mod auth_keys;
+#[cfg(feature = "auth")]
+mod auth_passwords;
+#[cfg(feature = "auth")]
+mod auth_policy;
+#[cfg(feature = "auth")]
+mod auth_session_list;
+#[cfg(feature = "auth")]
+mod auth_sessions;
+#[cfg(feature = "auth")]
+mod auth_su;
+#[cfg(feature = "auth")]
+mod auth_tokens;
+#[cfg(feature = "auth")]
+mod auth_totp;
+#[cfg(all(feature = "auth", feature = "settings"))]
+mod settings;
+#[cfg(feature = "settings")]
+mod settings_alone;
+#[cfg(all(feature = "auth", feature = "settings"))]
+mod settings_brand;
+#[cfg(all(feature = "auth", feature = "settings"))]
+mod settings_pref;

@@ -11,15 +11,15 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement};
 const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static BETA_MIGRATIONS: migrator::Migrations =
-    migrator::embed!("$CARGO_MANIFEST_DIR/tests/modules/beta/migrations")
+    migrator::embed!("$CARGO_MANIFEST_DIR/tests/kernel/modules/beta/migrations")
         .table("keel_migration_beta");
 
 static ALPHA_MIGRATIONS: migrator::Migrations =
-    migrator::embed!("$CARGO_MANIFEST_DIR/tests/modules/alpha/migrations")
+    migrator::embed!("$CARGO_MANIFEST_DIR/tests/kernel/modules/alpha/migrations")
         .table("keel_migration_alpha");
 
 static BROKEN_MIGRATIONS: migrator::Migrations =
-    migrator::embed!("$CARGO_MANIFEST_DIR/tests/modules/broken/migrations")
+    migrator::embed!("$CARGO_MANIFEST_DIR/tests/kernel/modules/broken/migrations")
         .table("keel_migration_broken");
 
 fn init(_: &mut Registrar) -> Result<()> {

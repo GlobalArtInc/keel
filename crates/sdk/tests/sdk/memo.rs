@@ -1,4 +1,4 @@
-mod common;
+use crate::support;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,7 +8,7 @@ use keel_sdk::runtime::{CallBuilder, CallHandle, Ownership};
 use keel_sdk::sea_orm::{ActiveModelTrait, Set, TransactionTrait};
 use keel_sdk::types::ErrorCode;
 
-use common::{CUSTOMER, OTHER, RESELLER, ROOT};
+use crate::support::{CUSTOMER, OTHER, RESELLER, ROOT};
 
 mod item {
     use keel_sdk::Owned;
@@ -66,7 +66,7 @@ impl Notifier for Counter {
 }
 
 static MIGRATIONS: migrator::Migrations =
-    migrator::embed!("$CARGO_MANIFEST_DIR/tests/memo/migrations").table("keel_migration_memo");
+    migrator::embed!("$CARGO_MANIFEST_DIR/tests/sdk/memo/migrations").table("keel_migration_memo");
 
 pub static MODULE: ModuleDef = ModuleDef {
     id: "memo",
@@ -194,8 +194,8 @@ fn the_module_defines_one_read_and_one_write_function() {
     }
 }
 
-async fn migrated() -> common::TestDatabase {
-    let database = common::create().await.with_accounts().await;
+async fn migrated() -> support::TestDatabase {
+    let database = support::create().await.with_accounts().await;
     let applied = MIGRATIONS
         .apply(&database.db)
         .await
@@ -217,14 +217,14 @@ fn services() -> (Arc<keel_sdk::runtime::Services>, Arc<Counter>) {
 }
 
 async fn save_with(
-    database: &common::TestDatabase,
+    database: &support::TestDatabase,
     level: Level,
     account: &str,
     params: Value,
     services: Arc<keel_sdk::runtime::Services>,
 ) -> (Result<Value>, CallHandle) {
     let transaction = database.db.begin().await.expect("begin");
-    let handle = CallBuilder::new(common::principal(level, account), "req")
+    let handle = CallBuilder::new(support::principal(level, account), "req")
         .services(services)
         .write(transaction);
     let result = (edit().handler())(handle.call(params)).await;
@@ -232,7 +232,7 @@ async fn save_with(
 }
 
 async fn save(
-    database: &common::TestDatabase,
+    database: &support::TestDatabase,
     level: Level,
     account: &str,
     params: Value,
@@ -249,13 +249,13 @@ async fn commit(handle: CallHandle) {
 }
 
 async fn list_as(
-    database: &common::TestDatabase,
+    database: &support::TestDatabase,
     level: Level,
     account: &str,
     query: Value,
 ) -> Value {
     let handle =
-        CallBuilder::new(common::principal(level, account), "req").read(database.db.clone());
+        CallBuilder::new(support::principal(level, account), "req").read(database.db.clone());
     (list().handler())(handle.call(query))
         .await
         .expect("list answers")
@@ -471,14 +471,14 @@ async fn the_entity_source_scopes_searches_sorts_and_pages_by_the_caller() {
     assert_eq!(titles(&filtered), ["other one", "reseller own"]);
 
     let handle =
-        CallBuilder::new(common::principal(Level::Guest, ROOT), "req").read(database.db.clone());
+        CallBuilder::new(support::principal(Level::Guest, ROOT), "req").read(database.db.clone());
     let guest = (list().handler())(handle.call(json!({})))
         .await
         .expect("a guest list is empty");
     assert_eq!(guest["total"], json!(0));
 
-    let handle =
-        CallBuilder::new(common::principal(Level::User, CUSTOMER), "req").read(database.db.clone());
+    let handle = CallBuilder::new(support::principal(Level::User, CUSTOMER), "req")
+        .read(database.db.clone());
     let unsortable =
         (list().handler())(handle.call(json!({ "sort": { "key": "account_id", "dir": "asc" } })))
             .await
@@ -489,9 +489,9 @@ async fn the_entity_source_scopes_searches_sorts_and_pages_by_the_caller() {
 
 #[tokio::test]
 async fn a_read_call_has_neither_transaction_nor_outbox() {
-    let database = common::create().await;
-    let handle =
-        CallBuilder::new(common::principal(Level::User, CUSTOMER), "req").read(database.db.clone());
+    let database = support::create().await;
+    let handle = CallBuilder::new(support::principal(Level::User, CUSTOMER), "req")
+        .read(database.db.clone());
     let call = handle.call(json!({}));
     assert_eq!(call.mode(), Mode::Read);
     assert!(!call.db().is_transaction());

@@ -139,7 +139,7 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     );
     let table = socket.ctl_table("note.list", &[], "ru").await;
     assert!(table.ok, "{}", table.text);
-    let ru: Value = serde_json::from_str(include_str!("../i18n/note/ru.json")).expect("ru");
+    let ru: Value = serde_json::from_str(include_str!("../../i18n/note/ru.json")).expect("ru");
     let lines: Vec<&str> = table.text.lines().collect();
     let header = |key: &str| ru["note"]["column"][key].as_str().expect("a label");
     assert_eq!(
