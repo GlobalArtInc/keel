@@ -72,10 +72,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Find the IPv4 port of Postgres
+        run: |
+          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/-> 0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$port"
+          echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
       - name: Wait for Postgres
         run: |
           for i in $(seq 1 30); do
-            pg_isready -h 127.0.0.1 -p "${{ job.services.postgres.ports['5432'] }}" -U keel && exit 0
+            pg_isready -d "$KEEL_TEST_DATABASE_URL" && exit 0
             sleep 2
           done
           echo "postgres did not come up" >&2
@@ -110,8 +116,6 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: cargo test --workspace
 
       - name: The testkit against the Postgres it starts itself
@@ -127,21 +131,15 @@ jobs:
         run: cargo build -p keel-bin
 
       - name: Prove the binary
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/prove-binary.sh target/debug/keel
 
       - name: The installer against the binary
         run: hack/check-install.sh target/debug/keel
 
       - name: Conformance against the binary
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/conformance.sh target/debug/keel
 
       - name: The descriptor dump, the OpenAPI document and the custom-views share against the binary
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/descriptors.sh target/debug/keel
 
       - name: Install chromium for the browser suite
@@ -149,8 +147,6 @@ jobs:
         run: pnpm exec playwright install chromium
 
       - name: The browser suite against the binary
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/e2e.sh target/debug/keel
 
       - name: Keep the traces of a failed browser suite
@@ -162,8 +158,6 @@ jobs:
           if-no-files-found: ignore
 
       - name: No test database remains
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/check-test-databases.sh
 
       - name: Dependency boundaries
@@ -257,10 +251,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Find the IPv4 port of Postgres
+        run: |
+          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/-> 0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$port"
+          echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
       - name: Wait for Postgres
         run: |
           for i in $(seq 1 30); do
-            pg_isready -h 127.0.0.1 -p "${{ job.services.postgres.ports['5432'] }}" -U keel && exit 0
+            pg_isready -d "$KEEL_TEST_DATABASE_URL" && exit 0
             sleep 2
           done
           echo "postgres did not come up" >&2
@@ -270,13 +270,9 @@ jobs:
         run: cargo clippy -p keel-system --all-targets --no-default-features --features ${{ matrix.features }} -- -D warnings
 
       - name: Test
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: cargo test -p keel-system --no-default-features --features ${{ matrix.features }}
 
       - name: No test database remains
-        env:
-          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
         run: hack/check-test-databases.sh
 
   frontend:
