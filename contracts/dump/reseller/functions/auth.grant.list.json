@@ -1,0 +1,153 @@
+{
+  "keel": 1,
+  "name": "auth.grant.list",
+  "module": "auth",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "reseller",
+    "permission": "auth.grant.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Grant",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Grant"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Grant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": "string"
+          },
+          "principalLogin": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "granted": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "principalId",
+          "principalLogin",
+          "accountId",
+          "key",
+          "granted",
+          "createdAt",
+          "createdBy"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.grant.list.title",
+    "search": [
+      "key",
+      "principalLogin"
+    ],
+    "columns": [
+      {
+        "key": "principalLogin",
+        "type": "text",
+        "primary": true
+      },
+      {
+        "key": "key",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "granted",
+        "type": "boolean",
+        "filter": {
+          "options": [
+            "true",
+            "false"
+          ]
+        }
+      },
+      {
+        "key": "accountId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        }
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "set",
+        "role": "new",
+        "screen": "auth.grant.set",
+        "icon": "plus"
+      },
+      {
+        "id": "delete",
+        "role": "button",
+        "function": "auth.grant.delete",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "delete"
+    ],
+    "empty": {
+      "title": "auth.grant.empty",
+      "action": "set"
+    },
+    "invalidate_on": [
+      "auth.grant.*"
+    ]
+  }
+}

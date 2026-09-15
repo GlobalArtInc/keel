@@ -1,0 +1,61 @@
+{
+  "keel": 1,
+  "name": "auth.totp.confirm",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.totp.manage"
+  },
+  "params": {
+    "title": "Confirm",
+    "type": "object",
+    "properties": {
+      "code": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Confirmed",
+    "type": "object",
+    "properties": {
+      "recoveryCodes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "recoveryCodes"
+    ]
+  },
+  "ui": {
+    "title": "auth.totp.confirm.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "code"
+        ]
+      }
+    ]
+  }
+}

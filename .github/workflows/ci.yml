@@ -132,6 +132,11 @@ jobs:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: hack/conformance.sh target/debug/keel
 
+      - name: The descriptor dump and the custom-views share against the binary
+        env:
+          KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
+        run: hack/descriptors.sh target/debug/keel
+
       - name: No test database remains
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres

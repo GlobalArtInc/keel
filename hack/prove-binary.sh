@@ -402,6 +402,8 @@ check "ctl settings.brand.delete for panel.example" keel_ok "$site/brand-delete.
 check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'
 check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$site/boot-brand-gone.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
 check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150'
+check "ctl keel.product.list --out json" keel_ok "$site/products.json" ctl keel.product.list --out json
+check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["note"])]'
 check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x
 check "note.edit answers the saved note" json_is "$site/edit.json" 'doc["ok"] is True and doc["data"]["title"] == "x" and doc["meta"]["principal"]["login"] == "owner"'
 check "ctl note.list --out json" keel_ok "$site/notes.json" ctl note.list --out json

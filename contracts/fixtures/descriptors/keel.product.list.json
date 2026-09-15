@@ -65,13 +65,20 @@
               "string",
               "null"
             ]
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "id",
           "name",
           "version",
-          "state"
+          "state",
+          "modules"
         ]
       },
       "ProductState": {
@@ -113,6 +120,10 @@
       },
       {
         "key": "enabledBy",
+        "type": "text"
+      },
+      {
+        "key": "modules",
         "type": "text"
       }
     ],

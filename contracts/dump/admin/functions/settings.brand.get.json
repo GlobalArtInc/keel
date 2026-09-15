@@ -1,0 +1,71 @@
+{
+  "keel": 1,
+  "name": "settings.brand.get",
+  "module": "settings",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "BrandPick",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 253
+      }
+    },
+    "required": [
+      "host"
+    ]
+  },
+  "result": {
+    "title": "BrandRow",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string"
+      },
+      "name": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "logo": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "hue": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "chroma": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "format": "double"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedBy": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "host",
+      "updatedAt",
+      "updatedBy"
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "keel": 1,
+  "name": "auth.totp.disable",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.totp.manage"
+  },
+  "params": {
+    "title": "Disable",
+    "type": "object",
+    "properties": {
+      "code": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Secret"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "secret": true
+        }
+      }
+    },
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Disabled",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "$ref": "#/$defs/Id"
+      },
+      "disabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "principal",
+      "disabled"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.totp.disable.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "code"
+        ]
+      }
+    ]
+  }
+}

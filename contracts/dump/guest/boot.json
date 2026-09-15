@@ -1,0 +1,33 @@
+{
+  "keel": {
+    "version": "0.1.0",
+    "api": 1
+  },
+  "products": [
+    {
+      "id": "demo",
+      "name": "product.demo.brand",
+      "edition": null,
+      "brand": {
+        "name": "product.demo.brand",
+        "logo": "/brand/demo/logo.svg",
+        "hue": 150,
+        "chroma": 0.1
+      }
+    }
+  ],
+  "brand": {
+    "name": "product.demo.brand",
+    "logo": "/brand/logo.svg",
+    "hue": 150,
+    "chroma": 0.1
+  },
+  "principal": null,
+  "features": [],
+  "license": null,
+  "menu": [],
+  "dashboard": [],
+  "views": [],
+  "meta": "m-0000000000000000",
+  "problems": null
+}

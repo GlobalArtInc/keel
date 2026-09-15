@@ -1,0 +1,196 @@
+{
+  "keel": 1,
+  "name": "keel.account.list",
+  "module": "keel",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "keel.account.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Account",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Account"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "level": "reseller"
+            }
+          },
+          "path": {
+            "type": "string",
+            "x-keel": {
+              "level": "reseller"
+            }
+          },
+          "state": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "level": "admin"
+            }
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "level": "admin"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "path",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.account.list.title",
+    "search": [
+      "id",
+      "kind"
+    ],
+    "columns": [
+      {
+        "key": "id",
+        "type": "link",
+        "to": {
+          "screen": "keel.account.update",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "kind",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "deleting": "danger",
+          "suspended": "warning"
+        },
+        "filter": {
+          "options": [
+            "active",
+            "suspended",
+            "deleting"
+          ]
+        }
+      },
+      {
+        "key": "parentId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "origin",
+        "type": "text",
+        "access": {
+          "level": "admin"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "keel.account.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "keel.account.update",
+        "default": true
+      }
+    ],
+    "row_actions": [
+      "edit"
+    ],
+    "empty": {
+      "title": "keel.account.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "keel.account.*"
+    ]
+  }
+}

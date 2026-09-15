@@ -1,0 +1,36 @@
+{
+  "keel": 1,
+  "name": "settings.brand.delete",
+  "module": "settings",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "BrandPick",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 253
+      }
+    },
+    "required": [
+      "host"
+    ]
+  },
+  "result": {
+    "title": "BrandDeleted",
+    "type": "object",
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "deleted"
+    ]
+  }
+}

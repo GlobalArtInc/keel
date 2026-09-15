@@ -213,7 +213,8 @@
         "version": "Версия",
         "state": "Состояние",
         "enabledAt": "Включён",
-        "enabledBy": "Кем включён"
+        "enabledBy": "Кем включён",
+        "modules": "Модули"
       },
       "action": {
         "enable": "Включить",

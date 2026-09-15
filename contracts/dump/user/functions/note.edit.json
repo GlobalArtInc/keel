@@ -1,0 +1,178 @@
+{
+  "keel": 1,
+  "name": "note.edit",
+  "module": "note",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "note.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "NoteEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "body": {
+        "type": "string",
+        "default": ""
+      },
+      "kind": {
+        "$ref": "#/$defs/NoteKind",
+        "default": "memo"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "x-keel": {
+          "check": "name"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "due": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date",
+        "x-ui": {
+          "control": "date"
+        }
+      }
+    },
+    "required": [
+      "title"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "NoteKind": {
+        "type": "string",
+        "enum": [
+          "memo",
+          "todo"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Note",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "due": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "title",
+      "body",
+      "kind",
+      "tags",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "note.edit.title",
+    "read": "note.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "title",
+          "body",
+          "kind",
+          "due",
+          "tags"
+        ]
+      },
+      {
+        "id": "owner",
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ],
+    "fields": {
+      "due": {
+        "show_if": {
+          "eq": [
+            "kind",
+            "todo"
+          ]
+        },
+        "required_if": {
+          "eq": [
+            "kind",
+            "todo"
+          ]
+        }
+      },
+      "kind": {
+        "recompute": "note.recompute"
+      }
+    }
+  }
+}

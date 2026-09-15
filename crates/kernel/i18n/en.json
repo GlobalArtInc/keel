@@ -213,7 +213,8 @@
         "version": "Version",
         "state": "State",
         "enabledAt": "Enabled at",
-        "enabledBy": "Enabled by"
+        "enabledBy": "Enabled by",
+        "modules": "Modules"
       },
       "action": {
         "enable": "Enable",

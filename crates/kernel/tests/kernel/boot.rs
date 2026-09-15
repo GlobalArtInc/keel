@@ -664,7 +664,7 @@ async fn keel_product_functions_list_every_manifest_and_edit_the_enabled_set() {
     assert_eq!(
         listed["data"],
         json!([{ "id": "probe", "name": "product.probe.brand", "version": "0.1.0", "state": "disabled",
-                 "enabledAt": null, "enabledBy": null }])
+                 "enabledAt": null, "enabledBy": null, "modules": ["probe"] }])
     );
     assert_eq!(
         bench

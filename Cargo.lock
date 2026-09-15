@@ -1969,12 +1969,17 @@ dependencies = [
 name = "keel-dev"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "clap",
  "keel-types",
+ "reqwest",
+ "rustls",
  "schemars 1.2.2",
  "serde_json",
+ "similar",
  "tempfile",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

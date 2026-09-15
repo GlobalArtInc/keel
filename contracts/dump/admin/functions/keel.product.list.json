@@ -1,0 +1,161 @@
+{
+  "keel": 1,
+  "name": "keel.product.list",
+  "module": "keel",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_ProductRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ProductRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "ProductRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/$defs/ProductState"
+          },
+          "enabledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "enabledBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "state",
+          "modules"
+        ]
+      },
+      "ProductState": {
+        "type": "string",
+        "enum": [
+          "enabled",
+          "disabled"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.product.list.title",
+    "columns": [
+      {
+        "key": "id",
+        "type": "text",
+        "primary": true
+      },
+      {
+        "key": "name",
+        "type": "text"
+      },
+      {
+        "key": "version",
+        "type": "text"
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "disabled": "neutral",
+          "enabled": "success"
+        }
+      },
+      {
+        "key": "enabledAt",
+        "type": "datetime"
+      },
+      {
+        "key": "enabledBy",
+        "type": "text"
+      },
+      {
+        "key": "modules",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "enable",
+        "role": "button",
+        "function": "keel.product.enable",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      },
+      {
+        "id": "disable",
+        "role": "button",
+        "function": "keel.product.disable",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "enable",
+      "disable"
+    ],
+    "empty": {
+      "title": "keel.product.empty"
+    },
+    "invalidate_on": [
+      "keel.product.*"
+    ]
+  }
+}

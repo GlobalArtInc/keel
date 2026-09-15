@@ -1,0 +1,88 @@
+{
+  "keel": 1,
+  "name": "keel.account.update",
+  "module": "keel",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "keel.account.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "AccountUpdate",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "kind": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "check": "name"
+        }
+      },
+      "parent": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Saved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.account.update.title",
+    "read": "keel.account.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "kind",
+          "parent"
+        ]
+      }
+    ]
+  }
+}

@@ -17,4 +17,12 @@ The wire contract of the platform, in a form both sides can check against.
   every wire type, and `<Type>.json` beside it is one `$ref` into it per root type, which the
   frontend compiles with Ajv and `pnpm generate` turns into the TypeScript types of
   `@globalart/keel/meta`.
+- `dump/` — the projected contract of the real binary per level, written by
+  `keel-dev descriptors dump` through `hack/descriptors.sh`: for `guest`, `user`, `reseller` and
+  `admin` the `/boot` payload, the descriptors of `GET /api/v1/functions` as `functions/<func>.json`,
+  the `en` and `ru` catalogues under `i18n/` and, where the level may list them, the rows of
+  `keel.product.list` as `products.json`. The ids of the principal and its account, the metadata
+  version and the enabling instant name the run and are replaced by fixed placeholders. CI runs
+  `keel-dev descriptors check` against it and `keel-dev views share` over it; after reviewing a
+  change, `KEEL_UPDATE_DUMP=1 hack/descriptors.sh target/debug/keel` rewrites it.
 - `openapi.json` — generated from the function registry, committed for diffs (from M2).

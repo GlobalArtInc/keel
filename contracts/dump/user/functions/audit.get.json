@@ -1,0 +1,127 @@
+{
+  "keel": 1,
+  "name": "audit.get",
+  "module": "audit",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "audit.read"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "AuditCall",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "function": {
+        "type": "string"
+      },
+      "module": {
+        "type": "string"
+      },
+      "principalId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "principalLogin": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "actorPrincipalId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "actorLogin": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "via": {
+        "type": "string"
+      },
+      "ip": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "paramsRedacted": true,
+      "subject": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "after": true,
+      "status": {
+        "type": "string"
+      },
+      "errorCode": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "errorKey": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "elapsedMs": {
+        "type": "integer",
+        "format": "int64"
+      }
+    },
+    "required": [
+      "id",
+      "at",
+      "requestId",
+      "function",
+      "module",
+      "principalLogin",
+      "accountId",
+      "via",
+      "paramsRedacted",
+      "status",
+      "elapsedMs"
+    ]
+  }
+}

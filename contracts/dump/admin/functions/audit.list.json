@@ -1,0 +1,222 @@
+{
+  "keel": 1,
+  "name": "audit.list",
+  "module": "audit",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "audit.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_AuditCall",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/AuditCall"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "AuditCall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "function": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "principalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "principalLogin": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "actorPrincipalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actorLogin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "via": {
+            "type": "string"
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "paramsRedacted": true,
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after": true,
+          "status": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elapsedMs": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "requestId",
+          "function",
+          "module",
+          "principalLogin",
+          "accountId",
+          "via",
+          "paramsRedacted",
+          "status",
+          "elapsedMs"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "audit.list.title",
+    "search": [
+      "function",
+      "principalLogin",
+      "requestId"
+    ],
+    "columns": [
+      {
+        "key": "at",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "function",
+        "type": "link",
+        "to": {
+          "screen": "audit.get",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "principalLogin",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "principalId",
+        "type": "text"
+      },
+      {
+        "key": "actorLogin",
+        "type": "text"
+      },
+      {
+        "key": "via",
+        "type": "text"
+      },
+      {
+        "key": "ip",
+        "type": "text"
+      },
+      {
+        "key": "subject",
+        "type": "text"
+      },
+      {
+        "key": "status",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "committed": "success",
+          "failed": "danger"
+        },
+        "filter": {
+          "options": [
+            "committed",
+            "failed"
+          ]
+        }
+      },
+      {
+        "key": "errorKey",
+        "type": "text"
+      },
+      {
+        "key": "elapsedMs",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "requestId",
+        "type": "text"
+      }
+    ],
+    "empty": {
+      "title": "audit.empty"
+    }
+  }
+}

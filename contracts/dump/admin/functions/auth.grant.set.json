@@ -1,0 +1,86 @@
+{
+  "keel": 1,
+  "name": "auth.grant.set",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "auth.grant.manage"
+  },
+  "params": {
+    "title": "GrantSet",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "$ref": "#/$defs/Id"
+      },
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "granted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "principal",
+      "key",
+      "granted"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "GrantSaved",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "principal": {
+        "$ref": "#/$defs/Id"
+      },
+      "key": {
+        "type": "string"
+      },
+      "granted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "principal",
+      "key",
+      "granted"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.grant.set.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "principal",
+          "key",
+          "granted"
+        ]
+      }
+    ]
+  }
+}

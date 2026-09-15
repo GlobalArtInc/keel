@@ -1,0 +1,54 @@
+{
+  "keel": 1,
+  "name": "note.recompute",
+  "module": "note",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.manage"
+  },
+  "params": {
+    "title": "Recompute",
+    "type": "object",
+    "properties": {
+      "values": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "changed": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "values",
+      "changed"
+    ]
+  },
+  "result": {
+    "title": "Recomputed",
+    "type": "object",
+    "properties": {
+      "values": {
+        "$ref": "#/$defs/RecomputedValues"
+      }
+    },
+    "required": [
+      "values"
+    ],
+    "$defs": {
+      "RecomputedValues": {
+        "type": "object",
+        "properties": {
+          "due": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          }
+        }
+      }
+    }
+  }
+}

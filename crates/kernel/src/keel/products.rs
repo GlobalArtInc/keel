@@ -24,6 +24,7 @@ pub struct ProductRow {
     pub state: ProductState,
     pub enabled_at: Option<DateTime<Utc>>,
     pub enabled_by: Option<String>,
+    pub modules: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -49,6 +50,7 @@ pub fn list() -> FunctionDef {
             )
             .column(Column::new("enabledAt", ColumnType::Datetime))
             .column(Column::new("enabledBy", ColumnType::Text))
+            .column(Column::new("modules", ColumnType::Text))
             .action(
                 Action::new("enable", ActionRole::Button)
                     .function("keel.product.enable")
@@ -109,6 +111,7 @@ fn row(manifest: &ProductManifest, enabled: &EnabledSet) -> ProductRow {
         },
         enabled_at: record.map(|record| record.enabled_at),
         enabled_by: record.map(|record| record.by.clone()),
+        modules: manifest.module_ids().map(str::to_owned).collect(),
     }
 }
 

@@ -1,0 +1,55 @@
+{
+  "keel": 1,
+  "name": "keel.product.disable",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "ProductPick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  },
+  "result": {
+    "title": "ProductChange",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/$defs/ProductState"
+      },
+      "changed": {
+        "type": "boolean"
+      },
+      "restart": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "state",
+      "changed",
+      "restart"
+    ],
+    "$defs": {
+      "ProductState": {
+        "type": "string",
+        "enum": [
+          "enabled",
+          "disabled"
+        ]
+      }
+    }
+  }
+}
