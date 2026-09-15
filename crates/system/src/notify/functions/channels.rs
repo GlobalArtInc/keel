@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use keel_sdk::system::{LiveEvents, SecretCipher};
@@ -10,9 +8,7 @@ use super::super::channels::{
     Channel, ChannelKind, ERROR_EMAIL_MISSING, ERROR_KIND_UNAVAILABLE, EmailInput, StoredEmail,
     channel_of, email_of,
 };
-use super::super::consumer::enqueue;
 use super::super::entity::channel;
-use super::super::mailer::Mailer;
 use super::super::messages::{Outgoing, insert, publish_after_commit};
 use super::Pick;
 
@@ -52,7 +48,6 @@ pub struct ChannelDeleted {
 #[schemars(crate = "keel_sdk::schemars")]
 pub struct Tested {
     pub message: Id,
-    pub delivery: Id,
 }
 
 struct ChannelSource;
@@ -233,46 +228,27 @@ pub fn channel_delete() -> FunctionDef {
         })
 }
 
-pub fn channel_test(mailer: Arc<Mailer>) -> FunctionDef {
+pub fn channel_test() -> FunctionDef {
     function::<Pick, Tested>(CHANNEL_TEST)
         .kind(Kind::Action)
         .level(Level::Admin)
         .unowned()
         .key("id")
-        .handler(move |call: Call<Pick>| {
-            let mailer = mailer.clone();
-            async move {
-                let now = call.require::<dyn Clock>()?.now();
-                let live = call.require::<dyn LiveEvents>()?;
-                let tx = call.tx()?;
-                let channel = load(tx, call.params().id).await?;
-                let params = json!({ "channel": channel.name, "channelId": channel.id });
-                let outgoing = Outgoing {
-                    key: KEY_TEST,
-                    params: &params,
-                    level: NotificationLevel::Info,
-                    source: SOURCE_TEST,
-                    problem: None,
-                };
-                let (message, frame) = insert(&call, call.principal(), &outgoing, now).await?;
-                let created = enqueue(
-                    tx,
-                    std::slice::from_ref(&channel),
-                    &message.to_string(),
-                    KEY_TEST,
-                    now,
-                )
-                .await?;
-                let delivery = created
-                    .first()
-                    .copied()
-                    .ok_or_else(|| KeelError::internal("notify.error.delivery_missing"))?;
-                publish_after_commit(&call, live, vec![frame]);
-                call.after_commit(move |_| async move {
-                    mailer.wake();
-                    Ok(())
-                });
-                Ok(Tested { message, delivery })
-            }
+        .handler(|call: Call<Pick>| async move {
+            let now = call.require::<dyn Clock>()?.now();
+            let live = call.require::<dyn LiveEvents>()?;
+            let channel = load(call.tx()?, call.params().id).await?;
+            let params = json!({ "channel": channel.name, "channelId": channel.id });
+            let outgoing = Outgoing {
+                key: KEY_TEST,
+                params: &params,
+                level: NotificationLevel::Info,
+                source: SOURCE_TEST,
+                problem: None,
+                channel: Some(call.params().id),
+            };
+            let (message, frame) = insert(&call, call.principal(), &outgoing, now).await?;
+            publish_after_commit(&call, live, vec![frame]);
+            Ok(Tested { message })
         })
 }

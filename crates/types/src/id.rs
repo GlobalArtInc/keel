@@ -1,11 +1,14 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
-use ulid::Ulid;
+use ulid::{Generator, Ulid};
+
+static GENERATOR: Mutex<Generator> = Mutex::new(Generator::new());
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
@@ -21,7 +24,14 @@ impl Id {
     pub const ROOT_ACCOUNT: Id = Id(Ulid::nil());
 
     pub fn generate() -> Self {
-        Self(Ulid::generate())
+        let mut generator = GENERATOR
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let ulid = match generator.generate() {
+            Ok(ulid) => ulid,
+            Err(overflow) => overflow.commit_overflow_increment(),
+        };
+        Self(ulid)
     }
 
     fn is_canonical(text: &str) -> bool {
@@ -172,6 +182,33 @@ mod tests {
         let second = Id::generate();
         assert_ne!(first, second);
         assert!(Ulid::from(first).timestamp_ms() <= Ulid::from(second).timestamp_ms());
+    }
+
+    #[test]
+    fn ids_generated_within_one_millisecond_sort_in_generation_order() {
+        let ids: Vec<Id> = (0..10_000).map(|_| Id::generate()).collect();
+        for pair in ids.windows(2) {
+            assert!(pair[0] < pair[1], "{} then {}", pair[0], pair[1]);
+            assert_eq!(
+                pair[0].to_string().cmp(&pair[1].to_string()),
+                std::cmp::Ordering::Less
+            );
+        }
+    }
+
+    #[test]
+    fn ids_generated_from_several_threads_are_unique() {
+        let handles: Vec<_> = (0..8)
+            .map(|_| std::thread::spawn(|| (0..2_000).map(|_| Id::generate()).collect::<Vec<Id>>()))
+            .collect();
+        let mut all: Vec<Id> = handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap())
+            .collect();
+        let count = all.len();
+        all.sort();
+        all.dedup();
+        assert_eq!(all.len(), count);
     }
 
     #[test]

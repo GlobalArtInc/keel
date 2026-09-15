@@ -37,6 +37,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ['1025', '8025']
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -85,6 +93,23 @@ jobs:
             sleep 2
           done
           echo "postgres did not come up" >&2
+          exit 1
+
+      - name: Find the IPv4 ports of the mail catcher
+        run: |
+          smtp=$(docker port "${{ job.services.mailpit.id }}" 1025/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          api=$(docker port "${{ job.services.mailpit.id }}" 8025/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$smtp" && test -n "$api"
+          echo "KEEL_TEST_SMTP_URL=smtp://127.0.0.1:$smtp" >> "$GITHUB_ENV"
+          echo "KEEL_TEST_SMTP_API=http://127.0.0.1:$api" >> "$GITHUB_ENV"
+
+      - name: Wait for the mail catcher
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "$KEEL_TEST_SMTP_API/readyz" >/dev/null && exit 0
+            sleep 2
+          done
+          echo "the mail catcher did not come up" >&2
           exit 1
 
       - name: Format
@@ -221,6 +246,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.31.1
+        ports: ['1025', '8025']
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -264,6 +297,23 @@ jobs:
             sleep 2
           done
           echo "postgres did not come up" >&2
+          exit 1
+
+      - name: Find the IPv4 ports of the mail catcher
+        run: |
+          smtp=$(docker port "${{ job.services.mailpit.id }}" 1025/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          api=$(docker port "${{ job.services.mailpit.id }}" 8025/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$smtp" && test -n "$api"
+          echo "KEEL_TEST_SMTP_URL=smtp://127.0.0.1:$smtp" >> "$GITHUB_ENV"
+          echo "KEEL_TEST_SMTP_API=http://127.0.0.1:$api" >> "$GITHUB_ENV"
+
+      - name: Wait for the mail catcher
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "$KEEL_TEST_SMTP_API/readyz" >/dev/null && exit 0
+            sleep 2
+          done
+          echo "the mail catcher did not come up" >&2
           exit 1
 
       - name: Clippy

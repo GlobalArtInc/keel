@@ -34,14 +34,3 @@ pub async fn drop_account(db: &Db, account: Id) -> Result<Dropped> {
         problems: problems.rows_affected,
     })
 }
-
-pub async fn on_delete(call: Call<Value>) -> Result<()> {
-    let account: Id = call
-        .params()
-        .get("id")
-        .and_then(Value::as_str)
-        .and_then(|id| id.parse().ok())
-        .ok_or_else(|| KeelError::validation("keel.error.validation").field("id"))?;
-    drop_account(call.tx()?, account).await?;
-    Ok(())
-}

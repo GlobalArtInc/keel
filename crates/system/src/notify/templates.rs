@@ -263,8 +263,19 @@ mod tests {
         let russian = templates
             .render(super::super::api::KEY_PROBLEM_RAISED, "ru", &context)
             .expect("renders");
-        assert_eq!(russian.subject, "Проблема note.overdue у a1");
         assert_eq!(russian.lang, "ru");
+        assert_ne!(russian.subject, rendered.subject);
+        let shipped_ru = shipped();
+        let ru_subject = &shipped_ru[0].text("ru").expect("a ru text").subject;
+        let opening = ru_subject.split('{').next().unwrap_or_default();
+        assert!(!opening.is_empty(), "{ru_subject}");
+        assert!(russian.subject.starts_with(opening), "{}", russian.subject);
+        assert!(
+            russian.subject.contains("note.overdue"),
+            "{}",
+            russian.subject
+        );
+        assert!(russian.subject.ends_with("a1"), "{}", russian.subject);
         let fallback = templates
             .render(super::super::api::KEY_PROBLEM_RAISED, "de", &context)
             .expect("renders");

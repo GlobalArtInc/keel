@@ -78,7 +78,6 @@
   "notify.error.channel_email_missing": "Почтовому каналу нужны настройки почты",
   "notify.error.channel_gone": "Канал {id} больше не существует",
   "notify.error.message_gone": "Уведомление {id} больше не существует",
-  "notify.error.delivery_missing": "Доставка проверочного письма не создана",
   "notify.error.email_address": "{value} не является адресом электронной почты",
   "notify.error.email_transport": "Не удалось собрать почтовый транспорт к {host}: {reason}",
   "notify.error.email_send": "Письмо на {host} не отправлено: {reason}",

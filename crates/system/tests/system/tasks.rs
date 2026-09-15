@@ -717,6 +717,47 @@ async fn jobs_of_two_classes_run_concurrently_while_jobs_of_one_class_run_in_ord
 }
 
 #[tokio::test]
+async fn jobs_of_one_class_spawned_within_one_clock_tick_run_in_spawn_order() {
+    let harness = boot().await;
+    let runner = runner(&harness);
+    let mut ids = Vec::new();
+    for _ in 0..6 {
+        let id = runner
+            .spawn(spec(
+                &harness,
+                Who::A1,
+                "probe.paced",
+                json!({ "steps": 1, "pace": 10 }),
+                "slow",
+            ))
+            .await
+            .expect("spawned");
+        ids.push(id);
+    }
+    for id in &ids {
+        assert_eq!(wait_final(&harness, *id).await, TaskState::Done);
+    }
+    let created: Vec<String> = harness
+        .database()
+        .rows("SELECT DISTINCT created_at::text FROM task_job")
+        .await;
+    assert_eq!(created.len(), 1, "{created:?}");
+    for pair in ids.windows(2) {
+        assert!(
+            moment(pair[0], "end") <= moment(pair[1], "start"),
+            "{} ran before {}",
+            pair[1],
+            pair[0]
+        );
+    }
+    tokio::time::timeout(Duration::from_secs(30), drain(&harness).drain())
+        .await
+        .expect("the queue drains")
+        .expect("the drain is read");
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn two_kernels_on_one_database_run_one_worker_and_the_second_takes_over_when_the_first_stops()
 {
     let dir = tempfile::tempdir().expect("a data directory");

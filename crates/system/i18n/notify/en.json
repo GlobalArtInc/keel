@@ -78,7 +78,6 @@
   "notify.error.channel_email_missing": "An email channel needs its email settings",
   "notify.error.channel_gone": "The channel {id} no longer exists",
   "notify.error.message_gone": "The notification {id} no longer exists",
-  "notify.error.delivery_missing": "The delivery of the test email was not created",
   "notify.error.email_address": "{value} is not an email address",
   "notify.error.email_transport": "The mail transport to {host} could not be built: {reason}",
   "notify.error.email_send": "The mail to {host} was not sent: {reason}",

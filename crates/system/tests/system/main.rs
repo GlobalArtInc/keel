@@ -32,6 +32,8 @@ mod notify;
 mod notify_alone;
 #[cfg(all(feature = "notify", feature = "audit"))]
 mod notify_channels;
+#[cfg(feature = "notify")]
+mod notify_mail;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings;
 #[cfg(feature = "settings")]

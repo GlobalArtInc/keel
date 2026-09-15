@@ -82,6 +82,7 @@ struct CreatedEvent<'a> {
     level: NotificationLevel,
     source: &'a str,
     problem: Option<Id>,
+    channel: Option<Id>,
 }
 
 pub struct Outgoing<'a> {
@@ -90,6 +91,7 @@ pub struct Outgoing<'a> {
     pub level: NotificationLevel,
     pub source: &'a str,
     pub problem: Option<Id>,
+    pub channel: Option<Id>,
 }
 
 pub(super) async fn insert<P: Send + Sync>(
@@ -124,6 +126,7 @@ pub(super) async fn insert<P: Send + Sync>(
             level: outgoing.level,
             source: outgoing.source,
             problem: outgoing.problem,
+            channel: outgoing.channel,
         },
     )?;
     let frame = Frame {
@@ -164,6 +167,7 @@ pub(super) async fn create(call: &Call<Message>) -> Result<Created> {
         level: message.level,
         source: &message.source,
         problem: message.problem,
+        channel: None,
     };
     let mut ids = Vec::new();
     let mut frames = Vec::new();

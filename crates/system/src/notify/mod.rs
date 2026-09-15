@@ -6,11 +6,11 @@ mod counter;
 mod entity;
 mod functions;
 mod lifecycle;
-mod mailer;
 mod messages;
 mod poll;
 mod problems;
 mod sender;
+mod started;
 mod templates;
 
 use std::sync::OnceLock;
@@ -20,11 +20,8 @@ use keel_sdk::system::{
     Caller, ContextExt, LiveEvents, OutboxSubscriber, PrincipalSource, ProblemCounter, SecretCipher,
 };
 
-pub use channels::{
-    ERROR_CONFIG, ERROR_EMAIL_MISSING, ERROR_KIND, ERROR_KIND_UNAVAILABLE,
-    email::TIMEOUT as SMTP_TIMEOUT,
-};
-pub use consumer::{BATCH as CONSUMER_BATCH, CURSOR, STATE_FAILED, STATE_PENDING, STATE_SENT};
+pub use channels::ERROR_KIND_UNAVAILABLE;
+pub use consumer::{CURSOR, STATE_FAILED, STATE_PENDING, STATE_SENT};
 pub use functions::channels::{
     CHANNEL_DELETE, CHANNEL_GET, CHANNEL_LIST, CHANNEL_SET, CHANNEL_TEST,
 };
@@ -34,17 +31,13 @@ pub use functions::{
     MESSAGE_CLEAR, MESSAGE_LIST, MESSAGE_MARK, PERMISSION_MANAGE as MANAGE,
     PERMISSION_READ as READ, PROBLEM_GET, PROBLEM_LIST,
 };
-pub use lifecycle::{Dropped, drop_account, on_delete};
+pub use lifecycle::{Dropped, drop_account};
 pub use messages::Note;
 pub use poll::{JOB_ID as POLL_JOB, SCHEDULE as POLL_SCHEDULE};
-pub use sender::{
-    LADDER, MAX_ATTEMPTS, POLL as SENDER_POLL, PROBLEM_KEY as DELIVERY_FAILED,
-    PROBLEM_SOURCE as DELIVERY_SOURCE,
-};
+pub use sender::{LADDER, MAX_ATTEMPTS, PROBLEM_KEY as DELIVERY_FAILED};
 pub use templates::{
-    BLOCK_DELIMITERS, COMMENT_DELIMITERS, ERROR_PLACEHOLDER as ERROR_TEMPLATE_PLACEHOLDER,
-    ERROR_SYNTAX as ERROR_TEMPLATE_SYNTAX, ERROR_TWICE as ERROR_TEMPLATE_TWICE,
-    VARIABLE_DELIMITERS, placeholder_fault, shipped as shipped_templates,
+    ERROR_PLACEHOLDER as ERROR_TEMPLATE_PLACEHOLDER, ERROR_TWICE as ERROR_TEMPLATE_TWICE,
+    placeholder_fault, shipped as shipped_templates,
 };
 
 pub const FUNCTIONS: [&str; 11] = [
@@ -80,8 +73,6 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let sources: poll::Sources = Arc::new(OnceLock::new());
     let started = sources.clone();
-    let mailer = Arc::new(mailer::Mailer::new());
-    let mailing = mailer.clone();
     r.provide::<dyn ProblemCounter>(Arc::new(counter::Counter))
         .require::<dyn Caller>()
         .require::<dyn LiveEvents>()
@@ -102,7 +93,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::channels::channel_get())
         .function(functions::channels::channel_set())
         .function(functions::channels::channel_delete())
-        .function(functions::channels::channel_test(mailer.clone()))
+        .function(functions::channels::channel_test())
         .function(functions::deliveries::delivery_list())
         .permission(READ, &[Level::User, Level::Reseller])
         .permission(MANAGE, &[Level::User, Level::Reseller])
@@ -129,8 +120,8 @@ fn init(r: &mut Registrar) -> Result<()> {
             let templates = shipped
                 .iter()
                 .chain(ctx.contributions::<api::MailTemplate>());
-            let mail = mailing.start(
-                mailer::Seams {
+            let mail = started::Started::new(
+                started::Seams {
                     db: ctx.db(),
                     clock: ctx.require::<dyn Clock>()?,
                     cipher: ctx.require::<dyn SecretCipher>()?,
@@ -140,8 +131,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 },
                 templates,
             )?;
-            ctx.spawn(consumer::run(mail.clone(), mailing.clone()));
-            ctx.spawn(sender::run(mail, mailing));
+            ctx.spawn(consumer::run(mail.clone()));
+            ctx.spawn(sender::run(mail));
             Ok(())
         });
     Ok(())

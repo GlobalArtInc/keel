@@ -5,11 +5,16 @@ cd "$(dirname "$0")/.."
 timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+smtp_url=${KEEL_TEST_SMTP_URL:-}
+smtp_api=${KEEL_TEST_SMTP_API:-}
 frontend=frontend
 database=""
 site=""
 serve_pid=""
 serve_log=""
+catcher=""
+runtime=""
+catcher_image=axllent/mailpit:v1.31.1
 admin_login=root
 reseller_login=res1
 user_login=alice
@@ -17,6 +22,9 @@ user_login=alice
 usage() {
   echo "usage: hack/e2e.sh [path/to/keel] [playwright arguments...]" >&2
   echo "  KEEL_TEST_DATABASE_URL must point at a Postgres superuser connection;" >&2
+  echo "  KEEL_TEST_SMTP_URL and KEEL_TEST_SMTP_API name a running mail catcher;" >&2
+  echo "  without both the script starts the $catcher_image container through" >&2
+  echo "  KEEL_CONTAINER_RUNTIME, podman when it is on the path and docker otherwise;" >&2
   echo "  a binary that is not given is built with cargo build;" >&2
   echo "  the arguments after the binary are passed to pnpm e2e" >&2
 }
@@ -40,6 +48,14 @@ cleanup() {
       echo "dropped database $database"
     else
       echo "could not drop database $database" >&2
+      code=1
+    fi
+  fi
+  if [ -n "$catcher" ]; then
+    if "$runtime" rm -f "$catcher" >/dev/null 2>&1; then
+      echo "removed the mail catcher $catcher"
+    else
+      echo "could not remove the mail catcher $catcher" >&2
       code=1
     fi
   fi
@@ -79,6 +95,93 @@ with open(sys.argv[1]) as handle:
     doc = json.load(handle)
 print(eval(sys.argv[2], {"doc": doc}))
 EOF
+}
+
+json_is() {
+  local file=$1 expression=$2
+  python3 - "$file" "$expression" <<'EOF'
+import json, sys
+with open(sys.argv[1]) as handle:
+    doc = json.load(handle)
+if not eval(sys.argv[2], {"doc": doc}):
+    print("  " + json.dumps(doc)[:400], file=sys.stderr)
+    sys.exit(1)
+EOF
+}
+
+check() {
+  local name=$1
+  shift
+  if "$@"; then
+    echo "ok: $name"
+  else
+    fail "$name"
+  fi
+}
+
+start_catcher() {
+  local smtp_port api_port waited
+  smtp_port=$(free_port)
+  api_port=$(free_port)
+  catcher="keel-e2e-mailpit-$$"
+  if ! "$runtime" run -d --rm --name "$catcher" -p "$smtp_port:1025" -p "$api_port:8025" "$catcher_image" >/dev/null; then
+    catcher=""
+    fail "$runtime could not start the $catcher_image container"
+  fi
+  smtp_url="smtp://127.0.0.1:$smtp_port"
+  smtp_api="http://127.0.0.1:$api_port"
+  waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if curl -sf "$smtp_api/readyz" >/dev/null 2>&1; then
+      echo "the mail catcher $catcher is ready at $smtp_api"
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  fail "the mail catcher did not answer $smtp_api/readyz within ${timeout}s"
+}
+
+mail_arrives() {
+  local out=$1 needle=$2 waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if curl -sf "$smtp_api/api/v1/messages?limit=200" >"$out" 2>/dev/null \
+      && json_is "$out" "any('$needle' in message['Subject'] for message in doc['messages'])" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  echo "  no message whose subject names $needle within ${timeout}s" >&2
+  return 1
+}
+
+problem_listed() {
+  local waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/problems.json" ctl notify.problem.list --out json \
+      && json_is "$site/problems.json" "doc['ok'] is True and [(row['key'], row['subject'], row['params']['count'], row['open']) for row in doc['data']['data']] == [('note.overdue', '$user_account', 1, True)]" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/problems.json" >&2
+  return 1
+}
+
+deliveries_sent() {
+  local count=$1 waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/deliveries.json" ctl notify.delivery.list --out json \
+      && json_is "$site/deliveries.json" "doc['ok'] is True and doc['data']['total'] == $count and all((row['channel'], row['messageKey'], row['state'], row['attempt']) == ('catcher', 'notify.problem.raised', 'sent', 1) for row in doc['data']['data'])" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/deliveries.json" >&2
+  return 1
 }
 
 run_keel() {
@@ -166,6 +269,20 @@ for tool in psql curl python3 pnpm; do
     exit 2
   fi
 done
+if [ -z "$smtp_url" ] || [ -z "$smtp_api" ]; then
+  runtime=${KEEL_CONTAINER_RUNTIME:-}
+  if [ -z "$runtime" ]; then
+    if command -v podman >/dev/null; then
+      runtime=podman
+    else
+      runtime=docker
+    fi
+  fi
+  if ! command -v "$runtime" >/dev/null; then
+    echo "KEEL_TEST_SMTP_URL and KEEL_TEST_SMTP_API are not set and the container runtime $runtime is not installed" >&2
+    exit 2
+  fi
+fi
 
 if [ -z "$keel" ]; then
   cargo build -p keel-bin
@@ -198,6 +315,16 @@ log: { level: info, format: text }
 EOF
 echo "site $site, binary $keel"
 
+if [ -n "$runtime" ]; then
+  start_catcher
+else
+  echo "using the mail catcher at $smtp_api"
+fi
+smtp_host=${smtp_url#smtp://}
+smtp_host=${smtp_host%%/*}
+smtp_port=${smtp_host##*:}
+smtp_host=${smtp_host%:*}
+
 keel_ok "$site/enable.out" product enable demo
 start_serve
 
@@ -223,5 +350,17 @@ echo "--- pnpm e2e"
     KEEL_E2E_ALICE_PASSWORD="$user_password" \
     pnpm e2e "$@"
 )
+
+echo "--- the poll job, the problem and the mail"
+check "ctl notify.channel.set creates the email channel to the catcher" keel_ok "$site/channel.json" ctl notify.channel.set kind=email name=catcher enabled=true "email={\"host\":\"$smtp_host\",\"port\":$smtp_port,\"security\":\"none\",\"from\":\"keel@example.org\",\"to\":\"ops@example.org\"}"
+check "notify.channel.set answers the enabled channel" json_is "$site/channel.json" 'doc["ok"] is True and doc["data"]["kind"] == "email" and doc["data"]["enabled"] is True and doc["data"]["email"]["hasPassword"] is False'
+check "ctl note.edit --as alice creates an overdue todo" keel_ok "$site/overdue.json" ctl note.edit --as "$user_login" "title=renew the certificate" kind=todo due=2020-01-01
+check "note.edit answers the todo" json_is "$site/overdue.json" 'doc["ok"] is True and doc["data"]["kind"] == "todo" and doc["data"]["due"] == "2020-01-01"'
+check "ctl cron.job.run id=notify.problems.poll" keel_ok "$site/poll.json" ctl cron.job.run id=notify.problems.poll
+check "cron.job.run answers the started run" json_is "$site/poll.json" 'doc["ok"] is True and doc["data"]["id"] == "notify.problems.poll"'
+check "notify.problem.list shows note.overdue for alice's account" problem_listed
+check "the catcher lists the mail whose subject names note.overdue" mail_arrives "$site/mail.json" "note.overdue"
+check "the mail is addressed from and to the channel's addresses" json_is "$site/mail.json" "any(message['Subject'] == 'Problem note.overdue raised for $user_account' and message['From']['Address'] == 'keel@example.org' and message['To'][0]['Address'] == 'ops@example.org' for message in doc['messages'])"
+check "notify.delivery.list shows a sent delivery per notified principal" deliveries_sent 2
 
 stop_serve || fail "keel serve did not stop cleanly"

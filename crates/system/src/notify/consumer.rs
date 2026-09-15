@@ -10,9 +10,9 @@ use keel_sdk::sea_orm::{
 };
 use keel_sdk::types::Event;
 
-use super::api::{EVENT_MESSAGE_CREATED, SOURCE_PROBLEM};
+use super::api::{EVENT_MESSAGE_CREATED, SOURCE_PROBLEM, SOURCE_TEST};
 use super::entity::{channel, cursor, delivery};
-use super::mailer::{Mailer, Started};
+use super::started::Started;
 
 pub const CURSOR: &str = "channels";
 pub const BATCH: u32 = 200;
@@ -42,17 +42,34 @@ async fn store_cursor(db: &Db, seq: u64) -> Result<()> {
     Ok(())
 }
 
-pub fn wants_delivery(event: &Event) -> Option<(String, String)> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    EveryEnabled,
+    Channel(Id),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Wanted {
+    pub message: String,
+    pub key: String,
+    pub target: Target,
+}
+
+pub fn wants_delivery(event: &Event) -> Option<Wanted> {
     if event.kind != EVENT_MESSAGE_CREATED {
         return None;
     }
-    let source = event.data.get("source").and_then(Value::as_str)?;
-    if source != SOURCE_PROBLEM {
-        return None;
-    }
-    let id = event.data.get("id").and_then(Value::as_str)?;
-    let key = event.data.get("key").and_then(Value::as_str)?;
-    Some((id.to_owned(), key.to_owned()))
+    let field = |name: &str| event.data.get(name).and_then(Value::as_str);
+    let target = match field("source")? {
+        SOURCE_PROBLEM => Target::EveryEnabled,
+        SOURCE_TEST => Target::Channel(field("channel")?.parse().ok()?),
+        _ => return None,
+    };
+    Some(Wanted {
+        message: field("id")?.to_owned(),
+        key: field("key")?.to_owned(),
+        target,
+    })
 }
 
 pub async fn enqueue(
@@ -93,31 +110,43 @@ pub async fn enqueue(
     Ok(created)
 }
 
+async fn targets(started: &Started, wanted: &Wanted) -> Result<Vec<channel::Model>> {
+    match &wanted.target {
+        Target::EveryEnabled => Ok(channel::Entity::find()
+            .filter(channel::Column::Enabled.eq(true))
+            .all(&started.db)
+            .await?),
+        Target::Channel(id) => {
+            let found = channel::Entity::find_by_id(id.to_string())
+                .one(&started.db)
+                .await?;
+            if found.is_none() {
+                tracing::warn!(message = wanted.message, channel = %id, "the tested channel is gone; no delivery");
+            }
+            Ok(found.into_iter().collect())
+        }
+    }
+}
+
 async fn step(started: &Started, seq: &mut u64) -> Result<usize> {
     let events = started.subscriber.after(*seq, BATCH).await?;
     let Some(last) = events.last().map(|event| event.seq) else {
         return Ok(0);
     };
-    let wanted: Vec<(String, String)> = events.iter().filter_map(wants_delivery).collect();
+    let now = started.clock.now();
     let mut created = 0;
-    if !wanted.is_empty() {
-        let channels = channel::Entity::find()
-            .filter(channel::Column::Enabled.eq(true))
-            .all(&started.db)
-            .await?;
-        let now = started.clock.now();
-        for (message, key) in &wanted {
-            created += enqueue(&started.db, &channels, message, key, now)
-                .await?
-                .len();
-        }
+    for wanted in events.iter().filter_map(wants_delivery) {
+        let channels = targets(started, &wanted).await?;
+        created += enqueue(&started.db, &channels, &wanted.message, &wanted.key, now)
+            .await?
+            .len();
     }
     store_cursor(&started.db, last).await?;
     *seq = last;
     Ok(created)
 }
 
-pub async fn run(started: Arc<Started>, mailer: Arc<Mailer>) {
+pub async fn run(started: Arc<Started>) {
     let mut seq = match cursor(&started.db).await {
         Ok(seq) => seq,
         Err(error) => {
@@ -130,7 +159,7 @@ pub async fn run(started: Arc<Started>, mailer: Arc<Mailer>) {
         match step(&started, &mut seq).await {
             Ok(created) => {
                 if created > 0 {
-                    mailer.wake();
+                    started.wake();
                 }
                 if latest.borrow_and_update().to_owned() > seq {
                     continue;
@@ -170,19 +199,43 @@ mod tests {
     }
 
     #[test]
-    fn a_problem_message_event_wants_a_delivery_and_other_events_do_not() {
+    fn a_problem_message_wants_every_enabled_channel_a_test_message_its_own_and_other_events_none()
+    {
         let wanted = wants_delivery(&event(
             EVENT_MESSAGE_CREATED,
             json!({ "id": "01J", "key": "notify.problem.raised", "source": "problem" }),
         ));
         assert_eq!(
             wanted,
-            Some(("01J".to_owned(), "notify.problem.raised".to_owned()))
+            Some(Wanted {
+                message: "01J".to_owned(),
+                key: "notify.problem.raised".to_owned(),
+                target: Target::EveryEnabled,
+            })
+        );
+        let channel = Id::generate();
+        assert_eq!(
+            wants_delivery(&event(
+                EVENT_MESSAGE_CREATED,
+                json!({ "id": "01J", "key": "notify.test", "source": "test", "channel": channel.to_string() }),
+            )),
+            Some(Wanted {
+                message: "01J".to_owned(),
+                key: "notify.test".to_owned(),
+                target: Target::Channel(channel),
+            })
         );
         assert_eq!(
             wants_delivery(&event(
                 EVENT_MESSAGE_CREATED,
                 json!({ "id": "01J", "key": "notify.test", "source": "test" }),
+            )),
+            None
+        );
+        assert_eq!(
+            wants_delivery(&event(
+                EVENT_MESSAGE_CREATED,
+                json!({ "id": "01J", "key": "notify.test", "source": "test", "channel": "ops" }),
             )),
             None
         );

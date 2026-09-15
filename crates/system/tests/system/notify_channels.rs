@@ -168,6 +168,43 @@ async fn delivery_row(harness: &Harness, id: Id) -> Value {
         .unwrap_or_else(|| panic!("no delivery {id} in {:?}", listed.data()))
 }
 
+async fn test_channel(harness: &Harness, channel: Id) -> (Id, Id) {
+    let tested = harness
+        .call(Who::Admin, CHANNEL_TEST, json!({ "id": channel }))
+        .await;
+    let message: Id = data(&tested)["message"]
+        .as_str()
+        .expect("a message id")
+        .parse()
+        .expect("a ulid");
+    assert_eq!(
+        data(&tested).as_object().map(|fields| fields.len()),
+        Some(1)
+    );
+    wait_until(
+        &format!("the delivery of the test message {message}"),
+        || async { delivery_of_message(harness, message).await.is_some() },
+    )
+    .await;
+    let delivery = delivery_of_message(harness, message)
+        .await
+        .expect("the delivery appeared");
+    (message, delivery)
+}
+
+async fn delivery_of_message(harness: &Harness, message: Id) -> Option<Id> {
+    let listed = harness
+        .call(Who::Admin, DELIVERY_LIST, json!({ "search": KEY_TEST }))
+        .await;
+    data(&listed)["data"]
+        .as_array()?
+        .iter()
+        .find(|row| row["messageId"] == json!(message.to_string()))?["id"]
+        .as_str()?
+        .parse()
+        .ok()
+}
+
 async fn wait_attempt(harness: &Harness, id: Id, attempt: i64) -> Value {
     wait_until(&format!("attempt {attempt} of {id}"), || async {
         delivery_row(harness, id).await["attempt"].as_i64() >= Some(attempt)
@@ -367,25 +404,42 @@ async fn a_template_renders_with_single_brace_placeholders_and_a_double_brace_fa
     let harness = boot().await;
     let port = closed_port().await;
     let id = set_channel(&harness, "ops", true, email(port, "none", None)).await;
-    let tested = harness
-        .call(Who::Admin, CHANNEL_TEST, json!({ "id": id }))
-        .await;
-    let delivery: Id = data(&tested)["delivery"]
-        .as_str()
-        .expect("a delivery id")
-        .parse()
-        .expect("a ulid");
+    let asleep = set_channel(&harness, "asleep", false, email(port, "none", None)).await;
+    let (message, delivery) = test_channel(&harness, id).await;
     let row = wait_attempt(&harness, delivery, 1).await;
     assert_eq!(row["messageKey"], json!(KEY_TEST));
     assert_eq!(row["channel"], json!("ops"));
-    let message = harness
+    let stored = harness
         .database()
         .rows(&format!(
-            "SELECT key || ' ' || source || ' ' || (params_json->>'channel') FROM notify_message WHERE id = '{}'",
-            data(&tested)["message"].as_str().expect("a message id")
+            "SELECT key || ' ' || source || ' ' || (params_json->>'channel') FROM notify_message WHERE id = '{message}'"
         ))
         .await;
-    assert_eq!(message, [format!("{KEY_TEST} test ops")]);
+    assert_eq!(stored, [format!("{KEY_TEST} test ops")]);
+    let cursor = harness
+        .database()
+        .rows(&format!(
+            "SELECT seq::text FROM notify_cursor WHERE consumer = '{CURSOR}'"
+        ))
+        .await;
+    let created = harness
+        .database()
+        .rows(&format!(
+            "SELECT seq::text FROM keel_outbox WHERE type = 'notify.message.created' AND data_json->>'id' = '{message}'"
+        ))
+        .await;
+    assert_eq!(
+        cursor, created,
+        "the test delivery is created past the outbox"
+    );
+    assert_eq!(
+        deliveries(&harness).await,
+        [format!("ops {KEY_TEST} pending 1")]
+    );
+    let (_, on_asleep) = test_channel(&harness, asleep).await;
+    let row = wait_attempt(&harness, on_asleep, 1).await;
+    assert_eq!(row["channel"], json!("asleep"));
+    assert_eq!(deliveries(&harness).await.len(), 2);
     harness.finish().await;
 }
 
@@ -502,14 +556,7 @@ async fn a_refused_smtp_connection_follows_the_ladder_and_the_fifth_failure_rais
     let harness = boot().await;
     let port = closed_port().await;
     let channel = set_channel(&harness, "refusing", true, email(port, "none", None)).await;
-    let tested = harness
-        .call(Who::Admin, CHANNEL_TEST, json!({ "id": channel }))
-        .await;
-    let delivery: Id = data(&tested)["delivery"]
-        .as_str()
-        .expect("a delivery id")
-        .parse()
-        .expect("a ulid");
+    let (_, delivery) = test_channel(&harness, channel).await;
     let mut now = at(START);
     for attempt in 1..MAX_ATTEMPTS {
         let row = wait_attempt(&harness, delivery, i64::from(attempt)).await;
@@ -614,14 +661,7 @@ async fn a_tls_channel_to_a_closed_port_fails_on_the_connection_and_not_for_want
     let port = closed_port().await;
     for (name, security) in [("implicit", "tls"), ("upgraded", "starttls")] {
         let channel = set_channel(&harness, name, true, email(port, security, Some("pw"))).await;
-        let tested = harness
-            .call(Who::Admin, CHANNEL_TEST, json!({ "id": channel }))
-            .await;
-        let delivery: Id = data(&tested)["delivery"]
-            .as_str()
-            .expect("a delivery id")
-            .parse()
-            .expect("a ulid");
+        let (_, delivery) = test_channel(&harness, channel).await;
         let row = wait_attempt(&harness, delivery, 1).await;
         let error = row["error"].as_str().expect("an error text");
         let lower = error.to_lowercase();

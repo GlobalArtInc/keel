@@ -12,7 +12,7 @@ use super::channels::email::{self, Mail};
 use super::channels::{ChannelKind, ERROR_KIND_UNAVAILABLE, email_of, kind_of};
 use super::consumer::{STATE_FAILED, STATE_PENDING, STATE_SENT};
 use super::entity::{channel, delivery, message};
-use super::mailer::{Mailer, Started};
+use super::started::Started;
 
 pub const POLL: Duration = Duration::from_secs(1);
 pub const BATCH: u64 = 50;
@@ -48,13 +48,13 @@ pub fn reason_of(error: &KeelError) -> String {
         .unwrap_or_else(|| error.to_string())
 }
 
-pub async fn run(started: Arc<Started>, mailer: Arc<Mailer>) {
+pub async fn run(started: Arc<Started>) {
     loop {
         if let Err(error) = due(&started).await {
             tracing::error!(error = %error, "the sender could not read its deliveries");
         }
         tokio::select! {
-            () = mailer.woken() => {}
+            () = started.woken() => {}
             () = tokio::time::sleep(POLL) => {}
         }
     }

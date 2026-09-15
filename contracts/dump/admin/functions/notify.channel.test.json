@@ -34,14 +34,10 @@
     "properties": {
       "message": {
         "$ref": "#/$defs/Id"
-      },
-      "delivery": {
-        "$ref": "#/$defs/Id"
       }
     },
     "required": [
-      "message",
-      "delivery"
+      "message"
     ],
     "$defs": {
       "Id": {
