@@ -84,7 +84,7 @@ documents; the table lists what was closed so that the coverage is visible.
 | Gap | Severity | What was done | Described in |
 |-----|----------|---------------|--------------|
 | Ownership was checked only in lists | blocker | mandatory `OwnedGuard` in the dispatcher for every function with a `key`; `.unowned()` must be declared explicitly; a standard test in `keel-testkit` | [02-functions.md](02-functions.md), [03-access.md](03-access.md) |
-| Descriptor vocabulary was not closed | major | enums `kind`, `control`, `column.type`, `action.role`, `check` in `keel-types`, generated TS unions, icons checked against `PhxIconName` at start | [02-functions.md](02-functions.md) |
+| Descriptor vocabulary was not closed | major | enums `kind`, `control`, `column.type`, `action.role`, `check` in `keel-types`, generated TS unions, icons checked at start against the phoenix icon set embedded from `contracts/icons.json` | [02-functions.md](02-functions.md) |
 | Form dynamics had no contract | major | request and response shapes for `options`, `recompute`, group editing, `wizard`, `download` / `upload` / `stream` | [10-contracts.md](10-contracts.md) |
 | i18n keys had no rules | major | keys derived from the registry by convention, one placeholder format, checks at start and in CI | [08-frontend.md](08-frontend.md) |
 | No statistics and no `report` contract | major | `stats` module with `StatCollector`, a `ui` block for `report` (bands, diagrams), M5 | [05-modules.md](05-modules.md), [08-frontend.md](08-frontend.md) |
@@ -109,7 +109,8 @@ The file manager, the configuration editor, the terminal and monitoring will go 
 rather than metadata-driven screens. If custom views exceed 20 % of functions, the economics of the
 platform do not hold: the point of Keel is that most screens are rendered from descriptors.
 
-Mitigation: a metric in CI from M2 (the share of `r.view` registrations against the function
+Mitigation: a metric in CI from M2 (`keel-dev views share`: the views of `r.view`, the
+replacements in the products' `views.json` and the shell's own views against the function
 registry, alarm threshold 20 %); a registry of widgets and column types on both the Rust and the
 TypeScript side; the rule "a custom screen is cheaper than a new attribute"; a revision of the `ui`
 vocabulary once per milestone. See [08-frontend.md](08-frontend.md).
@@ -242,7 +243,10 @@ and M7 security reviews. See [06-host.md](06-host.md).
 ### Binary size and build time
 
 Every product's crates and every product's views compile into one musl LTO binary; the 40 MB cap
-of M2 will not hold once `dns` and `panel` are in, and every change rebuilds everything.
+of M2 will not hold once `dns` and `panel` are in, and every change rebuilds everything. The M2
+binary — the kernel, `auth`, `settings`, `audit`, the `demo` bundle and the embedded shell — is
+19.8 MB (19,822,864 bytes) as a stripped `x86_64-unknown-linux-musl` release build with thin LTO
+at the close of M2, which the Build workflow measures on every push against the cap.
 
 Mitigation: lazily loaded frontend chunks per product; a cap for the release binary set at the
 start of M5; `cargo` incremental builds in CI. See [08-frontend.md](08-frontend.md).

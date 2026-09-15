@@ -53,7 +53,7 @@ are removed) and carries the top-level fields below. The complete example for `d
 | `key`    | Name of the parameter that identifies the owned row (`"id"`); its presence makes the function subject to `OwnedGuard`. |
 | `params` | JSON Schema of the parameters; lists point at `keel://ListQuery` through `$ref`.        |
 | `result` | JSON Schema of the result.                                                               |
-| `ui`     | The screen block; a kind without a screen of its own (`get`, `options`, `download`, `upload`) omits it. |
+| `ui`     | The screen block; a kind without a screen of its own (`get`, `options`, `download`, `upload`) omits it. A `get` reached through a `link` column or a row action is shown by the object renderer of [08-frontend.md](08-frontend.md) from its result schema, without a `ui` block of its own. |
 
 Titles, labels, hints and error messages inside a descriptor are i18n keys, never strings;
 the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.md).
@@ -115,8 +115,9 @@ generated into a TypeScript union for `@globalart/keel/meta`:
 | `action.role` | `new` · `edit` · `delete` · `group` · `button` · `child` · `external` · `export` · `upload` · `download` · `refresh`   |
 | `check`       | Validation presets: `domain`, `ip`, `cidr`, `email`, `int`, `name`, `port`, `path`, and others.                         |
 
-Icons are strings, but every icon named in a descriptor or menu node is checked against
-`PhxIconName` at start-up.
+Icons are strings, but every icon named in a descriptor action, a menu node or a menu group is
+checked at start-up against the icon set of phoenix-ui, embedded from `contracts/icons.json`, which
+`pnpm generate` writes from `PHX_ICON_NAMES` ([08-frontend.md](08-frontend.md)).
 
 The reason the vocabulary is closed rather than documented: descriptor v1 is a frozen contract
 guarded by golden fixtures and a snapshot diff in CI. With open strings the diff catches nothing
@@ -130,9 +131,9 @@ What each kind means for the pipeline and the renderer:
 | `kind`      | Semantics                                                                                                          |
 |-------------|--------------------------------------------------------------------------------------------------------------------|
 | `list`      | Takes `ListQuery`, returns `Page<T>`; `GET` is allowed; scoping, field whitelist and totals are done by the kernel through `ListSource`. |
-| `get`       | Returns one object by key; `GET` is allowed; used as `ui.read` of a form.                                          |
+| `get`       | Returns one object by key; `GET` is allowed; used as `ui.read` of a form and shown by the object renderer when a link or a row action opens it. |
 | `form`      | A write with a screen: pages, conditions, recompute, group editing.                                                |
-| `action`    | A write invoked from an action of a list or object screen, usually with `confirm`.                                 |
+| `action`    | A write invoked from an action of a list or object screen, usually with `confirm`; in `mode: read` also the kind of a `recompute` or `pages[].validate` helper, which has no screen. |
 | `wizard`    | A write split into server-validated steps with a `result` after the last one.                                      |
 | `report`    | Bands and diagrams for the report renderer (M5).                                                                   |
 | `options`   | `OptionsQuery { search, scope, limit, cursor }` → `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }` from `keel-types`, `limit` 20 by default and `value` a string; the source for remote selects and filters. |
@@ -262,13 +263,17 @@ the kernel:
 - applies patches to descriptors of other modules and plugins, refusing a patch that weakens
   `access` and requiring `store` on every added field;
 - compiles every condition and checks each field name against the schema;
-- validates every descriptor (enum membership, icons against `PhxIconName`, every function,
-  action and permission it names is registered, `ui.read` is a `get` and `x-keel.options` an
-  `options` function) and checks that i18n keys exist at least for `en`.
+- validates every descriptor (enum membership, icons against the embedded icon set of
+  `contracts/icons.json`, every function, action and permission it names is registered, `ui.read`
+  is a `get` and `x-keel.options` an `options` function) and checks that i18n keys exist at least
+  for `en`.
 
 `keel-dev check` adds what needs the source: every function with a `key` is either `.owned()` or
-explicitly `.unowned()`, and module prefixes are respected. `keel-dev descriptors dump | check |
-diff` produce and compare the snapshots that CI keeps as golden fixtures.
+explicitly `.unowned()`, and module prefixes are respected; the subcommand arrives with the
+milestone that needs it. `keel-dev descriptors dump | check | diff` produce and compare the
+projected snapshots per level that CI keeps under `contracts/dump/` through `hack/descriptors.sh`,
+and `keel-dev openapi` writes `contracts/openapi.json` from the same dump
+([10-contracts.md](10-contracts.md)).
 
 ## The dispatcher pipeline
 

@@ -54,5 +54,5 @@ pkg.publishConfig = { registry: REGISTRY };
 delete pkg.scripts;
 writeFileSync(PACKAGE, `${JSON.stringify(pkg, null, 2)}\n`);
 console.log(
-  `${pkg.name}@${pkg.version} stamped for ${REGISTRY} with ${ENTRY_POINTS.length} entry points`,
+  `${pkg.name}@${pkg.version} stamped for ${REGISTRY} exporting ${ENTRY_POINTS.join(', ')}`,
 );

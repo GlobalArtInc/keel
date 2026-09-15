@@ -96,8 +96,16 @@ r.permission("dns.zone.read", &[Level::User, Level::Reseller])
 
 The kernel knows the keys and their defaults from the registry. Which principal actually holds
 which key is stored by the `auth` module through the `PermissionSource` extension point; the
-kernel asks the source, it does not read the table itself. `Principal::can(permission)` is the
-call-side view of the same answer. The defaults are the answer when no source is composed, and
+kernel asks the source, it does not read the table itself: the HTTP transport asks once per
+request, the socket for a frame with `as`, and the answer is overlaid on the principal as
+`Principal.grants`, an in-process map from key to `granted` that is skipped by serde and never
+crosses the wire. The guard reads a stored grant over the registered default, so a grant gives a
+lower level a key its module did not list and a denial takes a default key away; the descriptor
+projection and the menu go through the same function, so a denial hides the screen as well as
+refusing the call. The kernel provides `PermissionCatalogue { registered, holds }` under the
+platform name, so `auth` checks a key without the registry through the guard's own function.
+`Principal::can(permission)` is the call-side view of the same answer. The defaults are the answer
+when no source is composed, and
 the floor under any source: `admin` and `owner` hold every registered key, and a lower level
 holds a key exactly when the module listed that level in the defaults — the levels do not
 inherit from one another, so a module that wants a reseller to read its subtree lists
@@ -372,6 +380,7 @@ pub struct Principal {
     pub scope: Scope,                               /* Full | Functions(masks) | ReadOnly */
     pub via: Via,                                   /* Http | Socket | Plugin(id) | Peer(id) | Internal | Su */
     pub external_id: Option<String>, pub origin: Option<String>, pub lang: String,
+    pub grants: BTreeMap<String, bool>,             /* PermissionSource; in-process, skipped by serde */
 }
 
 impl Principal {

@@ -31,7 +31,25 @@ every first-party product, with the one shell build embedded:
 - Built for musl with rustls. The frontend is embedded through rust-embed, brotli-compressed,
   served as immutable assets addressed by content hash; it is the one shell application with the
   views of every product, and the shell loads only the products `/boot` names
-  ([08-frontend.md](08-frontend.md)).
+  ([08-frontend.md](08-frontend.md)). `pnpm build` in `frontend/` writes `frontend/dist/shell`
+  and must precede `cargo build -p keel-bin`, since `embed_frontend!` reads the directory at
+  compile time; CI and the Build workflow run the two in that order. The build pre-compresses:
+  `tools/compress.mjs` writes a brotli twin `<name>.br` beside every asset it makes smaller, and
+  the kernel answers the twin with `Content-Encoding: br` and `Vary: Accept-Encoding` when the
+  client admits `br`, never by its own name. A hashed name — a stem ending in a dash and at least
+  six alphanumerics with a digit or an uppercase letter among them — is answered
+  `Cache-Control: public, max-age=31536000, immutable`; `index.html` and every other unhashed
+  file `no-store`. A `GET` or `HEAD` outside `/api/`, `/healthz`, `/readyz` and `/brand/` that
+  names an embedded file answers it with the content type of its extension; a path whose last
+  segment carries no extension the shell build emits — `js`, `mjs`, `css`, `map`, `woff2`,
+  `woff`, `svg`, `png`, `ico`, `json`, `txt`, `br` — answers `index.html`, so `/f/note.list`
+  reaches the shell while `/missing.png` is `404` and `/api/v1/nothing` keeps its envelope. Every
+  HTML answer carries `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src
+  'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self';
+  frame-ancestors 'none'; base-uri 'self'; form-action 'self'`, `X-Content-Type-Options: nosniff`
+  and `Referrer-Policy: same-origin`, and the shell carries no inline script: the phoenix theme
+  boot script is written to `dist/shell/theme-boot.js` from the library's constant and loaded from
+  the head. `nosniff` is set on every asset answer.
 - No C libraries. CI checks the binary with `ldd`: systemd is driven by executing `systemctl`
   rather than through D-Bus, SFTP is done with russh, and there is no libssh2, openssl or
   librdkafka. Any C dependency breaks the static musl build, so "no C libraries" is a rule backed
@@ -39,7 +57,10 @@ every first-party product, with the one shell build embedded:
 - Translation bundles are exported from OwnLate at build time and baked into the binary; the
   customer's server is assumed to be offline with respect to the translation service.
 - The M2 acceptance criterion caps the binary with the embedded frontend at 40 MB
-  ([../plan.md](../plan.md)).
+  ([../plan.md](../plan.md)); the Build workflow prints the size of the musl release build with
+  the `demo` bundle and fails at 40,000,000 bytes. The M2 closing build measures 19.8 MB,
+  19,822,864 bytes, as a stripped `x86_64-unknown-linux-musl` release with thin LTO
+  ([11-decisions.md](11-decisions.md)).
 
 The binary exposes the following subcommands:
 
@@ -265,8 +286,9 @@ and key or request one through ACME with a button in the settings; `trusted_prox
 installation usable behind a reverse proxy. A certificate that is about to expire raises a problem
 ([05-modules.md](05-modules.md)). The self-signed certificate and `trusted_proxies` arrive with
 M3; until then the installation listens on plain HTTP, the cookie carries `Secure` from its first
-version, and the clients of M1 keep and return it themselves, since a browser is not a client
-before M2.
+version, the clients of M1 keep and return it themselves, and a browser accepts it on plain HTTP
+from `localhost` and `127.0.0.1` alone — the SSH port forward to `http://localhost:1500/` is how
+the panel of the demo machine is opened before M3.
 
 ## Configuration
 

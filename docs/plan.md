@@ -1,9 +1,10 @@
 # Plan
 
 This document orders the work: the milestones M0 to M8 with their scope and exit criteria, the
-breakdowns of M0, M1 and M2 into PR-sized steps, the working rules of the repository, and the M0
-and M1 exit checklists. The design itself lives in `design/`; this document only says in which order
-it is built and how each step is shown to be done. Nothing here carries a date or a duration.
+breakdowns of M0, M1 and M2 into PR-sized steps, the working rules of the repository, and the M0,
+M1 and M2 exit checklists. The design itself lives in `design/`; this document only says in which
+order it is built and how each step is shown to be done. Nothing here carries a date or a
+duration.
 
 ## Milestones
 
@@ -85,9 +86,10 @@ Scope:
 - In parallel, a thin agent spike in a separate bin crate `bin/spike`: unix socket with
   `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx.
 - The server halves of two shell screens, deferred from M1: white-label by hostname through
-  `ManifestPatch` in `settings`, served in `/boot.brand` next to the `/brand/logo.svg` route the
-  embedded frontend brings; stored permission grants in `auth` through `PermissionSource`,
-  behind the shell's permissions screen.
+  `ManifestSource` and its `ManifestPatch` in `settings` (`settings_brand`, `settings.brand.*`),
+  served in `/boot.brand` next to the `/brand/logo.svg` route the embedded frontend brings;
+  stored permission grants in `auth` through `PermissionSource` (`auth_grant`, `auth.grant.*`),
+  overlaid on the principal as `grants` and behind the shell's permissions screen.
 
 Done when:
 
@@ -455,8 +457,8 @@ set; the acceptance here holds for the composition as a whole.
 **Touches.** `crates/kernel/` (loader, registry, freeze, contributions, services).
 
 **Out of scope.** Any loading after boot and `request_restart` (plugins, M7); transports (steps
-8 and 9); `ConfigSection` (M1); the icon check against the `PhxIconName` list, which needs the
-list generated from phoenix-ui and is enabled in M2.
+8 and 9); `ConfigSection` (M1); the icon check against the phoenix icon set, which needs the
+list generated from phoenix-ui and arrived with M2 step 11c as `contracts/icons.json`.
 
 **Acceptance.**
 
@@ -716,7 +718,8 @@ constants, schema name, enabled set in the loader, i18n, menu, boot, meta-versio
 
 **Out of scope.** `ManifestPatch` and white-label by hostname (`settings`, M2); dashboard
 widgets, problems and license state (M3, M5); custom views in `views` (M2); OwnLate export at
-build time and `keel-dev i18n missing` in CI (M2); the `PhxIconName` check (M2); the lease check
+build time and `keel-dev i18n missing` in CI (deferred from M2 to M3); the icon check against
+`contracts/icons.json` (M2 step 11c); the lease check
 in `keel.product.enable` (M5); the restart after enable or disable, `--switch-remote` and the
 kernel learning the carried set from a running installation (M4); `bridges` (M5).
 
@@ -1864,7 +1867,8 @@ Seven remarks apply to the whole breakdown.
   `frontend/.npmrc` binds the scope `@globalart` to it and reads the token from
   `${NEXUS_NPM_TOKEN}`, which CI takes from the repository secret of that name and a developer keeps
   in the environment or in `~/.npmrc`, never in the repository. The version is pinned exactly,
-  `0.1.0` until step 5 lands and `0.2.0` after it. The boundary of the design holds throughout:
+  `0.1.0` until step 5 lands and the batch's release after it, `0.2.2` once its two patch releases
+  landed. The boundary of the design holds throughout:
   phoenix-ui receives atomic components and the Keel runtime carries no workaround for a gap of the
   design system, so the four gaps of batch 1 close in step 5, which lives in the globalart monorepo;
   step 6a is its first consumer and starts with the pin.
@@ -1928,7 +1932,8 @@ M7, from which the rule of [design/08-frontend.md](design/08-frontend.md) that i
 descriptor version applies — the plan's choice, which step 12 records. `frontend/tsconfig.base.json`
 is strict and maps `@globalart/keel/*` to `libs/keel/*/src/public-api.ts`.
 `.github/workflows/ci.yml` gains the job `frontend` with `working-directory: frontend`: checkout,
-`pnpm/action-setup@v4` (the version from `packageManager`), `actions/setup-node@v4` with node 24,
+`pnpm/action-setup@v6` (the version from `packageManager`; the `v4` tag predates pnpm 11),
+`actions/setup-node@v4` with node 24,
 `cache: pnpm` and `cache-dependency-path: frontend/pnpm-lock.yaml`, `pnpm install --frozen-lockfile`
 with `NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}` in its environment, then `pnpm lint`,
 `pnpm test` and `pnpm build`. The repository is private and pushes go to `main`, so the secret is
@@ -2104,9 +2109,11 @@ only case the client sets `Authorization`. Every response feeds three signals: `
 `X-Keel-Request-Id`, kept for error display; `replayed` from `X-Keel-Idempotent-Replay`; and
 `metaVersion` from `X-Keel-Meta-Version`, compared with the version `/boot` answered, so a differing
 value emits `metaChanged`, on which `KeelDescriptors` drops its cache and the shell refetches
-`/boot`. A `401` emits `unauthenticated` once per burst, which the shell of step 8b turns into the
-login route; every other error envelope is returned as it is, `403` `keel.error.cross_site`
-included, since the browser and the kernel own that check. Retries are the design's rule: a call
+`/boot`. A `401` with `keel.error.unauthenticated`, the transport's answer when no credential is
+valid, emits `unauthenticated` once per burst, which the shell of step 8b turns into the login
+route; every other error envelope is returned as it is, a function's own `401` such as
+`auth.error.credentials` and `403` `keel.error.cross_site` included, since the browser and the
+kernel own that check. Retries are the design's rule: a call
 that carries an idempotency key is retried once on a network failure without a response, a call
 without one never. `KeelBoot.load()` fetches `GET /api/v1/boot` and keeps the payload as signals —
 `principal`, `products`, `brand`, `menu`, `views`, `features`, `meta` — sending `If-None-Match` only
@@ -2232,8 +2239,10 @@ bulk actions, remote options from a descriptor and validation stay in `@globalar
 and `x-ui` attributes and its `ui` block become an Angular reactive form on phoenix fields, with
 pages, conditions and validators handled by metadata alone; the dynamic half — remote options,
 recompute, server errors, submit and the `once` panel — is step 6b. The step opens with the pin:
-`frontend/libs/keel/package.json` and `frontend/package.json` name `@globalart/phoenix-ui` `0.2.0`
-and `pnpm-lock.yaml` follows, the one Keel-side change of step 5, as its first commit.
+`frontend/libs/keel/package.json` and `frontend/package.json` name `@globalart/phoenix-ui` `0.2.2`
+— the batch of step 5 with the two patch releases that landed before this step, neither changing a
+component surface — and `pnpm-lock.yaml` follows, the one Keel-side change of step 5, as its first
+commit.
 `buildForm(descriptor, { mode, params, principal, values })` walks the properties of `params` —
 `$defs` resolved, the key parameter hidden, the order from `x-ui.order` then the schema — into a
 `FormGroup` and a model of pages and fields, each field carrying its label key, hint and placeholder
@@ -2621,15 +2630,17 @@ cross-site navigation never carries the key; `/logout`; `/f/:func` on `KeelScree
 a guard that loads `/boot` once and sends a guest to `/login` with `returnTo`; `/` to the first item
 of the menu; anything else to `phx-not-found`. The `unauthenticated` signal of the client drops the
 boot state and navigates to `/login`. After boot the shell loads the catalogue for `principal.lang`,
-`en` for a guest. The labels bridge is `providePhoenixLabels` fed from the `phx.*` namespace of the
-loaded catalogue, re-provided on a language switch.
+`en` for a guest. The labels bridge provides `PHX_LABELS` with a live object reading the `phx.*`
+namespace of the loaded catalogue, so a language switch changes the labels in place;
+`providePhoenixLabels` snapshots its argument into a static value provider, which cannot be
+replaced at the root after bootstrap.
 
 **Touches.** `frontend/libs/keel/shell/src/` (`bootstrap.ts`, `routes.ts`, `guard.ts`, `login/`,
 `labels.ts`, `shell.ts` with the bare layout, specs), `frontend/apps/shell/src/main.ts`. Kernel
 routes consumed: `/api/v1/boot`, `/api/v1/i18n`, `/api/v1/call/auth.*`. phoenix-ui: `phx-layout`,
-`phx-sidebar-item`, `phx-logon`, `phx-not-found`, `PHX_LABELS` through `providePhoenixLabels`.
+`phx-sidebar-item`, `phx-logon`, `phx-not-found`, `PHX_LABELS` provided by the bridge.
 
-**Out of scope.** The layout, the sidebar rule, the topbar, the rail and the user menu (step 8c);
+**Out of scope.** The layout, the sidebar rule, the rail and the user menu (step 8c);
 the settings value form and the security page (step 8d); the notification centre, tasks, problems
 and badges (M3); the `/brand/logo.svg` route and white-label (step 9b); `keel-dev i18n pull` and
 `missing`, which need the OwnLate projects for Keel that do not exist yet — they land in M3, where
@@ -2649,24 +2660,26 @@ loading a product's chunk on its first route (with the module-to-product map, la
   language; the kernel's `en` and `ru` dictionaries carry every key of `PHX_DEFAULT_LABELS`, checked
   by a Jest test reading `crates/kernel/i18n/`.
 
-### 8c. Shell: layout, sidebar rule, topbar, rail and the user menu
+### 8c. Shell: layout, sidebar rule, rail and the user menu
 
 **Goal.** The layout half of the `/shell` section of [design/08-frontend.md](design/08-frontend.md),
 replacing the bare layout of step 8b. After boot the shell feeds `hue` and `chroma` of `/boot.brand`
 to `PhxThemeService`, shows the brand through `phx-brand-logo` with the `logo` path when the brand
-carries one and the translated `name` otherwise, and builds `phx-layout`, `phx-sidebar`,
-`phx-topbar` and `phx-rail` from `menu`: with one product enabled the sidebar shows that product's
+carries one and the translated `name` otherwise, and builds `phx-layout`, `phx-sidebar` and
+`phx-rail` from `menu`: with one product enabled the sidebar shows that product's
 groups followed by the platform group `system`; with several, a `phx-sidebar-group` heading per
 product in the order of `/boot.products`, each with its groups and the platform group last, a
 heading without a visible item omitted; with none, the platform brand and the platform group alone.
 Items are `phx-sidebar-item` with the icon, `t(label)` and the route `/f/<func>`; a `badge.problem`
 stays hidden until `problems` exists. The level label follows the design's rule:
 `product.<id>.level.<level>` while one product is enabled, `keel.level.<level>` otherwise. A
-`phx-banner` in the topbar names the actor's login while `principal.actor` is set and offers
-`auth.su.exit`; the rail carries the disabled placeholders for notifications, tasks and help until
-M3 and the user menu on `phx-user-menu`: the login and level, the language switch between the
-languages the catalogue serves, `en` and `ru`, writing `settings.pref.set { key: "lang", value }`
-and reloading the catalogue in place; the theme switch, `light`, `dark` and `system`, writing
+`phx-banner` in the page area above the screen names the actor's login while `principal.actor` is
+set and offers `auth.su.exit` — `phx-topbar` is the phone chrome `phx-layout` renders itself and
+has no slot the shell could fill; the rail carries the disabled placeholders for notifications,
+tasks and help until M3 and the user menu on `phx-user-menu`: the login and level, the language
+switch between the languages the catalogue serves, `en` and `ru`, writing
+`settings.pref.set { key: "lang", value }` and reloading the catalogue in place; the theme switch,
+`light`, `dark` and `system`, writing
 `settings.pref.set { key: "theme" }` and `PhxThemeService`; "Act as", a dialog searching
 `keel.principal.list` by login and posting `auth.su { principal }`, shown while `auth.su` is in the
 descriptor index; the links to Sessions, Tokens and Security; and Log out. The system screens are
@@ -2674,13 +2687,13 @@ the descriptors that exist, rendered by steps 7c and 7d through the menu: accoun
 (`keel.account.*`), principals (`keel.principal.*`), products (`keel.product.list` with its
 confirmed row actions `enable` and `disable`), settings (`settings.list`), audit (`audit.list`,
 `audit.get` as the object screen), sessions, tokens, IP rules and grants (the `auth` nodes of step
-8a), and notes (`note.*` under the demo group). A language switch re-provides the labels bridge of
-step 8b.
+8a), and notes (`note.*` under the demo group). A language switch reloads the catalogue in place,
+which the live labels bridge of step 8b follows without being re-provided.
 
 **Touches.** `frontend/libs/keel/shell/src/` (`layout/`, `rail/`, `shell.ts`, specs). Kernel routes
 consumed: `/api/v1/call/settings.pref.*`, `/api/v1/call/auth.su`, `/api/v1/call/auth.su.exit`,
 `/api/v1/call/keel.principal.list`. phoenix-ui: `phx-layout`, `phx-sidebar`, `phx-sidebar-group`,
-`phx-sidebar-item`, `phx-topbar`, `phx-rail`, `phx-rail-item`, `phx-user-menu`, `phx-brand-logo`,
+`phx-sidebar-item`, `phx-rail`, `phx-rail-item`, `phx-user-menu`, `phx-brand-logo`,
 `phx-banner`, `phx-modal` through `PhxModalService`, `PhxThemeService`.
 
 **Out of scope.** The settings value form and the security page the user menu links to (step 8d);
@@ -3217,7 +3230,8 @@ anything of M3.
   40 MB (the size `build.yml` printed for the closing commit).
 - `hack/check-docs.sh` is green in CI with the M2 names and the frontend specs; the README's check
   list, "How we work" and `ci.yml` agree, `hack/descriptors.sh` and `hack/e2e.sh` included.
-- `@globalart/keel@0.1.0` answers `pnpm view` against Nexus with the six entry points in `exports`.
+- `@globalart/keel@0.1.0` answers `pnpm view` against Nexus with the six entry points and the nested
+  `testing/playwright` in `exports`.
 - On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's version,
   `/readyz` answers `ready`, and the owner has opened the panel through the port forward and logged
   in, which the checklist records with the date-free note "confirmed by hand on keel-demo".
@@ -3228,15 +3242,25 @@ anything of M3.
   1.0; a product's crates may move to their own repository after M7 and are pulled into the
   `keel` build as dependencies ([design/01-overview.md](design/01-overview.md)).
 - One task is one PR-sized change; a task is not split across branches.
-- Verify with the same commands CI runs before pushing: `cargo fmt --all --check`,
+- Verify with the same commands CI runs before pushing, in CI's order, which the README lists.
+  The job `check`: `cargo fmt --all --check`; in `frontend/`, `pnpm install --frozen-lockfile`
+  and `pnpm build`, since `cargo build -p keel-bin` embeds `frontend/dist/shell`; then
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the
   Postgres server `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p
-  keel-testkit` against the container the testkit starts, `cargo test -p keel-bin
+  keel-testkit` against the container the testkit starts,
+  `cargo run -p keel-dev -- types --out contracts/schema --check`, `cargo test -p keel-bin
   --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`,
-  `hack/check-install.sh target/debug/keel` and `hack/conformance.sh target/debug/keel`, then
-  `hack/check-test-databases.sh`, `hack/check-deps.sh` and `hack/check-docs.sh`; the README
-  lists them in CI's order. Once
-  `frontend/` exists, `pnpm lint && pnpm test && pnpm build` join the list.
+  `hack/check-install.sh target/debug/keel`, `hack/conformance.sh target/debug/keel`,
+  `hack/descriptors.sh target/debug/keel`, `pnpm exec playwright install --with-deps chromium`
+  once and `hack/e2e.sh target/debug/keel`, then `hack/check-test-databases.sh`,
+  `hack/check-deps.sh` and `hack/check-docs.sh`. The job `frontend`, in `frontend/`:
+  `pnpm install --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`,
+  `pnpm lint`, `pnpm format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`,
+  `pnpm exec http-server storybook-static --port 6006 --silent &`,
+  `pnpm exec wait-on http://127.0.0.1:6006/index.json` and `pnpm test-storybook`,
+  `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish --dry-run --no-git-checks`.
+  The job `system` runs the `keel-system` matrix, and the Build workflow the musl release with
+  its size check.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
 - No comments in code. Explanations go into the commit message or into `docs/`; the only
   exception is a link to an RFC next to the code that implements it.
@@ -3388,3 +3412,184 @@ binary, and `hack/check-docs.sh` over this checklist.
 - [x] `hack/check-docs.sh` is green: every M1 name it carries is found under both `docs/design/`
       and `crates/`, every test name this checklist cites is defined, every command it cites
       exists, and the README's check list, the "How we work" section and `ci.yml` agree.
+
+## M2 exit checklist
+
+Every ticked item below is checked by CI on `main` — the tests of the workspace, the `keel-system`
+matrix, the build of `keel-bin` with and without the `demo` feature after `pnpm build`,
+`hack/prove-binary.sh`, `hack/conformance.sh`, `hack/descriptors.sh` and `hack/e2e.sh` against the
+built binary, the job `frontend` with Jest, the static Storybook and its runner, and
+`hack/check-docs.sh` over this checklist — except the spike's run on `keel-demo`, which the
+transcript in the message of commit `205b8fb` records. The three items left unticked are run by
+the operator on `keel-demo`, by the owner in a browser and by `publish-npm.yml`; each is ticked
+once it holds, the `keel-demo` ones with the date-free note "confirmed by hand on keel-demo".
+
+- [x] The `demo` bundle, enabled on the `keel` binary, is driven entirely from the browser
+      without product-specific TypeScript: `frontend/e2e/notes.spec.ts`, run by
+      `hack/e2e.sh target/debug/keel` against the built binary, creates notes through the form
+      with `due` filled a week ahead by `note.recompute`, searches, sorts by title, filters by
+      `kind`, selects two rows and deletes them through the destructive confirmation by typing
+      their count, shows the owner page to `root` alone (`show_if` on the level), lands a
+      duplicate title under the `title` field, and walks the import wizard, which refuses a
+      201-character line on its first page and imports three lines on its last. The demo's only
+      TypeScript is the tag cloud: `frontend/products/demo/src/demo.spec.ts` holds `views.json` to
+      what the library registers and `hack/descriptors.sh` prints `demo 1/8`. The renderers under
+      Jest against the golden fixtures: `frontend/libs/keel/renderer/src/list.spec.ts`,
+      `frontend/libs/keel/forms/src/form.component.spec.ts`,
+      `frontend/libs/keel/forms/src/conditions.spec.ts`,
+      `frontend/libs/keel/forms/src/recompute.spec.ts`, `frontend/libs/keel/forms/src/errors.spec.ts`,
+      `frontend/libs/keel/forms/src/submit.spec.ts`, `frontend/libs/keel/renderer/src/wizard.spec.ts`
+      and `frontend/libs/keel/renderer/src/action.spec.ts`; the server side of the shapes in
+      `products/demo/tests/demo/note.rs`
+      (`note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_note_is_locked`,
+      `note_edit_refuses_a_second_note_with_the_same_title_as_a_field_error_on_title`,
+      `note_recompute_fills_due_a_week_ahead_when_kind_turns_todo_and_patches_nothing_otherwise`,
+      `note_import_checks_the_source_page_and_creates_one_note_per_line_inside_the_limit`,
+      `note_tag_list_counts_tags_within_the_callers_scope_with_a_sum_total`).
+- [x] One screen is replaced by a custom view through `provideKeelViews`: the demo's tag cloud
+      replaces `note.tag.list` (`frontend/products/demo/src/tag-cloud.spec.ts`; "the tag cloud
+      shows the tags of the notes" in `frontend/e2e/notes.spec.ts`); the registry itself in
+      `frontend/libs/keel/renderer/src/views.spec.ts` ("a component registered through
+      provideKeelViews replaces the generic screen and receives the context with the descriptor",
+      "a view of boot.views is created without a descriptor and with the screen parameters", "a
+      view of boot.views without a component shows phx-not-found naming the product"); the
+      server half, `r.view` behind `/boot.views`, in
+      `a_registered_view_is_listed_in_boot_for_the_levels_its_access_admits_and_menus_without_a_kind`
+      and `a_view_with_a_foreign_prefix_an_unknown_permission_or_an_unknown_group_fails_freeze` in
+      `crates/kernel/tests/kernel/views.rs`; the custom-views share in CI, `demo 1/8 12.5%` and
+      `composition 3/54 5.6%` under the 20 % ceiling, from `keel-dev views share` through
+      `hack/descriptors.sh target/debug/keel`
+      (`a_ninth_view_over_eight_functions_exceeds_the_ceiling_while_one_over_eight_holds` and
+      `registered_views_count_for_the_product_owning_their_module_and_the_shell_views_for_the_composition_alone`
+      in `crates/dev/src/views.rs`).
+- [x] Storybook renders the shell from the `/boot` fixtures: the stories `NoProduct`, `OneProduct`
+      and `TwoProducts` of `frontend/libs/keel/shell/src/shell.stories.ts` over `KEEL_BOOT` of
+      `@globalart/keel/testing` show the platform group alone, the demo's brand with its logo at
+      `/brand/logo.svg` and its groups before `system`, and the platform brand with a heading per
+      product in `/boot` order, run with their accessibility checks by `pnpm test-storybook`
+      against the static build of `pnpm build-storybook` (5 story files, 21 stories); the same
+      rule under Jest in `frontend/libs/keel/shell/src/sidebar.spec.ts` ("one product shows its
+      groups then system under the product brand", "two products show a heading per product in
+      boot order with the platform group last and the platform brand", "no product shows the
+      platform group alone", "a heading without a visible item is omitted"); the fixtures
+      themselves from the kernel:
+      `boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand_and_both_groups` and
+      `boot_without_a_product_shows_the_platform_brand_and_the_platform_group_only` in
+      `crates/kernel/tests/kernel/boot.rs`, and `frontend/libs/keel/testing/src/boot.spec.ts` holding
+      `KEEL_BOOT` equal to the three files.
+- [x] `en` and `ru` switch: `frontend/e2e/language.spec.ts` ("alice switches to ru and the choice
+      survives a reload" — the menu, the column headers and the form labels change and the
+      choice survives a reload, every expectation resolved from the served catalogues so no
+      translated word is repeated in the test); `frontend/libs/keel/shell/src/rail.spec.ts` (the
+      language switch posts `settings.pref.set { key: "lang", value: "ru" }` and reloads the
+      catalogue) and `frontend/libs/keel/shell/src/labels.spec.ts` (`PHX_LABELS` switches with
+      the language); the catalogue on the server in
+      `the_catalogue_merges_the_bundle_dictionaries_and_ru_falls_back_to_en_per_key` in
+      `crates/kernel/tests/kernel/boot.rs` and
+      `a1_sets_tz_and_lang_and_boot_and_the_catalogue_follow_while_a2_reads_nothing_of_it` in
+      `crates/system/tests/system/settings_pref.rs`; `ctl_note_list_out_table_shows_translated_headers_in_en_and_ru`
+      in `products/demo/tests/demo/note.rs`.
+- [x] On a VM the spike, running as an unprivileged uid, creates an OS user and a vhost through
+      the agent, and an invalid template is rolled back: the transcript of step 10 in the message
+      of commit `205b8fb` records the run of `hack/spike-vm.sh` on `keel-demo` — the call as
+      `nobody` refused with `refused peer_uid=65534 admitted_uid=999`, `host.user.create`
+      answering `created: true` and `id -u kd_spike` working, the vhost written and answering the
+      known body, the apply with `listen eighty` answering `host.error.validate_failed` with
+      nginx's message and the vhost byte-identical to the previous one, and `--cleanup` leaving
+      no trace; nothing under `bin/spike`, `deploy/spike.yaml` or `hack/spike-vm.sh` changed
+      between that commit and the closing one. The mechanism is checked in CI by
+      `bin/spike/tests/agent.rs`
+      (`a_peer_with_another_uid_is_closed_without_an_answer_and_the_refusal_is_logged`,
+      `a_valid_template_is_rendered_swapped_in_validated_and_reloaded_and_a_repeat_changes_nothing`,
+      `a_failed_check_restores_the_previous_file_and_answers_validate_failed_with_the_detail`,
+      `a_failed_reload_restores_the_file_reloads_again_and_answers_reload_failed`,
+      `a_foreign_root_an_unprefixed_name_or_user_and_an_unknown_product_are_refused_as_policy`,
+      `useradd_runs_with_the_shell_and_its_failure_answers_exec_failed_with_its_output`), and the
+      Build workflow ships the musl `keel-spike` with its unit, policy, templates and
+      `hack/spike-vm.sh` as the artifact `keel-spike-x86_64-linux-musl`, from which the operator
+      may repeat the run on `keel-demo` at will; that repeat is not a condition of this tick.
+- [x] The binary with the embedded frontend is under 40 MB: the Build workflow's step "The binary
+      with the demo bundle and the frontend is under 40 MB" prints the size of the musl release
+      build and fails at 40,000,000 bytes; the closing commit's build measures 19,822,864 bytes
+      (19.8 MB) as a stripped `x86_64-unknown-linux-musl` release with thin LTO, the `demo` bundle
+      and the shell included.
+- [x] The shell is embedded and served beside the API:
+      `a_runtime_with_an_embedded_frontend_serves_the_index_and_its_assets_beside_the_api` in
+      `crates/keel/tests/runtime.rs` through `keel::embed_frontend!`;
+      `the_root_and_a_screen_path_answer_the_index_no_store_with_the_policy_headers`,
+      `a_hashed_asset_is_immutable_for_a_year_and_has_a_brotli_twin_when_accepted`,
+      `a_missing_asset_is_404_while_the_api_keeps_its_envelope_and_the_probes_are_untouched` and
+      `without_a_frontend_every_unknown_path_keeps_the_route_not_found_envelope` in
+      `crates/kernel/tests/kernel/assets.rs`; the index, the SPA fallback and the policy headers of
+      the real build in `hack/prove-binary.sh target/debug/keel`; `frontend/apps/shell/src/theme-boot.spec.ts`
+      for the theme boot script the index loads in place of an inline script.
+- [x] The server halves of the two shell screens: white-label by hostname through
+      `ManifestSource` (`a_manifest_patch_for_the_request_host_changes_boot_and_the_effective_logo`
+      and `a_product_logo_is_served_from_its_asset_and_the_effective_one_follows_the_brand_rule` in
+      `crates/kernel/tests/kernel/brand.rs`;
+      `a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_host_alone` and
+      `the_brand_descriptors_match_their_snapshots` in `crates/system/tests/system/settings_brand.rs`;
+      the `/brand` routes, the patched `/boot` for `panel.example` and the refused scripted logo in
+      `hack/prove-binary.sh`); stored grants through `PermissionSource`
+      (`the_transports_overlay_the_stored_grants_and_the_guard_reads_them_over_the_defaults` in
+      `crates/kernel/tests/kernel/grants.rs`;
+      `a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_away_until_deleted`,
+      `grants_are_rows_of_the_principals_account_and_the_reseller_sees_its_subtree_only` and
+      `the_grant_descriptors_and_the_auth_menu_nodes_match_their_snapshots` in
+      `crates/system/tests/system/auth_grants.rs`); the grants screen, like every system screen,
+      opened from the menu in "root opens every system screen from the menu" of
+      `frontend/e2e/system.spec.ts`, which also sets `auth.password.min_length` through the shell's
+      value form, creates a token whose plaintext is shown once and acts as `alice` with the
+      banner; the security page in `frontend/libs/keel/shell/src/security.spec.ts` and the
+      second-factor enrolment through the real screen in `frontend/e2e/login.spec.ts`.
+- [x] The library and the contract tooling: `@globalart/keel/meta` agrees with `keel-types` on
+      every case of the shared fixtures (`frontend/libs/keel/meta/src/expr.spec.ts`,
+      `frontend/libs/keel/meta/src/check.spec.ts`, `frontend/libs/keel/meta/src/validate.spec.ts`,
+      `frontend/libs/keel/meta/src/fixtures.spec.ts` against `contracts/schema/`, which
+      `cargo run -p keel-dev -- types --out contracts/schema --check` keeps current);
+      `@globalart/keel/client` in `frontend/libs/keel/client/src/client.spec.ts`,
+      `frontend/libs/keel/client/src/list.spec.ts` and `frontend/libs/keel/client/src/auth.spec.ts`;
+      the dump loader of `@globalart/keel/testing` in `frontend/libs/keel/testing/src/mock-client.spec.ts`
+      ("fromDump answers the admin boot and every descriptor of the dump") over `contracts/dump/`,
+      which `hack/descriptors.sh target/debug/keel` holds to the binary
+      (`dump_logs_in_per_level_writes_the_projected_files_and_check_diffs_against_a_directory` and
+      `descriptors_diff_over_two_directories_differing_in_one_file_prints_that_files_diff_and_identical_directories_exit_zero`
+      in `crates/dev/src/descriptors.rs`) together with `contracts/openapi.json`
+      (`the_committed_document_is_current_and_names_one_post_per_function_of_the_admin_dump` and
+      `a_changed_parameter_schema_fails_the_check_without_rewriting_the_document` in
+      `crates/dev/src/openapi.rs`); the icon set embedded from `contracts/icons.json`
+      (`an_icon_outside_the_phoenix_set_in_a_descriptor_or_a_menu_node_fails_freeze` in
+      `crates/kernel/src/loader/freeze.rs` and `the_embedded_icon_set_is_sorted_unique_and_names_plus`
+      in `crates/kernel/src/loader/icons.rs`), regenerated by `pnpm generate` and held by
+      `git diff --exit-code`.
+- [x] The frontend job is green: `pnpm install --frozen-lockfile`, `pnpm generate`, `pnpm lint`,
+      `pnpm format`, `pnpm test` (55 suites, 263 tests), `pnpm build`, `pnpm build-storybook`,
+      `pnpm test-storybook`, `node tools/stamp.mjs` (the workspace version stamped, the six entry
+      points and the nested `testing/playwright` exported) and
+      `pnpm publish --dry-run --no-git-checks` against Nexus.
+- [ ] `@globalart/keel@0.1.0` is published to Nexus by `publish-npm.yml` through
+      `workflow_dispatch` from the closing commit, after which the `exports` of the published
+      package, read from Nexus with pnpm's `view`, name the six entry points and the nested
+      `testing/playwright` — operator-run; the dry run above is CI's rehearsal.
+- [x] `cargo fmt --all --check` is green.
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` is green.
+- [x] `cargo test --workspace` is green against Postgres, `env -u KEEL_TEST_DATABASE_URL cargo test
+      -p keel-testkit` against the container, `cargo test -p keel-bin --no-default-features`
+      without the demo, and `hack/check-test-databases.sh` finds no database left behind.
+- [x] `hack/check-deps.sh` is green: `keel-dev` depends on `keel-types` alone and `keel-spike` on
+      no workspace crate, next to the M0 and M1 rules.
+- [x] `hack/check-docs.sh` is green: every M2 name it carries is found under `docs/design/` and
+      under `crates/` or `frontend/libs/keel`, every Rust test this checklist cites is defined,
+      every `*.spec.ts` it cites exists under `frontend/`, every command it cites exists, and the
+      README's check lists, the "How we work" section and `ci.yml` agree, `hack/descriptors.sh` and
+      `hack/e2e.sh` included.
+- [ ] On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's
+      version and `/readyz` answers `ready`, after the musl artifact of the closing commit's Build
+      run was unpacked into `/opt/keel/versions/<version>` beside the M1 installation,
+      `bin/current` switched and `keel.service` restarted — operator-run; to be ticked with the
+      note "confirmed by hand on keel-demo".
+- [ ] The owner has opened the panel of `keel-demo` through the SSH port forward at
+      `http://localhost:1500/`, logged in as the administrator `deploy/install.sh` created — the
+      password reset over `keel ctl auth.password.set` when no longer at hand — walked the notes
+      list, the form, the wizard and the tag cloud, and switched to `ru` — operator-run; to be
+      ticked with the note "confirmed by hand on keel-demo".

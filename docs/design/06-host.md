@@ -176,7 +176,7 @@ and a policy that constrains it. There is no "run this command" operation with f
 | `host.user.*` | operating-system users | names under `user_prefix`; uid from the range allotted to the installation at install, named under the calling product's `user_prefix` |
 | `host.group.*` | groups | as for users |
 | `host.fs.*` | files and directories | path policy from `file_roots`; writes go through a temporary file and rename |
-| `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → validate → swap → reload → rollback; see "Configuration templates" |
+| `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → swap → validate → reload → rollback, the check running with the file in place; see "Configuration templates" |
 | `host.service.*` | reload, restart, list | only units named in `services`; `systemctl` is executed as a process, without D-Bus, so the binary stays a musl static build |
 | `host.pkg.*` | packages | the distribution's package manager |
 | `host.cron.*` | scheduled jobs on the host | |
@@ -289,12 +289,20 @@ The operator may override a template by placing a file of the same name under
 `/etc/keel/templates/`; template ids are unique across the loaded set, which the freeze checks, so
 two products' overrides never collide. The kernel side sends the template id and its variables;
 the agent renders the template (the template engine lives outside the kernel), writes the result
-to a temporary file, runs the named validation check, swaps the file into place, reloads the
-service, and rolls the file back if validation or reload fails. The response reports whether the
-file changed (`changed`).
+to a temporary file beside the target, swaps it into place keeping the previous content, mode and
+owner, runs the named validation check, reloads the service, and rolls the file back — restores
+what was there, or removes a file that did not exist — when the check or the reload fails,
+reloading again after a failed reload. The check runs after the swap because a check such as
+`nginx -t` validates the whole configuration in place and cannot be pointed at one drop-in, which
+the M2 spike showed; a broken file is in place only for the duration of the check and the service
+is reloaded only after the check passes, so a running service never reads it. Operations run one
+at a time, so a swap, its check and its rollback are never interleaved with another request. An
+apply whose rendered file equals what is there changes nothing and answers `changed: false`. The
+response reports whether the file changed (`changed`).
 
 The acceptance tests for this path are in [../plan.md](../plan.md): at M2 an invalid template
-rolls back on nginx; at M4 a broken template rolls back without downtime.
+rolls back on nginx, proven by `bin/spike` on the demo machine; at M4 a broken template rolls back
+without downtime.
 
 ## The agent protocol
 
@@ -358,7 +366,7 @@ rather than by changing credentials in place. The full record is in
 
 | Milestone | Scope for this layer |
 |-----------|----------------------|
-| M2 | a thin agent spike in a separate bin crate `bin/spike`: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back |
+| M2 | a thin agent spike in a separate bin crate `bin/spike`: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx under a policy in the shape of `agent.yaml`, every operation written to the journal with actor and request id; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back — shown by `hack/spike-vm.sh` on `keel-demo`; the spike depends on no workspace crate and is replaced by `keel-host-agent` in M4 |
 | M4 | `keel-host` in full — users, files, services, template, pkg, `AgentOp`, the `host` module; `privileged` with the `update` policy (check, apply, rollback, pre-update dump, anti-rollback); `dns` on bind; done when no process except `privileged` runs as root, a broken template rolls back without downtime, and an operation outside `file_roots` is refused and audited |
 | M8 | `Remote` executor, node PKI and enrolment, `keel-system::cluster`, `Invoker` |
 

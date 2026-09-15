@@ -121,10 +121,14 @@ call and is masked in the audit trail.
 These parts of the operator plane are designed but not built; the installer does not pretend
 they exist:
 
-- TLS. The listener is plain HTTP and the session cookie carries `Secure`, so a browser will
-  not store it. The self-signed certificate and `trusted_proxies` arrive with M3.
+- TLS. The listener is plain HTTP and the session cookie carries `Secure`, which a browser
+  accepts on plain HTTP from `localhost` and `127.0.0.1` alone; the panel of a remote host is
+  therefore opened through an SSH port forward (see "After the installation"). The self-signed
+  certificate and `trusted_proxies` arrive with M3.
 - The privileged agent: `keel-privileged.service`, `agent.yaml` and the host catalogue arrive
-  with M2 (the spike) and M4. Nothing runs as root after the installer exits.
+  with M4; the M2 spike `bin/spike` proved the mechanism on `keel-demo` with its own unit and
+  policy and was removed again by `hack/spike-vm.sh --cleanup`. Nothing runs as root after the
+  installer exits.
 - The uid range the host agent may manage. The design allots it to the installation at install
   time next to the unix user; it arrives with `agent.yaml` in M4, since that file is where the
   agent reads it, and the installer creates the user and the group only until then.
@@ -132,14 +136,14 @@ they exist:
   fetches a release from does not exist yet; from M4 a missing `--binary` means the channel's
   current version and the flag remains as an override.
 - Updates: `keel-update.path`, the signed release manifest and `update rollback` arrive with M4.
-  Until then a new version is installed by hand: copy the binary to
-  `/opt/keel/versions/<version>/keel`, point `/opt/keel/bin/current` at it,
-  `systemctl restart keel`.
+  Until then a new version is installed by hand: unpack the artifact into
+  `/opt/keel/versions/<version>/`, point `/opt/keel/bin/current` at its `keel`,
+  `systemctl restart keel` and check that `/readyz` answers `ready`; the panel is part of the
+  binary, so nothing else is deployed.
 - The setup link. `keel.setup.admin` and the one-time `kok_` link printed at the first start
   arrive with M4; the installer creates the administrator over the control socket instead.
 - The signature check of the release manifest; the installer verifies the sha256 of the artifact
   only.
-- The frontend. The URL answers the API; the browser shell arrives with M2.
 - `backup`, `restore`, `doctor` and `support-bundle` (M4).
 
 `keel.service` is `Type=simple` without `WatchdogSec=` because the kernel does not send
@@ -183,13 +187,33 @@ curl -sS http://127.0.0.1:1500/readyz
 ```
 
 `keel ctl` must run as the unix user `keel`: the control socket admits that uid alone, root
-included in the refusal. The first login over HTTP:
+included in the refusal.
+
+The URL the installer prints serves the panel, the embedded shell of M2, next to the API. Until
+TLS arrives in M3 the listener is plain HTTP and the session cookie carries `Secure`, which a
+browser accepts on plain HTTP from `localhost` and `127.0.0.1` alone, so from another machine the
+panel is opened through an SSH port forward to the host's listener and the address the forward
+gives it:
+
+```
+ssh -L 1500:127.0.0.1:1500 root@host
+```
+
+then `http://localhost:1500/` in the browser, where the login the installer printed signs the
+administrator in. The same login over the API:
 
 ```
 curl -sS -X POST http://127.0.0.1:1500/api/v1/call/auth.login \
   -H 'Content-Type: application/json' \
   -d '{"login":"admin","password":"<printed by the installer>"}'
 ```
+
+A password that is no longer at hand is reset over the control socket:
+
+```
+runuser -u keel -- keel ctl auth.password.set principal=<id> password=<new>
+```
+
 
 ## Enabling another product later
 

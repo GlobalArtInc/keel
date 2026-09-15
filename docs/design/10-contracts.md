@@ -18,13 +18,19 @@ The wire contract is defined in `keel-types`, a crate without I/O. It carries `P
 descriptor types, the envelope, `ListQuery` and `Page`, `Principal`, `Account` and `Level`, the
 condition AST and the `check` presets. Golden fixtures are checked by `cargo test` on the Rust side
 and by Jest on the TypeScript side, so the two implementations cannot drift without a red build.
-From the JSON Schemas of `keel-types` the build generates the TypeScript types of
-`@globalart/keel/meta` and the OpenAPI description used by clients in other languages
-(`keel-dev types`; see [05-modules.md](05-modules.md)).
+From the JSON Schemas of `keel-types`, written to `contracts/schema/` by `keel-dev types`, the
+frontend build generates the TypeScript types of `@globalart/keel/meta`; the OpenAPI description
+used by clients in other languages, `contracts/openapi.json`, is written by `keel-dev openapi`
+from the admin dump of the running binary, one `POST /api/v1/call/<func>` per descriptor with the
+envelope around its result schema, and checked in CI by `hack/descriptors.sh`
+(see [05-modules.md](05-modules.md)).
 
 Three fixture sets are shared between Rust and TypeScript from M0:
 
-- descriptor snapshots per level (`keel-dev descriptors dump | check | diff`);
+- descriptor snapshots per level: the kernel's own under `contracts/fixtures/descriptors/`, a
+  module's under its tests, and from M2 the projected contract of the real binary for `guest`,
+  `user`, `reseller` and `admin` under `contracts/dump/`, written and compared by
+  `keel-dev descriptors dump | check | diff` through `hack/descriptors.sh`;
 - condition cases in `contracts/fixtures/expr-cases.json` for the ~200-line interpreters on each
   side;
 - `check` preset cases (`domain`, `ip`, `cidr`, `email`, `int`, `name`, `port`, `path`, ...).
@@ -51,13 +57,16 @@ The routes this design names. Anything else the installation serves is a raw rou
 | `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
 | `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
 | `/api/v1/x/<module>/…` | raw routes of modules: upload, download, WebSocket terminal, VNC, the peers pull feed `/api/v1/x/peers/feed?after=seq` |
+| `GET /api/v1/events` | the server-sent event stream (M3); the path is the provisional value the client of M2 opens, for M3 to confirm |
+| `GET /brand/logo.svg`, `GET /brand/<id>/logo.svg` | the effective brand's logo and each compiled-in bundle's, served from the bundle's `assets` or the kernel's own mark, `no-store` ([08-frontend.md](08-frontend.md)) |
 | `/login?key=…` | the page that redeems a one-time login key same-origin ([07-ecosystem.md](07-ecosystem.md)) |
+| everything else | the embedded shell: an asset by name, or `index.html` for a path whose last segment carries no extension the shell build emits ([09-operations.md](09-operations.md)) |
 
 The server-sent event stream carries `task.progress`, `notification`, `data.invalidate` and
 `meta.invalidate`; `Last-Event-ID` is the outbox `seq`, so a reconnecting client catches up from
 where it stopped. Events are filtered by `ScopePolicy` and principal: a user receives
 `data.invalidate` only for its own objects. The peers feed is a separate path, not the browser
-stream.
+stream. Until M3 serves the stream the route answers `404` and the client's stub stays quiet.
 
 ### Conventions shared by every shape
 
@@ -86,7 +95,9 @@ stream.
   `list · get · form · action · wizard · report · options · stream · download · upload`;
   `control`; `column.type` (with an explicit mapping onto `PhxColumn.type`); `action.role` ∈
   `new · edit · delete · group · button · child · external · export · upload · download ·
-  refresh`; the `check` presets. Icons are validated against `PhxIconName` at start.
+  refresh`; the `check` presets. Icons are validated at start against the icon set of
+  phoenix-ui, embedded from `contracts/icons.json`, which `pnpm generate` writes from
+  `PHX_ICON_NAMES` ([08-frontend.md](08-frontend.md)).
 
 ## Function descriptor: `GET /api/v1/functions/dns.zone.list`
 
@@ -376,9 +387,9 @@ block by the builder (`.field("ttl").recompute("dns.zone.recompute")`, `.multi([
 | Mechanism | Request | Response |
 |-----------|---------|----------|
 | `kind: options` | `OptionsQuery { search, scope, limit, cursor }`; `limit` defaults to 20 | `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }`, `value` a string — the source for the remote mode of `phx-select` and for `filter.remote` on columns; the three types live in `keel-types` from M0 because `keel.account.options` needs them |
-| `recompute` | `{ values, changed }` | `{ values: patch, options: { field: [...] }, errors?: fields[] }`; which fields trigger it is declared in `ui` |
-| group editing | `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }` | `ui.multi` lists the fields that may be edited across several rows; above `batch_threshold` the call becomes a task |
-| `kind: wizard` | `pages[].validate: <func>` validates a step on the server before the next page opens | `ui.result` after the final step: `redirect · task · download` |
+| `recompute` | `{ values, changed }` | `{ values: patch, options: { field: [...] }, errors?: fields[] }`; which fields trigger it is declared in `ui`; the helper is registered as `kind: action` in `mode: read` and unowned, since the vocabulary has no kind for a helper without a screen |
+| group editing | `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }` | `ui.multi` lists the fields that may be edited across several rows; above `batch_threshold` the call becomes a task (M3) |
+| `kind: wizard` | `pages[].validate: <func>` validates a step on the server before the next page opens, with the values of the pages so far as its parameters; the helper is a `kind: action` in `mode: read` like `recompute` | `ui.result` after the final step: `redirect · task · download` |
 | `download · upload · stream` | multipart parameters; SSE frames for `stream` | `{ filename, content_type }` for downloads; always behind a guard and an audit event |
 
 `ui.result = task` opens the progress modal driven by `task.progress` events
@@ -440,6 +451,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     ],
     account_kinds: &["user"],
     i18n: &[("en", include_str!("../i18n/en.json")), ("ru", include_str!("../i18n/ru.json"))],
+    assets: &[Asset { id: "product.dns.logo", content_type: "image/svg+xml", bytes: include_bytes!("../brand/logo.svg") }],
 };
 
 // bin/keel/src/main.rs
@@ -559,7 +571,7 @@ talks to ([06-host.md](06-host.md)).
 | `product` | the product that owns the calling module (the bundle that names it); the agent applies that product's section of the policy |
 | `args` | the operation's arguments, validated against the schema of the operation |
 | `dest` | a resource identifier — a named root from `file_roots` plus a name — never a raw path; the agent resolves and validates it under its policy |
-| `validate`, `reload` | the check to run on the rendered file and the service to reload; a failed check rolls the file back and returns `host.error.validate_failed` |
+| `validate`, `reload` | the check to run on the rendered file and the service to reload; a check that needs the file in place, `nginx -t` over the whole configuration, runs after the swap, so a failed check restores the previous content, mode and owner, or removes a file that did not exist, and returns `host.error.validate_failed` with the check's output as `detail`; a failed reload restores the file, reloads again and returns `host.error.reload_failed` ([06-host.md](06-host.md)) |
 | `ok`, `data` / `error` | `error.key` is an i18n key that surfaces unchanged in the call envelope; `error.detail` is the raw output of the failed step |
 
 The policy the agent enforces is `agent.yaml`:
@@ -640,21 +652,24 @@ descriptors are cached under.
 |-------|---------|
 | `keel` | version of the installation, which is the version of every product on it, and the API version |
 | `products` | the enabled products in composition order: `id`, `name` (the brand name key), `edition` and the product's own `brand`, with its logo at `/brand/<id>/logo.svg`; `edition` is the licensed edition once a lease exists and the bundle's default edition, or `null` for a bundle without editions, while none does |
-| `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 220, chroma 0.08 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; replaced per hostname by a `ManifestPatch` for white-label |
+| `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 220, chroma 0.08 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; patched per hostname for white-label with the `ManifestPatch` the `ManifestSource` answers for the request's `Host` (`settings_brand`, [05-modules.md](05-modules.md)), every member optional, a patched `name` being literal text rather than a key; the socket boot carries no host and is never patched |
 | `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. `tz` is `null` while the principal has no `tz` preference and on the socket; `totp` is `false` for the owner and while no module provides a `SecondFactorSource`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
 | `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
 | `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |
-| `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |
+| `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind?, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, absent on the item of a view registered through `r.view`, which has no descriptor, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |
 | `dashboard` | widgets: a `kind` and the function that feeds it; empty until `DashboardWidget` contributions exist |
-| `views` | the bespoke views registered with `r.view(...)` that the principal may open; the shell shows `phx-not-found` for an unknown one; empty until M2 |
-| `meta` | the metadata version, equal to `X-Keel-Meta-Version`, also served as the response's `ETag` with `private, no-store` and `304` on a matching `If-None-Match` |
+| `views` | the bespoke views registered with `r.view(...)` whose level and permission the principal meets, in registry order; the shell shows `phx-not-found` for one without a registered component; filled from M2 |
+| `meta` | the metadata version, equal to `X-Keel-Meta-Version`, also served as the response's `ETag` with `private, no-store` and `304` on a matching `If-None-Match`; `principal.totp` and `principal.actor` are not part of the version, so the shell refetches `/boot` without `If-None-Match` after a call that changes the principal's own state, such as a second-factor enrolment |
 | `problems` | counts for the notification rail; `null` until `notify` exists |
 
 Labels in `menu`, `brand.name` and `products[].brand.name` are i18n keys resolved by the client
 from the catalogues served under `/api/v1/i18n`. Over the control socket the same payload is
 answered to the frame `{ "boot": true }` as the owner, as the `data` of an envelope.
 `contracts/fixtures/boot.json` is the golden fixture of this shape as M0 serves it:
-`edition: null`, no lease, no dashboard, no views.
+`edition: null`, no lease, no dashboard, no views; `contracts/fixtures/boot-none.json` is the
+payload without a product, written from the kernel's own test, and `contracts/dump/<level>/boot.json`
+the payload of the real binary with the `demo` bundle enabled per level. The three feed the
+shell's Storybook stories of the brand rule as `KEEL_BOOT` of `@globalart/keel/testing`.
 
 ## `GET /api/v1/i18n`
 

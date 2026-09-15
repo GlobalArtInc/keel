@@ -4,9 +4,10 @@ The wire contract of the platform, in a form both sides can check against.
 
 - `protocol.md` — the prose of the contract, not yet written; until it is,
   `docs/design/10-contracts.md` is the contract's specification.
-- `fixtures/` — golden JSON fixtures loaded by the tests of `keel-types` and, from M2, by the
-  frontend test suite: expression cases, check cases, descriptors, envelopes, list queries, the
-  event and the `/boot` payload.
+- `fixtures/` — golden JSON fixtures loaded by the tests of `keel-types` and by the frontend test
+  suite under Jest: expression cases, check cases, descriptors, envelopes, list queries, the
+  event and the `/boot` payloads `boot.json` (two products) and `boot-none.json` (none), which
+  feed the shell's Storybook stories together with the admin dump's one-product payload.
 - `fixtures/descriptors/` — the descriptor snapshots of the kernel's own functions,
   `keel.<entity>.<verb>.json`, one plain JSON file per function, unprojected. The test
   `the_descriptors_of_the_kernel_module_match_the_committed_snapshots` in `keel-kernel` compares

@@ -45,7 +45,8 @@ product's lib crate as `pub static MANIFEST`:
 | `name`          | The i18n key of the product's name, `product.<id>.brand`, shown in `/boot` and by `keel product list`. |
 | `version`       | `env!("CARGO_PKG_VERSION")` of the bundle crate: the workspace version, shown by `keel product list` and `keel.product.list`. |
 | `api`           | The descriptor version the bundle is written against; must equal `keel_types::DESCRIPTOR_VERSION`, else the start fails naming the product. |
-| `brand`         | `Brand { logo, hue, chroma }` for the shell: the logo is the server-side asset identifier served as `/brand/<id>/logo.svg`; the brand of a single enabled product is the brand of the installation. |
+| `brand`         | `Brand { logo, hue, chroma }` for the shell: the logo is the id of an entry of `assets`, served as `/brand/<id>/logo.svg`; the brand of a single enabled product is the brand of the installation. |
+| `assets`        | `&[Asset { id, content_type, bytes }]`: the files the bundle ships, embedded at compile time, the logo `Brand.logo` names among them; `ProductManifest::asset(id)` and `logo()` read them, the kernel serves the logo at `/brand/<id>/logo.svg` for every compiled-in bundle, enabled or not, since the products screen lists disabled bundles with their logo, and the freeze refuses an id shipped twice. A single enabled product without the asset its brand names answers `404` on `/brand/logo.svg`; the kernel's own mark stands for the platform brand alone. |
 | `modules`       | `&[&ModuleDef]`: the definitions of the modules the product enables, `host` included when its modules need the agent; the composition learns a bundle's modules from here and lists only the platform modules itself. |
 | `bridges`       | `Bridge { to, local, remote }`: the pair of modules through which this product reaches product `to`; `local` is loaded when `to` is enabled on the same installation, `remote` otherwise. The field arrives with the first bridge, the `panel` bundle's bridge to `dns` at M5; the M0 manifest has none. |
 | `menu`          | Menu groups (`id`, `label`, `icon`, `order`) under which the modules' `MenuNode`s are placed; group ids are unique across enabled bundles. |
@@ -115,8 +116,11 @@ Between process start and the first served request the kernel runs these steps, 
    function with a screen title, that every menu node's group is declared by an enabled bundle
    or is the platform group `system`, that no group id is declared by two enabled bundles, that
    every bundle dictionary is a JSON object, that no message uses a placeholder other than
-   `{name}` ([08-frontend.md](08-frontend.md)), and that no `ConfigTemplate` id is contributed
-   twice across the loaded set. Menu groups are ordered by product in composition order, then by
+   `{name}` ([08-frontend.md](08-frontend.md)), that every icon a descriptor action, a menu node
+   or a menu group names is in the embedded icon set of `contracts/icons.json`, that a view's
+   permission is registered and its menu node carries a label of its own and a declared group,
+   that no bundle ships an asset id twice, and that no `ConfigTemplate` id is contributed twice
+   across the loaded set. Menu groups are ordered by product in composition order, then by
    `order` within a bundle, with the platform group last. Every problem is collected and reported
    in one error.
 6. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
@@ -142,7 +146,9 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   They exist for upload, download, the WebSocket terminal and VNC, not as a second way to expose
   functions.
 - Custom views, `r.view("hosting.file-manager", ViewSpec { access, menu, needs })`: a screen
-  without a descriptor but with access rules for the menu and features
+  without a descriptor but with access rules for the menu and features; the registrar checks the
+  module prefix of the name and refuses a second view or function under it, and `menu`, an
+  optional `MenuNode` pointing at the view, joins the module's menu
   ([08-frontend.md](08-frontend.md)).
 - Migrations, through `ModuleDef.migrations`.
 - Menu nodes, `r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10))`; the
@@ -196,8 +202,8 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `AgentOp` | A typed host-agent operation: argument and result schemas, handler, policy class | `keel-host` ([06-host.md](06-host.md)) |
 | `BackupSource` | The module's own data in a backup archive | `backup` |
 | `ConfigSection` | The module's own section of `config.yaml`, validated against the type's schema and typed at freeze, `T::default()` when absent | configuration loading ([09-operations.md](09-operations.md)) |
-| `PermissionSource` | Fine-grained permission keys and their defaults | `auth` |
-| `ManifestPatch` | A patch of the effective brand and of the bundle fields served in `/boot`, for example white-label branding by hostname | `settings` |
+| `PermissionSource` | The stored grants of a principal, `grants(principal, db)` answering key → held; the transports overlay the answer on `Principal.grants` once per request and the guards read a stored grant over the registered default ([03-access.md](03-access.md)) | `auth` |
+| `ManifestSource` | `patch(host, db)` answering the `ManifestPatch { name?, logo?, hue?, chroma? }` of the effective brand for a request host, every member optional: white-label branding by hostname, applied to `/boot.brand` and `/brand/logo.svg` and never to the socket's boot | `settings` |
 | `ServiceKind` | A service type for billing: `Params`, `State` and `Account` schemas with `schema_version` | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
 | `LimitDef` | An account limit: key, unit, default, level, whether `unlimited` is allowed | `keel_limit` and `call.check_limit` ([03-access.md](03-access.md)) |
 | `AccountLifecycle` | `on_suspend`, `on_resume`, `on_delete`, `on_rename` handlers | `keel.account.*` ([03-access.md](03-access.md)) |
@@ -270,7 +276,8 @@ example SSO in place of `auth`, or a different `notify` for billing.
 
 Hooks needed only by system modules — `Authenticator` with `Client`, `Authenticated` and
 `SessionChange`, `PrincipalSource`, `AccountSource`, `SecretCipher`, `SecondFactorSource`,
-`PreferenceSource`, `LanguageSource`, `ContextExt`, `AuditSink` with `AuditEvent`, and later
+`PreferenceSource`, `LanguageSource`, `PermissionSource` with `PermissionCatalogue`,
+`ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, and later
 `TransportRegistry`, `StorageSnapshot` and `OutboxSubscriber` — live in `keel_sdk::system`,
 marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
 authentication, the transports, backup and the outbox consumers plug in; a product module has no
@@ -326,7 +333,7 @@ The storage counterpart of the data plane, additive-only migrations inside a maj
 | Crate | Layer | Purpose |
 |-------|-------|---------|
 | `keel-testkit` | L2 | Test harness for a module in isolation |
-| `keel-dev` | L7 | Developer CLI: scaffolding, descriptors, types, i18n, lints, docs |
+| `keel-dev` | L7 | Developer CLI, `crates/dev`: `types`, `descriptors dump \| diff \| check`, `views share` and `openapi` exist from M2; scaffolding, i18n, lints and docs follow with the milestones that need them |
 | `keel-conformance` | L7 | Contract suite against the running `keel` binary with any set of products enabled |
 | `keel-client` | L4 | Rust client for calling a peer |
 
@@ -359,9 +366,17 @@ a given account; a module's permission defaults must list `reseller` for the res
 the key under the default source ([03-access.md](03-access.md)). `FakeHost` in place of the host
 agent and fixture bundles joined by a bridge arrive with the milestones that need them.
 
-`keel-dev` provides `new-module` and `new-product` (a bundle lib crate), `migrate create`,
-`descriptors dump | check | diff`, `types` (TypeScript from the schemas), `i18n extract | pull |
-missing`, `check` and `docs`. `check` lints prefixes, foreign keys, imports, `.owned()` /
+`keel-dev` depends on `keel-types` alone, which `hack/check-deps.sh` holds. What exists:
+`types --out contracts/schema [--check]` writes the JSON Schema of the wire types, from which
+`pnpm generate` derives the TypeScript of `@globalart/keel/meta`; `descriptors dump --url --out
+[--as LEVEL=LOGIN:PASSWORD]...` writes the projected contract of a running binary per level to
+`contracts/dump/`, `descriptors diff <a> <b>` prints one unified diff per differing file and
+`descriptors check --url --dir` diffs the committed directory against the binary; `views share
+--dump --frontend` prints the custom-views share per product and for the composition and exits
+non-zero above 20 % ([08-frontend.md](08-frontend.md)); `openapi --dump --out [--check]` writes
+`contracts/openapi.json` from the admin dump ([10-contracts.md](10-contracts.md)). What follows:
+`new-module` and `new-product` (a bundle lib crate), `migrate create`, `i18n extract | pull |
+missing` (M3), `check` and `docs`. `check` lints prefixes, foreign keys, imports, `.owned()` /
 `.unowned()` on every function with a key, additivity of migrations, `ldd` cleanliness of the
 binary, that every module crate under `products/` is named by its bundle, and that the facade
 depends on no product crate. `docs` generates the catalogue of functions, permissions, events and
@@ -464,8 +479,15 @@ function attribute ([06-host.md](06-host.md)).
 - OIDC is a login method for corporate installations and the single sign-on path between
   products ([07-ecosystem.md](07-ecosystem.md)).
 - Fine-grained permissions, keys such as `dns.zone.manage` with defaults per level, are stored by
-  `auth` through `PermissionSource` (M2). `su` goes only down the ladder, as a separate session
-  with an `actor`; audit records both sides ([03-access.md](03-access.md)).
+  `auth` through `PermissionSource`: rows of `auth_grant` (principal, account, key, granted),
+  written by `auth.grant.set { principal, key, granted }` under `auth.grant.manage`, listed by
+  `auth.grant.list` at reseller level within the caller's subtree and removed by
+  `auth.grant.delete`; a key nobody registered is refused on the field, a key the caller does not
+  hold with `auth.error.grant_not_held`, a target at or above the caller through the `not_below`
+  rule, and every write bumps the target's `acl_gen` in the same transaction so its descriptors and
+  menu change at once ([03-access.md](03-access.md)). The module's menu nodes are
+  `system/sessions`, `system/tokens`, `system/ip-rules` and `system/grants`. `su` goes only down
+  the ladder, as a separate session with an `actor`; audit records both sides.
 - One-time login keys: `auth.key.issue { principal, ttl <= 300, redirect }` returns a `kok_`
   key and the relative `url` `/login?key=…`, redeemed by a same-origin `POST auth.key.redeem`
   that answers `{ redirect, principal, issuedBy }`; the key dies on first use. The `peers`
@@ -476,7 +498,9 @@ function attribute ([06-host.md](06-host.md)).
   with scope and IP restrictions, `su`, login keys, IP rules, rate limit, session management,
   password policy, lockout. Until TLS arrives in M3 the installation listens on plain HTTP and
   the clients of M1 — the testkit, `hack/prove-binary.sh`, `keel-conformance` — keep and return
-  the `Secure` cookie themselves; a browser is not a client before M2.
+  the `Secure` cookie themselves; a browser accepts such a cookie on plain HTTP from `localhost`
+  and `127.0.0.1` alone, which is where the browser suite and the demo through an SSH port
+  forward run until M3 ([08-frontend.md](08-frontend.md)).
 
 ### settings
 
@@ -485,7 +509,8 @@ function attribute ([06-host.md](06-host.md)).
   the value resolved for the caller's account, read by `settings.get { key }` and written by
   `settings.set { key, value }`, which validates the value against the definition's schema and
   refuses a definition above the caller's level; the shell renders the settings form from those
-  rows and submits it through `settings.set` (M2). A module reads a setting through
+  rows and submits it through `settings.set`, the shell's own value form taking its control from
+  the row's schema ([08-frontend.md](08-frontend.md)). A module reads a setting through
   `call.setting::<T>(key)`, behind the public `SettingsSource` this module provides; a
   composition without the module answers the contributed defaults.
 - `settings_pref` holds per-principal preferences, read and written by `settings.pref.get` and
@@ -498,8 +523,15 @@ function attribute ([06-host.md](06-host.md)).
 - Values inherit from admin to reseller: a key resolves to the nearest value up the account
   path from the caller's account to the root, then to the contributed default; an admin writes
   the root scope, a reseller its own account.
-- White-label by hostname through `ManifestPatch`; the brand goes out in `GET /api/v1/boot`
-  (M2).
+- White-label by hostname through `ManifestSource`: `settings_brand` holds one row per host
+  (`host`, `name`, `logo`, `hue`, `chroma`, `updated_at`, `updated_by`), edited by the
+  admin-level unowned functions `settings.brand.list`, `settings.brand.get`, `settings.brand.set`
+  and `settings.brand.delete` behind the menu node `system/brand`; the host is stored in lower
+  case under the `domain` check, `hue` and `chroma` carry their ranges in the schema, and the logo
+  is refused unless it parses as an SVG document without a script element. The patch of the
+  request's `Host`, without its port, goes out in `GET /api/v1/boot` and `/brand/logo.svg`
+  ([10-contracts.md](10-contracts.md)). The module's menu nodes are `system/settings` and
+  `system/brand`.
 - Everything editable from the UI lives here; `config.yaml` holds only what the process needs to
   start ([09-operations.md](09-operations.md)).
 
@@ -677,6 +709,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     ],
     account_kinds: &["user"],
     i18n: &[("en", include_str!("../i18n/en.json")), ("ru", include_str!("../i18n/ru.json"))],
+    assets: &[Asset { id: "product.dns.logo", content_type: "image/svg+xml", bytes: include_bytes!("../brand/logo.svg") }],
 };
 
 // bin/keel/src/main.rs
@@ -703,6 +736,6 @@ names, and every first-party bundle; each bundle names its own module crates, `k
 included where a product manages the host, so `.module()` never repeats what a manifest says.
 The embedded frontend is the one shell application built in the repository
 ([08-frontend.md](08-frontend.md)); since M1 `main.rs` composes `auth`, `settings` and `audit`
-and the `demo` bundle behind the `demo` feature, and `embed_frontend!` arrives with M2. The
-function descriptor this module produces and the envelope of a call are in
+and the `demo` bundle behind the `demo` feature, and since M2 the shell through
+`embed_frontend!`. The function descriptor this module produces and the envelope of a call are in
 [10-contracts.md](10-contracts.md).
