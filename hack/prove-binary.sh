@@ -655,9 +655,15 @@ check "audit.list as alice answers rows of her account alone" json_is "$site/aud
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
 check "task.list keeps the two finished exports after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 2 and [(row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]] == [("note.export", "done", "4/4")] * 2'
 check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job.list --out json
-check "cron.job.list answers an empty page while no module contributes a job" json_is "$site/cron-jobs.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "cron.job.list answers the poll job of notify alone" json_is "$site/cron-jobs.json" 'doc["ok"] is True and [(row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]] == [("notify.problems.poll", "notify", "* * * * *")]'
 check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json
-check "cron.run.list answers an empty page" json_is "$site/cron-runs.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "cron.run.list answers runs of the poll job alone" json_is "$site/cron-runs.json" 'doc["ok"] is True and all(row["job"] == "notify.problems.poll" and row["outcome"] in ("ok", "running") for row in doc["data"]["data"])'
+check "ctl notify.problem.list --out json" keel_ok "$site/problems.json" ctl notify.problem.list --out json
+check "notify.problem.list answers an empty page" json_is "$site/problems.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "ctl notify.message.list --out json" keel_ok "$site/messages.json" ctl notify.message.list --out json
+check "notify.message.list answers an empty page for the owner" json_is "$site/messages.json" 'doc["ok"] is True and doc["data"]["total"] == 0'
+check "ctl notify.problem.raise is refused on the socket" keel_fails "$site/internal.json" ctl notify.problem.raise key=probe.disk subject=/ severity=warning
+check "notify.problem.raise answers forbidden with internal_only" json_is "$site/internal.json" 'doc["ok"] is False and doc["error"]["code"] == "forbidden" and doc["error"]["key"] == "keel.error.internal_only"'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

@@ -154,8 +154,8 @@ else
 fi
 for product in $products; do
   direct=$(cargo tree -p "$product" -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
-  if [ "$direct" != "keel " ]; then
-    echo "$product depends on more than the facade keel: $direct" >&2
+  if [ "$direct" != "keel " ] && [ "$direct" != "keel keel-system " ]; then
+    echo "$product depends on more than the facade keel and the api modules of keel-system: $direct" >&2
     fail=1
   fi
   dependants=$(cargo tree -i "$product" -e normal --prefix none | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')

@@ -51,6 +51,63 @@ pub struct EventSubject {
     pub account_id: Option<Id>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationFrame {
+    pub id: Id,
+    pub key: String,
+    #[serde(default)]
+    pub params: Value,
+    pub level: NotificationLevel,
+    #[serde(serialize_with = "millis")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+impl NotificationLevel {
+    pub const ALL: [NotificationLevel; 3] = [
+        NotificationLevel::Info,
+        NotificationLevel::Warning,
+        NotificationLevel::Error,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            NotificationLevel::Info => "info",
+            NotificationLevel::Warning => "warning",
+            NotificationLevel::Error => "error",
+        }
+    }
+}
+
+impl std::fmt::Display for NotificationLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for NotificationLevel {
+    type Err = UnknownNotificationLevel;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        NotificationLevel::ALL
+            .into_iter()
+            .find(|level| level.as_str() == text)
+            .ok_or_else(|| UnknownNotificationLevel(text.to_owned()))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("unknown notification level: {0}")]
+pub struct UnknownNotificationLevel(String);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +145,31 @@ mod tests {
     #[test]
     fn unknown_actor_kind_fails_to_deserialise() {
         assert!(serde_json::from_value::<EventActorKind>(json!("robot")).is_err());
+    }
+
+    #[test]
+    fn a_notification_frame_carries_its_level_and_writes_its_time_with_milliseconds() {
+        let frame: NotificationFrame = serde_json::from_value(json!({
+            "id": "01J9EV5K00000000000000000A", "key": "notify.problem.raised",
+            "params": { "key": "note.overdue" }, "level": "warning", "createdAt": "2026-09-12T10:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(frame.level, NotificationLevel::Warning);
+        assert_eq!(
+            serde_json::to_value(&frame).unwrap(),
+            json!({
+                "id": "01J9EV5K00000000000000000A", "key": "notify.problem.raised",
+                "params": { "key": "note.overdue" }, "level": "warning", "createdAt": "2026-09-12T10:00:00.000Z"
+            })
+        );
+        for level in NotificationLevel::ALL {
+            assert_eq!(level.as_str().parse::<NotificationLevel>().unwrap(), level);
+            assert_eq!(level.to_string(), level.as_str());
+            assert_eq!(serde_json::to_value(level).unwrap(), json!(level.as_str()));
+        }
+        assert_eq!(
+            "loud".parse::<NotificationLevel>().unwrap_err().to_string(),
+            "unknown notification level: loud"
+        );
     }
 }

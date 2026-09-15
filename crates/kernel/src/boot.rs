@@ -119,9 +119,12 @@ pub(crate) fn dashboard(registry: &Registry, principal: &Principal) -> Vec<BootW
         .contributions()
         .of::<DashboardWidget>()
         .filter(|widget| {
-            registry
-                .function(widget.func())
-                .is_some_and(|function| projection.admit(function).is_ok())
+            widget
+                .level_value()
+                .is_none_or(|level| principal.level >= level)
+                && registry
+                    .function(widget.func())
+                    .is_some_and(|function| projection.admit(function).is_ok())
         })
         .map(|widget| BootWidget {
             kind: widget.kind(),

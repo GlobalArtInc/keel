@@ -1,0 +1,201 @@
+{
+  "keel": 1,
+  "name": "notify.problem.list",
+  "module": "notify",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "notify.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Problem",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Problem"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "key": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "params": true,
+          "accountId": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "raisedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clearedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "subject",
+          "severity",
+          "params",
+          "source",
+          "count",
+          "open",
+          "raisedAt",
+          "updatedAt"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "warning",
+          "critical"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "notify.problem.list.title",
+    "search": [
+      "key",
+      "subject"
+    ],
+    "columns": [
+      {
+        "key": "key",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "severity",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "critical": "danger",
+          "warning": "warning"
+        },
+        "filter": {
+          "options": [
+            "warning",
+            "critical"
+          ]
+        }
+      },
+      {
+        "key": "subject",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "count",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "open",
+        "type": "boolean",
+        "sortable": true,
+        "filter": {
+          "options": [
+            "true",
+            "false"
+          ]
+        }
+      },
+      {
+        "key": "raisedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "clearedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "accountId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
+      }
+    ],
+    "empty": {
+      "title": "notify.problem.empty"
+    },
+    "invalidate_on": [
+      "notify.problem.*"
+    ]
+  }
+}

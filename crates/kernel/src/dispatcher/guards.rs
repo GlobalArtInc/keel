@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use keel_sdk::runtime::{Db, Ownership, PermissionDef};
 use keel_sdk::system::PermissionCatalogue;
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
-use keel_types::{Access, Id, Level, Mode, Principal};
+use keel_types::{Access, Id, Level, Mode, Principal, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 use serde_json::Value;
 
@@ -32,6 +32,17 @@ pub fn permission(
     } else {
         Err(KeelError::forbidden("keel.error.permission").param("permission", key.as_str()))
     }
+}
+
+pub fn internal_only(function: &str) -> KeelError {
+    KeelError::forbidden("keel.error.internal_only").param("function", function)
+}
+
+pub fn internal(def: &FunctionDef, principal: &Principal) -> Result<(), KeelError> {
+    if def.is_internal() && principal.via != Via::Internal {
+        return Err(internal_only(def.name()));
+    }
+    Ok(())
 }
 
 pub fn scope(function: &str, mode: Mode, principal: &Principal) -> Result<(), KeelError> {
@@ -248,6 +259,28 @@ mod tests {
             assert!(held(&permissions, "dns.zone.unknown", &top));
             assert!(catalogue.holds(&top, "dns.zone.unknown"));
         }
+    }
+
+    #[test]
+    fn an_internal_function_admits_a_principal_arriving_internally_alone() {
+        let def = keel_sdk::function::<Value, Value>("m.e.raise")
+            .kind(keel_types::Kind::Action)
+            .internal()
+            .handler(|call: keel_sdk::Call<Value>| async move { Ok(call.params().clone()) });
+        let mut caller = principal(Level::Owner);
+        for via in [Via::Http, Via::Socket, Via::Su, Via::Plugin("x".into())] {
+            caller.via = via;
+            let error = internal(&def, &caller).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::Forbidden);
+            assert_eq!(error.key(), "keel.error.internal_only");
+            assert_eq!(error.params()["function"], "m.e.raise");
+        }
+        caller.via = Via::Internal;
+        internal(&def, &caller).unwrap();
+        let open = keel_sdk::function::<Value, Value>("m.e.list")
+            .kind(keel_types::Kind::Action)
+            .handler(|call: keel_sdk::Call<Value>| async move { Ok(call.params().clone()) });
+        internal(&open, &principal(Level::Guest)).unwrap();
     }
 
     #[test]

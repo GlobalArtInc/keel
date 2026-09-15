@@ -46,7 +46,10 @@
           "label": "note.list.title",
           "func": "note.list",
           "kind": "list",
-          "icon": "book-open"
+          "icon": "book-open",
+          "badge": {
+            "problem": "note.overdue"
+          }
         },
         {
           "path": "demo/tags",
@@ -113,6 +116,13 @@
           "icon": "timer"
         },
         {
+          "path": "system/problems",
+          "label": "notify.problem.list.title",
+          "func": "notify.problem.list",
+          "kind": "list",
+          "icon": "triangle-alert"
+        },
+        {
           "path": "system/brand",
           "label": "settings.brand.list.title",
           "func": "settings.brand.list",
@@ -150,8 +160,17 @@
       ]
     }
   ],
-  "dashboard": [],
+  "dashboard": [
+    {
+      "kind": "list",
+      "func": "notify.problem.list",
+      "limit": 5
+    }
+  ],
   "views": [],
   "meta": "m-0000000000000000",
-  "problems": null
+  "problems": {
+    "open": 0,
+    "critical": 0
+  }
 }

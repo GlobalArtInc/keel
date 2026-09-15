@@ -72,6 +72,7 @@ struct Definition {
     limits: Limits,
     class: String,
     resumable: bool,
+    internal: bool,
 }
 
 pub struct FunctionBuilder<P, R> {
@@ -96,6 +97,7 @@ pub fn function<P, R>(name: &str) -> FunctionBuilder<P, R> {
             limits: Limits::default(),
             class: DEFAULT_CLASS.to_owned(),
             resumable: false,
+            internal: false,
         },
         types: PhantomData,
     }
@@ -198,6 +200,11 @@ where
         self
     }
 
+    pub fn internal(mut self) -> Self {
+        self.def.internal = true;
+        self
+    }
+
     pub fn handler<F, Fut>(self, handler: F) -> FunctionDef
     where
         F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
@@ -239,6 +246,7 @@ where
             limits: def.limits,
             class: def.class,
             resumable: def.resumable,
+            internal: def.internal,
             list,
             handler,
         }
@@ -287,6 +295,7 @@ pub struct FunctionDef {
     limits: Limits,
     class: String,
     resumable: bool,
+    internal: bool,
     list: Option<Arc<ListSpec>>,
     handler: ErasedHandler,
 }
@@ -349,6 +358,10 @@ impl FunctionDef {
 
     pub fn is_resumable(&self) -> bool {
         self.resumable
+    }
+
+    pub fn is_internal(&self) -> bool {
+        self.internal
     }
 
     pub fn handler(&self) -> &ErasedHandler {
@@ -416,6 +429,7 @@ impl fmt::Debug for FunctionDef {
             .field("limits", &self.limits)
             .field("class", &self.class)
             .field("resumable", &self.resumable)
+            .field("internal", &self.internal)
             .finish()
     }
 }
@@ -530,6 +544,7 @@ mod tests {
             .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
         assert_eq!(plain.class(), DEFAULT_CLASS);
         assert!(!plain.is_resumable());
+        assert!(!plain.is_internal());
         let heavy = function::<Ping, Pong>("m.e.export")
             .kind(Kind::Action)
             .class("export")
@@ -541,6 +556,14 @@ mod tests {
         assert!(descriptor.get("class").is_none());
         assert!(descriptor.get("resumable").is_none());
         assert!(format!("{heavy:?}").contains("class: \"export\", resumable: true"));
+        let hidden = function::<Ping, Pong>("m.e.raise")
+            .kind(Kind::Action)
+            .internal()
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert!(hidden.is_internal());
+        let descriptor = serde_json::to_value(hidden.descriptor().unwrap()).unwrap();
+        assert!(descriptor.get("internal").is_none());
+        assert!(format!("{hidden:?}").contains("internal: true"));
     }
 
     #[test]

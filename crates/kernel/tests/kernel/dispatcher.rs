@@ -2056,3 +2056,265 @@ async fn a_published_frame_reaches_every_live_events_listener_and_is_dropped_wit
     assert_eq!(bus.listeners(), 0);
     bench.finish().await;
 }
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Labelled {
+    label: String,
+}
+
+struct LevelAuthenticator;
+
+#[async_trait]
+impl keel_sdk::system::Authenticator for LevelAuthenticator {
+    async fn authenticate(
+        &self,
+        credential: &keel_sdk::system::Credential,
+        _: &Client,
+        _: &keel_sdk::Db,
+    ) -> Result<Option<keel_sdk::system::Authenticated>> {
+        let keel_sdk::system::Credential::Bearer(secret) = credential else {
+            return Ok(None);
+        };
+        let Some((level, account)) = secret.expose().split_once(':') else {
+            return Ok(None);
+        };
+        let level: Level = level
+            .parse()
+            .map_err(|_| KeelError::internal("hidden.error.level"))?;
+        Ok(Some(keel_sdk::system::Authenticated {
+            principal: principal(level, account),
+            session: None,
+        }))
+    }
+}
+
+static HIDDEN: ModuleDef = ModuleDef {
+    id: "hidden",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: hidden_init,
+};
+
+const HIDDEN_EN: &str = r#"{ "hidden": { "item": { "list": { "title": "Hidden items" }, "raise": { "title": "Raise" }, "column": { "id": "Id" } } }, "menu": { "hidden": "Hidden" } }"#;
+
+fn hidden_init(r: &mut Registrar) -> Result<()> {
+    r.function(
+        function::<Labelled, Nothing>("hidden.item.raise")
+            .kind(Kind::Action)
+            .level(Level::Admin)
+            .unowned()
+            .internal()
+            .handler(|call: Call<Labelled>| async move {
+                call.emit(
+                    "hidden.item.raised",
+                    &json!({ "label": call.params().label }),
+                )?;
+                Ok(Nothing {})
+            }),
+    )
+    .function(
+        function::<ListQuery, Page<Pick>>("hidden.item.list")
+            .kind(Kind::List)
+            .level(Level::User)
+            .unowned()
+            .ui(List::new("hidden.item.list.title").column(Column::new("id", ColumnType::Text)))
+            .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
+    )
+    .menu(
+        MenuNode::new("system/hidden-raise", "hidden.item.raise").label("hidden.item.raise.title"),
+    )
+    .menu(MenuNode::new("system/hidden-items", "hidden.item.list"))
+    .i18n("en", HIDDEN_EN)
+    .contribute::<Arc<dyn keel_sdk::system::Authenticator>>(Arc::new(LevelAuthenticator));
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_internal_function_admits_the_caller_alone_and_is_absent_from_the_index() {
+    use axum::body::{Body, to_bytes};
+    use axum::http::Request;
+    use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+    use keel_kernel::socket::{Client as SocketClient, Socket, owner};
+    use keel_kernel::{Http, HttpOptions, Readiness};
+    use keel_types::Envelope;
+    use tower::ServiceExt;
+
+    let (database, storage, kernel) = booted(Composition::new().module(&HIDDEN)).await;
+    let dispatcher = Arc::new(
+        Dispatcher::new(kernel.registry().clone(), storage.db().clone())
+            .expect("every schema compiles"),
+    );
+    assert!(dispatcher.fill_caller());
+    let readiness = Readiness::new();
+    readiness.migrated();
+    let http = Http::new(storage.db().clone(), readiness, HttpOptions::default());
+    http.attach(dispatcher.clone())
+        .expect("the kernel attaches once");
+    let router = http.router();
+    let token = format!("owner:{ROOT}");
+    let get = |path: &str| {
+        let request = Request::get(path)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("a request");
+        let router = router.clone();
+        async move {
+            let response = router.oneshot(request).await.expect("the router answers");
+            let status = response.status().as_u16();
+            let bytes = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("the body is read");
+            let body: Value = serde_json::from_slice(&bytes).expect("the body is JSON");
+            (status, body)
+        }
+    };
+    let post = Request::post("/api/v1/call/hidden.item.raise")
+        .header(AUTHORIZATION, format!("Bearer {token}"))
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"label":"over-http"}"#))
+        .expect("a request");
+    let response = router
+        .clone()
+        .oneshot(post)
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status().as_u16(), 403);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the body is read");
+    let body: Value = serde_json::from_slice(&bytes).expect("the body is JSON");
+    assert_eq!(body["ok"], json!(false));
+    assert_eq!(body["error"]["key"], json!("keel.error.internal_only"));
+    assert_eq!(
+        body["error"]["params"]["function"],
+        json!("hidden.item.raise")
+    );
+
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let serving = Socket::new(dispatcher.clone())
+        .start(&dir.path().join("core.sock"))
+        .await
+        .expect("the socket starts");
+    let mut client = SocketClient::connect(serving.path())
+        .await
+        .expect("the client connects");
+    let over_socket = client
+        .call(
+            "hidden.item.raise",
+            json!({ "label": "over-socket" }),
+            CallOptions::default(),
+        )
+        .await
+        .expect("the socket answers");
+    let Envelope::Err { error } = over_socket else {
+        panic!("the socket admitted an internal function: {over_socket:?}");
+    };
+    assert_eq!(error.code, ErrorCode::Forbidden);
+    assert_eq!(error.key, "keel.error.internal_only");
+    let described = client
+        .describe("hidden.item.raise")
+        .await
+        .expect("the socket answers");
+    assert!(
+        matches!(described, Envelope::Err { ref error } if error.key == "keel.error.internal_only"),
+        "{described:?}"
+    );
+    serving.stop().await.expect("the socket stops");
+
+    let direct = dispatcher
+        .call(
+            owner(),
+            "hidden.item.raise",
+            json!({ "label": "owner-over-socket" }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(code(&direct), ErrorCode::Forbidden);
+    let mut su = principal(Level::Owner, ROOT);
+    su.via = Via::Su;
+    let delegated = dispatcher
+        .call(
+            su,
+            "hidden.item.raise",
+            json!({ "label": "su" }),
+            CallOptions::default(),
+        )
+        .await;
+    assert_eq!(code(&delegated), ErrorCode::Forbidden);
+    assert_eq!(
+        database
+            .count(
+                &storage,
+                "SELECT count(*) FROM keel_outbox WHERE type = 'hidden.item.raised'"
+            )
+            .await,
+        0
+    );
+
+    let caller = kernel
+        .registry()
+        .services()
+        .get::<dyn Caller>()
+        .expect("the kernel provides the caller");
+    caller
+        .call(
+            principal(Level::Admin, ROOT),
+            "hidden.item.raise",
+            json!({ "label": "through-the-caller" }),
+            CallerOptions::default(),
+        )
+        .await
+        .expect("the caller reaches the internal function");
+    assert_eq!(
+        database
+            .count(
+                &storage,
+                "SELECT count(*) FROM keel_outbox WHERE type = 'hidden.item.raised'"
+            )
+            .await,
+        1
+    );
+    let below = caller
+        .call(
+            principal(Level::User, CUSTOMER),
+            "hidden.item.raise",
+            json!({ "label": "user" }),
+            CallerOptions::default(),
+        )
+        .await
+        .expect_err("the level guard still applies to an internal call");
+    assert_eq!(below.code(), ErrorCode::Forbidden);
+    assert_eq!(below.key(), "keel.error.level");
+
+    let (status, index) = get("/api/v1/functions").await;
+    assert_eq!(status, 200, "{index}");
+    let names: Vec<&str> = index
+        .as_array()
+        .expect("descriptors")
+        .iter()
+        .filter_map(|descriptor| descriptor["name"].as_str())
+        .filter(|name| name.starts_with("hidden."))
+        .collect();
+    assert_eq!(names, ["hidden.item.list"]);
+    let (status, one) = get("/api/v1/functions/hidden.item.raise").await;
+    assert_eq!(status, 403, "{one}");
+    assert_eq!(one["error"]["key"], json!("keel.error.internal_only"));
+    let (status, boot) = get("/api/v1/boot").await;
+    assert_eq!(status, 200, "{boot}");
+    let paths: Vec<&str> = boot["menu"]
+        .as_array()
+        .expect("groups")
+        .iter()
+        .flat_map(|group| group["items"].as_array().into_iter().flatten())
+        .filter_map(|item| item["path"].as_str())
+        .filter(|path| path.starts_with("system/hidden"))
+        .collect();
+    assert_eq!(paths, ["system/hidden-items"]);
+
+    drop(router);
+    kernel.stop().await.expect("the kernel stops");
+    storage.close().await.expect("the pool closes");
+    database.finish().await;
+}

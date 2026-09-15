@@ -263,6 +263,7 @@
       "owned_composite_key": "The function {function} is owned through a composite key",
       "token_scope": "The token is not scoped to {function}",
       "token_read_only": "The token is read-only and {function} writes",
+      "internal_only": "The function {function} is internal; it runs through the kernel alone",
       "cross_site": "The request comes from another site",
       "unauthenticated_route": "The route serves calls without the authentication middleware",
       "secret_seal": "The value could not be sealed under the data key",

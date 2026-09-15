@@ -1,0 +1,60 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: notify.message.mark
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "notify.message.mark",
+  "module": "notify",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "notify.manage"
+  },
+  "key": "ids",
+  "params": {
+    "title": "Mark",
+    "type": "object",
+    "properties": {
+      "ids": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Id"
+        },
+        "minItems": 1
+      },
+      "read": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": [
+      "ids"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Marked",
+    "type": "object",
+    "properties": {
+      "marked": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "marked"
+    ]
+  }
+}

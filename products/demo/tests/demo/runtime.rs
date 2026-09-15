@@ -86,6 +86,8 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     let site = site().await;
     let runtime = Runtime::new()
         .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
         .product(&MANIFEST);
     assert_eq!(
         runtime
@@ -96,8 +98,8 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     );
     let migrated = runtime.migrate(&site.config).await.expect("migrate runs");
     let migrated_ids: Vec<&str> = migrated.modules.iter().map(|(id, _)| id.as_str()).collect();
-    assert_eq!(migrated_ids, ["keel", "task", "note"]);
-    assert_eq!(migrated.modules[2].1.len(), 2, "{migrated:?}");
+    assert_eq!(migrated_ids, ["keel", "cron", "notify", "task", "note"]);
+    assert_eq!(migrated.modules[4].1.len(), 2, "{migrated:?}");
     assert_eq!(site.tables().await, ["note_item"]);
     assert_eq!(
         site.database
@@ -111,7 +113,10 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
         .await
         .expect("the runtime starts");
     assert_eq!(running.products(), ["demo"]);
-    assert_eq!(running.modules(), ["keel", "task", "note"]);
+    assert_eq!(
+        running.modules(),
+        ["keel", "cron", "notify", "task", "note"]
+    );
     let socket = TestSocket::at(running.socket());
     let listed = socket.call("note.list", json!({})).await;
     let Envelope::Ok { data, meta } = listed else {
@@ -182,6 +187,8 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
     let site = site().await;
     let runtime = Runtime::new()
         .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
         .product(&MANIFEST);
     let states = runtime
         .list_products(&site.config)
@@ -191,9 +198,11 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
     assert_eq!(states[0].id, "demo");
     assert!(!states[0].enabled);
     let migrated = runtime.migrate(&site.config).await.expect("migrate runs");
-    assert_eq!(migrated.modules.len(), 2);
+    assert_eq!(migrated.modules.len(), 4);
     assert_eq!(migrated.modules[0].0, "keel");
-    assert_eq!(migrated.modules[1].0, "task");
+    assert_eq!(migrated.modules[1].0, "cron");
+    assert_eq!(migrated.modules[2].0, "notify");
+    assert_eq!(migrated.modules[3].0, "task");
     assert!(site.tables().await.is_empty());
 
     let running = runtime
@@ -201,7 +210,7 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
         .await
         .expect("the runtime starts without the bundle");
     assert_eq!(running.products(), &[] as &[String]);
-    assert_eq!(running.modules(), ["keel", "task"]);
+    assert_eq!(running.modules(), ["keel", "cron", "notify", "task"]);
     let socket = TestSocket::at(running.socket());
     for function in FUNCTIONS {
         let answer = socket.call(function, json!({})).await;
@@ -221,7 +230,7 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
         site.database
             .rows("SELECT id FROM keel_module ORDER BY id")
             .await,
-        ["keel", "task"]
+        ["cron", "keel", "notify", "task"]
     );
     site.finish().await;
 }

@@ -220,6 +220,7 @@ fn rail_init(r: &mut Registrar) -> Result<()> {
             .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
     )
     .contribute(DashboardWidget::list("rail.problem.list", 5))
+    .contribute(DashboardWidget::new(WidgetKind::Stat, "rail.problem.list").level(Level::Owner))
     .provide::<dyn ProblemCounter>(Arc::new(CountingDouble))
     .i18n(
         "en",
@@ -950,7 +951,9 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
     assert!(guest.dashboard.is_empty());
     assert_eq!(guest.problems, Some(BootProblems::default()));
     let over_socket = bench.over_socket().await;
-    assert_eq!(over_socket.dashboard, admin.dashboard);
+    assert_eq!(over_socket.dashboard.len(), 2);
+    assert_eq!(over_socket.dashboard[0], admin.dashboard[0]);
+    assert_eq!(over_socket.dashboard[1].kind, WidgetKind::Stat);
     assert_eq!(over_socket.problems, admin.problems);
     bench.finish().await;
     let bare = start(Composition::new().module(&GATE)).await;

@@ -33,6 +33,9 @@ impl<'a> Projection<'a> {
     }
 
     pub fn admit(&self, function: &Function) -> Result<(), KeelError> {
+        if function.def().is_internal() {
+            return Err(guards::internal_only(function.name()));
+        }
         self.admits(&function.descriptor().access)
     }
 

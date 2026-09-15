@@ -29,5 +29,8 @@
   "dashboard": [],
   "views": [],
   "meta": "m-0000000000000000",
-  "problems": null
+  "problems": {
+    "open": 0,
+    "critical": 0
+  }
 }

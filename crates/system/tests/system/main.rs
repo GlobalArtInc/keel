@@ -26,6 +26,10 @@ mod auth_totp;
 mod cron;
 #[cfg(feature = "cron")]
 mod cron_alone;
+#[cfg(feature = "notify")]
+mod notify;
+#[cfg(feature = "notify")]
+mod notify_alone;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings;
 #[cfg(feature = "settings")]

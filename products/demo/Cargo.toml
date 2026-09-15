@@ -10,8 +10,9 @@ repository.workspace = true
 
 [dependencies]
 keel = { workspace = true }
+keel-system = { workspace = true, features = ["notify"] }
 
 [dev-dependencies]
-keel-system = { workspace = true }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify"] }
 keel-testkit = { workspace = true }
 tempfile = { workspace = true }

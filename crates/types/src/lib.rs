@@ -22,7 +22,10 @@ pub use descriptor::{
     X_KEEL, X_UI,
 };
 pub use envelope::{CallError, Envelope, ErrorCode, FieldError, Meta, MetaActor, MetaPrincipal};
-pub use event::{Event, EventActor, EventActorKind, EventSubject};
+pub use event::{
+    Event, EventActor, EventActorKind, EventSubject, NotificationFrame, NotificationLevel,
+    UnknownNotificationLevel,
+};
 pub use expr::{Context, Expr};
 pub use id::Id;
 pub use level::Level;

@@ -46,7 +46,10 @@
           "label": "note.list.title",
           "func": "note.list",
           "kind": "list",
-          "icon": "book-open"
+          "icon": "book-open",
+          "badge": {
+            "problem": "note.overdue"
+          }
         },
         {
           "path": "demo/tags",
@@ -92,6 +95,13 @@
           "icon": "list-checks"
         },
         {
+          "path": "system/problems",
+          "label": "notify.problem.list.title",
+          "func": "notify.problem.list",
+          "kind": "list",
+          "icon": "triangle-alert"
+        },
+        {
           "path": "system/audit",
           "label": "audit.list.title",
           "func": "audit.list",
@@ -111,5 +121,8 @@
   "dashboard": [],
   "views": [],
   "meta": "m-0000000000000000",
-  "problems": null
+  "problems": {
+    "open": 0,
+    "critical": 0
+  }
 }

@@ -7,9 +7,10 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings", "audit", "tasks", "cron"]
+default = ["auth", "settings", "audit", "tasks", "cron", "notify"]
 audit = ["dep:tokio", "dep:tracing"]
 cron = ["dep:croner", "dep:tokio", "dep:tracing"]
+notify = ["cron", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
 settings = ["dep:jsonschema", "dep:roxmltree"]
 auth = [

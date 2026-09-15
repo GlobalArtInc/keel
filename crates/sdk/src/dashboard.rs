@@ -1,10 +1,11 @@
-use keel_types::WidgetKind;
+use keel_types::{Level, WidgetKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DashboardWidget {
     kind: WidgetKind,
     func: String,
     limit: Option<u32>,
+    level: Option<Level>,
 }
 
 impl DashboardWidget {
@@ -13,6 +14,7 @@ impl DashboardWidget {
             kind,
             func: func.to_owned(),
             limit: None,
+            level: None,
         }
     }
 
@@ -22,6 +24,11 @@ impl DashboardWidget {
 
     pub fn limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
+        self
+    }
+
+    pub fn level(mut self, level: Level) -> Self {
+        self.level = Some(level);
         self
     }
 
@@ -35,6 +42,10 @@ impl DashboardWidget {
 
     pub fn limit_value(&self) -> Option<u32> {
         self.limit
+    }
+
+    pub fn level_value(&self) -> Option<Level> {
+        self.level
     }
 
     pub fn module(&self) -> &str {
@@ -54,7 +65,14 @@ mod tests {
         assert_eq!(bare.kind(), WidgetKind::Stat);
         assert_eq!(bare.func(), "dns.widget.zones");
         assert_eq!(bare.limit_value(), None);
+        assert_eq!(bare.level_value(), None);
         assert_eq!(bare.module(), "dns");
+        assert_eq!(
+            DashboardWidget::list("notify.problem.list", 5)
+                .level(Level::Admin)
+                .level_value(),
+            Some(Level::Admin)
+        );
         let listed = DashboardWidget::list("notify.problem.list", 5);
         assert_eq!(listed.kind(), WidgetKind::List);
         assert_eq!(listed.limit_value(), Some(5));

@@ -103,7 +103,10 @@ async fn counts(harness: &Harness) -> (String, String) {
 async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_account() {
     let harness = crate::demo().boot().await;
     assert_eq!(harness.registry().product_ids(), ["demo"]);
-    assert_eq!(harness.modules(), ["keel", "task", "note", "testkit"]);
+    assert_eq!(
+        harness.modules(),
+        ["keel", "cron", "notify", "task", "note", "testkit"]
+    );
 
     let saved = harness
         .call(

@@ -1594,6 +1594,41 @@
         "write"
       ]
     },
+    "NotificationFrame": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "key": {
+          "type": "string"
+        },
+        "params": {
+          "default": null
+        },
+        "level": {
+          "$ref": "#/$defs/NotificationLevel"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "key",
+        "level",
+        "createdAt"
+      ]
+    },
+    "NotificationLevel": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "error"
+      ]
+    },
     "OptionsQuery": {
       "type": "object",
       "properties": {

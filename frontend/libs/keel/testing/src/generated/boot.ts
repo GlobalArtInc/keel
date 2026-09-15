@@ -89,6 +89,7 @@ export const BOOT_ONE: Boot = {
           func: 'note.list',
           kind: 'list',
           icon: 'book-open',
+          badge: { problem: 'note.overdue' },
         },
         {
           path: 'demo/tags',
@@ -155,6 +156,13 @@ export const BOOT_ONE: Boot = {
           icon: 'timer',
         },
         {
+          path: 'system/problems',
+          label: 'notify.problem.list.title',
+          func: 'notify.problem.list',
+          kind: 'list',
+          icon: 'triangle-alert',
+        },
+        {
           path: 'system/brand',
           label: 'settings.brand.list.title',
           func: 'settings.brand.list',
@@ -192,10 +200,10 @@ export const BOOT_ONE: Boot = {
       ],
     },
   ],
-  dashboard: [],
+  dashboard: [{ kind: 'list', func: 'notify.problem.list', limit: 5 }],
   views: [],
   meta: 'm-0000000000000000',
-  problems: null,
+  problems: { open: 0, critical: 0 },
 };
 
 export const BOOT_TWO: Boot = {

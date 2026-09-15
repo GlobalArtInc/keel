@@ -1,0 +1,35 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: notify.message.clear
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "notify.message.clear",
+  "module": "notify",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "notify.manage"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Deleted",
+    "type": "object",
+    "properties": {
+      "deleted": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "deleted"
+    ]
+  }
+}

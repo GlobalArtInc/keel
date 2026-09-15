@@ -23,7 +23,9 @@ async fn note_edit_records_the_id_as_subject_and_the_masked_result_as_after_whil
         .await;
     assert_eq!(
         harness.modules(),
-        ["keel", "audit", "auth", "task", "note", "testkit"]
+        [
+            "keel", "audit", "auth", "cron", "notify", "task", "note", "testkit"
+        ]
     );
     let created = harness
         .call(

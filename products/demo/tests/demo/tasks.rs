@@ -156,7 +156,10 @@ async fn steps(harness: &Harness, id: Id, with_checkpoint: bool) -> u64 {
 async fn note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_checkpoint_after_each()
 {
     let harness = crate::demo().boot().await;
-    assert_eq!(harness.modules(), ["keel", "task", "note", "testkit"]);
+    assert_eq!(
+        harness.modules(),
+        ["keel", "cron", "notify", "task", "note", "testkit"]
+    );
     let mut titles = vec!["alpha".to_owned(), "beta".to_owned(), "gamma".to_owned()];
     for title in &titles {
         create(&harness, Who::A1, title).await;

@@ -3,6 +3,7 @@ mod functions;
 mod hooks;
 mod import;
 mod item;
+mod problems;
 mod tags;
 
 use keel::prelude::*;
@@ -27,6 +28,7 @@ pub const FUNCTIONS: [&str; 9] = [
 pub use export::{
     CLASS as EXPORT_CLASS, CSV_HEADER as EXPORT_CSV_HEADER, LOG_PREFIX as EXPORT_LOG_PREFIX,
 };
+pub use problems::{OVERDUE as OVERDUE_PROBLEM, overdue};
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations").table("keel_migration_note");
@@ -35,7 +37,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "note",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &["task"],
+    requires: &["task", "notify"],
     migrations: Some(&MIGRATIONS),
     init,
 };
@@ -115,8 +117,10 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new("demo/notes", "note.list")
                 .icon("book-open")
-                .order(10),
+                .order(10)
+                .badge(OVERDUE_PROBLEM),
         )
+        .contribute(problems::source())
         .menu(
             MenuNode::new("demo/tags", "note.tag.list")
                 .icon("tag")
@@ -185,6 +189,13 @@ mod tests {
         assert_eq!(registrations.menu.len(), 2);
         assert_eq!(registrations.menu[0].path(), "demo/notes");
         assert_eq!(registrations.menu[0].func(), "note.list");
+        assert_eq!(registrations.menu[0].badge_problem(), Some(OVERDUE_PROBLEM));
+        let sources: Vec<&str> = registrations
+            .contributions
+            .of::<keel_system::notify::api::ProblemSource>()
+            .map(|source| source.id())
+            .collect();
+        assert_eq!(sources, [OVERDUE_PROBLEM]);
         assert_eq!(registrations.menu[1].path(), "demo/tags");
         assert_eq!(registrations.menu[1].func(), "note.tag.list");
         let languages: Vec<&str> = registrations
@@ -204,7 +215,7 @@ mod tests {
             delete.limits().batch_threshold,
             Some(DELETE_BATCH_THRESHOLD)
         );
-        assert_eq!(MODULE.requires, ["task"]);
+        assert_eq!(MODULE.requires, ["task", "notify"]);
         assert_eq!(MODULE.sdk, VERSION);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),

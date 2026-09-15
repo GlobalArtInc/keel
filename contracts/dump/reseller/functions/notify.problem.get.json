@@ -1,0 +1,114 @@
+{
+  "keel": 1,
+  "name": "notify.problem.get",
+  "module": "notify",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "notify.read"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Problem",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "key": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string"
+      },
+      "severity": {
+        "$ref": "#/$defs/Severity"
+      },
+      "params": true,
+      "accountId": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "source": {
+        "type": "string"
+      },
+      "count": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "open": {
+        "type": "boolean"
+      },
+      "raisedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "clearedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "key",
+      "subject",
+      "severity",
+      "params",
+      "source",
+      "count",
+      "open",
+      "raisedAt",
+      "updatedAt"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "warning",
+          "critical"
+        ]
+      }
+    }
+  }
+}

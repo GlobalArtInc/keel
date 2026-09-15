@@ -4,6 +4,8 @@ pub mod audit;
 pub mod auth;
 #[cfg(feature = "cron")]
 pub mod cron;
+#[cfg(feature = "notify")]
+pub mod notify;
 #[cfg(feature = "settings")]
 pub mod settings;
 #[cfg(feature = "tasks")]

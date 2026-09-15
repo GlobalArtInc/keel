@@ -206,11 +206,13 @@ jobs:
           - audit
           - tasks
           - cron
-          - settings,audit,tasks,cron
-          - auth,audit,tasks,cron
-          - auth,settings,tasks,cron
-          - auth,settings,audit,cron
+          - notify
+          - settings,audit,tasks,cron,notify
+          - auth,audit,tasks,cron,notify
+          - auth,settings,tasks,cron,notify
+          - auth,settings,audit,cron,notify
           - auth,settings,audit,tasks
+          - auth,settings,audit,tasks,cron
 
     services:
       postgres:

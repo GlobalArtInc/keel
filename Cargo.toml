@@ -13,7 +13,7 @@ keel = { path = "crates/keel" }
 keel-demo = { path = "products/demo" }
 keel-kernel = { path = "crates/kernel" }
 keel-sdk = { path = "crates/sdk" }
-keel-system = { path = "crates/system" }
+keel-system = { path = "crates/system", default-features = false }
 keel-testkit = { path = "crates/testkit" }
 keel-types = { path = "crates/types" }
 

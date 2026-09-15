@@ -597,6 +597,7 @@ impl Inner {
     ) -> Result<(), KeelError> {
         let function = target.function;
         let access = &function.descriptor().access;
+        guards::internal(function.def(), handle.principal())?;
         guards::level(access, handle.principal())?;
         guards::permission(&self.registry, access, handle.principal())?;
         if entered {
