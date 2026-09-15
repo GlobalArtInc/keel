@@ -446,7 +446,7 @@ check "keel.principal.create answers ok with an id" json_is "$site/principal.jso
 principal_id=$(json_get "$site/principal.json" 'doc["data"]["id"]')
 check "ctl auth.password.set for alice" keel_ok "$site/password.json" ctl auth.password.set "principal=$principal_id" password=correct-horse
 check "ctl settings.list --out json" keel_ok "$site/settings.json" ctl settings.list --out json
-check "settings.list answers the six auth definitions with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None)}'
+check "settings.list answers the six auth definitions and cron.overrides with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None), "cron.overrides": ({}, {}, None)}'
 check "ctl settings.set auth.password.min_length=16" keel_ok "$site/setting.json" ctl settings.set key=auth.password.min_length value=16
 check "settings.set answers the root value" json_is "$site/setting.json" 'doc["ok"] is True and doc["data"]["value"] == 16 and doc["data"]["scope"] == "00000000000000000000000000"'
 check "ctl auth.password.set with twelve characters is refused" keel_fails "$site/password-short.json" ctl auth.password.set "principal=$principal_id" password=twelve-chars
@@ -654,6 +654,10 @@ check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-ali
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
 check "task.list keeps the two finished exports after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 2 and [(row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]] == [("note.export", "done", "4/4")] * 2'
+check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job.list --out json
+check "cron.job.list answers an empty page while no module contributes a job" json_is "$site/cron-jobs.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
+check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json
+check "cron.run.list answers an empty page" json_is "$site/cron-runs.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

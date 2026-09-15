@@ -148,6 +148,13 @@ export const BOOT_ONE: Boot = {
           icon: 'list-checks',
         },
         {
+          path: 'system/cron',
+          label: 'cron.job.list.title',
+          func: 'cron.job.list',
+          kind: 'list',
+          icon: 'timer',
+        },
+        {
           path: 'system/brand',
           label: 'settings.brand.list.title',
           func: 'settings.brand.list',

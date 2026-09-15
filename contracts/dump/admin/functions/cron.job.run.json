@@ -1,0 +1,54 @@
+{
+  "keel": 1,
+  "name": "cron.job.run",
+  "module": "cron",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "required": [
+      "id"
+    ]
+  },
+  "result": {
+    "title": "Started",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "run": {
+        "$ref": "#/$defs/Id"
+      },
+      "scheduledAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "run",
+      "scheduledAt"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

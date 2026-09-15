@@ -7,8 +7,9 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings", "audit", "tasks"]
+default = ["auth", "settings", "audit", "tasks", "cron"]
 audit = ["dep:tokio", "dep:tracing"]
+cron = ["dep:croner", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
 settings = ["dep:jsonschema", "dep:roxmltree"]
 auth = [
@@ -26,6 +27,7 @@ auth = [
 [dependencies]
 argon2 = { workspace = true, optional = true }
 base32 = { workspace = true, optional = true }
+croner = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 ipnet = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }

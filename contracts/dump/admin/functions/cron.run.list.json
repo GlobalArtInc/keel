@@ -1,0 +1,156 @@
+{
+  "keel": 1,
+  "name": "cron.run.list",
+  "module": "cron",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_RunRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RunRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "RunRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "job": {
+            "type": "string"
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "outcome": {
+            "$ref": "#/$defs/Outcome"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "job",
+          "scheduledAt",
+          "startedAt",
+          "outcome"
+        ]
+      },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "running",
+          "ok",
+          "failed",
+          "skipped",
+          "interrupted"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "cron.run.list.title",
+    "search": [
+      "job"
+    ],
+    "columns": [
+      {
+        "key": "job",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "scheduledAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "startedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "finishedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "outcome",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "failed": "danger",
+          "interrupted": "warning",
+          "ok": "success",
+          "running": "info",
+          "skipped": "warning"
+        },
+        "filter": {
+          "options": [
+            "running",
+            "ok",
+            "failed",
+            "skipped",
+            "interrupted"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "empty": {
+      "title": "cron.run.empty"
+    },
+    "invalidate_on": [
+      "cron.*"
+    ]
+  }
+}

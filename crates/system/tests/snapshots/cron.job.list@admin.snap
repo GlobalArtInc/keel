@@ -1,0 +1,186 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: cron.job.list
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "cron.job.list",
+  "module": "cron",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_JobRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/JobRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "JobRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "effective": {
+            "type": "string"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastOutcome": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "module",
+          "schedule",
+          "effective"
+        ]
+      },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "running",
+          "ok",
+          "failed",
+          "skipped",
+          "interrupted"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "cron.job.list.title",
+    "search": [
+      "id",
+      "module"
+    ],
+    "columns": [
+      {
+        "key": "id",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "module",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "schedule",
+        "type": "text"
+      },
+      {
+        "key": "effective",
+        "type": "text"
+      },
+      {
+        "key": "lastRunAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "lastOutcome",
+        "type": "status",
+        "map": {
+          "failed": "danger",
+          "interrupted": "warning",
+          "ok": "success",
+          "running": "info",
+          "skipped": "warning"
+        },
+        "filter": {
+          "options": [
+            "running",
+            "ok",
+            "failed",
+            "skipped",
+            "interrupted"
+          ]
+        }
+      },
+      {
+        "key": "nextRunAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "run",
+        "role": "button",
+        "function": "cron.job.run",
+        "icon": "play",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "run"
+    ],
+    "empty": {
+      "title": "cron.job.empty"
+    },
+    "invalidate_on": [
+      "cron.*"
+    ]
+  }
+}
