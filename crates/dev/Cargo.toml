@@ -1,6 +1,6 @@
 [package]
 name = "keel-dev"
-description = "The developer CLI: the JSON Schema of the wire contract, the per-level descriptor dump of a started binary and the custom-views share, typed with keel-types alone"
+description = "The developer CLI: the JSON Schema of the wire contract, the per-level descriptor dump of a started binary, the OpenAPI description written from it and the custom-views share, typed with keel-types alone"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

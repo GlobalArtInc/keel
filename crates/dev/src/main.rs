@@ -1,4 +1,5 @@
 mod descriptors;
+mod openapi;
 mod types;
 mod views;
 
@@ -41,6 +42,17 @@ enum Command {
         about = "The share of custom views among the functions of each product and of the composition"
     )]
     Views(Views),
+    #[command(
+        about = "Writes the OpenAPI description of the admin dump: one POST /api/v1/call/<func> per function"
+    )]
+    Openapi {
+        #[arg(long)]
+        dump: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -92,6 +104,8 @@ enum Error {
     Descriptors(#[from] descriptors::Error),
     #[error(transparent)]
     Views(#[from] views::Error),
+    #[error(transparent)]
+    Openapi(#[from] openapi::Error),
 }
 
 async fn run(command: Command) -> Result<bool, Error> {
@@ -112,6 +126,11 @@ async fn run(command: Command) -> Result<bool, Error> {
             let shares = views::share(&dump, &frontend)?;
             print!("{shares}");
             Ok(shares.green())
+        }
+        Command::Openapi { dump, out, check } => {
+            let outcome = openapi::run(&dump, &out, check)?;
+            println!("{outcome}");
+            Ok(outcome.current())
         }
     }
 }

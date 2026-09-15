@@ -7,6 +7,7 @@ keel=${1:-}
 dev=${2:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
 dump=contracts/dump
+openapi=contracts/openapi.json
 frontend=frontend
 database=""
 site=""
@@ -20,7 +21,7 @@ usage() {
   echo "usage: hack/descriptors.sh [path/to/keel] [path/to/keel-dev]" >&2
   echo "  KEEL_TEST_DATABASE_URL must point at a Postgres superuser connection;" >&2
   echo "  a binary that is not given is built with cargo build;" >&2
-  echo "  KEEL_UPDATE_DUMP=1 rewrites $dump instead of checking it" >&2
+  echo "  KEEL_UPDATE_DUMP=1 rewrites $dump and $openapi instead of checking them" >&2
 }
 
 fail() {
@@ -50,7 +51,7 @@ cleanup() {
     echo "removed $site"
   fi
   if [ "$code" -eq 0 ]; then
-    echo "the descriptor dump and the custom-views share are green"
+    echo "the descriptor dump, the OpenAPI document and the custom-views share are green"
   fi
   exit "$code"
 }
@@ -236,6 +237,14 @@ else
 fi
 
 stop_serve || fail "keel serve did not stop cleanly"
+
+if [ -n "${KEEL_UPDATE_DUMP:-}" ]; then
+  echo "--- keel-dev openapi"
+  "$dev" openapi --dump "$dump" --out "$openapi"
+else
+  echo "--- keel-dev openapi --check"
+  "$dev" openapi --dump "$dump" --out "$openapi" --check
+fi
 
 echo "--- keel-dev views share"
 "$dev" views share --dump "$dump" --frontend "$frontend"

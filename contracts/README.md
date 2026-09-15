@@ -25,4 +25,12 @@ The wire contract of the platform, in a form both sides can check against.
   version and the enabling instant name the run and are replaced by fixed placeholders. CI runs
   `keel-dev descriptors check` against it and `keel-dev views share` over it; after reviewing a
   change, `KEEL_UPDATE_DUMP=1 hack/descriptors.sh target/debug/keel` rewrites it.
-- `openapi.json` — generated from the function registry, committed for diffs (from M2).
+- `openapi.json` — the OpenAPI description of the call surface, written from the admin dump by
+  `keel-dev openapi --dump contracts/dump --out contracts/openapi.json`: one
+  `POST /api/v1/call/<func>` per function, the parameter schema as its request body, the
+  envelope around the result schema as its `200` response and the error envelope as `default`;
+  the `keel://` references and the `$defs` of the descriptors are hoisted under
+  `components/schemas`, a local definition keeping its name when nothing else claims it and
+  taking `<func>.<params|result>.<name>` otherwise. `hack/descriptors.sh` runs `--check` after
+  the dump check, so a descriptor change reaches the document in the same commit;
+  `KEEL_UPDATE_DUMP=1` rewrites it with the dump.

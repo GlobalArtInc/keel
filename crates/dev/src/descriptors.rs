@@ -534,7 +534,7 @@ pub fn diff_labelled(a: &Path, b: &Path, label_a: &str, label_b: &str) -> Result
     })
 }
 
-fn unified(
+pub(crate) fn unified(
     path: &str,
     old: Option<&str>,
     new: Option<&str>,
