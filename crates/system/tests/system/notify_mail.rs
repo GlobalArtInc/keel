@@ -185,6 +185,16 @@ fn data(reply: &Reply) -> &Value {
         .unwrap_or_else(|| panic!("a result was expected, got {:?}", reply.error()))
 }
 
+async fn sent_deliveries(harness: &Harness) -> Reply {
+    harness
+        .call(
+            Who::Admin,
+            DELIVERY_LIST,
+            json!({ "filters": [{ "key": "state", "op": "eq", "value": STATE_SENT }] }),
+        )
+        .await
+}
+
 fn subjects(listed: &[Value]) -> Vec<String> {
     listed
         .iter()
@@ -252,14 +262,11 @@ async fn a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_t
         .expect("the mail is listed");
     assert_eq!(mail["From"]["Address"], json!("keel@example.org"));
     assert_eq!(mail["To"][0]["Address"], json!("ops@example.org"));
-    let sent = harness
-        .call(
-            Who::Admin,
-            DELIVERY_LIST,
-            json!({ "filters": [{ "key": "state", "op": "eq", "value": STATE_SENT }] }),
-        )
-        .await;
-    assert_eq!(data(&sent)["total"], json!(1));
+    wait_until("the delivery is recorded as sent", || async {
+        data(&sent_deliveries(&harness).await)["total"] == json!(1)
+    })
+    .await;
+    let sent = sent_deliveries(&harness).await;
     assert_eq!(
         data(&sent)["data"][0]["messageKey"],
         json!(KEY_PROBLEM_RAISED)

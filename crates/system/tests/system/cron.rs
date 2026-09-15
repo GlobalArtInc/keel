@@ -320,7 +320,12 @@ async fn a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded
     wait_leader(&harness).await;
     harness.clock().set(at("2026-09-15T11:00:00Z"));
     wait_runs(&harness, SLOW, Outcome::Running, 1).await;
-    assert_eq!(scheduler(&harness).running(), [SLOW]);
+    let running = scheduler(&harness);
+    wait_until("the quick jobs of the minute finish", || {
+        let running = running.clone();
+        async move { running.running() == [SLOW] }
+    })
+    .await;
     assert_eq!(
         job_row(&harness, SLOW).await["lastOutcome"],
         json!("running")
@@ -441,6 +446,7 @@ async fn two_kernels_on_one_database_elect_one_leader_and_the_other_takes_over_a
     let started = data(&led);
     assert_eq!(started["id"], json!(FAST));
     assert_eq!(started["scheduledAt"], json!("2026-09-15T10:05:00Z"));
+    wait_runs(&second, FAST, Outcome::Ok, 2).await;
     second.clock().set(at("2026-09-15T10:10:00Z"));
     let rows = wait_runs(&second, FAST, Outcome::Ok, 3).await;
     let outcomes: Vec<&str> = rows.iter().map(|row| without_id(row)).collect();
