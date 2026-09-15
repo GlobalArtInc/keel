@@ -94,34 +94,58 @@ pub async fn enqueue(
 
 struct Scopes<'a> {
     started: &'a Started,
-    known: HashMap<String, Option<AccountScope>>,
+    known: HashMap<(String, String), Option<AccountScope>>,
 }
 
 impl Scopes<'_> {
     async fn of(&mut self, subscription: &subscription::Model) -> Result<Option<AccountScope>> {
-        if let Some(scope) = self.known.get(&subscription.principal_id) {
+        let key = (
+            subscription.principal_id.clone(),
+            subscription.account_id.clone(),
+        );
+        if let Some(scope) = self.known.get(&key) {
             return Ok(*scope);
         }
-        let scope = match subscription.principal_id.parse::<Id>() {
-            Ok(id) if id == OWNER_ID => Some(AccountScope::All),
+        let scope = self.derive(subscription).await?;
+        self.known.insert(key, scope);
+        Ok(scope)
+    }
+
+    async fn derive(&self, subscription: &subscription::Model) -> Result<Option<AccountScope>> {
+        let db = self.started.db();
+        let subscriber = match subscription.principal_id.parse::<Id>() {
+            Ok(id) if id == OWNER_ID => Some((Id::ROOT_ACCOUNT, AccountScope::All)),
             Ok(id) => self
                 .started
                 .seams
                 .principals
-                .by_id(id, self.started.db())
+                .by_id(id, db)
                 .await?
-                .map(|principal| AccountScope::of(&principal)),
+                .map(|principal| (principal.account_id, AccountScope::of(&principal))),
             Err(_) => None,
         };
-        if scope.is_none() {
+        let Some((home, scope)) = subscriber else {
             tracing::warn!(
                 subscription = subscription.id,
                 principal = subscription.principal_id,
                 "the subscriber is gone; the subscription receives nothing"
             );
+            return Ok(None);
+        };
+        let placed = match subscription.account_id.parse::<Id>() {
+            Ok(account) if account == home => return Ok(Some(scope)),
+            Ok(account) if scope.includes(db, account).await? => Some(AccountScope::Own(account)),
+            Ok(_) | Err(_) => None,
+        };
+        if placed.is_none() {
+            tracing::warn!(
+                subscription = subscription.id,
+                principal = subscription.principal_id,
+                account = subscription.account_id,
+                "the subscriber does not reach the subscription's account; the subscription receives nothing"
+            );
         }
-        self.known.insert(subscription.principal_id.clone(), scope);
-        Ok(scope)
+        Ok(placed)
     }
 }
 

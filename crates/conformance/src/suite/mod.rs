@@ -4,6 +4,7 @@ mod errors;
 mod health;
 mod lists;
 mod tokens;
+mod webhooks;
 
 use keel_types::{ActorVia, Id, MetaPrincipal, Page};
 use serde_json::{Value, json};
@@ -36,13 +37,14 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         settings,
         report: Report::default(),
     };
-    let groups: [(&str, Step); 6] = [
+    let groups: [(&str, Step); 7] = [
         ("health", |suite| Box::pin(health::run(suite))),
         ("boot", |suite| Box::pin(boot::run(suite))),
         ("auth", |suite| Box::pin(auth::run(suite))),
         ("token", |suite| Box::pin(tokens::run(suite))),
         ("list", |suite| Box::pin(lists::run(suite))),
         ("error", |suite| Box::pin(errors::run(suite))),
+        ("webhook", |suite| Box::pin(webhooks::run(suite))),
     ];
     for (name, group) in groups {
         if group(&mut suite).await.is_err() {

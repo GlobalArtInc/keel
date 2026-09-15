@@ -208,6 +208,8 @@ keel_ok "$site/user.json" ctl keel.principal.create "login=$user_login" level=us
 user_id=$(json_get "$site/user.json" 'doc["data"]["id"]')
 keel_ok "$site/user-password.json" ctl auth.password.set "principal=$user_id" "password=$user_password"
 echo "created the admin $admin_login and the user $user_login in account $account_id"
+keel_ok "$site/private-targets.json" ctl settings.set key=webhook.private_targets value=true
+echo "allowed webhook deliveries to private targets for the suite's listener"
 
 echo "--- keel-conformance"
 KEEL_CONFORMANCE_ADMIN_PASSWORD="$admin_password" "$conformance" \

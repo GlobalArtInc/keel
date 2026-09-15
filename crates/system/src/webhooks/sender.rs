@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
-use keel_sdk::sea_orm::sea_query::Expr;
+use keel_sdk::sea_orm::sea_query::{Expr, Query, SelectStatement};
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use keel_sdk::serde_json;
 use keel_sdk::types::Event;
@@ -112,11 +112,20 @@ pub async fn run(started: Arc<Started>) {
     }
 }
 
+fn enabled_subscriptions() -> SelectStatement {
+    Query::select()
+        .column(subscription::Column::Id)
+        .from(subscription::Entity)
+        .and_where(subscription::Column::Enabled.eq(true))
+        .to_owned()
+}
+
 async fn due(started: &Started) -> Result<usize> {
     let now = started.seams.clock.now();
     let rows = delivery::Entity::find()
         .filter(delivery::Column::State.is_in([STATE_PENDING, STATE_FAILED]))
         .filter(delivery::Column::NextAt.lte(now))
+        .filter(delivery::Column::SubscriptionId.in_subquery(enabled_subscriptions()))
         .order_by_asc(delivery::Column::NextAt)
         .order_by_asc(delivery::Column::Id)
         .limit(BATCH)
@@ -146,9 +155,6 @@ async fn attempt(started: &Started, row: delivery::Model) -> Result<()> {
         .await?;
         return Ok(());
     };
-    if !subscription.enabled {
-        return Ok(());
-    }
     let outcome = post(started, &row, &subscription).await;
     settle(started, &row, Some(&subscription), outcome).await
 }

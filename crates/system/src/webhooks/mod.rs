@@ -12,30 +12,20 @@ use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
 use keel_sdk::system::{Caller, ContextExt, OutboxSubscriber, PrincipalSource, SecretCipher};
 
-pub use consumer::{CURSOR, STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING, STATES};
-pub use functions::deliveries::{
-    DELIVERY_GET, DELIVERY_LIST, DELIVERY_RETRY, ERROR_NOT_RETRYABLE, SCOPE_SUBSCRIPTION,
-};
+pub use consumer::{CURSOR, STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING};
+pub use functions::PERMISSION_MANAGE as MANAGE;
+pub use functions::deliveries::{DELIVERY_GET, DELIVERY_LIST, DELIVERY_RETRY, ERROR_NOT_RETRYABLE};
 pub use functions::subscriptions::{
     ERROR_MASK, ERROR_SECRET_SHORT, SECRET_GENERATED_BYTES, SECRET_MIN_BYTES, SUBSCRIPTION_DELETE,
     SUBSCRIPTION_GET, SUBSCRIPTION_LIST, SUBSCRIPTION_SET, SUBSCRIPTION_TOGGLE, base64url,
 };
-pub use functions::{PERMISSION_MANAGE as MANAGE, Subscription};
 pub use lifecycle::{Dropped, drop_account};
-pub use masks::{
-    any_matches as mask_matches_any, is_valid as is_valid_mask, matches as mask_matches,
-};
-pub use sender::{
-    BODY_CAP, CONNECT_TIMEOUT, ERROR_CAP, ERROR_EVENT_GONE, ERROR_SEND, ERROR_STATUS, LADDER,
-    MAX_ATTEMPTS, PROBLEM_KEY as DEAD_LETTER, PROBLEM_SOURCE as DEAD_LETTER_SOURCE, TIMEOUT,
-};
+pub use sender::{LADDER, MAX_ATTEMPTS, PROBLEM_KEY as DEAD_LETTER};
 pub use signature::{
     EVENT_ID_HEADER, HEADER as SIGNATURE_HEADER, Rejection, WINDOW_SECONDS, sign, verify,
 };
 pub use started::PRIVATE_TARGETS_KEY;
-pub use targets::{
-    ERROR_URL, ERROR_URL_PRIVATE, ERROR_URL_UNRESOLVED, Resolver, SystemResolver, is_private,
-};
+pub use targets::{ERROR_URL_PRIVATE, Resolver};
 
 pub const FUNCTIONS: [&str; 8] = [
     SUBSCRIPTION_LIST,

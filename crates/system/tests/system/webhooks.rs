@@ -19,11 +19,12 @@ use keel_sdk::serde_json;
 use keel_sdk::system::SecretCipher;
 use keel_sdk::types::Event;
 use keel_system::webhooks::{
-    CURSOR, DEAD_LETTER, DELIVERY_LIST, DELIVERY_RETRY, ERROR_MASK, ERROR_SECRET_SHORT,
-    ERROR_URL_PRIVATE, EVENT_ID_HEADER, FUNCTIONS, LADDER, MAX_ATTEMPTS, MENU_PATH, MODULE,
-    PRIVATE_TARGETS_KEY, Resolver, SIGNATURE_HEADER, STATE_DEAD, STATE_DELIVERED, STATE_FAILED,
+    CURSOR, DEAD_LETTER, DELIVERY_LIST, DELIVERY_RETRY, ERROR_MASK, ERROR_NOT_RETRYABLE,
+    ERROR_SECRET_SHORT, ERROR_URL_PRIVATE, EVENT_ID_HEADER, FUNCTIONS, LADDER, MAX_ATTEMPTS,
+    MENU_PATH, MODULE, PRIVATE_TARGETS_KEY, Resolver, SECRET_GENERATED_BYTES, SECRET_MIN_BYTES,
+    SIGNATURE_HEADER, STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING,
     SUBSCRIPTION_DELETE, SUBSCRIPTION_GET, SUBSCRIPTION_LIST, SUBSCRIPTION_SET,
-    SUBSCRIPTION_TOGGLE, drop_account, verify,
+    SUBSCRIPTION_TOGGLE, base64url, drop_account, verify,
 };
 use keel_testkit::{Fixture, Harness, Reply, Who, tokio};
 use tokio::net::TcpListener;
@@ -35,6 +36,7 @@ const PUBLIC: &str = "93.184.216.34";
 const EVENT_SAVED: &str = "probe.note.saved";
 const EVENT_TOUCHED: &str = "probe.note.touched";
 const MASK_NOTES: &str = "probe.note.*";
+const MORE_THAN_A_BATCH: usize = 55;
 
 type Answers = HashMap<String, VecDeque<Vec<IpAddr>>>;
 
@@ -393,6 +395,27 @@ async fn save(harness: &Harness, who: Who) -> Id {
     id
 }
 
+async fn principal_in(harness: &Harness, login: &str, level: Level, account: Id) -> Principal {
+    let reply = harness
+        .call(
+            Who::Owner,
+            "keel.principal.create",
+            json!({ "login": login, "level": level, "account": account }),
+        )
+        .await;
+    let id = data(&reply)["id"]
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .expect("an id");
+    Principal {
+        id,
+        login: login.to_owned(),
+        level,
+        account_id: account,
+        ..harness.principal(Who::A1).clone()
+    }
+}
+
 async fn deliveries(harness: &Harness) -> Vec<String> {
     harness
         .database()
@@ -697,6 +720,233 @@ async fn an_event_outside_the_masks_or_outside_the_subscribers_scope_creates_no_
 }
 
 #[tokio::test]
+async fn a_subscription_placed_in_another_account_receives_that_accounts_events_alone() {
+    let harness = boot().await;
+    let listener = Listener::start().await;
+    let accounts = &harness.fixtures().accounts;
+    let admin = harness.principal(Who::Admin).id;
+    let placed = harness
+        .call(
+            Who::Admin,
+            SUBSCRIPTION_SET,
+            json!({ "name": "placed in a1", "url": listener.url("placed"), "events": [MASK_NOTES], "account": accounts.a1 }),
+        )
+        .await;
+    let placed = data(&placed).clone();
+    let id = placed["id"].as_str().expect("an id").to_owned();
+    assert_eq!(placed["accountId"], json!(accounts.a1));
+    assert_eq!(placed["principalId"], json!(admin));
+    let repointed = harness
+        .call(
+            Who::A1,
+            SUBSCRIPTION_SET,
+            json!({ "id": id, "name": "repointed by a1", "url": listener.url("repointed"), "events": [MASK_NOTES] }),
+        )
+        .await;
+    assert_eq!(data(&repointed)["url"], json!(listener.url("repointed")));
+    let kept = harness
+        .call(Who::Admin, SUBSCRIPTION_GET, json!({ "id": id }))
+        .await;
+    assert_eq!(
+        data(&kept)["principalId"],
+        json!(harness.principal(Who::A1).id),
+        "the subscriber is whoever last set the target"
+    );
+    assert_eq!(data(&kept)["accountId"], json!(accounts.a1));
+    save(&harness, Who::A2).await;
+    save(&harness, Who::Unrelated).await;
+    let touched = harness
+        .call(Who::Admin, "probe.note.touch", json!({}))
+        .await;
+    data(&touched);
+    let own = save(&harness, Who::A1).await;
+    wait_until("a1's event reaches the repointed url", || async {
+        !listener.received("repointed").is_empty()
+    })
+    .await;
+    tokio::time::sleep(QUIET).await;
+    let hits = listener.received("repointed");
+    assert_eq!(hits.len(), 1, "a1's event alone");
+    let event = hits[0].event();
+    assert_eq!(event.kind, EVENT_SAVED);
+    assert_eq!(event.data["id"], json!(own));
+    assert_eq!(
+        event.subject.and_then(|subject| subject.account_id),
+        Some(accounts.a1)
+    );
+    assert!(listener.received("placed").is_empty());
+    let rows = deliveries(&harness).await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(rows[0].starts_with(&id), "{rows:?}");
+    let listed = delivery_rows(&harness, Who::A1, json!({ "subscription_id": id })).await;
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["type"], json!(EVENT_SAVED));
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_user_of_the_resellers_account_who_repoints_its_subscription_receives_that_accounts_events_alone()
+ {
+    let harness = boot().await;
+    let listener = Listener::start().await;
+    let accounts = &harness.fixtures().accounts;
+    let staff = principal_in(&harness, "reseller-staff", Level::User, accounts.reseller).await;
+    let placed = subscribe(
+        &harness,
+        Who::Reseller,
+        "reseller notes",
+        &listener.url("reseller"),
+        &[MASK_NOTES],
+    )
+    .await;
+    let id = placed["id"].as_str().expect("an id").to_owned();
+    assert_eq!(
+        placed["principalId"],
+        json!(harness.principal(Who::Reseller).id)
+    );
+    let repointed = harness
+        .call_as_principal(
+            &staff,
+            SUBSCRIPTION_SET,
+            json!({ "id": id, "name": "repointed by staff", "url": listener.url("staff"), "events": [MASK_NOTES] }),
+        )
+        .await;
+    assert_eq!(data(&repointed)["url"], json!(listener.url("staff")));
+    let kept = harness
+        .call(Who::Reseller, SUBSCRIPTION_GET, json!({ "id": id }))
+        .await;
+    assert_eq!(data(&kept)["principalId"], json!(staff.id));
+    assert_eq!(data(&kept)["accountId"], json!(accounts.reseller));
+    save(&harness, Who::A1).await;
+    save(&harness, Who::A2).await;
+    save(&harness, Who::Unrelated).await;
+    let touched = harness
+        .call(Who::Admin, "probe.note.touch", json!({}))
+        .await;
+    data(&touched);
+    let own = save(&harness, Who::Reseller).await;
+    wait_until(
+        "the reseller account's event reaches the staff url",
+        || async { !listener.received("staff").is_empty() },
+    )
+    .await;
+    tokio::time::sleep(QUIET).await;
+    let hits = listener.received("staff");
+    assert_eq!(hits.len(), 1, "the reseller account's own event alone");
+    let event = hits[0].event();
+    assert_eq!(event.kind, EVENT_SAVED);
+    assert_eq!(event.data["id"], json!(own));
+    assert_eq!(
+        event.subject.and_then(|subject| subject.account_id),
+        Some(accounts.reseller)
+    );
+    assert!(listener.received("reseller").is_empty());
+    let rows = deliveries(&harness).await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert!(rows[0].starts_with(&id), "{rows:?}");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_due_deliveries_of_a_disabled_subscription_do_not_hold_up_another_subscription() {
+    let harness = boot().await;
+    let listener = Listener::start().await;
+    listener.answer("parked", Answer::Status(500));
+    let parked = subscribe(
+        &harness,
+        Who::Admin,
+        "parked",
+        &listener.url("parked"),
+        &[MASK_NOTES],
+    )
+    .await;
+    let parked_id = parked["id"].as_str().expect("an id").to_owned();
+    for _ in 0..MORE_THAN_A_BATCH {
+        save(&harness, Who::Admin).await;
+    }
+    let parked_rows = || async {
+        deliveries(&harness)
+            .await
+            .into_iter()
+            .filter(|row| row.starts_with(&parked_id))
+            .collect::<Vec<String>>()
+    };
+    wait_until(
+        "every delivery of the parked subscription failed once",
+        || async {
+            let rows = parked_rows().await;
+            rows.len() == MORE_THAN_A_BATCH
+                && rows
+                    .iter()
+                    .all(|row| row.ends_with(&format!(" {STATE_FAILED} 1")))
+        },
+    )
+    .await;
+    assert_eq!(listener.received("parked").len(), MORE_THAN_A_BATCH);
+    let disabled = harness
+        .call(
+            Who::Admin,
+            SUBSCRIPTION_TOGGLE,
+            json!({ "id": parked_id, "enabled": false }),
+        )
+        .await;
+    assert_eq!(data(&disabled)["enabled"], json!(false));
+    let due = at(START) + keel_sdk::chrono::Duration::from_std(LADDER[0]).expect("a delta");
+    harness.clock().set(due);
+
+    let live = subscribe(
+        &harness,
+        Who::Admin,
+        "live",
+        &listener.url("live"),
+        &[MASK_NOTES],
+    )
+    .await;
+    let live_id = live["id"].as_str().expect("an id").to_owned();
+    save(&harness, Who::Admin).await;
+    wait_until("the live subscription's delivery is delivered", || async {
+        delivery_of(&harness, &live_id)
+            .await
+            .is_some_and(|row| row["state"] == json!(STATE_DELIVERED))
+    })
+    .await;
+    assert_eq!(listener.received("live").len(), 1);
+    assert_eq!(
+        listener.received("parked").len(),
+        MORE_THAN_A_BATCH,
+        "a disabled subscription is not posted"
+    );
+    let rows = parked_rows().await;
+    assert_eq!(rows.len(), MORE_THAN_A_BATCH);
+    assert!(
+        rows.iter()
+            .all(|row| row.ends_with(&format!(" {STATE_FAILED} 1"))),
+        "{rows:?}"
+    );
+
+    let enabled = harness
+        .call(
+            Who::Admin,
+            SUBSCRIPTION_TOGGLE,
+            json!({ "id": parked_id, "enabled": true }),
+        )
+        .await;
+    assert_eq!(data(&enabled)["enabled"], json!(true));
+    wait_until(
+        "the parked deliveries resume once enabled again",
+        || async {
+            parked_rows()
+                .await
+                .iter()
+                .all(|row| row.ends_with(&format!(" {STATE_FAILED} 2")))
+        },
+    )
+    .await;
+    assert_eq!(listener.received("parked").len(), 2 * MORE_THAN_A_BATCH);
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn a_failed_delivery_follows_the_ladder_and_its_fifth_failure_is_a_problem_a_retry_clears() {
     let harness = boot().await;
     let listener = Listener::start().await;
@@ -784,7 +1034,7 @@ async fn a_failed_delivery_follows_the_ladder_and_its_fifth_failure_is_a_problem
     let retried = harness
         .call(Who::Admin, DELIVERY_RETRY, json!({ "id": delivery }))
         .await;
-    assert_eq!(data(&retried)["state"], json!("pending"));
+    assert_eq!(data(&retried)["state"], json!(STATE_PENDING));
     assert_eq!(data(&retried)["attempt"], json!(MAX_ATTEMPTS));
     wait_until("the retry delivers", || async {
         delivery_of(&harness, &subscription)
@@ -804,10 +1054,7 @@ async fn a_failed_delivery_follows_the_ladder_and_its_fifth_failure_is_a_problem
         .call(Who::Admin, DELIVERY_RETRY, json!({ "id": delivery }))
         .await;
     assert_eq!(again.status(), 409, "{:?}", again.envelope);
-    assert_eq!(
-        again.error().expect("an error").key,
-        "webhook.error.not_retryable"
-    );
+    assert_eq!(again.error().expect("an error").key, ERROR_NOT_RETRYABLE);
     harness.finish().await;
 }
 
@@ -1054,7 +1301,8 @@ async fn a_short_secret_is_refused_on_secret_and_a_generated_one_is_32_bytes() {
         )
         .await;
     let params = refused_on(&short, "secret", ERROR_SECRET_SHORT);
-    assert_eq!(params["min"], json!(16));
+    assert_eq!(params["min"], json!(SECRET_MIN_BYTES));
+    assert_eq!(SECRET_MIN_BYTES, 16);
     let generated = subscribe(
         &harness,
         Who::A1,
@@ -1064,14 +1312,19 @@ async fn a_short_secret_is_refused_on_secret_and_a_generated_one_is_32_bytes() {
     )
     .await;
     let secret = generated["secret"].as_str().expect("a generated secret");
-    assert_eq!(secret.len(), 43, "32 bytes are 43 base64url characters");
+    assert_eq!(SECRET_GENERATED_BYTES, 32);
+    assert_eq!(
+        secret.len(),
+        base64url(&[7u8; SECRET_GENERATED_BYTES]).len(),
+        "32 bytes are 43 base64url characters"
+    );
+    assert_eq!(secret.len(), 43);
     assert!(
         secret
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'),
         "{secret}"
     );
-    assert_eq!(keel_system::webhooks::base64url(&[7u8; 32]).len(), 43);
     let id = generated["id"].as_str().expect("an id");
     let cipher = harness
         .registry()
@@ -1203,20 +1456,21 @@ async fn deleting_an_account_drops_its_subscriptions_and_deliveries() {
     save(&harness, Who::A1).await;
     save(&harness, Who::A2).await;
     wait_until("the deliveries are created", || async {
-        deliveries(&harness).await.len() >= 6
+        deliveries(&harness).await.len() >= 3
     })
     .await;
+    tokio::time::sleep(QUIET).await;
     assert_eq!(
         deliveries(&harness).await.len(),
-        6,
-        "the owner's subscriptions receive every account's events"
+        3,
+        "a subscription the owner placed in an account receives that account's events alone"
     );
     let db = Db::from_connection(harness.db().clone());
     let dropped = drop_account(&db, a1).await.expect("the rows drop");
     assert_eq!(dropped.subscriptions, 2);
-    assert_eq!(dropped.deliveries, 4);
+    assert_eq!(dropped.deliveries, 2);
     let rows = deliveries(&harness).await;
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 1);
     assert!(rows.iter().all(|row| row.starts_with(&other)), "{rows:?}");
     let left = harness
         .database()

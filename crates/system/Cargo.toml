@@ -19,6 +19,7 @@ webhooks = [
   "dep:reqwest",
   "dep:rustls",
   "dep:sha2",
+  "dep:thiserror",
   "dep:tokio",
   "dep:tracing",
 ]
@@ -52,7 +53,7 @@ rustls = { workspace = true, optional = true }
 sha1 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
-thiserror = { workspace = true }
+thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 

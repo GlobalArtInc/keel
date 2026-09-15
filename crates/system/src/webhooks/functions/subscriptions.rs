@@ -252,6 +252,7 @@ pub fn subscription_set() -> FunctionDef {
                 Some(row) => {
                     let mut active: subscription::ActiveModel = row.into();
                     active.account_id = Set(account);
+                    active.principal_id = Set(call.principal().id.to_string());
                     active.name = Set(params.name.clone());
                     active.url = Set(params.url.clone());
                     active.secret = Set(sealed);
