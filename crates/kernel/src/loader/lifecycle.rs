@@ -43,6 +43,8 @@ pub struct StopError {
 
 impl Frozen {
     pub async fn start(self, db: DatabaseConnection) -> Result<Kernel, StartError> {
+        self.locks.attach(db.clone());
+        let data_dir = self.graph.data_dir().to_path_buf();
         let mut kernel = Kernel {
             graph: self.graph,
             registry: self.registry,
@@ -57,6 +59,7 @@ impl Frozen {
                     kernel.registry.services().clone(),
                     tasks.clone(),
                     Db::from_connection(db.clone()),
+                    data_dir.clone(),
                 );
                 if let Err(source) = start(ctx).await {
                     tasks.shutdown().await;

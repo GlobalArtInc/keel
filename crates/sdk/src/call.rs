@@ -17,6 +17,7 @@ use crate::error::{KeelError, Result};
 use crate::services::Services;
 use crate::settings::SettingsSource;
 use crate::system::{Client, SessionChange};
+use crate::task::TaskHandle;
 
 pub struct Call<P> {
     state: Arc<CallState>,
@@ -34,6 +35,7 @@ pub(crate) struct CallState {
     invoker: Option<Arc<dyn Invoker>>,
     client: Option<Client>,
     tz: Tz,
+    task: Option<TaskHandle>,
     events: Mutex<Vec<Emitted>>,
     after_commit: Mutex<Vec<AfterCommitHook>>,
     session: Mutex<Option<SessionChange>>,
@@ -95,6 +97,10 @@ impl<P> Call<P> {
 
     pub fn tz(&self) -> Tz {
         self.state.tz
+    }
+
+    pub fn task(&self) -> Option<&TaskHandle> {
+        self.state.task.as_ref()
     }
 
     pub fn db(&self) -> &Db {
@@ -231,6 +237,7 @@ pub struct CallBuilder {
     invoker: Option<Arc<dyn Invoker>>,
     client: Option<Client>,
     tz: Tz,
+    task: Option<TaskHandle>,
 }
 
 impl CallBuilder {
@@ -244,11 +251,17 @@ impl CallBuilder {
             invoker: None,
             client: None,
             tz: Tz::UTC,
+            task: None,
         }
     }
 
     pub fn client(mut self, client: Option<Client>) -> Self {
         self.client = client;
+        self
+    }
+
+    pub fn task(mut self, task: Option<TaskHandle>) -> Self {
+        self.task = task;
         self
     }
 
@@ -305,6 +318,7 @@ impl CallBuilder {
             invoker: self.invoker,
             client: self.client,
             tz: self.tz,
+            task: self.task,
             events: Mutex::new(Vec::new()),
             after_commit: Mutex::new(Vec::new()),
             session: Mutex::new(None),
@@ -356,6 +370,10 @@ impl CallHandle {
 
     pub fn tz(&self) -> Tz {
         self.0.tz
+    }
+
+    pub fn task(&self) -> Option<&TaskHandle> {
+        self.0.task.as_ref()
     }
 
     pub fn take_session_change(&self) -> Option<SessionChange> {

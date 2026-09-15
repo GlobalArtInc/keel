@@ -8,9 +8,9 @@ use sea_orm::{
 use crate::config::{Config, SCHEMA};
 use crate::migrations;
 
-pub(crate) mod lock;
+pub mod lock;
 
-pub use lock::MigrationLock;
+pub use lock::{MigrationLock, SessionLocks};
 
 const POOL_SIZE: u32 = 20;
 const TIMEOUT: Duration = Duration::from_secs(10);

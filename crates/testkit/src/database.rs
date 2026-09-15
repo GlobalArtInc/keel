@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 use keel_kernel::config::{DatabaseUrl, DatabaseUrlError};
@@ -30,11 +31,16 @@ pub enum Server {
     Container,
 }
 
-pub struct TestDatabase {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DatabaseHandle {
     admin: String,
     server: Server,
     name: String,
     url: String,
+}
+
+pub struct TestDatabase {
+    handle: DatabaseHandle,
     finished: bool,
 }
 
@@ -188,14 +194,41 @@ impl TestDatabase {
         closed.map_err(DatabaseError::Connect)?;
         let url = with_database(&admin, &name);
         Ok(Self {
-            admin,
-            server,
-            name,
-            url,
+            handle: DatabaseHandle {
+                admin,
+                server,
+                name,
+                url,
+            },
             finished: false,
         })
     }
 
+    pub fn handle(&self) -> DatabaseHandle {
+        self.handle.clone()
+    }
+
+    pub async fn finish(self) {
+        if let Err(error) = self.try_finish().await {
+            panic!("{error}");
+        }
+    }
+
+    pub async fn try_finish(mut self) -> Result<(), DatabaseError> {
+        self.finished = true;
+        drop_database(&self.handle.admin, &self.handle.name).await
+    }
+}
+
+impl Deref for TestDatabase {
+    type Target = DatabaseHandle;
+
+    fn deref(&self) -> &DatabaseHandle {
+        &self.handle
+    }
+}
+
+impl DatabaseHandle {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -206,6 +239,10 @@ impl TestDatabase {
 
     pub fn admin_url(&self) -> &str {
         &self.admin
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
     }
 
     pub fn config(&self) -> Config {
@@ -262,17 +299,6 @@ impl TestDatabase {
         }
         values
     }
-
-    pub async fn finish(self) {
-        if let Err(error) = self.try_finish().await {
-            panic!("{error}");
-        }
-    }
-
-    pub async fn try_finish(mut self) -> Result<(), DatabaseError> {
-        self.finished = true;
-        drop_database(&self.admin, &self.name).await
-    }
 }
 
 impl Drop for TestDatabase {
@@ -281,8 +307,8 @@ impl Drop for TestDatabase {
             return;
         }
         self.finished = true;
-        let admin = self.admin.clone();
-        let name = self.name.clone();
+        let admin = self.handle.admin.clone();
+        let name = self.handle.name.clone();
         let outcome = std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -296,7 +322,7 @@ impl Drop for TestDatabase {
             Ok(Err(error)) => eprintln!("keel-testkit: {error}"),
             Err(_) => eprintln!(
                 "keel-testkit: the thread dropping the test database {} panicked",
-                self.name
+                self.handle.name
             ),
         }
     }
@@ -305,7 +331,7 @@ impl Drop for TestDatabase {
 impl fmt::Debug for TestDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TestDatabase")
-            .field("name", &self.name)
+            .field("name", &self.handle.name)
             .field("finished", &self.finished)
             .finish()
     }

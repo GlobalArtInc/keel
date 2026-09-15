@@ -22,6 +22,7 @@ pub struct Composition {
     clock: Arc<dyn Clock>,
     key: Option<Key>,
     sections: Sections,
+    data_dir: PathBuf,
 }
 
 #[derive(Clone)]
@@ -33,6 +34,7 @@ pub struct Graph {
     clock: Arc<dyn Clock>,
     key: Option<Key>,
     sections: Sections,
+    data_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -137,6 +139,7 @@ impl Default for Composition {
             clock: Arc::new(SystemClock),
             key: None,
             sections: Sections::default(),
+            data_dir: PathBuf::from(crate::config::DATA_DIR),
         }
     }
 }
@@ -187,6 +190,11 @@ impl Composition {
 
     pub fn section(mut self, key: &str, value: Value) -> Self {
         self.sections.raw.insert(key.to_owned(), value);
+        self
+    }
+
+    pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.data_dir = path.into();
         self
     }
 
@@ -316,6 +324,7 @@ impl Composition {
                 clock: self.clock,
                 key: self.key,
                 sections: self.sections,
+                data_dir: self.data_dir,
             })
         } else {
             Err(CompositionError { problems })
@@ -488,6 +497,10 @@ impl Graph {
     pub fn sections(&self) -> &Sections {
         &self.sections
     }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
 }
 
 impl fmt::Debug for Graph {
@@ -602,6 +615,18 @@ mod tests {
             format!("{forward:?}"),
             "[\"keel\", \"auth\", \"notify\", \"tasks\", \"dns\"]"
         );
+    }
+
+    #[test]
+    fn a_composition_without_a_data_dir_hands_modules_the_configured_default() {
+        let graph = Composition::new().resolve().unwrap();
+        assert_eq!(graph.data_dir(), Path::new(crate::config::DATA_DIR));
+        assert_eq!(graph.data_dir(), Path::new("/var/lib/keel"));
+        let placed = Composition::new()
+            .data_dir("/tmp/keel-data")
+            .resolve()
+            .unwrap();
+        assert_eq!(placed.data_dir(), Path::new("/tmp/keel-data"));
     }
 
     #[test]

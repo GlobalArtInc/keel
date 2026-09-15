@@ -123,12 +123,14 @@ impl Runtime {
         let composition = self
             .composition(enabled)?
             .key(key)
-            .sections(Sections::new(&config.file, config.sections.clone()));
+            .sections(Sections::new(&config.file, config.sections.clone()))
+            .data_dir(config.data_dir.clone());
         let kernel = Kernel::boot(composition, storage).await?;
         let dispatcher = Arc::new(Dispatcher::new(
             kernel.registry().clone(),
             storage.db().clone(),
         )?);
+        dispatcher.fill_caller();
         http.attach(dispatcher.clone())?;
         let socket = match Socket::new(dispatcher).start(&config.socket).await {
             Ok(socket) => socket,

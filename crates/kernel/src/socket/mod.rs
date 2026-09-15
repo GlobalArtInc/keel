@@ -261,8 +261,7 @@ impl Socket {
                 let options = CallOptions {
                     request_id,
                     idempotency_key,
-                    client: None,
-                    tz: None,
+                    ..CallOptions::default()
                 };
                 self.dispatcher
                     .call(principal, &func, params, options)

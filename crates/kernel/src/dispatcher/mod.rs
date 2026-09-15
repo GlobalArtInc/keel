@@ -1,6 +1,8 @@
+mod caller;
 pub(crate) mod guards;
 mod idempotency;
 mod list;
+mod live;
 mod outbox;
 mod schema;
 mod strip;
@@ -16,7 +18,7 @@ use chrono_tz::Tz;
 use futures::future::BoxFuture;
 use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange};
-use keel_sdk::{AfterContext, KeelError};
+use keel_sdk::{AfterContext, KeelError, TaskHandle};
 use keel_types::{
     CallError, Envelope, ErrorCode, Id, Kind, Level, Meta, MetaPrincipal, Mode, Principal,
 };
@@ -26,6 +28,8 @@ use serde_json::{Map, Value};
 use crate::clock::{Clock, SystemClock};
 use crate::registry::{Function, Registry};
 
+pub use caller::CallerHandle;
+pub use live::{LIVE_CAPACITY, LiveBus};
 pub use strip::MASK;
 pub use validate::SchemaError;
 
@@ -57,12 +61,13 @@ struct Target<'a> {
     prepared: &'a Prepared,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct CallOptions {
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
     pub client: Option<Client>,
     pub tz: Option<Tz>,
+    pub task: Option<TaskHandle>,
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +108,7 @@ struct Executed {
 struct Origin {
     client: Option<Client>,
     tz: Tz,
+    task: Option<TaskHandle>,
 }
 
 struct Recorded {
@@ -228,7 +234,17 @@ impl Dispatcher {
         &self.inner.registry
     }
 
-    pub(crate) fn db(&self) -> &DatabaseConnection {
+    pub fn fill_caller(&self) -> bool {
+        match self.inner.registry.services().get::<CallerHandle>() {
+            Some(handle) => {
+                handle.fill(self.clone());
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn db(&self) -> &DatabaseConnection {
         &self.inner.db
     }
 
@@ -267,6 +283,7 @@ impl Dispatcher {
                 Origin {
                     client: options.client,
                     tz: options.tz.unwrap_or(Tz::UTC),
+                    task: options.task,
                 },
             )
             .await;
@@ -385,6 +402,7 @@ impl Inner {
             .invoker(self.invoker(after.clone()))
             .client(origin.client.clone())
             .tz(origin.tz)
+            .task(origin.task.clone())
             .read(self.db.clone());
         self.admit(target, &pool, &params, true).await?;
         let mut idempotency = None;
@@ -420,6 +438,7 @@ impl Inner {
                         .invoker(self.invoker(after.clone()))
                         .client(origin.client)
                         .tz(origin.tz)
+                        .task(origin.task)
                         .extra(extra)
                         .write(self.db.begin().await?);
                     self.commit(target, handle, params, idempotency, &after)
@@ -622,6 +641,7 @@ impl Inner {
             .services(self.registry.services().clone())
             .client(outer.client().cloned())
             .tz(outer.tz())
+            .task(outer.task().cloned())
             .invoker(Arc::new(LocalInvoker {
                 inner: self.clone(),
                 after: after.clone(),

@@ -536,3 +536,92 @@ async fn descriptor_snapshots_match_the_committed_files_and_a_changed_descriptor
     );
     harness.finish().await;
 }
+
+#[tokio::test]
+async fn a_harness_reboots_on_a_returned_database_shares_it_with_another_and_keeps_its_data_dir() {
+    let dir = tempfile::tempdir().expect("a data directory");
+    let first = Harness::new()
+        .module(&SAMPLE)
+        .data_dir(dir.path())
+        .boot()
+        .await;
+    assert_eq!(first.data_dir(), dir.path());
+    fs::write(dir.path().join("kept.txt"), "kept").expect("write into the data directory");
+    let created = first
+        .call(Who::Owner, "keel.account.create", json!({ "kind": "user" }))
+        .await;
+    let account = id_of(created.data());
+    let fixtures = first.fixtures().clone();
+    let name = first.database().name().to_owned();
+    let handle = first.database_handle();
+    assert_eq!(handle.name(), name);
+
+    let database = first.stop().await;
+    assert_eq!(database.name(), name);
+    assert!(database::exists(&name).await.expect("pg_database answers"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("kept.txt")).expect("the file survives the stop"),
+        "kept"
+    );
+
+    let second = Harness::new()
+        .module(&SAMPLE)
+        .data_dir(dir.path())
+        .database(database)
+        .boot()
+        .await;
+    assert_eq!(second.data_dir(), dir.path());
+    assert_eq!(second.database().name(), name);
+    assert_eq!(*second.fixtures(), fixtures);
+    let found = second
+        .call(Who::Owner, "keel.account.get", json!({ "id": account }))
+        .await;
+    assert_eq!(
+        found.data().expect("the account survives the restart")["id"],
+        json!(account.to_string())
+    );
+    let sample = second
+        .call(Who::A1, "sample.get", json!({ "name": "again" }))
+        .await;
+    assert_eq!(
+        sample.data().expect("the module answers")["id"],
+        json!("again")
+    );
+
+    let third = Harness::new()
+        .module(&SAMPLE)
+        .database(second.database_handle())
+        .boot()
+        .await;
+    assert_eq!(third.database().name(), name);
+    assert_ne!(third.data_dir(), dir.path());
+    assert_eq!(*third.fixtures(), fixtures);
+    let shared = third
+        .call(Who::Owner, "keel.account.get", json!({ "id": account }))
+        .await;
+    assert!(shared.data().is_some(), "{:?}", shared.error());
+    let refused = third
+        .try_stop()
+        .await
+        .expect_err("a shared harness owns no database");
+    assert!(refused.to_string().contains(&name), "{refused}");
+
+    let fourth = Harness::new()
+        .module(&SAMPLE)
+        .database(second.database_handle())
+        .boot()
+        .await;
+    fourth.finish().await;
+    assert!(database::exists(&name).await.expect("pg_database answers"));
+
+    let temporary = Harness::new().boot().await;
+    let temporary_dir = temporary.data_dir().to_path_buf();
+    assert!(temporary_dir.is_dir());
+    assert_ne!(temporary_dir, dir.path());
+    temporary.finish().await;
+    assert!(!temporary_dir.exists());
+
+    second.finish().await;
+    assert!(!database::exists(&name).await.expect("pg_database answers"));
+    assert!(dir.path().join("kept.txt").exists());
+}

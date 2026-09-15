@@ -25,6 +25,7 @@ pub type ErasedHandler =
     Arc<dyn Fn(Call<Value>) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
 
 pub const LIST_QUERY_REF: &str = "keel://ListQuery";
+pub const DEFAULT_CLASS: &str = "default";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedDef {
@@ -69,6 +70,8 @@ struct Definition {
     ownership: Ownership,
     ui: Option<UiDef>,
     limits: Limits,
+    class: String,
+    resumable: bool,
 }
 
 pub struct FunctionBuilder<P, R> {
@@ -91,6 +94,8 @@ pub fn function<P, R>(name: &str) -> FunctionBuilder<P, R> {
             ownership: Ownership::Undeclared,
             ui: None,
             limits: Limits::default(),
+            class: DEFAULT_CLASS.to_owned(),
+            resumable: false,
         },
         types: PhantomData,
     }
@@ -183,6 +188,16 @@ where
         self
     }
 
+    pub fn class(mut self, class: &str) -> Self {
+        self.def.class = class.to_owned();
+        self
+    }
+
+    pub fn resumable(mut self) -> Self {
+        self.def.resumable = true;
+        self
+    }
+
     pub fn handler<F, Fut>(self, handler: F) -> FunctionDef
     where
         F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
@@ -222,6 +237,8 @@ where
             result: embedded(schema_for!(R)),
             ui: def.ui,
             limits: def.limits,
+            class: def.class,
+            resumable: def.resumable,
             list,
             handler,
         }
@@ -268,6 +285,8 @@ pub struct FunctionDef {
     result: Schema,
     ui: Option<UiDef>,
     limits: Limits,
+    class: String,
+    resumable: bool,
     list: Option<Arc<ListSpec>>,
     handler: ErasedHandler,
 }
@@ -322,6 +341,14 @@ impl FunctionDef {
 
     pub fn limits(&self) -> &Limits {
         &self.limits
+    }
+
+    pub fn class(&self) -> &str {
+        &self.class
+    }
+
+    pub fn is_resumable(&self) -> bool {
+        self.resumable
     }
 
     pub fn handler(&self) -> &ErasedHandler {
@@ -387,6 +414,8 @@ impl fmt::Debug for FunctionDef {
             .field("key", &self.key)
             .field("ownership", &self.ownership)
             .field("limits", &self.limits)
+            .field("class", &self.class)
+            .field("resumable", &self.resumable)
             .finish()
     }
 }
@@ -492,6 +521,26 @@ mod tests {
         );
         assert_eq!(descriptor.get("ui"), None);
         assert_eq!(def.known_fields(), BTreeSet::from(["text".to_owned()]));
+    }
+
+    #[test]
+    fn a_function_names_the_class_of_its_jobs_and_whether_they_resume() {
+        let plain = function::<Ping, Pong>("m.e.run")
+            .kind(Kind::Action)
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert_eq!(plain.class(), DEFAULT_CLASS);
+        assert!(!plain.is_resumable());
+        let heavy = function::<Ping, Pong>("m.e.export")
+            .kind(Kind::Action)
+            .class("export")
+            .resumable()
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert_eq!(heavy.class(), "export");
+        assert!(heavy.is_resumable());
+        let descriptor = serde_json::to_value(heavy.descriptor().unwrap()).unwrap();
+        assert!(descriptor.get("class").is_none());
+        assert!(descriptor.get("resumable").is_none());
+        assert!(format!("{heavy:?}").contains("class: \"export\", resumable: true"));
     }
 
     #[test]

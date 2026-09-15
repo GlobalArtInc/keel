@@ -3,7 +3,8 @@ pub use crate::config::Section;
 pub use crate::context::Spawner;
 pub use crate::db::Db;
 pub use crate::function::{
-    ErasedHandler, LIST_QUERY_REF, Limits, OwnedDef, Ownership, natural_mode, property_names,
+    DEFAULT_CLASS, ErasedHandler, LIST_QUERY_REF, Limits, OwnedDef, Ownership, natural_mode,
+    property_names,
 };
 pub use crate::guard::Guard;
 pub use crate::list::ListSpec;

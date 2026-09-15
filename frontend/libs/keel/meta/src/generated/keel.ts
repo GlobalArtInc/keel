@@ -130,6 +130,7 @@ export type Via =
   | {
       peer: Id;
     };
+export type TaskState = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'interrupted';
 export interface Access {
   level: Level;
   permission?: string | null;
@@ -407,6 +408,14 @@ export interface Principal {
   externalId?: string | null;
   origin?: string | null;
   lang: string;
+}
+export interface TaskProgress {
+  id: Id;
+  function: string;
+  state: TaskState;
+  done: number;
+  total?: number | null;
+  message?: string | null;
 }
 export interface UiAttrs {
   control?: Control | null;

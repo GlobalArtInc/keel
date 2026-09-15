@@ -7,7 +7,8 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, LanguageSource, PermissionCatalogue, PrincipalSource, SecretCipher,
+    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, PermissionCatalogue,
+    PrincipalSource, SecretCipher,
 };
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
@@ -25,11 +26,13 @@ use super::settings::DefaultSettings;
 use super::{keys, patch, section};
 use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
+use crate::dispatcher::{CallerHandle, LiveBus};
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
 use crate::secret::DataKeyCipher;
+use crate::storage::SessionLocks;
 
 const PLATFORM: &str = "the platform";
 
@@ -37,6 +40,7 @@ pub struct Frozen {
     pub(super) graph: Graph,
     pub(super) registry: Arc<Registry>,
     pub(super) lifecycle: Vec<Lifecycle>,
+    pub(super) locks: Arc<SessionLocks>,
 }
 
 pub(super) struct Lifecycle {
@@ -341,6 +345,7 @@ struct Freezer {
     lifecycle: Vec<Lifecycle>,
     sections: Sections,
     claimed: BTreeMap<String, String>,
+    locks: Arc<SessionLocks>,
 }
 
 impl Initialised {
@@ -375,6 +380,7 @@ impl Initialised {
             lifecycle: Vec::new(),
             sections: self.graph.sections().clone(),
             claimed: BTreeMap::new(),
+            locks: Arc::new(SessionLocks::new()),
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
@@ -460,6 +466,13 @@ impl Freezer {
         if let Some(key) = graph.key() {
             services.provide::<dyn SecretCipher>(Arc::new(DataKeyCipher::new(key.clone())));
         }
+        let caller = Arc::new(CallerHandle::new());
+        services.provide::<dyn Caller>(caller.clone());
+        services.provide::<CallerHandle>(caller);
+        let live = Arc::new(LiveBus::new());
+        services.provide::<dyn LiveEvents>(live.clone());
+        services.provide::<LiveBus>(live);
+        services.provide::<dyn AdvisoryLock>(self.locks.clone());
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())
@@ -955,6 +968,7 @@ impl Freezer {
             graph,
             registry: Arc::new(registry),
             lifecycle: self.lifecycle,
+            locks: self.locks,
         })
     }
 }

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use axum::Router;
@@ -15,11 +15,12 @@ use keel_sdk::{ModuleDef, ProductManifest};
 use keel_types::{Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
+use tempfile::TempDir;
 
 use crate::auth;
 use crate::clock::FixedClock;
-use crate::database::{DatabaseError, TestDatabase};
-use crate::fixtures::{Fixtures, SeedError, Who, seed};
+use crate::database::{DatabaseError, DatabaseHandle, TestDatabase};
+use crate::fixtures::{Fixtures, SeedError, Who, recover, seed};
 use crate::http::{HttpError, TestHttp, with_test_principal};
 use crate::snapshots;
 
@@ -29,6 +30,55 @@ pub struct Builder {
     products: Vec<&'static ProductManifest>,
     clock: Option<DateTime<Utc>>,
     sections: Vec<(String, Value)>,
+    data_dir: Option<PathBuf>,
+    database: Option<AttachedDatabase>,
+}
+
+pub enum AttachedDatabase {
+    Owned(TestDatabase),
+    Shared(DatabaseHandle),
+}
+
+impl From<TestDatabase> for AttachedDatabase {
+    fn from(database: TestDatabase) -> Self {
+        AttachedDatabase::Owned(database)
+    }
+}
+
+impl From<DatabaseHandle> for AttachedDatabase {
+    fn from(handle: DatabaseHandle) -> Self {
+        AttachedDatabase::Shared(handle)
+    }
+}
+
+impl AttachedDatabase {
+    fn handle(&self) -> &DatabaseHandle {
+        match self {
+            AttachedDatabase::Owned(database) => database,
+            AttachedDatabase::Shared(handle) => handle,
+        }
+    }
+
+    fn into_owned(self) -> Option<TestDatabase> {
+        match self {
+            AttachedDatabase::Owned(database) => Some(database),
+            AttachedDatabase::Shared(_) => None,
+        }
+    }
+}
+
+enum DataDir {
+    Temporary(TempDir),
+    Given(PathBuf),
+}
+
+impl DataDir {
+    fn path(&self) -> &Path {
+        match self {
+            DataDir::Temporary(dir) => dir.path(),
+            DataDir::Given(path) => path,
+        }
+    }
 }
 
 pub struct Harness {
@@ -38,7 +88,8 @@ pub struct Harness {
     readiness: Arc<Readiness>,
     fixtures: Fixtures,
     storage: Storage,
-    database: TestDatabase,
+    database: AttachedDatabase,
+    data_dir: DataDir,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +110,10 @@ pub enum Error {
     Storage(#[from] keel_kernel::StorageError),
     #[error("the data key of the test composition could not be generated: {0}")]
     Key(#[from] KeyError),
+    #[error("the temporary data directory of the harness could not be created: {0}")]
+    DataDir(#[source] std::io::Error),
+    #[error("the harness shares the database {0} with the harness that created it")]
+    Shared(String),
 }
 
 impl Harness {
@@ -89,6 +144,16 @@ impl Builder {
         self
     }
 
+    pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(path.into());
+        self
+    }
+
+    pub fn database(mut self, database: impl Into<AttachedDatabase>) -> Self {
+        self.database = Some(database.into());
+        self
+    }
+
     pub async fn boot(self) -> Harness {
         match self.try_boot().await {
             Ok(harness) => harness,
@@ -97,8 +162,18 @@ impl Builder {
     }
 
     pub async fn try_boot(self) -> Result<Harness, Error> {
-        let database = TestDatabase::try_create().await?;
-        let storage = database.try_storage().await?;
+        let (database, seeded) = match self.database {
+            Some(database) => (database, true),
+            None => (
+                AttachedDatabase::Owned(TestDatabase::try_create().await?),
+                false,
+            ),
+        };
+        let data_dir = match self.data_dir {
+            Some(path) => DataDir::Given(path),
+            None => DataDir::Temporary(tempfile::tempdir().map_err(Error::DataDir)?),
+        };
+        let storage = database.handle().try_storage().await?;
         let clock = Arc::new(match self.clock {
             Some(at) => FixedClock::at(at),
             None => FixedClock::frozen_now(),
@@ -106,6 +181,7 @@ impl Builder {
         let mut composition = Composition::new()
             .clock(clock.clone())
             .key(Key::generate()?)
+            .data_dir(data_dir.path())
             .module(&auth::MODULE);
         for module in self.modules {
             composition = composition.module(module);
@@ -126,7 +202,13 @@ impl Builder {
                 return Err(error.into());
             }
         };
-        let fixtures = match seed(&dispatcher).await {
+        dispatcher.fill_caller();
+        let fixtures = if seeded {
+            recover(&dispatcher).await
+        } else {
+            seed(&dispatcher).await
+        };
+        let fixtures = match fixtures {
             Ok(fixtures) => fixtures,
             Err(error) => {
                 stop_quietly(kernel).await;
@@ -141,6 +223,7 @@ impl Builder {
             fixtures,
             storage,
             database,
+            data_dir,
         })
     }
 }
@@ -184,8 +267,16 @@ impl Harness {
         self.storage.db()
     }
 
-    pub fn database(&self) -> &TestDatabase {
-        &self.database
+    pub fn database(&self) -> &DatabaseHandle {
+        self.database.handle()
+    }
+
+    pub fn database_handle(&self) -> DatabaseHandle {
+        self.database.handle().clone()
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        self.data_dir.path()
     }
 
     pub async fn call_as(&self, level: Level, func: &str, params: Value) -> Reply {
@@ -254,8 +345,9 @@ impl Harness {
     }
 
     pub async fn try_finish(self) -> Result<(), Error> {
-        let database = self.try_stop().await?;
-        database.try_finish().await?;
+        if let Some(database) = self.try_release().await? {
+            database.try_finish().await?;
+        }
         Ok(())
     }
 
@@ -267,12 +359,24 @@ impl Harness {
     }
 
     pub async fn try_stop(self) -> Result<TestDatabase, Error> {
+        let name = self.database().name().to_owned();
+        self.try_release().await?.ok_or(Error::Shared(name))
+    }
+
+    pub async fn release(self) {
+        if let Err(error) = self.try_release().await {
+            panic!("{error}");
+        }
+    }
+
+    pub async fn try_release(self) -> Result<Option<TestDatabase>, Error> {
         let Harness {
             kernel,
             dispatcher,
             readiness,
             storage,
             database,
+            data_dir,
             ..
         } = self;
         readiness.draining();
@@ -285,9 +389,10 @@ impl Harness {
         if let Err(error) = storage.close().await {
             first.get_or_insert(error.into());
         }
+        drop(data_dir);
         match first {
             Some(error) => Err(error),
-            None => Ok(database),
+            None => Ok(database.into_owned()),
         }
     }
 }
@@ -295,7 +400,8 @@ impl Harness {
 impl fmt::Debug for Harness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Harness")
-            .field("database", &self.database.name())
+            .field("database", &self.database().name())
+            .field("data_dir", &self.data_dir())
             .field("modules", &self.modules())
             .field("products", &self.registry().product_ids())
             .finish()

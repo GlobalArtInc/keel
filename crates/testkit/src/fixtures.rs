@@ -5,7 +5,9 @@ use keel_kernel::http::{GUEST_LOGIN, guest};
 use keel_kernel::keel::{DEFAULT_LANG, DEFAULT_ROLE, RESELLER_KIND};
 use keel_kernel::socket::{OWNER_LOGIN, owner};
 use keel_kernel::{CallOptions, Dispatcher, Reply};
-use keel_types::{CallError, Id, Level, Principal, Scope, Via};
+use keel_sdk::Db;
+use keel_sdk::system::PrincipalSource;
+use keel_types::{CallError, ErrorCode, Id, Level, Principal, Scope, Via};
 use serde_json::{Value, json};
 
 pub(crate) const USER_KIND: &str = "user";
@@ -203,6 +205,69 @@ pub(crate) async fn seed(dispatcher: &Dispatcher) -> Result<Fixtures, SeedError>
     })
 }
 
+pub(crate) async fn recover(dispatcher: &Dispatcher) -> Result<Fixtures, SeedError> {
+    let source = dispatcher
+        .registry()
+        .services()
+        .get::<dyn PrincipalSource>()
+        .ok_or_else(|| missing("keel.principal.by_login"))?;
+    let db = Db::from_connection(dispatcher.db().clone());
+    let mut stored = Vec::with_capacity(6);
+    for who in [
+        Who::Service,
+        Who::Admin,
+        Who::Reseller,
+        Who::A1,
+        Who::A2,
+        Who::Unrelated,
+    ] {
+        let found = source
+            .by_login(who.login(), &db)
+            .await
+            .map_err(|error| SeedError {
+                function: "keel.principal.by_login".to_owned(),
+                error: Box::new(error.to_call_error()),
+            })?
+            .ok_or_else(|| missing(&format!("keel.principal.by_login {who}")))?;
+        stored.push(stored_principal(
+            found.id,
+            who.login(),
+            who.level(),
+            found.account_id,
+            DEFAULT_ROLE,
+            DEFAULT_LANG,
+        ));
+    }
+    let [service, admin, reseller, a1, a2, unrelated] =
+        <[Principal; 6]>::try_from(stored).map_err(|_| missing("keel.principal.by_login"))?;
+    Ok(Fixtures {
+        accounts: Accounts {
+            root: Id::ROOT_ACCOUNT,
+            reseller: reseller.account_id,
+            a1: a1.account_id,
+            a2: a2.account_id,
+            unrelated: unrelated.account_id,
+        },
+        principals: Principals {
+            guest: guest_principal(),
+            service,
+            owner: owner_principal(),
+            admin,
+            reseller,
+            a1,
+            a2,
+            unrelated,
+        },
+    })
+}
+
+fn missing(function: &str) -> SeedError {
+    SeedError {
+        function: function.to_owned(),
+        error: Box::new(CallError::new(ErrorCode::NotFound)),
+    }
+}
+
 async fn account(
     dispatcher: &Dispatcher,
     owner: &Principal,
@@ -269,7 +334,7 @@ fn saved_id(function: &str, reply: &Reply) -> Result<Id, SeedError> {
         .and_then(|id| id.parse().ok())
         .ok_or_else(|| SeedError {
             function: function.to_owned(),
-            error: Box::new(CallError::new(keel_types::ErrorCode::Internal)),
+            error: Box::new(CallError::new(ErrorCode::Internal)),
         })
 }
 

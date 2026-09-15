@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
-use keel_kernel::dispatcher::{self, CallOptions, Dispatcher, Reply};
+use keel_kernel::dispatcher::{self, CallOptions, Dispatcher, LiveBus, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
-use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client};
-use keel_sdk::{Registrar, migrator};
+use keel_sdk::system::{
+    AuditEvent, AuditOutcome, AuditSink, Caller, CallerOptions, Client, Frame, LiveEvents, TaskSink,
+};
+use keel_sdk::{Registrar, TaskHandle, migrator};
 use keel_testkit::{FixedClock, TestDatabase};
 use keel_types::{Check, ErrorCode, Scope, Via};
 use sea_orm::{ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
@@ -131,6 +134,19 @@ struct Peek {
     tx_error: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Reported {
+    task: Option<Id>,
+    resumed: Option<Value>,
+    cancelled: bool,
+    nested: Option<Id>,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Reflected {
+    task: Option<Id>,
+}
+
 #[derive(Default)]
 struct Recorder {
     audit: Mutex<Vec<AuditEvent>>,
@@ -210,6 +226,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(relay())
         .function(probe())
         .function(peek())
+        .function(report())
+        .function(reflect())
         .permission("shelf.book.read", &[Level::User, Level::Reseller])
         .permission("shelf.book.manage", &[Level::User, Level::Reseller])
         .permission("shelf.book.pair", &[Level::Reseller])
@@ -407,6 +425,45 @@ fn peek() -> FunctionDef {
         })
 }
 
+fn report() -> FunctionDef {
+    function::<Nothing, Reported>("shelf.book.report")
+        .kind(Kind::Action)
+        .level(Level::User)
+        .unowned()
+        .handler(|call: Call<Nothing>| async move {
+            let nested = call.invoke("shelf.book.reflect", json!({})).await?;
+            let Some(task) = call.task() else {
+                return Ok(Reported {
+                    task: None,
+                    resumed: None,
+                    cancelled: false,
+                    nested: serde_json::from_value(nested["task"].clone())?,
+                });
+            };
+            task.progress(1, Some(2), Some("counting")).await?;
+            task.log("counted the shelf").await?;
+            task.checkpoint(&json!({ "n": 1 })).await?;
+            Ok(Reported {
+                task: Some(task.id()),
+                resumed: task.resume_from::<Value>()?,
+                cancelled: task.is_cancelled(),
+                nested: serde_json::from_value(nested["task"].clone())?,
+            })
+        })
+}
+
+fn reflect() -> FunctionDef {
+    function::<Nothing, Reflected>("shelf.book.reflect")
+        .kind(Kind::Get)
+        .level(Level::User)
+        .unowned()
+        .handler(|call: Call<Nothing>| async move {
+            Ok(Reflected {
+                task: call.task().map(TaskHandle::id),
+            })
+        })
+}
+
 struct Bench {
     database: TestDatabase,
     storage: Storage,
@@ -419,6 +476,19 @@ async fn bench() -> Bench {
 }
 
 async fn bench_with(composition: Composition) -> Bench {
+    let (database, storage, kernel) = booted(composition).await;
+    let dispatcher = Dispatcher::new(kernel.registry().clone(), storage.db().clone())
+        .expect("every schema compiles")
+        .hook_timeout(Duration::from_millis(200));
+    Bench {
+        database,
+        storage,
+        kernel,
+        dispatcher,
+    }
+}
+
+async fn booted(composition: Composition) -> (TestDatabase, Storage, Kernel) {
     let database = TestDatabase::create().await;
     let storage = database.storage().await;
     let kernel = Kernel::boot(composition.module(&SHELF), &storage)
@@ -442,15 +512,7 @@ async fn bench_with(composition: Composition) -> Bench {
             .await
             .expect("seed an account");
     }
-    let dispatcher = Dispatcher::new(kernel.registry().clone(), storage.db().clone())
-        .expect("every schema compiles")
-        .hook_timeout(Duration::from_millis(200));
-    Bench {
-        database,
-        storage,
-        kernel,
-        dispatcher,
-    }
+    (database, storage, kernel)
 }
 
 impl Bench {
@@ -1778,5 +1840,219 @@ async fn list_execution_enforces_sortable_columns_page_size_default_sort_and_tot
         .await;
     assert_eq!(all.data().unwrap()["total"], json!(1));
     assert_eq!(all.data().unwrap()["totals"], json!({ "pages": 100 }));
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn the_caller_runs_as_the_handed_principal_via_internal_and_answers_unavailable_until_filled()
+{
+    let (database, storage, kernel) = booted(Composition::new()).await;
+    let caller = kernel
+        .registry()
+        .services()
+        .get::<dyn Caller>()
+        .expect("the kernel provides the caller");
+    let params = json!({ "title": "internal", "pages": 3 });
+    let early = caller
+        .call(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            params.clone(),
+            CallerOptions::default(),
+        )
+        .await
+        .expect_err("the dispatcher is not built yet");
+    assert_eq!(early.code(), ErrorCode::Unavailable);
+    assert_eq!(early.key(), "keel.error.caller_unavailable");
+    assert_eq!(early.params()["function"], json!("shelf.book.edit"));
+
+    let dispatcher = Dispatcher::new(kernel.registry().clone(), storage.db().clone())
+        .expect("every schema compiles");
+    assert!(dispatcher.fill_caller());
+    let handed = principal(Level::User, CUSTOMER);
+    let saved = caller
+        .call(
+            handed.clone(),
+            "shelf.book.edit",
+            params,
+            CallerOptions {
+                request_id: Some("req-internal".to_owned()),
+                task: None,
+            },
+        )
+        .await
+        .expect("the call runs through the dispatcher");
+    let id: Id = saved["id"].as_str().expect("id").parse().expect("ulid");
+    let row = book::Entity::find_by_id(id.to_string())
+        .one(storage.db())
+        .await
+        .expect("query")
+        .expect("the book was saved");
+    assert_eq!(row.account_id, CUSTOMER);
+    assert_eq!(row.title, "internal");
+    let audited = RECORDER.audit_of("req-internal");
+    assert_eq!(audited.len(), 1);
+    assert_eq!(audited[0].principal.login, handed.login);
+    assert_eq!(audited[0].principal.id, handed.id);
+    assert_eq!(audited[0].principal.via, Via::Internal);
+    assert!(audited[0].outcome.is_committed());
+
+    let vetoed = caller
+        .call(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "title": "veto", "pages": 1 }),
+            CallerOptions::default(),
+        )
+        .await
+        .expect_err("the before hook vetoes");
+    assert_eq!(vetoed.code(), ErrorCode::Validation);
+    let missing = caller
+        .call(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.nothing",
+            json!({}),
+            CallerOptions::default(),
+        )
+        .await
+        .expect_err("an unknown function");
+    assert_eq!(missing.code(), ErrorCode::NotFound);
+    kernel.stop().await.expect("the kernel stops");
+    storage.close().await.expect("the pool closes");
+    database.finish().await;
+}
+
+struct SinkDouble {
+    id: Id,
+    checkpoint: Option<Value>,
+    seen: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl TaskSink for SinkDouble {
+    fn id(&self) -> Id {
+        self.id
+    }
+
+    async fn progress(&self, done: u64, total: Option<u64>, message: Option<&str>) -> Result<()> {
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(format!("progress {done}/{total:?} {message:?}"));
+        Ok(())
+    }
+
+    async fn log(&self, line: &str) -> Result<()> {
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(format!("log {line}"));
+        Ok(())
+    }
+
+    async fn checkpoint(&self, state: Value) -> Result<()> {
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(format!("checkpoint {state}"));
+        Ok(())
+    }
+
+    fn resume_from(&self) -> Option<Value> {
+        self.checkpoint.clone()
+    }
+
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+
+    fn output_path(&self) -> PathBuf {
+        PathBuf::from("/nonexistent")
+    }
+}
+
+#[tokio::test]
+async fn a_handler_inside_a_job_reports_through_its_task_handle_while_an_inline_call_sees_none() {
+    let bench = bench().await;
+    let inline = bench
+        .call(Level::User, CUSTOMER, "shelf.book.report", json!({}))
+        .await;
+    assert_eq!(
+        inline.data().expect("the inline call answers"),
+        &json!({ "task": null, "resumed": null, "cancelled": false, "nested": null })
+    );
+
+    let sink = Arc::new(SinkDouble {
+        id: Id::generate(),
+        checkpoint: Some(json!({ "n": 0 })),
+        seen: Mutex::new(Vec::new()),
+    });
+    let inside = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.report",
+            json!({}),
+            CallOptions {
+                task: Some(TaskHandle::new(sink.clone())),
+                ..CallOptions::default()
+            },
+        )
+        .await;
+    let reported = inside.data().expect("the job call answers");
+    assert_eq!(reported["task"], json!(sink.id.to_string()));
+    assert_eq!(reported["nested"], json!(sink.id.to_string()));
+    assert_eq!(reported["resumed"], json!({ "n": 0 }));
+    assert_eq!(reported["cancelled"], json!(false));
+    assert_eq!(
+        *sink.seen.lock().unwrap_or_else(PoisonError::into_inner),
+        [
+            "progress 1/Some(2) Some(\"counting\")",
+            "log counted the shelf",
+            "checkpoint {\"n\":1}"
+        ]
+    );
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_published_frame_reaches_every_live_events_listener_and_is_dropped_without_one() {
+    let bench = bench().await;
+    let services = bench.kernel.registry().services();
+    let live = services
+        .get::<dyn LiveEvents>()
+        .expect("the kernel provides live events");
+    let bus = services
+        .get::<LiveBus>()
+        .expect("the kernel provides the bus itself");
+    let frame = |kind: &str| Frame {
+        principal: Id::generate(),
+        account: Id::generate(),
+        kind: kind.to_owned(),
+        data: json!({ "done": 1 }),
+    };
+    assert_eq!(bus.listeners(), 0);
+    live.publish(frame("dropped"));
+    let mut first = bus.subscribe();
+    let mut second = bus.subscribe();
+    assert_eq!(bus.listeners(), 2);
+    let published = frame("task.progress");
+    live.publish(published.clone());
+    let heard = tokio::time::timeout(Duration::from_secs(5), first.recv())
+        .await
+        .expect("the first listener hears the frame")
+        .expect("the channel is open");
+    assert_eq!(heard, published);
+    let heard = tokio::time::timeout(Duration::from_secs(5), second.recv())
+        .await
+        .expect("the second listener hears the frame")
+        .expect("the channel is open");
+    assert_eq!(heard, published);
+    assert!(
+        first.try_recv().is_err(),
+        "the dropped frame was not queued"
+    );
+    drop(first);
+    drop(second);
+    assert_eq!(bus.listeners(), 0);
     bench.finish().await;
 }

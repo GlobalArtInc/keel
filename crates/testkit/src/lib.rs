@@ -15,9 +15,9 @@ pub use tokio;
 
 pub use auth::PRINCIPAL_HEADER;
 pub use clock::FixedClock;
-pub use database::{DatabaseError, Server, TestDatabase};
+pub use database::{DatabaseError, DatabaseHandle, Server, TestDatabase};
 pub use fixtures::{Accounts, Fixtures, Principals, Who};
-pub use harness::{Builder, Error, Harness};
+pub use harness::{AttachedDatabase, Builder, Error, Harness};
 pub use http::{Answer, TestHttp};
 pub use invariants::Fixture;
 pub use socket::{CtlOutput, SocketTestError, TestSocket};

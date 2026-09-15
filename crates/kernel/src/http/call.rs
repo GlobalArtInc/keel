@@ -95,6 +95,7 @@ fn options(headers: &HeaderMap, request_id: &str, client: Client, zone: Zone) ->
             .map(str::to_owned),
         client: Some(client),
         tz: zone.0,
+        task: None,
     }
 }
 

@@ -1,6 +1,7 @@
 use std::any::{Any, type_name};
 use std::fmt;
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
@@ -21,6 +22,7 @@ pub struct Context {
     services: Arc<Services>,
     spawner: Arc<dyn Spawner>,
     db: Db,
+    data_dir: Arc<Path>,
 }
 
 impl Context {
@@ -31,6 +33,7 @@ impl Context {
         services: Arc<Services>,
         spawner: Arc<dyn Spawner>,
         db: Db,
+        data_dir: PathBuf,
     ) -> Self {
         Self {
             module: Arc::from(module),
@@ -38,6 +41,7 @@ impl Context {
             services,
             spawner,
             db,
+            data_dir: Arc::from(data_dir),
         }
     }
 
@@ -71,6 +75,10 @@ impl Context {
     pub(crate) fn db_slot(&self) -> &Db {
         &self.db
     }
+
+    pub(crate) fn data_dir_slot(&self) -> &Path {
+        &self.data_dir
+    }
 }
 
 impl fmt::Debug for Context {
@@ -79,6 +87,7 @@ impl fmt::Debug for Context {
             .field("module", &self.module)
             .field("contributions", &self.contributions)
             .field("services", &self.services)
+            .field("data_dir", &self.data_dir)
             .finish()
     }
 }
@@ -125,9 +134,14 @@ mod tests {
             Arc::new(services),
             spawner.clone(),
             Db::from_connection(sea_orm::DatabaseConnection::Disconnected),
+            PathBuf::from("/var/lib/keel"),
         );
         assert_eq!(ctx.module(), "dns");
         assert!(!crate::system::ContextExt::db(&ctx).is_transaction());
+        assert_eq!(
+            crate::system::ContextExt::data_dir(&ctx),
+            Path::new("/var/lib/keel")
+        );
         let widgets: Vec<&str> = ctx.contributions::<Widget>().map(|w| w.0).collect();
         assert_eq!(widgets, ["a", "b"]);
         assert_eq!(ctx.contributions::<u8>().count(), 0);

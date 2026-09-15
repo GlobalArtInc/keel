@@ -1,10 +1,13 @@
+use std::any::Any;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use keel_types::{CallError, Id, Mode, Principal};
+use keel_types::{CallError, Id, Mode, Principal, TaskState};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -13,6 +16,7 @@ use crate::context::Context;
 use crate::db::Db;
 use crate::error::Result;
 use crate::secret::Secret;
+use crate::task::TaskHandle;
 
 #[derive(Clone, Debug)]
 pub enum Credential {
@@ -122,11 +126,16 @@ pub trait CallExt {
 
 pub trait ContextExt {
     fn db(&self) -> Db;
+    fn data_dir(&self) -> &Path;
 }
 
 impl ContextExt for Context {
     fn db(&self) -> Db {
         self.db_slot().clone()
+    }
+
+    fn data_dir(&self) -> &Path {
+        self.data_dir_slot()
     }
 }
 
@@ -172,6 +181,99 @@ impl AuditOutcome {
 
 pub trait AuditSink: Send + Sync {
     fn record(&self, event: AuditEvent);
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaskSpec {
+    pub function: String,
+    pub params: Value,
+    pub principal: Principal,
+    pub class: String,
+    pub resumable: bool,
+    pub request_id: Option<String>,
+}
+
+#[async_trait]
+pub trait TaskRunner: Send + Sync {
+    async fn spawn(&self, spec: TaskSpec) -> Result<Id>;
+    async fn progress(
+        &self,
+        id: Id,
+        done: u64,
+        total: Option<u64>,
+        message: Option<&str>,
+    ) -> Result<()>;
+    async fn log(&self, id: Id, line: &str) -> Result<()>;
+    async fn checkpoint(&self, id: Id, state: Value) -> Result<()>;
+    async fn cancel(&self, id: Id) -> Result<()>;
+    async fn state(&self, id: Id) -> Result<TaskState>;
+}
+
+#[async_trait]
+pub trait TaskSink: Send + Sync {
+    fn id(&self) -> Id;
+    async fn progress(&self, done: u64, total: Option<u64>, message: Option<&str>) -> Result<()>;
+    async fn log(&self, line: &str) -> Result<()>;
+    async fn checkpoint(&self, state: Value) -> Result<()>;
+    fn resume_from(&self) -> Option<Value>;
+    fn is_cancelled(&self) -> bool;
+    fn output_path(&self) -> PathBuf;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CallerOptions {
+    pub request_id: Option<String>,
+    pub task: Option<TaskHandle>,
+}
+
+#[async_trait]
+pub trait Caller: Send + Sync {
+    async fn call(
+        &self,
+        principal: Principal,
+        func: &str,
+        params: Value,
+        options: CallerOptions,
+    ) -> Result<Value>;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Frame {
+    pub principal: Id,
+    pub account: Id,
+    pub kind: String,
+    pub data: Value,
+}
+
+pub trait LiveEvents: Send + Sync {
+    fn publish(&self, frame: Frame);
+}
+
+pub struct LockGuard {
+    held: Box<dyn Any + Send>,
+}
+
+impl LockGuard {
+    pub fn new(held: impl Any + Send) -> Self {
+        Self {
+            held: Box::new(held),
+        }
+    }
+
+    pub fn held<T: Any>(&self) -> Option<&T> {
+        self.held.downcast_ref::<T>()
+    }
+}
+
+impl fmt::Debug for LockGuard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LockGuard")
+    }
+}
+
+#[async_trait]
+pub trait AdvisoryLock: Send + Sync {
+    async fn take(&self, key: i64) -> Result<LockGuard>;
 }
 
 #[cfg(test)]

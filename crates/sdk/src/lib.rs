@@ -13,6 +13,7 @@ pub mod product;
 pub mod registrar;
 pub mod secret;
 pub mod settings;
+pub mod task;
 pub mod ui;
 
 mod call;
@@ -51,6 +52,7 @@ pub use product::{Asset, Brand, Edition, LevelLabels, MenuGroup, ProductManifest
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
+pub use task::{TaskHandle, TaskOutput};
 pub use ui::{Action, Column, Form, List, ViewSpec};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

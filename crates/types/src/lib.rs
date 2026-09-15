@@ -9,6 +9,7 @@ pub mod level;
 pub mod list;
 pub mod options;
 pub mod principal;
+pub mod task;
 pub mod ui;
 
 pub use boot::{
@@ -29,6 +30,7 @@ pub use options::{Choice, Choices, OptionsQuery};
 pub use principal::{
     Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via, is_mask,
 };
+pub use task::{TaskProgress, TaskState, UnknownTaskState};
 pub use ui::{
     Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,
     Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,
