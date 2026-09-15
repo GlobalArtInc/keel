@@ -1,7 +1,9 @@
 use chrono_tz::Tz;
-use keel_sdk::system::{ManifestPatch, ManifestSource, SecondFactorSource};
-use keel_sdk::{Db, KeelError, ProductManifest};
-use keel_types::{Boot, BootBrand, BootPrincipal, BootProduct, Level, Principal};
+use keel_sdk::system::{ManifestPatch, ManifestSource, ProblemCounter, SecondFactorSource};
+use keel_sdk::{DashboardWidget, Db, KeelError, ProductManifest};
+use keel_types::{
+    Boot, BootBrand, BootPrincipal, BootProblems, BootProduct, BootWidget, Level, Principal,
+};
 use sea_orm::DatabaseConnection;
 
 use crate::dispatcher;
@@ -111,6 +113,38 @@ pub(crate) fn views(registry: &Registry, principal: &Principal) -> Vec<String> {
         .collect()
 }
 
+pub(crate) fn dashboard(registry: &Registry, principal: &Principal) -> Vec<BootWidget> {
+    let projection = Projection::new(registry, principal);
+    registry
+        .contributions()
+        .of::<DashboardWidget>()
+        .filter(|widget| {
+            registry
+                .function(widget.func())
+                .is_some_and(|function| projection.admit(function).is_ok())
+        })
+        .map(|widget| BootWidget {
+            kind: widget.kind(),
+            func: widget.func().to_owned(),
+            limit: widget.limit_value(),
+        })
+        .collect()
+}
+
+pub(crate) async fn problems(
+    registry: &Registry,
+    db: &DatabaseConnection,
+    principal: &Principal,
+) -> Result<Option<BootProblems>, KeelError> {
+    let Some(counter) = registry.services().get::<dyn ProblemCounter>() else {
+        return Ok(None);
+    };
+    counter
+        .counts(principal, &Db::from_connection(db.clone()))
+        .await
+        .map(Some)
+}
+
 pub(crate) fn principal(
     principal: &Principal,
     totp: bool,
@@ -158,6 +192,7 @@ pub(crate) async fn payload(
 ) -> Result<Boot, KeelError> {
     let meta = meta::version(registry, db, principal).await?;
     let totp = second_factor(registry, db, principal).await?;
+    let problems = problems(registry, db, principal).await?;
     let mut brand = brand(registry);
     if let Some(patch) = patch(registry, db, host).await? {
         apply(&mut brand, &patch);
@@ -170,10 +205,10 @@ pub(crate) async fn payload(
         features: features(registry),
         license: None,
         menu: menu::project(registry, principal),
-        dashboard: Vec::new(),
+        dashboard: dashboard(registry, principal),
         views: views(registry, principal),
         meta,
-        problems: None,
+        problems,
     })
 }
 

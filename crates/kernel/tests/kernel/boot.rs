@@ -14,9 +14,11 @@ use keel_kernel::{Composition, Http, HttpOptions, Kernel, Readiness, Storage};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticated, Authenticator, Client as HttpClient, Credential};
+use keel_sdk::system::{
+    Authenticated, Authenticator, Client as HttpClient, Credential, PrincipalSource, ProblemCounter,
+};
 use keel_testkit::TestDatabase;
-use keel_types::{Boot, Envelope, ErrorCode, Scope, Via};
+use keel_types::{Boot, BootProblems, BootWidget, Envelope, ErrorCode, Scope, Via, WidgetKind};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -180,6 +182,68 @@ fn init(r: &mut Registrar) -> Result<()> {
     .i18n("en", EN)
     .i18n("ru", RU)
     .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
+    Ok(())
+}
+
+static RAIL: ModuleDef = ModuleDef {
+    id: "rail",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: rail_init,
+};
+
+struct CountingDouble;
+
+#[async_trait]
+impl ProblemCounter for CountingDouble {
+    async fn counts(&self, principal: &Principal, _: &Db) -> Result<BootProblems> {
+        Ok(if principal.level >= Level::Admin {
+            BootProblems {
+                open: 1,
+                critical: 0,
+            }
+        } else {
+            BootProblems::default()
+        })
+    }
+}
+
+fn rail_init(r: &mut Registrar) -> Result<()> {
+    r.function(
+        function::<ListQuery, Page<Item>>("rail.problem.list")
+            .kind(Kind::List)
+            .level(Level::Admin)
+            .unowned()
+            .ui(List::new("rail.problem.list.title").column(Column::new("title", ColumnType::Text)))
+            .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
+    )
+    .contribute(DashboardWidget::list("rail.problem.list", 5))
+    .provide::<dyn ProblemCounter>(Arc::new(CountingDouble))
+    .i18n(
+        "en",
+        r#"{ "rail": { "problem": { "list": { "title": "Problems" }, "column": { "title": "Title" } } } }"#,
+    )
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
+    Ok(())
+}
+
+static DANGLING: ModuleDef = ModuleDef {
+    id: "dangling",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: dangling_init,
+};
+
+fn dangling_init(r: &mut Registrar) -> Result<()> {
+    r.contribute(DashboardWidget::new(
+        WidgetKind::Stat,
+        "dangling.widget.missing",
+    ))
+    .contribute(DashboardWidget::list("keel.account.get", 5));
     Ok(())
 }
 
@@ -843,4 +907,163 @@ async fn a_function_without_an_en_title_key_fails_start_naming_every_missing_key
     );
     storage.close().await.expect("the pool closes");
     database.finish().await;
+}
+
+#[tokio::test]
+async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_stay_empty_without_them()
+ {
+    let bench = start(Composition::new().module(&RAIL)).await;
+    let admin = bench
+        .boot(Some(&format!("admin:{}", Id::ROOT_ACCOUNT)))
+        .await;
+    assert_eq!(
+        admin.dashboard,
+        [BootWidget {
+            kind: WidgetKind::List,
+            func: "rail.problem.list".into(),
+            limit: Some(5),
+        }]
+    );
+    assert_eq!(
+        admin.problems,
+        Some(BootProblems {
+            open: 1,
+            critical: 0,
+        })
+    );
+    let wire = bench
+        .get(
+            "/api/v1/boot",
+            Some(&format!("admin:{}", Id::ROOT_ACCOUNT)),
+            None,
+        )
+        .await;
+    assert_eq!(
+        wire.body["dashboard"],
+        json!([{ "kind": "list", "func": "rail.problem.list", "limit": 5 }])
+    );
+    assert_eq!(wire.body["problems"], json!({ "open": 1, "critical": 0 }));
+    let user = bench.boot(Some(&format!("user:{CUSTOMER}"))).await;
+    assert!(user.dashboard.is_empty(), "{:?}", user.dashboard);
+    assert_eq!(user.problems, Some(BootProblems::default()));
+    let guest = bench.boot(None).await;
+    assert!(guest.dashboard.is_empty());
+    assert_eq!(guest.problems, Some(BootProblems::default()));
+    let over_socket = bench.over_socket().await;
+    assert_eq!(over_socket.dashboard, admin.dashboard);
+    assert_eq!(over_socket.problems, admin.problems);
+    bench.finish().await;
+    let bare = start(Composition::new().module(&GATE)).await;
+    let owner = bare
+        .boot(Some(&format!("owner:{}", Id::ROOT_ACCOUNT)))
+        .await;
+    assert!(owner.dashboard.is_empty());
+    assert!(owner.problems.is_none());
+    let wire = bare
+        .get(
+            "/api/v1/boot",
+            Some(&format!("owner:{}", Id::ROOT_ACCOUNT)),
+            None,
+        )
+        .await;
+    assert_eq!(wire.body["dashboard"], json!([]));
+    assert_eq!(wire.body["problems"], Value::Null);
+    bare.finish().await;
+    let database = TestDatabase::create().await;
+    let storage = database.storage().await;
+    let error = Kernel::boot(Composition::new().module(&DANGLING), &storage)
+        .await
+        .expect_err("a widget over a missing function fails the freeze");
+    assert_eq!(
+        error.to_string(),
+        "the registries cannot be frozen:\n  - a stat dashboard widget points at dangling.widget.missing, which is not registered\n  - a list dashboard widget points at keel.account.get, which is not a list function"
+    );
+    storage.close().await.expect("the pool closes");
+    database.finish().await;
+}
+
+#[tokio::test]
+async fn at_or_above_and_of_account_answer_the_principals_the_menu_and_the_scope_rules_would() {
+    let bench = start(Composition::new()).await;
+    let root = Id::ROOT_ACCOUNT.to_string();
+    for (login, level, account) in [
+        ("adm", "admin", root.as_str()),
+        ("svc", "service", root.as_str()),
+        ("usr1", "user", CUSTOMER),
+        ("usr2", "user", CUSTOMER),
+    ] {
+        bench
+            .as_owner(
+                "keel.principal.create",
+                json!({ "login": login, "level": level, "account": account }),
+            )
+            .await;
+    }
+    let source = bench
+        .kernel
+        .registry()
+        .services()
+        .get::<dyn PrincipalSource>()
+        .expect("the kernel provides the principal source");
+    let db = Db::from_connection(bench.storage.db().clone());
+    let logins = |principals: Vec<Principal>| -> Vec<String> {
+        let mut logins: Vec<String> = principals
+            .into_iter()
+            .inspect(|principal| {
+                assert_eq!(principal.via, Via::Internal);
+                assert_eq!(principal.scope, Scope::Full);
+                assert!(principal.actor.is_none());
+            })
+            .map(|principal| principal.login)
+            .collect();
+        logins.sort();
+        logins
+    };
+    assert_eq!(
+        logins(source.at_or_above(Level::Admin, &db).await.expect("admins")),
+        ["adm"]
+    );
+    assert_eq!(
+        logins(
+            source
+                .at_or_above(Level::User, &db)
+                .await
+                .expect("users and above")
+        ),
+        ["adm", "usr1", "usr2"]
+    );
+    assert!(
+        source
+            .at_or_above(Level::Owner, &db)
+            .await
+            .expect("owners")
+            .is_empty()
+    );
+    let customer: Id = CUSTOMER.parse().expect("an id");
+    assert_eq!(
+        logins(
+            source
+                .of_account(customer, &db)
+                .await
+                .expect("the account's principals")
+        ),
+        ["usr1", "usr2"]
+    );
+    assert_eq!(
+        logins(
+            source
+                .of_account(Id::ROOT_ACCOUNT, &db)
+                .await
+                .expect("the root account's principals")
+        ),
+        ["adm", "svc"]
+    );
+    assert!(
+        source
+            .of_account(Id::generate(), &db)
+            .await
+            .expect("an unknown account")
+            .is_empty()
+    );
+    bench.finish().await;
 }

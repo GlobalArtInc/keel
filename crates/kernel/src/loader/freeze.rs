@@ -10,10 +10,12 @@ use keel_sdk::system::{
     AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, ParamMasker,
     PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
-use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
+use keel_sdk::{
+    ConfigSection, DashboardWidget, FunctionDef, MenuNode, ProductManifest, SettingsSource,
+};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
-use keel_types::{Access, Descriptor, Kind, Platform};
+use keel_types::{Access, Descriptor, Kind, Platform, WidgetKind};
 use schemars::Schema;
 use serde_json::Value;
 
@@ -248,6 +250,12 @@ pub enum FreezeProblem {
         module: String,
         path: String,
         function: String,
+    },
+    #[error("a {widget} dashboard widget points at {function}, which is {problem}")]
+    WidgetFunction {
+        widget: &'static str,
+        function: String,
+        problem: &'static str,
     },
     #[error("the menu path {path} is registered by both {first} and {second}")]
     MenuPathTwice {
@@ -833,6 +841,24 @@ impl Freezer {
                 problems: &mut problems,
             };
             checker.descriptor(&function.descriptor);
+        }
+        for widget in self.contributions.of::<DashboardWidget>() {
+            let problem = match (self.known.get(widget.func()), widget.kind()) {
+                (None, _) => Some("not registered"),
+                (Some(Kind::List), WidgetKind::List) => None,
+                (Some(_), WidgetKind::List) => Some("not a list function"),
+                (Some(_), WidgetKind::Stat) => None,
+            };
+            if let Some(problem) = problem {
+                problems.push(FreezeProblem::WidgetFunction {
+                    widget: match widget.kind() {
+                        WidgetKind::List => "list",
+                        WidgetKind::Stat => "stat",
+                    },
+                    function: widget.func().to_owned(),
+                    problem,
+                });
+            }
         }
         for node in &self.menu {
             let module = self

@@ -219,7 +219,9 @@
         },
         "dashboard": {
           "type": "array",
-          "items": true
+          "items": {
+            "$ref": "#/$defs/BootWidget"
+          }
         },
         "views": {
           "type": "array",
@@ -230,7 +232,16 @@
         "meta": {
           "type": "string"
         },
-        "problems": true
+        "problems": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BootProblems"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       },
       "required": [
         "keel",
@@ -396,6 +407,25 @@
         "totp"
       ]
     },
+    "BootProblems": {
+      "type": "object",
+      "properties": {
+        "open": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "critical": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "open",
+        "critical"
+      ]
+    },
     "BootProduct": {
       "type": "object",
       "properties": {
@@ -419,6 +449,29 @@
         "id",
         "name",
         "brand"
+      ]
+    },
+    "BootWidget": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/WidgetKind"
+        },
+        "func": {
+          "type": "string"
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "func"
       ]
     },
     "CallError": {
@@ -2006,6 +2059,13 @@
           ],
           "additionalProperties": false
         }
+      ]
+    },
+    "WidgetKind": {
+      "type": "string",
+      "enum": [
+        "stat",
+        "list"
       ]
     }
   }

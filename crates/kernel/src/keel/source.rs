@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use keel_sdk::async_trait::async_trait;
 use keel_sdk::runtime::Db;
 use keel_sdk::sea_orm::sea_query::Expr;
-use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use keel_sdk::system::{AccountSource, PrincipalSource};
 use keel_sdk::{KeelError, Result};
 use keel_types::{Id, Level, Principal, Scope, Via};
@@ -61,6 +61,33 @@ impl PrincipalSource for StoredPrincipals {
             .await?
             .map(from_row)
             .transpose()
+    }
+
+    async fn at_or_above(&self, level: Level, db: &Db) -> Result<Vec<Principal>> {
+        let levels: Vec<&str> = Level::ALL
+            .iter()
+            .filter(|candidate| **candidate >= level)
+            .map(|candidate| candidate.as_str())
+            .collect();
+        principal::Entity::find()
+            .filter(principal::Column::Level.is_in(levels))
+            .order_by_asc(principal::Column::Id)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(from_row)
+            .collect()
+    }
+
+    async fn of_account(&self, account: Id, db: &Db) -> Result<Vec<Principal>> {
+        principal::Entity::find()
+            .filter(principal::Column::AccountId.eq(account.to_string()))
+            .order_by_asc(principal::Column::Id)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(from_row)
+            .collect()
     }
 
     async fn touch_acl(&self, id: Id, db: &Db) -> Result<()> {

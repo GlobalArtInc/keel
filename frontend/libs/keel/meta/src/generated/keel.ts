@@ -62,6 +62,7 @@ export type Kind =
   | 'stream'
   | 'download'
   | 'upload';
+export type WidgetKind = 'stat' | 'list';
 export type ErrorCode =
   | 'validation'
   | 'forbidden'
@@ -173,10 +174,10 @@ export interface Boot {
   features: string[];
   license?: unknown;
   menu: BootMenuGroup[];
-  dashboard: unknown[];
+  dashboard: BootWidget[];
   views: string[];
   meta: string;
-  problems?: unknown;
+  problems?: BootProblems | null;
 }
 export interface Platform {
   version: string;
@@ -224,6 +225,15 @@ export interface BootMenuItem {
   kind?: Kind | null;
   icon?: string | null;
   badge?: Badge | null;
+}
+export interface BootWidget {
+  kind: WidgetKind;
+  func: string;
+  limit?: number | null;
+}
+export interface BootProblems {
+  open: number;
+  critical: number;
 }
 export interface CallError {
   code: ErrorCode;

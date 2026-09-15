@@ -16,10 +16,31 @@ pub struct Boot {
     pub features: Vec<String>,
     pub license: Option<Value>,
     pub menu: Vec<BootMenuGroup>,
-    pub dashboard: Vec<Value>,
+    pub dashboard: Vec<BootWidget>,
     pub views: Vec<String>,
     pub meta: String,
-    pub problems: Option<Value>,
+    pub problems: Option<BootProblems>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BootWidget {
+    pub kind: WidgetKind,
+    pub func: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum WidgetKind {
+    Stat,
+    List,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BootProblems {
+    pub open: u64,
+    pub critical: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -162,6 +183,33 @@ mod tests {
             })
         );
         assert_eq!(serde_json::from_value::<Boot>(wire).unwrap(), boot);
+    }
+
+    #[test]
+    fn a_widget_omits_a_missing_limit_and_the_problem_counts_start_at_zero() {
+        let widget = BootWidget {
+            kind: WidgetKind::Stat,
+            func: "dns.widget.zones".into(),
+            limit: None,
+        };
+        let wire = serde_json::to_value(&widget).unwrap();
+        assert_eq!(wire, json!({ "kind": "stat", "func": "dns.widget.zones" }));
+        assert_eq!(serde_json::from_value::<BootWidget>(wire).unwrap(), widget);
+        let listed: BootWidget = serde_json::from_value(json!({
+            "kind": "list", "func": "notify.problem.list", "limit": 5
+        }))
+        .unwrap();
+        assert_eq!(listed.kind, WidgetKind::List);
+        assert_eq!(listed.limit, Some(5));
+        assert!(serde_json::from_value::<WidgetKind>(json!("chart")).is_err());
+        assert_eq!(
+            serde_json::to_value(BootProblems::default()).unwrap(),
+            json!({ "open": 0, "critical": 0 })
+        );
+        let counted: BootProblems =
+            serde_json::from_value(json!({ "open": 1, "critical": 0 })).unwrap();
+        assert_eq!(counted.open, 1);
+        assert_eq!(counted.critical, 0);
     }
 
     #[test]

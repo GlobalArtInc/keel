@@ -4,7 +4,7 @@ pub use async_trait::async_trait;
 pub use keel_types::{
     Access, ActionRole, Choice, Choices, ColumnType, ConfirmDetails, ConfirmInput, ExportFormat,
     Id, Kind, Level, ListQuery, Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir, Tone,
-    Total,
+    Total, WidgetKind,
 };
 pub use schemars::JsonSchema;
 pub use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ pub use crate::call::{AfterContext, Call};
 pub use crate::clock::Clock;
 pub use crate::config::ConfigSection;
 pub use crate::context::Context;
+pub use crate::dashboard::DashboardWidget;
 pub use crate::db::Db;
 pub use crate::error::{KeelError, Result};
 pub use crate::function::{FunctionDef, function};

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use keel_types::{CallError, Id, Mode, Principal, TaskState};
+use keel_types::{BootProblems, CallError, Id, Level, Mode, Principal, TaskState};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -57,7 +57,14 @@ pub trait Authenticator: Send + Sync {
 pub trait PrincipalSource: Send + Sync {
     async fn by_id(&self, id: Id, db: &Db) -> Result<Option<Principal>>;
     async fn by_login(&self, login: &str, db: &Db) -> Result<Option<Principal>>;
+    async fn at_or_above(&self, level: Level, db: &Db) -> Result<Vec<Principal>>;
+    async fn of_account(&self, account: Id, db: &Db) -> Result<Vec<Principal>>;
     async fn touch_acl(&self, id: Id, db: &Db) -> Result<()>;
+}
+
+#[async_trait]
+pub trait ProblemCounter: Send + Sync {
+    async fn counts(&self, principal: &Principal, db: &Db) -> Result<BootProblems>;
 }
 
 #[async_trait]
@@ -282,8 +289,6 @@ pub trait AdvisoryLock: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use keel_types::Level;
-
     use super::*;
     use crate::call::CallBuilder;
 
