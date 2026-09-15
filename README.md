@@ -36,6 +36,10 @@ bin/keel/    keel-bin — the binary keel: the composition of every module and e
              the workspace; the only crate that depends on product crates. Its cargo feature
              demo is on by default so the workspace, CI and hack/prove-binary.sh carry the
              demo bundle; release builds pass --no-default-features and carry no demo
+bin/spike/   keel-spike — the host spike of M2: a root agent admitting one uid by peer
+             credentials with host.user.create and host.template.apply under a policy, its
+             client, unit and policy, and hack/spike-vm.sh that proves it on a machine; depends
+             on no workspace crate and is replaced by keel-host-agent in M4
 frontend/    pnpm workspace: @globalart/keel, the shell application and the product view
              libraries (from M2)
 contracts/   golden fixtures and the kernel's descriptor snapshots; protocol.md and the

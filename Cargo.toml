@@ -36,6 +36,7 @@ insta = { version = "1", features = ["json", "redactions"] }
 ipnet = "2"
 jsonschema = { version = "0.56", default-features = false }
 migrator = { package = "sqlmig", version = "0.2.1" }
+minijinja = "2"
 rand = "0.10"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }

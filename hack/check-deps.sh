@@ -119,6 +119,13 @@ if ! cargo tree -p keel-bin -e normal --prefix none --depth 1 | awk 'NR > 1 {pri
 fi
 echo "keel-bin graph checked"
 
+spike=$(cargo tree -p keel-spike -e normal,build,dev --prefix none | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | sort -u | tr '\n' ' ')
+if [ -n "$spike" ]; then
+  echo "keel-spike depends on workspace crates: $spike" >&2
+  fail=1
+fi
+echo "keel-spike graph checked"
+
 products=$(cargo metadata --format-version 1 --no-deps | python3 -c '
 import json, sys
 meta = json.load(sys.stdin)
