@@ -1,18 +1,34 @@
 pub mod api;
 
+mod channels;
+mod consumer;
 mod counter;
 mod entity;
 mod functions;
 mod lifecycle;
+mod mailer;
 mod messages;
 mod poll;
 mod problems;
+mod sender;
+mod templates;
 
 use std::sync::OnceLock;
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::{Caller, LiveEvents, PrincipalSource, ProblemCounter};
+use keel_sdk::system::{
+    Caller, ContextExt, LiveEvents, OutboxSubscriber, PrincipalSource, ProblemCounter, SecretCipher,
+};
 
+pub use channels::{
+    ERROR_CONFIG, ERROR_EMAIL_MISSING, ERROR_KIND, ERROR_KIND_UNAVAILABLE,
+    email::TIMEOUT as SMTP_TIMEOUT,
+};
+pub use consumer::{BATCH as CONSUMER_BATCH, CURSOR, STATE_FAILED, STATE_PENDING, STATE_SENT};
+pub use functions::channels::{
+    CHANNEL_DELETE, CHANNEL_GET, CHANNEL_LIST, CHANNEL_SET, CHANNEL_TEST,
+};
+pub use functions::deliveries::DELIVERY_LIST;
 pub use functions::internal::{MESSAGE_CREATE, PROBLEM_CLEAR, PROBLEM_RAISE};
 pub use functions::{
     MESSAGE_CLEAR, MESSAGE_LIST, MESSAGE_MARK, PERMISSION_MANAGE as MANAGE,
@@ -21,16 +37,32 @@ pub use functions::{
 pub use lifecycle::{Dropped, drop_account, on_delete};
 pub use messages::Note;
 pub use poll::{JOB_ID as POLL_JOB, SCHEDULE as POLL_SCHEDULE};
+pub use sender::{
+    LADDER, MAX_ATTEMPTS, POLL as SENDER_POLL, PROBLEM_KEY as DELIVERY_FAILED,
+    PROBLEM_SOURCE as DELIVERY_SOURCE,
+};
+pub use templates::{
+    BLOCK_DELIMITERS, COMMENT_DELIMITERS, ERROR_PLACEHOLDER as ERROR_TEMPLATE_PLACEHOLDER,
+    ERROR_SYNTAX as ERROR_TEMPLATE_SYNTAX, ERROR_TWICE as ERROR_TEMPLATE_TWICE,
+    VARIABLE_DELIMITERS, placeholder_fault, shipped as shipped_templates,
+};
 
-pub const FUNCTIONS: [&str; 5] = [
+pub const FUNCTIONS: [&str; 11] = [
     MESSAGE_LIST,
     MESSAGE_MARK,
     MESSAGE_CLEAR,
     PROBLEM_LIST,
     PROBLEM_GET,
+    CHANNEL_LIST,
+    CHANNEL_GET,
+    CHANNEL_SET,
+    CHANNEL_DELETE,
+    CHANNEL_TEST,
+    DELIVERY_LIST,
 ];
 pub const INTERNAL_FUNCTIONS: [&str; 3] = [PROBLEM_RAISE, PROBLEM_CLEAR, MESSAGE_CREATE];
 pub const MENU_PATH: &str = "system/problems";
+pub const CHANNELS_MENU_PATH: &str = "system/channels";
 pub const WIDGET_LIMIT: u32 = 5;
 
 static MIGRATIONS: migrator::Migrations =
@@ -48,10 +80,14 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let sources: poll::Sources = Arc::new(OnceLock::new());
     let started = sources.clone();
+    let mailer = Arc::new(mailer::Mailer::new());
+    let mailing = mailer.clone();
     r.provide::<dyn ProblemCounter>(Arc::new(counter::Counter))
         .require::<dyn Caller>()
         .require::<dyn LiveEvents>()
         .require::<dyn PrincipalSource>()
+        .require::<dyn SecretCipher>()
+        .require::<dyn OutboxSubscriber>()
         .contribute(poll::job(sources))
         .contribute(DashboardWidget::list(PROBLEM_LIST, WIDGET_LIMIT).level(Level::Admin))
         .function(functions::internal::problem_raise())
@@ -62,12 +98,23 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::message_clear())
         .function(functions::problem_list())
         .function(functions::problem_get())
+        .function(functions::channels::channel_list())
+        .function(functions::channels::channel_get())
+        .function(functions::channels::channel_set())
+        .function(functions::channels::channel_delete())
+        .function(functions::channels::channel_test(mailer.clone()))
+        .function(functions::deliveries::delivery_list())
         .permission(READ, &[Level::User, Level::Reseller])
         .permission(MANAGE, &[Level::User, Level::Reseller])
         .menu(
             MenuNode::new(MENU_PATH, PROBLEM_LIST)
                 .icon("triangle-alert")
                 .order(44),
+        )
+        .menu(
+            MenuNode::new(CHANNELS_MENU_PATH, CHANNEL_LIST)
+                .icon("mail")
+                .order(46),
         )
         .i18n("en", include_str!("../../i18n/notify/en.json"))
         .i18n("ru", include_str!("../../i18n/notify/ru.json"))
@@ -77,6 +124,24 @@ fn init(r: &mut Registrar) -> Result<()> {
             if started.set(contributed).is_err() {
                 tracing::warn!("the notify module was started twice; the first sources stand");
             }
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            let shipped = templates::shipped();
+            let templates = shipped
+                .iter()
+                .chain(ctx.contributions::<api::MailTemplate>());
+            let mail = mailing.start(
+                mailer::Seams {
+                    db: ctx.db(),
+                    clock: ctx.require::<dyn Clock>()?,
+                    cipher: ctx.require::<dyn SecretCipher>()?,
+                    caller: ctx.require::<dyn Caller>()?,
+                    principals: ctx.require::<dyn PrincipalSource>()?,
+                    subscriber: ctx.require::<dyn OutboxSubscriber>()?,
+                },
+                templates,
+            )?;
+            ctx.spawn(consumer::run(mail.clone(), mailing.clone()));
+            ctx.spawn(sender::run(mail, mailing));
             Ok(())
         });
     Ok(())
@@ -123,6 +188,18 @@ mod tests {
                 (MESSAGE_CLEAR, Kind::Action, Mode::Write, Level::User, false),
                 (PROBLEM_LIST, Kind::List, Mode::Read, Level::User, false),
                 (PROBLEM_GET, Kind::Get, Mode::Read, Level::User, false),
+                (CHANNEL_LIST, Kind::List, Mode::Read, Level::Admin, false),
+                (CHANNEL_GET, Kind::Get, Mode::Read, Level::Admin, false),
+                (CHANNEL_SET, Kind::Form, Mode::Write, Level::Admin, false),
+                (
+                    CHANNEL_DELETE,
+                    Kind::Action,
+                    Mode::Write,
+                    Level::Admin,
+                    false
+                ),
+                (CHANNEL_TEST, Kind::Action, Mode::Write, Level::Admin, false),
+                (DELIVERY_LIST, Kind::List, Mode::Read, Level::Admin, false),
             ]
         );
         let public: Vec<&str> = functions
@@ -164,18 +241,26 @@ mod tests {
                 (MANAGE, &[Level::User, Level::Reseller][..]),
             ]
         );
-        assert_eq!(registrations.menu.len(), 1);
+        assert_eq!(registrations.menu.len(), 2);
         assert_eq!(registrations.menu[0].path(), MENU_PATH);
         assert_eq!(registrations.menu[0].func(), PROBLEM_LIST);
+        assert_eq!(registrations.menu[1].path(), CHANNELS_MENU_PATH);
+        assert_eq!(registrations.menu[1].func(), CHANNEL_LIST);
         assert!(registrations.provides.get::<dyn ProblemCounter>().is_some());
         let required: Vec<&str> = registrations
             .requires
             .iter()
             .map(|key| key.name())
             .collect();
-        assert_eq!(required.len(), 3);
+        assert_eq!(required.len(), 5);
         assert!(required.iter().any(|name| name.ends_with("Caller")));
         assert!(required.iter().any(|name| name.ends_with("LiveEvents")));
+        assert!(required.iter().any(|name| name.ends_with("SecretCipher")));
+        assert!(
+            required
+                .iter()
+                .any(|name| name.ends_with("OutboxSubscriber"))
+        );
         assert!(
             required
                 .iter()

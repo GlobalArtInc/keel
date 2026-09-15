@@ -1,0 +1,3 @@
+This is a test email sent from the channel {params.channel} by {principal}.
+
+If you read this, the channel delivers mail.

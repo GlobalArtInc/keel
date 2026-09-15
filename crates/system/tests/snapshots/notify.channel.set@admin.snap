@@ -1,0 +1,300 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: notify.channel.set
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "notify.channel.set",
+  "module": "notify",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "title": "ChannelSet",
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "kind": {
+        "$ref": "#/$defs/ChannelKind"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "email": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/EmailInput"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "kind",
+      "name"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ChannelKind": {
+        "type": "string",
+        "enum": [
+          "email",
+          "telegram",
+          "webhook"
+        ]
+      },
+      "EmailInput": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "port": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 1,
+            "maximum": 65535,
+            "x-keel": {
+              "check": "port"
+            }
+          },
+          "security": {
+            "$ref": "#/$defs/Security",
+            "default": "none"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "default": null
+          },
+          "password": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Secret"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "x-keel": {
+              "secret": true
+            },
+            "x-ui": {
+              "control": "password"
+            }
+          },
+          "from": {
+            "type": "string",
+            "x-keel": {
+              "check": "email"
+            }
+          },
+          "to": {
+            "type": "string",
+            "x-keel": {
+              "check": "email"
+            }
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "from",
+          "to"
+        ]
+      },
+      "Security": {
+        "type": "string",
+        "enum": [
+          "none",
+          "starttls",
+          "tls"
+        ]
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Channel",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "kind": {
+        "$ref": "#/$defs/ChannelKind"
+      },
+      "name": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "email": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/EmailView"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "lastSentAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "lastError": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdBy": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "enabled",
+      "createdAt",
+      "createdBy"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ChannelKind": {
+        "type": "string",
+        "enum": [
+          "email",
+          "telegram",
+          "webhook"
+        ]
+      },
+      "EmailView": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "security": {
+            "$ref": "#/$defs/Security"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "hasPassword",
+          "from",
+          "to"
+        ]
+      },
+      "Security": {
+        "type": "string",
+        "enum": [
+          "none",
+          "starttls",
+          "tls"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "notify.channel.set.title",
+    "read": "notify.channel.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "kind",
+          "name",
+          "enabled"
+        ]
+      },
+      {
+        "id": "email",
+        "fields": [
+          "email"
+        ],
+        "show_if": {
+          "eq": [
+            "kind",
+            "email"
+          ]
+        }
+      }
+    ]
+  }
+}

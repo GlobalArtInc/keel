@@ -10,7 +10,7 @@ repository.workspace = true
 default = ["auth", "settings", "audit", "tasks", "cron", "notify"]
 audit = ["dep:tokio", "dep:tracing"]
 cron = ["dep:croner", "dep:tokio", "dep:tracing"]
-notify = ["cron", "dep:tokio", "dep:tracing"]
+notify = ["cron", "dep:lettre", "dep:minijinja", "dep:rustls", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
 settings = ["dep:jsonschema", "dep:roxmltree"]
 auth = [
@@ -33,8 +33,11 @@ hmac = { workspace = true, optional = true }
 ipnet = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }
 keel-sdk = { workspace = true }
+lettre = { workspace = true, optional = true }
+minijinja = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
 sha1 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }

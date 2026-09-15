@@ -84,62 +84,95 @@ struct CreatedEvent<'a> {
     problem: Option<Id>,
 }
 
-pub(super) async fn create(call: &Call<Message>) -> Result<Created> {
-    let tx = call.tx()?;
-    let now = call.require::<dyn Clock>()?.now();
-    let live = call.require::<dyn LiveEvents>()?;
-    let message = call.params();
-    let mut ids = Vec::new();
-    let mut frames = Vec::new();
-    for recipient in resolve(call).await? {
-        let id = Id::generate();
-        message::ActiveModel {
-            id: Set(id.to_string()),
-            principal_id: Set(recipient.id.to_string()),
-            account_id: Set(recipient.account_id.to_string()),
-            key: Set(message.key.clone()),
-            params_json: Set(message.params.clone()),
-            level: Set(message.level.as_str().to_owned()),
-            source: Set(message.source.clone()),
-            problem_id: Set(message.problem.map(|problem| problem.to_string())),
-            read_at: Set(None),
-            created_at: Set(now),
-            unread: keel_sdk::sea_orm::ActiveValue::NotSet,
-        }
-        .insert(tx)
-        .await?;
-        call.emit(
-            EVENT_MESSAGE_CREATED,
-            &CreatedEvent {
-                id,
-                principal: recipient.id,
-                account: recipient.account_id,
-                key: &message.key,
-                level: message.level,
-                source: &message.source,
-                problem: message.problem,
-            },
-        )?;
-        frames.push(Frame {
+pub struct Outgoing<'a> {
+    pub key: &'a str,
+    pub params: &'a Value,
+    pub level: NotificationLevel,
+    pub source: &'a str,
+    pub problem: Option<Id>,
+}
+
+pub(super) async fn insert<P: Send + Sync>(
+    call: &Call<P>,
+    recipient: &Principal,
+    outgoing: &Outgoing<'_>,
+    now: keel_sdk::chrono::DateTime<keel_sdk::chrono::Utc>,
+) -> Result<(Id, Frame)> {
+    let id = Id::generate();
+    message::ActiveModel {
+        id: Set(id.to_string()),
+        principal_id: Set(recipient.id.to_string()),
+        account_id: Set(recipient.account_id.to_string()),
+        key: Set(outgoing.key.to_owned()),
+        params_json: Set(outgoing.params.clone()),
+        level: Set(outgoing.level.as_str().to_owned()),
+        source: Set(outgoing.source.to_owned()),
+        problem_id: Set(outgoing.problem.map(|problem| problem.to_string())),
+        read_at: Set(None),
+        created_at: Set(now),
+        unread: keel_sdk::sea_orm::ActiveValue::NotSet,
+    }
+    .insert(call.tx()?)
+    .await?;
+    call.emit(
+        EVENT_MESSAGE_CREATED,
+        &CreatedEvent {
+            id,
             principal: recipient.id,
             account: recipient.account_id,
-            kind: FRAME_KIND.to_owned(),
-            data: keel_sdk::serde_json::to_value(NotificationFrame {
-                id,
-                key: message.key.clone(),
-                params: message.params.clone(),
-                level: message.level,
-                created_at: now,
-            })?,
-        });
-        ids.push(id);
-    }
+            key: outgoing.key,
+            level: outgoing.level,
+            source: outgoing.source,
+            problem: outgoing.problem,
+        },
+    )?;
+    let frame = Frame {
+        principal: recipient.id,
+        account: recipient.account_id,
+        kind: FRAME_KIND.to_owned(),
+        data: keel_sdk::serde_json::to_value(NotificationFrame {
+            id,
+            key: outgoing.key.to_owned(),
+            params: outgoing.params.clone(),
+            level: outgoing.level,
+            created_at: now,
+        })?,
+    };
+    Ok((id, frame))
+}
+
+pub(super) fn publish_after_commit<P>(
+    call: &Call<P>,
+    live: Arc<dyn LiveEvents>,
+    frames: Vec<Frame>,
+) {
     call.after_commit(move |_| async move {
         for frame in frames {
             live.publish(frame);
         }
         Ok(())
     });
+}
+
+pub(super) async fn create(call: &Call<Message>) -> Result<Created> {
+    let now = call.require::<dyn Clock>()?.now();
+    let live = call.require::<dyn LiveEvents>()?;
+    let message = call.params();
+    let outgoing = Outgoing {
+        key: &message.key,
+        params: &message.params,
+        level: message.level,
+        source: &message.source,
+        problem: message.problem,
+    };
+    let mut ids = Vec::new();
+    let mut frames = Vec::new();
+    for recipient in resolve(call).await? {
+        let (id, frame) = insert(call, &recipient, &outgoing, now).await?;
+        frames.push(frame);
+        ids.push(id);
+    }
+    publish_after_commit(call, live, frames);
     Ok(Created { ids })
 }
 

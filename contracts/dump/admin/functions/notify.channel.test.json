@@ -1,0 +1,55 @@
+{
+  "keel": 1,
+  "name": "notify.channel.test",
+  "module": "notify",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Tested",
+    "type": "object",
+    "properties": {
+      "message": {
+        "$ref": "#/$defs/Id"
+      },
+      "delivery": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "message",
+      "delivery"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

@@ -1,0 +1,177 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: notify.delivery.list
+  level: admin
+---
+{
+  "keel": 1,
+  "name": "notify.delivery.list",
+  "module": "notify",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Delivery",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Delivery"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Delivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "messageKey": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "state": {
+            "type": "string"
+          },
+          "nextAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "channelId",
+          "channel",
+          "messageId",
+          "messageKey",
+          "attempt",
+          "state",
+          "nextAt",
+          "createdAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "notify.delivery.list.title",
+    "search": [
+      "channel",
+      "messageKey"
+    ],
+    "columns": [
+      {
+        "key": "channel",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "messageKey",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "failed": "danger",
+          "pending": "info",
+          "sent": "success"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "sent",
+            "failed"
+          ]
+        }
+      },
+      {
+        "key": "attempt",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "nextAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "error",
+        "type": "text"
+      },
+      {
+        "key": "sentAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "empty": {
+      "title": "notify.delivery.empty"
+    },
+    "invalidate_on": [
+      "notify.channel.*",
+      "notify.delivery.*"
+    ]
+  }
+}

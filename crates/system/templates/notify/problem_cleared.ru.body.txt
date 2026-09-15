@@ -1,0 +1,6 @@
+Проблема на установке устранена.
+
+Проблема:  {params.key}
+Объект:    {params.subject}
+Возникла:  {params.raisedAt}
+Устранена: {params.clearedAt}

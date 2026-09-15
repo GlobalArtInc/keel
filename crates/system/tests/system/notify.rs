@@ -633,7 +633,7 @@ async fn notify_message_create_is_refused_over_http_and_the_socket_and_runs_thro
         assert_eq!(described.status, 403, "{func}: {}", described.body);
     }
     let index = http.get(Who::Owner, "/api/v1/functions").await;
-    let names: Vec<&str> = index
+    let names: Vec<String> = index
         .json()
         .as_array()
         .expect("descriptors")
@@ -641,12 +641,8 @@ async fn notify_message_create_is_refused_over_http_and_the_socket_and_runs_thro
         .filter_map(|descriptor| descriptor["name"].as_str())
         .filter(|name| name.starts_with("notify."))
         .map(str::to_owned)
-        .collect::<Vec<_>>()
-        .leak()
-        .iter()
-        .map(String::as_str)
         .collect();
-    let mut expected = FUNCTIONS.to_vec();
+    let mut expected: Vec<String> = FUNCTIONS.iter().map(|name| (*name).to_owned()).collect();
     expected.sort_unstable();
     assert_eq!(names, expected);
     http.stop().await.expect("the server stops");
@@ -890,7 +886,15 @@ async fn the_notify_descriptors_match_their_snapshots_and_the_internal_functions
         if level < Level::User {
             assert!(notify.is_empty(), "{level}: {notify:?}");
         } else {
-            let mut expected = FUNCTIONS.to_vec();
+            let mut expected: Vec<&str> = FUNCTIONS
+                .iter()
+                .copied()
+                .filter(|name| {
+                    level >= Level::Admin
+                        || !(name.starts_with("notify.channel.")
+                            || name.starts_with("notify.delivery."))
+                })
+                .collect();
             expected.sort_unstable();
             assert_eq!(notify, expected, "{level}");
         }

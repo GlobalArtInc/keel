@@ -170,6 +170,13 @@ export const BOOT_ONE: Boot = {
           icon: 'palette',
         },
         {
+          path: 'system/channels',
+          label: 'notify.channel.list.title',
+          func: 'notify.channel.list',
+          kind: 'list',
+          icon: 'mail',
+        },
+        {
           path: 'system/audit',
           label: 'audit.list.title',
           func: 'audit.list',

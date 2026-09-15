@@ -1,0 +1,10 @@
+A problem was raised on your installation.
+
+Problem:  {params.key}
+Subject:  {params.subject}
+Severity: {params.severity}
+Source:   {params.source}
+Seen:     {params.count} time{% if params.count != 1 %}s{% endif %}
+Raised:   {params.raisedAt}
+
+Open the problems screen of the panel to review it.

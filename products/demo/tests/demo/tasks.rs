@@ -26,6 +26,18 @@ async fn wait_final(harness: &Harness, id: Id) -> TaskState {
         .expect("the state is read")
 }
 
+async fn wait_requeued(harness: &Harness, id: Id) {
+    let sql = format!("SELECT state FROM task_job WHERE id = '{id}'");
+    for _ in 0..600 {
+        let rows = harness.database().rows(&sql).await;
+        if rows.first().is_some_and(|state| state != "interrupted") {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the job {id} was not requeued by the worker of the second kernel");
+}
+
 async fn wait_progress(harness: &Harness, id: Id, at_least: u64) {
     let sql = format!("SELECT progress_done::text FROM task_job WHERE id = '{id}'");
     for _ in 0..600 {
@@ -290,6 +302,7 @@ async fn note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_wr
         .database(database)
         .boot()
         .await;
+    wait_requeued(&second, id).await;
     assert_eq!(wait_final(&second, id).await, TaskState::Done);
     let detail = detail(&second, Who::A1, id).await;
     assert_eq!(detail["state"], json!("done"));

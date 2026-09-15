@@ -1,0 +1,157 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: notify.channel.get
+  level: owner
+---
+{
+  "keel": 1,
+  "name": "notify.channel.get",
+  "module": "notify",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Channel",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "kind": {
+        "$ref": "#/$defs/ChannelKind"
+      },
+      "name": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "email": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/EmailView"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "lastSentAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "lastError": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdBy": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "enabled",
+      "createdAt",
+      "createdBy"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ChannelKind": {
+        "type": "string",
+        "enum": [
+          "email",
+          "telegram",
+          "webhook"
+        ]
+      },
+      "EmailView": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "security": {
+            "$ref": "#/$defs/Security"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "hasPassword",
+          "from",
+          "to"
+        ]
+      },
+      "Security": {
+        "type": "string",
+        "enum": [
+          "none",
+          "starttls",
+          "tls"
+        ]
+      }
+    }
+  }
+}

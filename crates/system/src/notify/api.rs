@@ -14,10 +14,14 @@ use keel_sdk::{Db, Id, KeelError, Result};
 use super::super::cron::api::owner;
 use super::functions::internal::{MESSAGE_CREATE, PROBLEM_CLEAR, PROBLEM_RAISE};
 
+pub use super::channels::{Channel, ChannelKind, EmailInput, EmailView, Security};
+pub use super::templates::{MailTemplate, Rendered, Text};
+
 pub const SOURCE_PROBLEM: &str = "problem";
 pub const SOURCE_TEST: &str = "test";
 pub const KEY_PROBLEM_RAISED: &str = "notify.problem.raised";
 pub const KEY_PROBLEM_CLEARED: &str = "notify.problem.cleared";
+pub const KEY_TEST: &str = "notify.test";
 pub const EVENT_MESSAGE_CREATED: &str = "notify.message.created";
 pub const EVENT_PROBLEM_RAISED: &str = "notify.problem.raised";
 pub const EVENT_PROBLEM_CLEARED: &str = "notify.problem.cleared";

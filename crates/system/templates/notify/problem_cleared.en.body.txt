@@ -1,0 +1,6 @@
+A problem on your installation was cleared.
+
+Problem: {params.key}
+Subject: {params.subject}
+Raised:  {params.raisedAt}
+Cleared: {params.clearedAt}
