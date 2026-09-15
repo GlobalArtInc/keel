@@ -178,7 +178,20 @@ pub fn edit() -> FunctionDef {
                     id
                 }
             };
-            call.emit("note.saved", &json!({ "id": id, "account_id": account }))?;
+            let subject = EventSubject {
+                kind: "note".to_owned(),
+                id: id
+                    .parse()
+                    .map_err(|_| KeelError::internal("note.error.id").param("id", id.as_str()))?,
+                account_id: Some(account.parse().map_err(|_| {
+                    KeelError::internal("note.error.account").param("account", account.as_str())
+                })?),
+            };
+            call.emit_about(
+                "note.saved",
+                subject,
+                &json!({ "id": id, "account_id": account }),
+            )?;
             let saved = call.invoke("note.get", json!({ "id": id })).await?;
             Ok(serde_json::from_value(saved)?)
         })

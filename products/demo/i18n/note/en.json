@@ -50,6 +50,7 @@
     "error": {
       "locked": "The note {title} is locked and cannot be deleted",
       "limit": "An account keeps at most {max} notes",
+      "id": "The stored id {id} of a note is not an identifier",
       "account": "The stored account {account} of a note is not an identifier",
       "account_suspended": "Notes cannot be changed while the account is suspended",
       "exists": "A note titled {title} already exists",

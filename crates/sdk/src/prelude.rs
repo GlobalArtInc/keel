@@ -2,9 +2,9 @@ pub use std::sync::Arc;
 
 pub use async_trait::async_trait;
 pub use keel_types::{
-    Access, ActionRole, Choice, Choices, ColumnType, ConfirmDetails, ConfirmInput, ExportFormat,
-    Id, Kind, Level, ListQuery, Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir, Tone,
-    Total, WidgetKind,
+    Access, ActionRole, Choice, Choices, ColumnType, ConfirmDetails, ConfirmInput, EventSubject,
+    ExportFormat, Id, Kind, Level, ListQuery, Mode, OptionsQuery, Page, Principal, ScreenResult,
+    SortDir, Tone, Total, WidgetKind,
 };
 pub use schemars::JsonSchema;
 pub use serde::{Deserialize, Serialize};

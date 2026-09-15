@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono_tz::Tz;
 use futures::future::BoxFuture;
-use keel_types::{Id, Mode, Principal};
+use keel_types::{EventSubject, Id, Mode, Principal};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -39,11 +39,13 @@ pub(crate) struct CallState {
     events: Mutex<Vec<Emitted>>,
     after_commit: Mutex<Vec<AfterCommitHook>>,
     session: Mutex<Option<SessionChange>>,
+    resolved: Mutex<Option<Id>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Emitted {
     pub kind: String,
+    pub subject: Option<EventSubject>,
     pub data: Value,
 }
 
@@ -122,6 +124,24 @@ impl<P> Call<P> {
     }
 
     pub fn emit(&self, kind: &str, data: &impl Serialize) -> Result<()> {
+        self.record_event(kind, None, data)
+    }
+
+    pub fn emit_about(
+        &self,
+        kind: &str,
+        subject: EventSubject,
+        data: &impl Serialize,
+    ) -> Result<()> {
+        self.record_event(kind, Some(subject), data)
+    }
+
+    fn record_event(
+        &self,
+        kind: &str,
+        subject: Option<EventSubject>,
+        data: &impl Serialize,
+    ) -> Result<()> {
         if self.state.mode == Mode::Read {
             return Err(KeelError::internal("keel.error.read_call_has_no_outbox"));
         }
@@ -132,6 +152,7 @@ impl<P> Call<P> {
             .unwrap_or_else(PoisonError::into_inner)
             .push(Emitted {
                 kind: kind.to_owned(),
+                subject,
                 data,
             });
         Ok(())
@@ -186,14 +207,24 @@ impl<P> Call<P> {
 
     pub async fn resolve_account(&self, requested: Option<Id>) -> Result<Id> {
         let own = self.state.principal.account_id;
-        let Some(requested) = requested else {
-            return Ok(own);
+        let resolved = match requested {
+            None => own,
+            Some(requested)
+                if requested == own
+                    || self.state.scope.includes(&self.state.db, requested).await? =>
+            {
+                requested
+            }
+            Some(_) => {
+                return Err(KeelError::not_found("keel.error.account_not_found").field("account"));
+            }
         };
-        if requested == own || self.state.scope.includes(&self.state.db, requested).await? {
-            Ok(requested)
-        } else {
-            Err(KeelError::not_found("keel.error.account_not_found").field("account"))
-        }
+        *self
+            .state
+            .resolved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(resolved);
+        Ok(resolved)
     }
 
     pub(crate) fn client_slot(&self) -> Option<&Client> {
@@ -322,6 +353,7 @@ impl CallBuilder {
             events: Mutex::new(Vec::new()),
             after_commit: Mutex::new(Vec::new()),
             session: Mutex::new(None),
+            resolved: Mutex::new(None),
         }))
     }
 }
@@ -393,6 +425,14 @@ impl CallHandle {
 
     pub fn take_events(&self) -> Vec<Emitted> {
         std::mem::take(&mut *self.0.events.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    pub fn resolved_account(&self) -> Option<Id> {
+        *self
+            .0
+            .resolved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     pub fn take_after_commit(&self) -> Vec<AfterCommitHook> {

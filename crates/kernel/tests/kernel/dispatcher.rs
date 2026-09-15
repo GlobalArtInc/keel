@@ -129,6 +129,12 @@ struct Host {
 struct Nothing {}
 
 #[derive(Deserialize, Serialize, JsonSchema)]
+struct Mark {
+    id: Id,
+    label: Id,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
 struct Peek {
     transaction: bool,
     tx_error: Option<String>,
@@ -222,6 +228,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(get())
         .function(edit())
         .function(batch())
+        .function(mark())
         .function(pair())
         .function(relay())
         .function(probe())
@@ -368,6 +375,34 @@ fn batch() -> FunctionDef {
                     .exec(call.tx()?)
                     .await?;
             }
+            Ok(Nothing {})
+        })
+}
+
+fn mark() -> FunctionDef {
+    function::<Mark, Nothing>("shelf.book.mark")
+        .kind(Kind::Action)
+        .access(Level::User, "shelf.book.manage")
+        .owned::<book::Entity>()
+        .handler(|call: Call<Mark>| async move {
+            let book = book::Entity::find_by_id(call.params().id.to_string())
+                .one(call.tx()?)
+                .await?
+                .ok_or_else(|| KeelError::not_found("keel.error.not_found"))?;
+            let account: Id = book
+                .account_id
+                .parse()
+                .map_err(|_| KeelError::internal("shelf.book.error.account"))?;
+            call.emit_about(
+                "shelf.label.attached",
+                EventSubject {
+                    kind: "shelf.label".into(),
+                    id: call.params().label,
+                    account_id: Some(account),
+                },
+                &json!({ "book": book.id, "label": call.params().label }),
+            )?;
+            call.emit("shelf.book.marked", &json!({ "id": book.id }))?;
             Ok(Nothing {})
         })
 }
@@ -547,6 +582,28 @@ impl Bench {
 
     async fn count(&self, sql: &str) -> i64 {
         self.database.count(&self.storage, sql).await
+    }
+
+    async fn subjects(&self) -> Vec<(String, Option<Value>)> {
+        let rows = self
+            .storage
+            .db()
+            .query_all(sea_orm::Statement::from_string(
+                sea_orm::DbBackend::Postgres,
+                "SELECT type, subject_json::text AS subject FROM keel_outbox ORDER BY seq",
+            ))
+            .await
+            .expect("the outbox rows");
+        rows.iter()
+            .map(|row| {
+                let kind: String = row.try_get("", "type").expect("a type");
+                let subject: Option<String> = row.try_get("", "subject").expect("a subject column");
+                (
+                    kind,
+                    subject.map(|text| serde_json::from_str(&text).expect("json")),
+                )
+            })
+            .collect()
     }
 
     async fn titles(&self) -> Vec<String> {
@@ -1418,6 +1475,122 @@ async fn an_outbox_row_exists_exactly_when_the_call_committed() {
     assert_eq!(actor["kind"], json!("principal"));
     let data: Value = serde_json::from_str(&row.try_get::<String>("", "data").unwrap()).unwrap();
     assert_eq!(data["title"], json!("kept"));
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_emitted_event_carries_the_subject_the_handler_named_or_the_one_the_dispatcher_derives()
+{
+    let bench = bench().await;
+    let created = bench
+        .save(
+            Level::User,
+            CUSTOMER,
+            json!({ "title": "first", "pages": 1 }),
+        )
+        .await;
+    bench
+        .save(
+            Level::User,
+            CUSTOMER,
+            json!({ "id": created, "title": "first again", "pages": 2 }),
+        )
+        .await;
+    let label = Id::generate();
+    let marked = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.mark",
+            json!({ "id": created, "label": label }),
+        )
+        .await;
+    assert!(marked.data().is_some(), "{:?}", marked.error());
+    assert_eq!(
+        bench.subjects().await,
+        [
+            ("shelf.book.saved".to_owned(), None),
+            (
+                "shelf.book.saved".to_owned(),
+                Some(json!({ "kind": "shelf.book", "id": created, "accountId": CUSTOMER }))
+            ),
+            (
+                "shelf.label.attached".to_owned(),
+                Some(json!({ "kind": "shelf.label", "id": label, "accountId": CUSTOMER }))
+            ),
+            (
+                "shelf.book.marked".to_owned(),
+                Some(json!({ "kind": "shelf.book", "id": created, "accountId": CUSTOMER }))
+            ),
+        ]
+    );
+    let events = bench
+        .storage
+        .db()
+        .query_all(sea_orm::Statement::from_string(
+            sea_orm::DbBackend::Postgres,
+            "SELECT seq, id, type, module, at, actor_json, subject_json, data_json FROM keel_outbox ORDER BY seq",
+        ))
+        .await
+        .expect("the rows");
+    assert_eq!(events.len(), 4);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_derived_subject_names_the_resolved_account_when_an_admin_acts_on_another_accounts_row() {
+    let bench = bench().await;
+    let book = bench
+        .save(
+            Level::User,
+            CUSTOMER,
+            json!({ "title": "alice's", "pages": 1 }),
+        )
+        .await;
+    bench
+        .save(
+            Level::Admin,
+            ROOT,
+            json!({ "id": book, "title": "alice's, by the admin", "pages": 2, "account": CUSTOMER }),
+        )
+        .await;
+    bench
+        .save(
+            Level::Reseller,
+            RESELLER,
+            json!({ "id": book, "title": "alice's, by the reseller", "pages": 3, "account": CUSTOMER }),
+        )
+        .await;
+    let label = Id::generate();
+    let marked = bench
+        .call(
+            Level::Admin,
+            ROOT,
+            "shelf.book.mark",
+            json!({ "id": book, "label": label }),
+        )
+        .await;
+    assert!(marked.data().is_some(), "{:?}", marked.error());
+    let subjects = bench.subjects().await;
+    assert_eq!(subjects.len(), 5);
+    assert_eq!(subjects[0].1, None);
+    assert_eq!(
+        subjects[1].1,
+        Some(json!({ "kind": "shelf.book", "id": book, "accountId": CUSTOMER }))
+    );
+    assert_eq!(
+        subjects[2].1,
+        Some(json!({ "kind": "shelf.book", "id": book, "accountId": CUSTOMER }))
+    );
+    assert_eq!(
+        subjects[3].1,
+        Some(json!({ "kind": "shelf.label", "id": label, "accountId": CUSTOMER }))
+    );
+    assert_eq!(
+        subjects[4].1,
+        Some(json!({ "kind": "shelf.book", "id": book, "accountId": ROOT })),
+        "a handler that resolves no account names the caller's"
+    );
     bench.finish().await;
 }
 

@@ -203,6 +203,41 @@ async fn the_standard_invariants_hold_for_notes() {
 }
 
 #[tokio::test]
+async fn note_saved_names_the_notes_account_as_its_subject() {
+    let harness = crate::demo().boot().await;
+    let a1 = harness.fixtures().accounts.a1;
+    let created = harness
+        .call(
+            Who::Owner,
+            "note.edit",
+            json!({ "title": "owned by a1", "account": a1 }),
+        )
+        .await;
+    let id = id_of(&created);
+    let renamed = harness
+        .call(
+            Who::Owner,
+            "note.edit",
+            json!({ "id": id, "title": "renamed by the owner" }),
+        )
+        .await;
+    assert_eq!(id_of(&renamed), id);
+    let subjects: Vec<Value> = harness
+        .database()
+        .rows("SELECT json_build_object('type', type, 'subject', subject_json)::text FROM keel_outbox ORDER BY seq")
+        .await
+        .iter()
+        .map(|row| serde_json::from_str(row).expect("json"))
+        .collect();
+    let expected = json!({
+        "type": "note.saved",
+        "subject": { "kind": "note", "id": id, "accountId": a1 }
+    });
+    assert_eq!(subjects, [expected.clone(), expected]);
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_note_is_locked() {
     let harness = crate::demo().boot().await;
     let alpha = create(&harness, Who::A1, "alpha").await;

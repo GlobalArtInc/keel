@@ -23,7 +23,8 @@ use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoke
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
 use keel_sdk::{AfterContext, KeelError, TaskHandle};
 use keel_types::{
-    CallError, Envelope, ErrorCode, Id, Kind, Level, Meta, MetaPrincipal, Mode, Principal,
+    CallError, Envelope, ErrorCode, EventSubject, Id, Kind, Level, Meta, MetaPrincipal, Mode,
+    Principal,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde_json::{Map, Value};
@@ -174,6 +175,14 @@ fn subject_of(params: &Value, key: &str) -> Option<String> {
         Value::String(id) => Some(id.clone()),
         other => Some(other.to_string()),
     }
+}
+
+fn single_id(params: &Value, key: &str) -> Option<Id> {
+    params.get(key)?.as_str()?.parse().ok()
+}
+
+fn subject_kind(function: &str) -> &str {
+    function.rsplit_once('.').map_or(function, |(kind, _)| kind)
 }
 
 #[derive(Default)]
@@ -652,6 +661,9 @@ impl Inner {
     ) -> Result<Value, KeelError> {
         let function = target.function;
         let write = function.def().mode() == Mode::Write;
+        let keyed = write
+            .then(|| function.def().key().and_then(|key| single_id(&params, key)))
+            .flatten();
         if write {
             for hook in function.within() {
                 (hook.hook)(handle.call(params.clone())).await?;
@@ -670,7 +682,20 @@ impl Inner {
                 };
                 (patched.store)(handle.call(Value::Null), stored).await?;
             }
-            let events = handle.take_events();
+            let mut events = handle.take_events();
+            if let Some(id) = keyed {
+                let account = handle
+                    .resolved_account()
+                    .unwrap_or(handle.principal().account_id);
+                let derived = EventSubject {
+                    kind: subject_kind(function.name()).to_owned(),
+                    id,
+                    account_id: Some(account),
+                };
+                for event in &mut events {
+                    event.subject.get_or_insert_with(|| derived.clone());
+                }
+            }
             if let Some(seq) = outbox::write(
                 handle.db(),
                 function.module(),
@@ -861,6 +886,19 @@ mod tests {
         assert_eq!(subject_of(&json!({ "id": null }), "id"), None);
         assert_eq!(subject_of(&json!({ "title": "x" }), "id"), None);
         assert_eq!(subject_of(&json!("bare"), "id"), None);
+    }
+
+    #[test]
+    fn a_derived_subject_takes_a_single_id_and_the_function_name_without_its_verb() {
+        let id: Id = "01J9Q3W6B1R8N5X2K4T7M0V9Z3".parse().unwrap();
+        assert_eq!(single_id(&json!({ "id": id.to_string() }), "id"), Some(id));
+        assert_eq!(single_id(&json!({ "ids": [id.to_string()] }), "ids"), None);
+        assert_eq!(single_id(&json!({ "id": "nope" }), "id"), None);
+        assert_eq!(single_id(&json!({ "id": null }), "id"), None);
+        assert_eq!(single_id(&json!({ "title": "x" }), "id"), None);
+        assert_eq!(subject_kind("note.edit"), "note");
+        assert_eq!(subject_kind("dns.zone.create"), "dns.zone");
+        assert_eq!(subject_kind("bare"), "bare");
     }
 
     #[test]

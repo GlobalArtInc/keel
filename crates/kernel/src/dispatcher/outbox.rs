@@ -36,16 +36,18 @@ pub async fn write<C: ConnectionTrait>(
         .await?;
     let mut last = None;
     for event in events {
+        let subject_json = event.subject.map(serde_json::to_value).transpose()?;
         let row = db
             .query_one(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "INSERT INTO keel_outbox (id, type, module, at, actor_json, subject_json, data_json, created_at) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7) RETURNING seq",
+                "INSERT INTO keel_outbox (id, type, module, at, actor_json, subject_json, data_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING seq",
                 [
                     DbValue::from(Id::generate().to_string()),
                     DbValue::from(event.kind),
                     DbValue::from(module),
                     DbValue::from(now),
                     DbValue::Json(actor_json.clone().map(Box::new)),
+                    DbValue::Json(subject_json.map(Box::new)),
                     DbValue::Json(Some(Box::new(event.data))),
                     DbValue::from(now),
                 ],
