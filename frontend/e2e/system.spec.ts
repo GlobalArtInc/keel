@@ -11,6 +11,7 @@ const SCREENS: readonly SystemScreen[] = [
   { label: 'Principals', func: 'keel.principal.list' },
   { label: 'Products', func: 'keel.product.list' },
   { label: 'Settings', func: 'settings.list' },
+  { label: 'Tasks', func: 'task.list' },
   { label: 'Audit trail', func: 'audit.list' },
   { label: 'Sessions', func: 'auth.session.list' },
   { label: 'API tokens', func: 'auth.token.list' },

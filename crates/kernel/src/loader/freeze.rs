@@ -7,8 +7,8 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, PermissionCatalogue,
-    PrincipalSource, SecretCipher,
+    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, ParamMasker,
+    PermissionCatalogue, PrincipalSource, SecretCipher,
 };
 use keel_sdk::{ConfigSection, FunctionDef, MenuNode, ProductManifest, SettingsSource};
 use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
@@ -26,7 +26,7 @@ use super::settings::DefaultSettings;
 use super::{keys, patch, section};
 use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
-use crate::dispatcher::{CallerHandle, LiveBus};
+use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle};
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -346,6 +346,7 @@ struct Freezer {
     sections: Sections,
     claimed: BTreeMap<String, String>,
     locks: Arc<SessionLocks>,
+    masks: Arc<MaskHandle>,
 }
 
 impl Initialised {
@@ -381,6 +382,7 @@ impl Initialised {
             sections: self.graph.sections().clone(),
             claimed: BTreeMap::new(),
             locks: Arc::new(SessionLocks::new()),
+            masks: Arc::new(MaskHandle::new()),
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
@@ -473,6 +475,7 @@ impl Freezer {
         services.provide::<dyn LiveEvents>(live.clone());
         services.provide::<LiveBus>(live);
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
+        services.provide::<dyn ParamMasker>(self.masks.clone());
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())
@@ -938,6 +941,7 @@ impl Freezer {
                 version: def.version.to_owned(),
             })
             .collect();
+        self.masks.fill(self.functions.values());
         let registry = Registry {
             platform: Platform {
                 version: graph.version().to_owned(),
@@ -1783,6 +1787,47 @@ mod tests {
                 feature: None
             }
         );
+    }
+
+    fn sealing_init(r: &mut Registrar) -> Result<()> {
+        r.patch(
+            DescriptorPatch::new("base.item.edit")
+                .field(
+                    "token",
+                    json_schema!({ "type": "string", "x-keel": { "secret": true } }),
+                )
+                .store(|_, _| async { Ok(()) }),
+        )
+        .i18n("en", r#"{ "sealing": { "item": { "token": "Token" } } }"#);
+        Ok(())
+    }
+
+    module!(SEALING, "sealing", ["base"], sealing_init);
+
+    #[test]
+    fn the_platform_masks_the_parameters_of_a_function_including_a_patched_secret_field() {
+        let frozen = freeze(&[&BASE, &SEALING], &[&BASE_BUNDLE]).unwrap();
+        let masker = frozen
+            .registry()
+            .services()
+            .get::<dyn ParamMasker>()
+            .expect("the platform provides the masker");
+        let mut params = json!({ "title": "x", "kind": "plain", "token": "hunter2" });
+        masker.mask("base.item.edit", &mut params).unwrap();
+        assert_eq!(
+            params,
+            json!({ "title": "x", "kind": "plain", "token": crate::dispatcher::MASK })
+        );
+        let mut absent = json!({ "title": "x", "token": null });
+        masker.mask("base.item.edit", &mut absent).unwrap();
+        assert_eq!(absent["token"], Value::Null);
+        let mut untouched = json!({ "token": "kept" });
+        let missing = masker
+            .mask("base.item.nothing", &mut untouched)
+            .unwrap_err();
+        assert_eq!(missing.key(), "keel.error.function_not_found");
+        assert_eq!(missing.params()["function"], json!("base.item.nothing"));
+        assert_eq!(untouched["token"], json!("kept"));
     }
 
     fn storeless_init(r: &mut Registrar) -> Result<()> {

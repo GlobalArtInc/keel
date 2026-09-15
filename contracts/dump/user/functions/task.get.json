@@ -1,0 +1,134 @@
+{
+  "keel": 1,
+  "name": "task.get",
+  "module": "task",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "task.read"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "TaskDetail",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "function": {
+        "type": "string"
+      },
+      "class": {
+        "type": "string"
+      },
+      "state": {
+        "$ref": "#/$defs/TaskState"
+      },
+      "progress": {
+        "type": "string"
+      },
+      "done": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "total": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint64",
+        "minimum": 0
+      },
+      "message": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "resumable": {
+        "type": "boolean"
+      },
+      "requestId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "startedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "finishedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "logTail": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "error": true,
+      "params": true,
+      "checkpoint": true,
+      "result": true
+    },
+    "required": [
+      "id",
+      "function",
+      "class",
+      "state",
+      "progress",
+      "done",
+      "resumable",
+      "createdAt",
+      "params",
+      "logTail"
+    ],
+    "$defs": {
+      "TaskState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "cancelled",
+          "interrupted"
+        ]
+      }
+    }
+  }
+}

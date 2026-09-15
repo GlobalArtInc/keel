@@ -3,6 +3,7 @@ pub(crate) mod guards;
 mod idempotency;
 mod list;
 mod live;
+mod masks;
 mod outbox;
 mod schema;
 mod strip;
@@ -30,6 +31,7 @@ use crate::registry::{Function, Registry};
 
 pub use caller::CallerHandle;
 pub use live::{LIVE_CAPACITY, LiveBus};
+pub(crate) use masks::MaskHandle;
 pub use strip::MASK;
 pub use validate::SchemaError;
 

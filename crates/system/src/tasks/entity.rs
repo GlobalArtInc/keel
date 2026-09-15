@@ -12,6 +12,8 @@ pub mod job {
         pub function: String,
         #[sea_orm(column_type = "JsonBinary")]
         pub params_json: Json,
+        #[sea_orm(column_type = "JsonBinary")]
+        pub params_masked_json: Json,
         pub principal_id: String,
         #[sea_orm(column_type = "JsonBinary")]
         pub principal_json: Json,

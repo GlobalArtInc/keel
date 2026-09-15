@@ -612,6 +612,8 @@ check "ctl audit.list --out json" keel_ok "$site/audit.json" ctl audit.list --ou
 check "audit.list answers the su row with root as the principal" json_is "$site/audit.json" 'doc["ok"] is True and doc["data"]["total"] == 1 and doc["data"]["data"][0]["principalLogin"] == "root" and doc["data"]["data"][0]["actorLogin"] is None and doc["data"]["data"][0]["status"] == "committed"'
 check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
+check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
+check "task.list answers an empty page" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "keel serve stops on SIGTERM" stop_serve

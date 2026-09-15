@@ -203,9 +203,11 @@ jobs:
           - auth
           - settings
           - audit
-          - settings,audit
-          - auth,audit
-          - auth,settings
+          - tasks
+          - settings,audit,tasks
+          - auth,audit,tasks
+          - auth,settings,tasks
+          - auth,settings,audit
 
     services:
       postgres:

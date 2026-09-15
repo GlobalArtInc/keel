@@ -1,6 +1,7 @@
 pub mod api;
 
 mod entity;
+mod functions;
 mod leader;
 mod log;
 mod runner;
@@ -8,8 +9,9 @@ mod sink;
 mod worker;
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::{AdvisoryLock, Caller, ContextExt, LiveEvents, TaskRunner};
+use keel_sdk::system::{AdvisoryLock, Caller, ContextExt, LiveEvents, ParamMasker, TaskRunner};
 
+pub use functions::{LOG_TAIL, PERMISSION_MANAGE as MANAGE, PERMISSION_READ as READ};
 pub use leader::LOCK_KEY;
 pub use log::{
     DIRECTORY as LOG_DIRECTORY, LOG_EXTENSION, OUTPUT_EXTENSION, log_path, output_path,
@@ -20,6 +22,9 @@ pub use runner::{
     FRAME_KIND,
 };
 pub use worker::{POLL, STOP_GRACE};
+
+pub const FUNCTIONS: [&str; 3] = ["task.list", "task.get", "task.cancel"];
+pub const MENU_PATH: &str = "system/tasks";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/tasks").table("keel_migration_task");
@@ -43,6 +48,17 @@ fn init(r: &mut Registrar) -> Result<()> {
         .require::<dyn Caller>()
         .require::<dyn AdvisoryLock>()
         .require::<dyn LiveEvents>()
+        .require::<dyn ParamMasker>()
+        .function(functions::list())
+        .function(functions::get())
+        .function(functions::cancel())
+        .permission(READ, &[Level::User, Level::Reseller])
+        .permission(MANAGE, &[Level::User, Level::Reseller])
+        .menu(
+            MenuNode::new(MENU_PATH, "task.list")
+                .icon("list-checks")
+                .order(40),
+        )
         .i18n("en", include_str!("../../i18n/tasks/en.json"))
         .i18n("ru", include_str!("../../i18n/tasks/ru.json"))
         .start(move |ctx| async move {
@@ -50,6 +66,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                 ctx.db(),
                 ctx.require::<dyn Clock>()?,
                 ctx.require::<dyn LiveEvents>()?,
+                ctx.require::<dyn ParamMasker>()?,
                 ctx.data_dir(),
             );
             let worker = worker::Worker::new(
@@ -81,7 +98,50 @@ mod tests {
         let registrations = registrar
             .into_registrations()
             .expect("the registrations are valid");
-        assert!(registrations.functions.is_empty());
+        let functions: Vec<(&str, Kind, Mode, Level)> = registrations
+            .functions
+            .iter()
+            .map(|def| (def.name(), def.kind(), def.mode(), def.access().level))
+            .collect();
+        assert_eq!(
+            functions,
+            [
+                ("task.list", Kind::List, Mode::Read, Level::User),
+                ("task.get", Kind::Get, Mode::Read, Level::User),
+                ("task.cancel", Kind::Action, Mode::Write, Level::User),
+            ]
+        );
+        let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
+        assert_eq!(names, FUNCTIONS);
+        for def in &registrations.functions {
+            def.descriptor().expect("the descriptor compiles");
+            assert_eq!(def.key(), Some("id"));
+            assert_eq!(
+                def.owned().map(|owned| owned.table.as_str()),
+                Some("task_job")
+            );
+            let permission = if def.name() == "task.cancel" {
+                MANAGE
+            } else {
+                READ
+            };
+            assert_eq!(def.access().permission.as_deref(), Some(permission));
+        }
+        let permissions: Vec<(&str, &[Level])> = registrations
+            .permissions
+            .iter()
+            .map(|def| (def.key.as_str(), def.defaults.as_slice()))
+            .collect();
+        assert_eq!(
+            permissions,
+            [
+                (READ, &[Level::User, Level::Reseller][..]),
+                (MANAGE, &[Level::User, Level::Reseller][..]),
+            ]
+        );
+        assert_eq!(registrations.menu.len(), 1);
+        assert_eq!(registrations.menu[0].path(), MENU_PATH);
+        assert_eq!(registrations.menu[0].func(), "task.list");
         assert!(registrations.provides.get::<dyn TaskRunner>().is_some());
         assert!(registrations.provides.get::<api::Drain>().is_some());
         let required: Vec<&str> = registrations
@@ -89,10 +149,11 @@ mod tests {
             .iter()
             .map(|key| key.name())
             .collect();
-        assert_eq!(required.len(), 3);
+        assert_eq!(required.len(), 4);
         assert!(required.iter().any(|name| name.ends_with("Caller")));
         assert!(required.iter().any(|name| name.ends_with("AdvisoryLock")));
         assert!(required.iter().any(|name| name.ends_with("LiveEvents")));
+        assert!(required.iter().any(|name| name.ends_with("ParamMasker")));
         let languages: Vec<&str> = registrations
             .i18n
             .iter()

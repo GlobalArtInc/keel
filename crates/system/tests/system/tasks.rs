@@ -49,6 +49,23 @@ struct Cursor {
     next: u64,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Sealed {
+    label: String,
+    #[schemars(extend("x-keel" = json!({ "secret": true })))]
+    password: Secret,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Unsealed {
+    label: String,
+    length: usize,
+}
+
 static TIMELINE: Mutex<Vec<(String, &'static str, Instant)>> = Mutex::new(Vec::new());
 
 fn mark(task: &TaskHandle, what: &'static str) {
@@ -110,7 +127,19 @@ fn init(r: &mut Registrar) -> Result<()> {
     )
     .function(paced("probe.paced", "slow", true))
     .function(paced("probe.stubborn", "stubborn", false))
-    .function(paced("probe.quick", "quick", true));
+    .function(paced("probe.quick", "quick", true))
+    .function(
+        function::<Sealed, Unsealed>("probe.sealed")
+            .kind(Kind::Action)
+            .level(Level::User)
+            .unowned()
+            .handler(|call: Call<Sealed>| async move {
+                Ok(Unsealed {
+                    label: call.params().label.clone(),
+                    length: call.params().password.expose().len(),
+                })
+            }),
+    );
     Ok(())
 }
 
@@ -179,7 +208,7 @@ fn spec(harness: &Harness, who: Who, function: &str, params: Value, class: &str)
         params,
         principal: harness.principal(who).clone(),
         class: class.to_owned(),
-        resumable: function != "probe.stubborn" && function != "probe.count",
+        resumable: !matches!(function, "probe.stubborn" | "probe.count" | "probe.sealed"),
         request_id: Some(format!("req-{function}")),
     }
 }
@@ -708,4 +737,256 @@ async fn two_kernels_on_one_database_run_one_worker_and_the_second_takes_over_wh
     );
     second.release().await;
     database.finish().await;
+}
+
+fn snapshots_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots")
+}
+
+struct JobFixture;
+
+#[async_trait]
+impl keel_testkit::Fixture for JobFixture {
+    async fn create(&self, harness: &Harness, account: Id) -> String {
+        let (_, principal) = harness
+            .fixtures()
+            .all()
+            .find(|(who, principal)| {
+                principal.account_id == account && *who != Who::Guest && *who != Who::Owner
+            })
+            .unwrap_or_else(|| panic!("no fixture principal lives in account {account}"));
+        let id = Id::generate();
+        let principal_json = keel_sdk::serde_json::to_string(principal).expect("a principal");
+        let inserted = harness
+            .database()
+            .rows(&format!(
+                "INSERT INTO task_job (id, class, function, params_json, params_masked_json, principal_id, principal_json, account_id, state, resumable, progress_done, progress_total, created_at, started_at, finished_at) VALUES ('{id}', 'default', 'probe.count', '{{}}', '{{}}', '{}', '{}', '{account}', 'done', false, 3, 3, now(), now(), now()) RETURNING id",
+                principal.id,
+                principal_json.replace('\'', "''")
+            ))
+            .await;
+        inserted.into_iter().next().expect("the fixture row")
+    }
+}
+
+#[tokio::test]
+async fn task_get_shows_the_last_step_the_log_tail_and_task_cancel_ends_a_paced_job_cancelled() {
+    let harness = boot().await;
+    let runner = runner(&harness);
+    let counted = runner
+        .spawn(spec(&harness, Who::A1, "probe.count", json!({}), "default"))
+        .await
+        .expect("spawned");
+    assert_eq!(wait_final(&harness, counted).await, TaskState::Done);
+
+    let got = harness
+        .call(Who::A1, "task.get", json!({ "id": counted }))
+        .await;
+    let detail = got.data().unwrap_or_else(|| panic!("{:?}", got.error()));
+    assert_eq!(detail["id"], json!(counted.to_string()));
+    assert_eq!(detail["function"], json!("probe.count"));
+    assert_eq!(detail["state"], json!("done"));
+    assert_eq!(detail["progress"], json!("3/3"));
+    assert_eq!(detail["done"], json!(3));
+    assert_eq!(detail["total"], json!(3));
+    assert_eq!(detail["message"], json!("step 3"));
+    assert_eq!(detail["result"]["counted"], json!(3));
+    assert_eq!(detail["params"], json!({}));
+    assert_eq!(detail["error"], Value::Null);
+    assert!(detail.get("accountId").is_none(), "{detail}");
+    let tail = detail["logTail"].as_array().expect("the log tail");
+    assert_eq!(tail.len(), 2);
+    assert!(
+        tail[0]
+            .as_str()
+            .is_some_and(|line| line.ends_with(" counted 1"))
+    );
+    assert!(
+        tail[1]
+            .as_str()
+            .is_some_and(|line| line.ends_with(" counted 2"))
+    );
+    let as_admin = harness
+        .call(Who::Admin, "task.get", json!({ "id": counted }))
+        .await;
+    assert_eq!(
+        as_admin.data().expect("the admin reads it")["accountId"],
+        json!(harness.principal(Who::A1).account_id.to_string())
+    );
+    let foreign = harness
+        .call(Who::A2, "task.get", json!({ "id": counted }))
+        .await;
+    assert_eq!(foreign.status(), 404);
+
+    let listed = harness.call(Who::A1, "task.list", json!({})).await;
+    let page = listed.data().expect("the list answers");
+    assert_eq!(page["total"], json!(1));
+    assert_eq!(page["data"][0]["progress"], json!("3/3"));
+    assert_eq!(page["data"][0]["state"], json!("done"));
+    assert!(page["data"][0].get("accountId").is_none());
+
+    let paced = runner
+        .spawn(spec(
+            &harness,
+            Who::A1,
+            "probe.paced",
+            json!({ "steps": 40, "pace": 50 }),
+            "slow",
+        ))
+        .await
+        .expect("spawned");
+    wait_progress(&harness, paced, 1).await;
+    let cancelled = harness
+        .call(Who::A1, "task.cancel", json!({ "id": paced }))
+        .await;
+    let answer = cancelled
+        .data()
+        .unwrap_or_else(|| panic!("{:?}", cancelled.error()));
+    assert_eq!(answer["id"], json!(paced.to_string()));
+    assert!(
+        matches!(answer["state"].as_str(), Some("running" | "cancelled")),
+        "{answer}"
+    );
+    assert_eq!(wait_final(&harness, paced).await, TaskState::Cancelled);
+    let again = harness
+        .call(Who::A1, "task.cancel", json!({ "id": paced }))
+        .await;
+    assert_eq!(again.status(), 409);
+    assert_eq!(again.error().expect("a conflict").key, ERROR_FINISHED);
+    let filtered = harness
+        .call(
+            Who::A1,
+            "task.list",
+            json!({ "filters": [{ "key": "state", "op": "eq", "value": "cancelled" }] }),
+        )
+        .await;
+    let page = filtered.data().expect("the filter applies");
+    assert_eq!(page["total"], json!(1));
+    assert_eq!(page["data"][0]["id"], json!(paced.to_string()));
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn task_get_masks_the_secret_fields_of_the_parameters_while_the_job_ran_them_raw() {
+    let harness = boot().await;
+    let runner = runner(&harness);
+    let id = runner
+        .spawn(spec(
+            &harness,
+            Who::A1,
+            "probe.sealed",
+            json!({ "label": "plain", "password": "hunter2" }),
+            "default",
+        ))
+        .await
+        .expect("spawned");
+    assert_eq!(wait_final(&harness, id).await, TaskState::Done);
+    let result: Value = keel_sdk::serde_json::from_str(&column(&harness, id, "result_json").await)
+        .expect("the result");
+    assert_eq!(result, json!({ "label": "plain", "length": 7 }));
+    assert_eq!(
+        column(&harness, id, "params_json->>'password'").await,
+        "hunter2"
+    );
+    assert_eq!(
+        column(&harness, id, "params_masked_json->>'password'").await,
+        "***"
+    );
+    assert_eq!(
+        column(&harness, id, "params_masked_json->>'label'").await,
+        "plain"
+    );
+    for who in [Who::A1, Who::Reseller, Who::Admin] {
+        let got = harness.call(who, "task.get", json!({ "id": id })).await;
+        let detail = got
+            .data()
+            .unwrap_or_else(|| panic!("{who}: {:?}", got.error()));
+        assert_eq!(
+            detail["params"],
+            json!({ "label": "plain", "password": "***" }),
+            "{who}"
+        );
+        assert!(!detail.to_string().contains("hunter2"), "{who}: {detail}");
+    }
+    let unknown = runner
+        .spawn(spec(
+            &harness,
+            Who::A1,
+            "probe.nothing",
+            json!({ "password": "hunter2" }),
+            "default",
+        ))
+        .await
+        .expect_err("an unknown function cannot be spawned");
+    assert_eq!(unknown.key(), "keel.error.function_not_found");
+    assert_eq!(unknown.params()["function"], json!("probe.nothing"));
+    assert_eq!(
+        harness
+            .database()
+            .rows("SELECT count(*)::text FROM task_job WHERE function = 'probe.nothing'")
+            .await,
+        ["0"]
+    );
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_standard_invariants_hold_for_task_list_and_task_cancel() {
+    let harness = boot().await;
+    harness
+        .assert_reseller_sees_only_subtree("task.list", &JobFixture)
+        .await;
+    harness
+        .assert_user_cannot_edit_foreign_row("task.cancel", &JobFixture)
+        .await;
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_task_descriptors_match_their_snapshots_and_the_menu_carries_the_node() {
+    let harness = Harness::new().module(&MODULE).boot().await;
+    assert_eq!(harness.modules(), ["keel", "task", "testkit"]);
+    for level in Level::ALL {
+        let names = harness.snapshot_descriptors(level, snapshots_dir());
+        let tasks: Vec<&str> = names
+            .iter()
+            .map(String::as_str)
+            .filter(|name| name.starts_with("task."))
+            .collect();
+        if level < Level::User {
+            assert!(tasks.is_empty(), "{level}: {tasks:?}");
+        } else {
+            let mut expected = keel_system::tasks::FUNCTIONS.to_vec();
+            expected.sort_unstable();
+            assert_eq!(tasks, expected, "{level}");
+        }
+    }
+    let http = harness.http().await;
+    let booted = http.get(Who::A1, "/api/v1/boot").await;
+    assert_eq!(booted.status, 200, "{}", booted.body);
+    let system = booted.json()["menu"]
+        .as_array()
+        .expect("groups")
+        .iter()
+        .find(|group| group["id"] == json!("system"))
+        .cloned()
+        .expect("the system group");
+    let node = system["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["func"] == json!("task.list"))
+        .cloned()
+        .unwrap_or_else(|| panic!("no tasks node in {system}"));
+    assert_eq!(node["path"], json!(keel_system::tasks::MENU_PATH));
+    assert_eq!(node["label"], json!("task.list.title"));
+    assert_eq!(node["kind"], json!("list"));
+    let guest = http.get(Who::Guest, "/api/v1/boot").await;
+    assert!(
+        !guest.body.contains("task.list"),
+        "a guest sees the tasks node: {}",
+        guest.body
+    );
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
 }

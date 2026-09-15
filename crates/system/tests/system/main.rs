@@ -32,3 +32,5 @@ mod settings_brand;
 mod settings_pref;
 #[cfg(feature = "tasks")]
 mod tasks;
+#[cfg(feature = "tasks")]
+mod tasks_alone;

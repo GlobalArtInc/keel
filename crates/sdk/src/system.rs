@@ -209,6 +209,10 @@ pub trait TaskRunner: Send + Sync {
     async fn state(&self, id: Id) -> Result<TaskState>;
 }
 
+pub trait ParamMasker: Send + Sync {
+    fn mask(&self, func: &str, params: &mut Value) -> Result<()>;
+}
+
 #[async_trait]
 pub trait TaskSink: Send + Sync {
     fn id(&self) -> Id;

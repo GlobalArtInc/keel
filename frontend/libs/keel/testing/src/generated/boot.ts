@@ -141,6 +141,13 @@ export const BOOT_ONE: Boot = {
           icon: 'sliders-horizontal',
         },
         {
+          path: 'system/tasks',
+          label: 'task.list.title',
+          func: 'task.list',
+          kind: 'list',
+          icon: 'list-checks',
+        },
+        {
           path: 'system/brand',
           label: 'settings.brand.list.title',
           func: 'settings.brand.list',

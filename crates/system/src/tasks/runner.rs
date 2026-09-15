@@ -10,7 +10,7 @@ use keel_sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use keel_sdk::serde_json;
-use keel_sdk::system::{Frame, LiveEvents, TaskRunner, TaskSpec};
+use keel_sdk::system::{Frame, LiveEvents, ParamMasker, TaskRunner, TaskSpec};
 use keel_sdk::types::{CallError, TaskProgress, TaskState};
 use tokio::sync::Notify;
 
@@ -30,6 +30,7 @@ pub(super) struct Shared {
     pub db: Db,
     pub clock: Arc<dyn Clock>,
     pub live: Arc<dyn LiveEvents>,
+    pub masker: Arc<dyn ParamMasker>,
     pub data_dir: PathBuf,
     pub wake: Notify,
     pub settled: Notify,
@@ -254,12 +255,14 @@ impl Runner {
         db: Db,
         clock: Arc<dyn Clock>,
         live: Arc<dyn LiveEvents>,
+        masker: Arc<dyn ParamMasker>,
         data_dir: &Path,
     ) -> Arc<Shared> {
         let shared = Arc::new(Shared {
             db,
             clock,
             live,
+            masker,
             data_dir: data_dir.to_path_buf(),
             wake: Notify::new(),
             settled: Notify::new(),
@@ -287,6 +290,8 @@ impl Runner {
 impl TaskRunner for Runner {
     async fn spawn(&self, spec: TaskSpec) -> Result<Id> {
         let shared = self.shared()?;
+        let mut masked = spec.params.clone();
+        shared.masker.mask(&spec.function, &mut masked)?;
         let id = Id::generate();
         let now = shared.now();
         let row = job::ActiveModel {
@@ -294,6 +299,7 @@ impl TaskRunner for Runner {
             class: Set(spec.class),
             function: Set(spec.function),
             params_json: Set(spec.params),
+            params_masked_json: Set(masked),
             principal_id: Set(spec.principal.id.to_string()),
             principal_json: Set(serde_json::to_value(&spec.principal)?),
             account_id: Set(spec.principal.account_id.to_string()),
@@ -422,6 +428,7 @@ mod tests {
             class: "default".into(),
             function: "note.export".into(),
             params_json: json!({}),
+            params_masked_json: json!({}),
             principal_id: "01J9Q3W6B1R8N5X2K4T7M0V9A1".into(),
             principal_json: json!({}),
             account_id: "01J8A0000000000000000000A1".into(),

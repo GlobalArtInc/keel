@@ -274,6 +274,12 @@
       "query_not_object": "The parameter {parameter} is not a JSON object",
       "route_not_found": "The path {path} does not exist",
       "frame_unknown": "The frame is not a func, describe or i18n frame",
+      "caller_unavailable": "The function {function} cannot be called yet: the dispatcher is not ready",
+      "masker_unavailable": "The parameters of {function} cannot be masked yet: the registries are not frozen",
+      "lock_unavailable": "The lock {key} cannot be taken: the database is not attached",
+      "lock_failed": "The lock {key} could not be taken",
+      "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
+      "task_output": "The task output at {path} could not be opened",
       "list": {
         "page": "The page must be 1 or more",
         "page_size": "The page size must be 1 or more",

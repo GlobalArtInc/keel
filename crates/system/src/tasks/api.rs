@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,6 +17,10 @@ pub struct Drain {
 impl Drain {
     pub(super) fn new(runner: Arc<Runner>) -> Self {
         Self { runner }
+    }
+
+    pub fn data_dir(&self) -> Result<PathBuf> {
+        Ok(self.runner.shared()?.data_dir.clone())
     }
 
     pub async fn drain(&self) -> Result<()> {
@@ -37,23 +42,6 @@ impl Drain {
                 return Ok(state);
             }
             let _ = tokio::time::timeout(WAIT_STEP, settled).await;
-        }
-    }
-
-    pub async fn wait_until(&self, id: Id, state: TaskState) -> Result<()> {
-        let shared = self.runner.shared()?;
-        loop {
-            let row = shared.load(id).await?;
-            let current = super::runner::state_of(&row)?;
-            if current == state {
-                return Ok(());
-            }
-            if current.is_final() {
-                return Err(keel_sdk::KeelError::conflict(super::runner::ERROR_FINISHED)
-                    .param("id", id.to_string())
-                    .param("state", current.as_str()));
-            }
-            tokio::time::sleep(WAIT_STEP).await;
         }
     }
 }

@@ -1,0 +1,256 @@
+{
+  "keel": 1,
+  "name": "task.list",
+  "module": "task",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "task.read"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_TaskRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/TaskRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "TaskRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "function": {
+            "type": "string"
+          },
+          "class": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/$defs/TaskState"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "done": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resumable": {
+            "type": "boolean"
+          },
+          "requestId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "accountId": {
+            "type": "string",
+            "x-keel": {
+              "level": "reseller"
+            }
+          },
+          "principalId": {
+            "type": "string",
+            "x-keel": {
+              "level": "reseller"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "function",
+          "class",
+          "state",
+          "progress",
+          "done",
+          "resumable",
+          "createdAt",
+          "accountId",
+          "principalId"
+        ]
+      },
+      "TaskState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "cancelled",
+          "interrupted"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "task.list.title",
+    "search": [
+      "function"
+    ],
+    "columns": [
+      {
+        "key": "function",
+        "type": "link",
+        "to": {
+          "screen": "task.get",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "cancelled": "warning",
+          "done": "success",
+          "failed": "danger",
+          "interrupted": "warning",
+          "queued": "neutral",
+          "running": "info"
+        },
+        "filter": {
+          "options": [
+            "queued",
+            "running",
+            "done",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ]
+        }
+      },
+      {
+        "key": "progress",
+        "type": "text"
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "finishedAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "accountId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "open",
+        "role": "button",
+        "screen": "task.get",
+        "icon": "eye",
+        "default": true,
+        "params": {
+          "id": "$id"
+        }
+      },
+      {
+        "id": "cancel",
+        "role": "button",
+        "function": "task.cancel",
+        "icon": "x",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true,
+        "hidden_if": {
+          "not": {
+            "in": [
+              "state",
+              [
+                "queued",
+                "running"
+              ]
+            ]
+          }
+        }
+      }
+    ],
+    "row_actions": [
+      "open",
+      "cancel"
+    ],
+    "empty": {
+      "title": "task.empty"
+    },
+    "invalidate_on": [
+      "task.*"
+    ]
+  }
+}
