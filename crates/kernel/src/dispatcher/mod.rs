@@ -34,7 +34,7 @@ pub use caller::CallerHandle;
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
 pub use strip::MASK;
-pub use task::{BATCH_LOG_PREFIX, BatchCheckpoint};
+pub use task::BATCH_LOG_PREFIX;
 pub use validate::SchemaError;
 
 pub const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -114,12 +114,6 @@ struct Origin {
     client: Option<Client>,
     tz: Tz,
     task: Option<TaskHandle>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Within {
-    Run,
-    Admitted,
 }
 
 struct Recorded {
@@ -439,11 +433,6 @@ impl Inner {
                 .chunked(target, &pool, params, chunks, task.clone())
                 .await;
         }
-        let hooks = if origin.task.is_some() {
-            Within::Admitted
-        } else {
-            Within::Run
-        };
         let body = async {
             let params = self.before(target.function, &pool, params).await?;
             if origin.task.is_none()
@@ -455,7 +444,7 @@ impl Inner {
             }
             match def.mode() {
                 Mode::Read => {
-                    let data = self.perform(target, &pool, params, hooks).await?;
+                    let data = self.perform(target, &pool, params).await?;
                     Ok(Executed {
                         data,
                         replay: false,
@@ -473,7 +462,7 @@ impl Inner {
                         .task(origin.task)
                         .extra(extra)
                         .write(self.db.begin().await?);
-                    self.commit(target, handle, params, idempotency, &after, hooks)
+                    self.commit(target, handle, params, idempotency, &after)
                         .await
                 }
             }
@@ -493,11 +482,10 @@ impl Inner {
         params: Value,
         idempotency: Option<(String, String)>,
         after: &AfterHooks,
-        hooks: Within,
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
         let performed = async {
-            let data = self.perform(target, &handle, params, hooks).await?;
+            let data = self.perform(target, &handle, params).await?;
             if let Some((key, hash)) = idempotency {
                 let mut stored = data.clone();
                 target.prepared.result.mask_once(&mut stored);
@@ -622,11 +610,10 @@ impl Inner {
         target: &Target<'_>,
         handle: &CallHandle,
         params: Value,
-        hooks: Within,
     ) -> Result<Value, KeelError> {
         let function = target.function;
         let write = function.def().mode() == Mode::Write;
-        if write && hooks == Within::Run {
+        if write {
             for hook in function.within() {
                 (hook.hook)(handle.call(params.clone())).await?;
             }
@@ -710,7 +697,7 @@ impl Inner {
             .extra(extra)
             .with_db(mode, outer.db().clone());
         drop(outer);
-        let data = self.perform(&target, &handle, params, Within::Run).await?;
+        let data = self.perform(&target, &handle, params).await?;
         after
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

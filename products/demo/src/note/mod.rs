@@ -26,7 +26,6 @@ pub const FUNCTIONS: [&str; 9] = [
 
 pub use export::{
     CLASS as EXPORT_CLASS, CSV_HEADER as EXPORT_CSV_HEADER, LOG_PREFIX as EXPORT_LOG_PREFIX,
-    MAX_PACE_MS as EXPORT_MAX_PACE_MS,
 };
 
 static MIGRATIONS: migrator::Migrations =

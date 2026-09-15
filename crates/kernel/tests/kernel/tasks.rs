@@ -609,21 +609,30 @@ async fn a_job_run_by_the_worker_does_not_spawn_a_second_job() {
 }
 
 #[tokio::test]
-async fn a_within_hook_refuses_a_task_call_up_front_and_an_idempotency_key_replays_the_task_ref() {
+async fn a_within_hook_vetoes_inside_the_job_and_an_idempotency_key_replays_the_task_ref() {
     let bench = bench().await;
     let caller = principal(Level::User, CUSTOMER);
-    let vetoed = bench
+    let reply = bench
         .call(&caller, "rack.item.run", json!({ "label": "veto" }))
         .await;
-    assert_eq!(code(&vetoed), ErrorCode::Validation);
-    let error = vetoed.error().expect("an error");
-    assert_eq!(error.fields[0].path, "label");
-    assert_eq!(error.fields[0].key.as_deref(), Some("rack.item.error.veto"));
-    assert_eq!(WITHIN.count(&caller), 1);
-    assert!(
-        RUNNER.spawned_for(&caller).is_empty(),
-        "a vetoed call spawns nothing"
+    let vetoed = task_id(&reply);
+    assert_eq!(
+        WITHIN.count(&caller),
+        0,
+        "the entrance leaves the within hooks to the job"
     );
+    let spawned = RUNNER.spawned_for(&caller);
+    assert_eq!(spawned.len(), 1);
+    let (outcome, sink) = bench.run_job(vetoed, &spawned[0].1).await;
+    let error = outcome.expect_err("the job raises the veto");
+    assert_eq!(error.code(), ErrorCode::Validation);
+    let wire = error.to_call_error();
+    assert_eq!(wire.fields.len(), 1);
+    assert_eq!(wire.fields[0].path, "label");
+    assert_eq!(wire.fields[0].key.as_deref(), Some("rack.item.error.veto"));
+    assert_eq!(WITHIN.count(&caller), 1);
+    assert_eq!(RUNS.count(&caller), 0, "the veto stops the handler");
+    assert!(sink.seen().is_empty(), "the handler wrote nothing");
 
     let keyed = |key: &str| CallOptions {
         idempotency_key: Some(key.to_owned()),
@@ -650,16 +659,17 @@ async fn a_within_hook_refuses_a_task_call_up_front_and_an_idempotency_key_repla
     assert!(replayed.replay);
     assert_eq!(task_id(&replayed), id);
     let spawned = RUNNER.spawned_for(&caller);
-    assert_eq!(spawned.len(), 1, "the replay spawned nothing");
-    assert_eq!(WITHIN.count(&caller), 2);
+    assert_eq!(spawned.len(), 2, "the replay spawned nothing");
+    assert_eq!(WITHIN.count(&caller), 1);
 
-    let (outcome, _) = bench.run_job(id, &spawned[0].1).await;
+    let (outcome, _) = bench.run_job(id, &spawned[1].1).await;
     outcome.expect("the job runs");
     assert_eq!(
         WITHIN.count(&caller),
         2,
-        "the job does not repeat the within hooks the entrance ran"
+        "the job runs the within hooks inside its transaction"
     );
+    assert_eq!(RUNS.count(&caller), 1);
     bench.finish().await;
 }
 

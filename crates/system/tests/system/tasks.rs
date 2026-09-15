@@ -66,6 +66,21 @@ struct Unsealed {
     length: usize,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Guarded {
+    label: String,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Passed {
+    label: String,
+    task: Option<Id>,
+}
+
 static TIMELINE: Mutex<Vec<(String, &'static str, Instant)>> = Mutex::new(Vec::new());
 
 fn mark(task: &TaskHandle, what: &'static str) {
@@ -139,7 +154,29 @@ fn init(r: &mut Registrar) -> Result<()> {
                     length: call.params().password.expose().len(),
                 })
             }),
-    );
+    )
+    .function(
+        function::<Guarded, Passed>("probe.guarded")
+            .kind(Kind::Action)
+            .level(Level::User)
+            .unowned()
+            .handler(|call: Call<Guarded>| async move {
+                Ok(Passed {
+                    label: call.params().label.clone(),
+                    task: call.task().map(TaskHandle::id),
+                })
+            }),
+    )
+    .within("probe.guarded", |call: Call<Value>| async move {
+        call.tx()?;
+        let label = &call.params()["label"];
+        if *label == json!("veto") {
+            return Err(KeelError::conflict("probe.error.veto")
+                .param("label", label.clone())
+                .field("label"));
+        }
+        Ok(())
+    });
     Ok(())
 }
 
@@ -208,7 +245,10 @@ fn spec(harness: &Harness, who: Who, function: &str, params: Value, class: &str)
         params,
         principal: harness.principal(who).clone(),
         class: class.to_owned(),
-        resumable: !matches!(function, "probe.stubborn" | "probe.count" | "probe.sealed"),
+        resumable: !matches!(
+            function,
+            "probe.stubborn" | "probe.count" | "probe.sealed" | "probe.guarded"
+        ),
         request_id: Some(format!("req-{function}")),
     }
 }
@@ -927,6 +967,73 @@ async fn task_get_masks_the_secret_fields_of_the_parameters_while_the_job_ran_th
             .await,
         ["0"]
     );
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_job_vetoed_by_a_within_hook_ends_failed_with_the_field_error() {
+    let harness = boot().await;
+    let mut listener = listen(&harness);
+    let runner = runner(&harness);
+    let vetoed = runner
+        .spawn(spec(
+            &harness,
+            Who::A1,
+            "probe.guarded",
+            json!({ "label": "veto" }),
+            "default",
+        ))
+        .await
+        .expect("spawned");
+    assert_eq!(wait_final(&harness, vetoed).await, TaskState::Failed);
+    let error: Value =
+        keel_sdk::serde_json::from_str(&column(&harness, vetoed, "error_json").await)
+            .expect("the error is stored");
+    assert_eq!(error["code"], json!("validation"));
+    assert_eq!(error["fields"][0]["path"], json!("label"));
+    assert_eq!(error["fields"][0]["key"], json!("probe.error.veto"));
+    assert_eq!(error["fields"][0]["params"]["label"], json!("veto"));
+    assert_eq!(column(&harness, vetoed, "result_json").await, "null");
+    assert_ne!(column(&harness, vetoed, "finished_at").await, "null");
+    let states: Vec<TaskState> = frames_until(&mut listener, vetoed, TaskState::Failed)
+        .await
+        .iter()
+        .map(|frame| frame.state)
+        .collect();
+    assert_eq!(
+        states,
+        [TaskState::Queued, TaskState::Running, TaskState::Failed]
+    );
+    let got = harness
+        .call(Who::A1, "task.get", json!({ "id": vetoed }))
+        .await;
+    let detail = got.data().unwrap_or_else(|| panic!("{:?}", got.error()));
+    assert_eq!(detail["state"], json!("failed"));
+    assert_eq!(
+        detail["error"]["fields"][0]["key"],
+        json!("probe.error.veto")
+    );
+    assert_eq!(detail["result"], json!(null));
+
+    let passed = runner
+        .spawn(spec(
+            &harness,
+            Who::A1,
+            "probe.guarded",
+            json!({ "label": "fine" }),
+            "default",
+        ))
+        .await
+        .expect("spawned");
+    assert_eq!(wait_final(&harness, passed).await, TaskState::Done);
+    let result: Value =
+        keel_sdk::serde_json::from_str(&column(&harness, passed, "result_json").await)
+            .expect("the result is stored");
+    assert_eq!(
+        result,
+        json!({ "label": "fine", "task": passed.to_string() })
+    );
+    assert_eq!(column(&harness, passed, "error_json").await, "null");
     harness.finish().await;
 }
 

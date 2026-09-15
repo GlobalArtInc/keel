@@ -8,7 +8,7 @@ use keel::sdk::serde_json;
 use super::item;
 
 pub const CLASS: &str = "export";
-pub const MAX_PACE_MS: u64 = 2000;
+const MAX_PACE_MS: u64 = 2000;
 pub const CSV_HEADER: &str = "id,title,kind,due,tags";
 pub const LOG_PREFIX: &str = "exported";
 
@@ -19,7 +19,7 @@ struct Export {
     #[serde(default)]
     pub format: ExportFormat,
     #[serde(default)]
-    #[schemars(range(max = 2000))]
+    #[schemars(range(max = MAX_PACE_MS))]
     pub pace: u64,
 }
 

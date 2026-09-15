@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
-use keel_sdk::runtime::{CallBuilder, CallHandle};
+use keel_sdk::runtime::CallHandle;
 use keel_sdk::system::TaskSpec;
 use keel_sdk::{FunctionDef, KeelError, TaskHandle};
 use keel_types::{ScreenResult, TaskRef};
-use sea_orm::TransactionTrait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::{AfterHooks, Executed, Inner, Origin, Target, enrich, idempotency, spawn_after_commit};
+use super::{Executed, Inner, Origin, Target, enrich, idempotency, spawn_after_commit};
 
 pub const BATCH_LOG_PREFIX: &str = "chunk";
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct BatchCheckpoint {
+pub(super) struct BatchCheckpoint {
     pub done: usize,
     pub results: Vec<Value>,
 }
@@ -63,7 +62,6 @@ impl Inner {
         if !answers_task(target) && chunks(def, params).is_none() {
             return Ok(None);
         }
-        self.admit_within(target, pool, params).await?;
         let principal = pool.principal();
         let request_id = pool.request_id();
         let stored = if extra.is_empty() {
@@ -101,54 +99,6 @@ impl Inner {
             context: None,
             session: pool.take_session_change(),
         }))
-    }
-
-    async fn admit_within(
-        self: &Arc<Self>,
-        target: &Target<'_>,
-        pool: &CallHandle,
-        params: &Value,
-    ) -> Result<(), KeelError> {
-        let function = target.function;
-        if function.within().is_empty() {
-            return Ok(());
-        }
-        let after = AfterHooks::default();
-        let handle = CallBuilder::new(pool.principal().clone(), pool.request_id())
-            .services(self.registry.services().clone())
-            .invoker(self.invoker(after.clone()))
-            .client(pool.client().cloned())
-            .tz(pool.tz())
-            .write(self.db.begin().await?);
-        let mut outcome = Ok(());
-        for hook in function.within() {
-            outcome = (hook.hook)(handle.call(params.clone())).await;
-            if outcome.is_err() {
-                break;
-            }
-        }
-        let context = handle.after_context();
-        let mut hooks = super::take(&after);
-        hooks.extend(handle.take_after_commit());
-        let transaction = handle
-            .finish()
-            .map_err(|shared| {
-                KeelError::internal("keel.error.call_still_shared").param("holders", shared.holders)
-            })?
-            .ok_or_else(|| KeelError::internal("keel.error.write_call_without_transaction"))?;
-        match outcome {
-            Ok(()) => {
-                transaction.commit().await?;
-                if !hooks.is_empty() {
-                    spawn_after_commit(hooks, context);
-                }
-                Ok(())
-            }
-            Err(error) => {
-                transaction.rollback().await?;
-                Err(error)
-            }
-        }
     }
 
     pub(super) async fn chunked(
