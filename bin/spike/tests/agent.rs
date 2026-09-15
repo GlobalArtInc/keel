@@ -1,7 +1,7 @@
 #![cfg(unix)]
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -177,7 +177,11 @@ impl Agent {
             .expect("the request is sent");
         let mut reader = BufReader::new(stream);
         let mut answer = String::new();
-        let read = reader.read_line(&mut answer).expect("the answer is read");
+        let read = match reader.read_line(&mut answer) {
+            Ok(read) => read,
+            Err(error) if error.kind() == ErrorKind::ConnectionReset => 0,
+            Err(error) => panic!("the answer is read: {error}"),
+        };
         (read > 0).then(|| serde_json::from_str(answer.trim_end()).expect("the answer is JSON"))
     }
 
