@@ -20,7 +20,7 @@ env:
 jobs:
   check:
     name: fmt, clippy, test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
     services:
@@ -119,11 +119,6 @@ jobs:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:5432/postgres
         run: hack/prove-binary.sh target/debug/keel
 
-      - name: Install shellcheck
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q shellcheck
-
       - name: The installer against the binary
         run: hack/check-install.sh target/debug/keel
 
@@ -139,7 +134,7 @@ jobs:
 
       - name: Install chromium for the browser suite
         working-directory: frontend
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
 
       - name: The browser suite against the binary
         env:
@@ -185,11 +180,12 @@ jobs:
 
   system:
     name: keel-system with ${{ matrix.features }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         features:
           - auth
@@ -255,7 +251,7 @@ jobs:
 
   frontend:
     name: frontend lint, format, test, build, storybook
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
     defaults:
@@ -305,7 +301,7 @@ jobs:
         run: pnpm build-storybook
 
       - name: Install chromium for the Storybook test runner
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install chromium
 
       - name: Stories and accessibility against the static Storybook
         run: |

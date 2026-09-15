@@ -16,7 +16,7 @@ permissions:
 jobs:
   publish:
     name: '@globalart/keel to Nexus'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
 
     defaults:

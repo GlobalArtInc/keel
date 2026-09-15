@@ -19,17 +19,15 @@ env:
 jobs:
   linux-musl:
     name: keel for x86_64-unknown-linux-musl
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install the musl toolchain
+      - name: Install Rust toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
           rustup show
           rustup target add x86_64-unknown-linux-musl
 
