@@ -4,7 +4,13 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/', '**/node_modules/', '**/.angular/', '**/coverage/'],
+    ignores: [
+      '**/dist/',
+      '**/node_modules/',
+      '**/.angular/',
+      '**/coverage/',
+      '**/storybook-static/',
+    ],
   },
   {
     files: ['**/*.ts'],
@@ -47,6 +53,6 @@ export default tseslint.config(
   {
     files: ['**/*.js'],
     extends: [js.configs.recommended],
-    languageOptions: { sourceType: 'commonjs' },
+    languageOptions: { sourceType: 'commonjs', globals: { __dirname: 'readonly' } },
   },
 );

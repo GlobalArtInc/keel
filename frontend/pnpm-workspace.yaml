@@ -10,6 +10,8 @@ minimumReleaseAgeExclude:
 
 allowBuilds:
   '@parcel/watcher': true
+  '@swc/core': false
   esbuild: true
   lmdb: true
   msgpackr-extract: true
+  unrs-resolver: false

@@ -237,9 +237,9 @@ jobs:
         run: hack/check-test-databases.sh
 
   frontend:
-    name: frontend lint, format, test, build
+    name: frontend lint, format, test, build, storybook
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     defaults:
       run:
@@ -266,10 +266,10 @@ jobs:
           NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
 
-      - name: Generate the wire types and the icon set
+      - name: Generate the wire types, the icon set and the boot fixtures
         run: pnpm generate
 
-      - name: The generated wire types and the icon set are committed
+      - name: The generated wire types, the icon set and the boot fixtures are committed
         run: git diff --exit-code
 
       - name: Lint
@@ -283,6 +283,25 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Build Storybook
+        run: pnpm build-storybook
+
+      - name: Install chromium for the Storybook test runner
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Stories and accessibility against the static Storybook
+        run: |
+          pnpm exec http-server storybook-static --port 6006 --silent &
+          pnpm exec wait-on http://127.0.0.1:6006/index.json
+          pnpm test-storybook
+
+      - name: Keep the static Storybook
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-static
+          path: frontend/storybook-static
+          if-no-files-found: error
 
       - name: Stamp the version of @globalart/keel
         run: node tools/stamp.mjs

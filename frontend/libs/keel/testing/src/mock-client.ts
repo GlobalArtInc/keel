@@ -9,6 +9,7 @@ import {
 } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
 import { Observable, Subject, of, throwError } from 'rxjs';
+import { fixturesOf, readDump, type DumpLevel } from './dump';
 
 export type CannedAnswer = Envelope | Envelope[];
 
@@ -46,6 +47,10 @@ export class KeelMockClient extends KeelClient {
       this.answer(func, canned);
     }
     this.version.set(fixtures.boot?.meta ?? null);
+  }
+
+  static fromDump(dir: string, level: DumpLevel): KeelMockClient {
+    return new KeelMockClient(fixturesOf(readDump(dir, level)));
   }
 
   answer(func: string, canned: CannedAnswer): this {

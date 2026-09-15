@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -9,10 +10,11 @@ import {
   KeelI18n,
 } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
-import { KeelMockClient } from '@globalart/keel/testing';
+import { KEEL_PRINCIPALS, KeelMockClient } from '@globalart/keel/testing';
 import { firstValueFrom } from 'rxjs';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
+const DUMP = resolve(__dirname, '../../../../../contracts/dump');
 
 function load<T>(name: string): T {
   return JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as T;
@@ -103,5 +105,51 @@ describe('KeelMockClient', () => {
     expect(versions).toEqual(['m-next']);
     expect(client.metaVersion()).toBe('m-next');
     expect(bursts).toBe(1);
+  });
+
+  it('fromDump answers the admin boot and every descriptor of the dump', async () => {
+    const client = KeelMockClient.fromDump(DUMP, 'admin');
+    TestBed.configureTestingModule({ providers: [{ provide: KeelClient, useValue: client }] });
+
+    const expected = JSON.parse(readFileSync(join(DUMP, 'admin', 'boot.json'), 'utf8')) as Boot;
+    const boot = TestBed.inject(KeelBoot);
+    expect(await boot.load()).toEqual(expected);
+    expect(boot.principal()).toEqual(KEEL_PRINCIPALS.admin);
+    expect(boot.products().map((product) => product.id)).toEqual(['demo']);
+
+    const names = readdirSync(join(DUMP, 'admin', 'functions'))
+      .map((file) => file.slice(0, -'.json'.length))
+      .sort();
+    expect(names.length).toBeGreaterThan(50);
+    const descriptors = TestBed.inject(KeelDescriptors);
+    const listed = await descriptors.list();
+    expect(listed.map((descriptor) => descriptor.name)).toEqual(names);
+    for (const name of names) {
+      const file = join(DUMP, 'admin', 'functions', `${name}.json`);
+      expect(await descriptors.get(name)).toEqual(JSON.parse(readFileSync(file, 'utf8')));
+    }
+    await expect(descriptors.get('note.gone')).rejects.toMatchObject({
+      error: { code: 'not_found' },
+    });
+
+    const i18n = TestBed.inject(KeelI18n);
+    await i18n.load('en');
+    expect(i18n.t('note.list.title')).toBe('Notes');
+    expect(i18n.t('menu.system')).toBe('System');
+    expect(() => client.call('note.list')).toThrow('no canned answer for note.list');
+  });
+
+  it('fromDump fails when a level directory lacks boot.json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'keel-dump-'));
+    try {
+      mkdirSync(join(dir, 'user', 'functions'), { recursive: true });
+      writeFileSync(join(dir, 'user', 'functions', 'note.list.json'), '{"name":"note.list"}');
+      expect(() => KeelMockClient.fromDump(dir, 'user')).toThrow(
+        'the dump of user has no boot.json',
+      );
+      expect(() => KeelMockClient.fromDump(dir, 'admin')).toThrow(/ENOENT/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

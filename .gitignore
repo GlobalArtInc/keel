@@ -3,6 +3,7 @@
 /frontend/dist
 /frontend/.angular
 /frontend/coverage
+/frontend/storybook-static
 *.log
 *.snap.new
 .DS_Store

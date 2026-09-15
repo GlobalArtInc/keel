@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": ["./preview.ts", "../libs/keel/**/*.stories.ts"]
+}

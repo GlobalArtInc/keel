@@ -27,6 +27,38 @@
             }
           },
           "defaultConfiguration": "production"
+        },
+        "storybook": {
+          "builder": "@storybook/angular:start-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "tsConfig": ".storybook/tsconfig.json",
+            "compodoc": false,
+            "port": 6006,
+            "styles": [
+              "node_modules/@fontsource/ibm-plex-sans/400.css",
+              "node_modules/@fontsource/ibm-plex-sans/500.css",
+              "node_modules/@fontsource/ibm-plex-mono/400.css",
+              "node_modules/@globalart/phoenix-ui/styles/phoenix-ui.css",
+              ".storybook/preview.css"
+            ]
+          }
+        },
+        "build-storybook": {
+          "builder": "@storybook/angular:build-storybook",
+          "options": {
+            "configDir": ".storybook",
+            "tsConfig": ".storybook/tsconfig.json",
+            "compodoc": false,
+            "outputDir": "storybook-static",
+            "styles": [
+              "node_modules/@fontsource/ibm-plex-sans/400.css",
+              "node_modules/@fontsource/ibm-plex-sans/500.css",
+              "node_modules/@fontsource/ibm-plex-mono/400.css",
+              "node_modules/@globalart/phoenix-ui/styles/phoenix-ui.css",
+              ".storybook/preview.css"
+            ]
+          }
         }
       }
     },

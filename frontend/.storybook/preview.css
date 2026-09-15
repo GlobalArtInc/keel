@@ -1,0 +1,9 @@
+body.sb-show-main {
+  background-color: var(--phx-ground);
+  color: var(--phx-ink);
+  font: var(--phx-text-14);
+}
+
+.sb-show-main.sb-main-padded {
+  padding: 24px;
+}
