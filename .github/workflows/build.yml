@@ -31,6 +31,12 @@ jobs:
       - name: Put cargo on the path
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Link the shared build directory
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          rm -rf target
+          ln -sfn "$CARGO_TARGET_DIR" target
+
       - name: Install Rust toolchain
         run: |
           rustup show
@@ -74,16 +80,16 @@ jobs:
 
       - name: The binary is static
         run: |
-          file "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel
-          if ldd "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel 2>&1 | grep -q '=>'; then
+          file target/x86_64-unknown-linux-musl/release/keel
+          if ldd target/x86_64-unknown-linux-musl/release/keel 2>&1 | grep -q '=>'; then
             echo "the binary links shared libraries" >&2
             exit 1
           fi
-          "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel --version
+          target/x86_64-unknown-linux-musl/release/keel --version
 
       - name: The binary with the demo bundle and the frontend is under 40 MB
         run: |
-          size=$(stat -c %s "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel)
+          size=$(stat -c %s target/x86_64-unknown-linux-musl/release/keel)
           mb=$(awk -v bytes="$size" 'BEGIN { printf "%.1f", bytes / 1000000 }')
           echo "keel with the demo bundle and the frontend: $size bytes ($mb MB)"
           if [ "$size" -ge 40000000 ]; then
@@ -94,7 +100,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel dist/keel
+          cp target/x86_64-unknown-linux-musl/release/keel dist/keel
           tar -C dist -cf - keel | zstd -19 -o "dist/keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst"
           (cd dist && sha256sum "keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst" > "keel-${GITHUB_SHA::7}-x86_64-linux-musl.tar.zst.sha256")
 
@@ -111,12 +117,12 @@ jobs:
       - name: Build the host spike
         run: |
           cargo build --release --target x86_64-unknown-linux-musl -p keel-spike
-          if ldd "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel-spike 2>&1 | grep -q '=>'; then
+          if ldd target/x86_64-unknown-linux-musl/release/keel-spike 2>&1 | grep -q '=>'; then
             echo "the spike links shared libraries" >&2
             exit 1
           fi
           mkdir -p dist/spike
-          cp "$CARGO_TARGET_DIR"/x86_64-unknown-linux-musl/release/keel-spike dist/spike/
+          cp target/x86_64-unknown-linux-musl/release/keel-spike dist/spike/
           cp -r bin/spike/deploy bin/spike/templates hack/spike-vm.sh dist/spike/
 
       - name: Upload the host spike

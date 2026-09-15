@@ -48,6 +48,12 @@ jobs:
       - name: Put cargo on the path
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Link the shared build directory
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          rm -rf target
+          ln -sfn "$CARGO_TARGET_DIR" target
+
       - name: Install Rust toolchain
         run: |
           rustup show
@@ -122,20 +128,20 @@ jobs:
       - name: Prove the binary
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
-        run: hack/prove-binary.sh "$CARGO_TARGET_DIR"/debug/keel
+        run: hack/prove-binary.sh target/debug/keel
 
       - name: The installer against the binary
-        run: hack/check-install.sh "$CARGO_TARGET_DIR"/debug/keel
+        run: hack/check-install.sh target/debug/keel
 
       - name: Conformance against the binary
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
-        run: hack/conformance.sh "$CARGO_TARGET_DIR"/debug/keel
+        run: hack/conformance.sh target/debug/keel
 
       - name: The descriptor dump, the OpenAPI document and the custom-views share against the binary
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
-        run: hack/descriptors.sh "$CARGO_TARGET_DIR"/debug/keel
+        run: hack/descriptors.sh target/debug/keel
 
       - name: Install chromium for the browser suite
         working-directory: frontend
@@ -144,7 +150,7 @@ jobs:
       - name: The browser suite against the binary
         env:
           KEEL_TEST_DATABASE_URL: postgres://keel:keel@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
-        run: hack/e2e.sh "$CARGO_TARGET_DIR"/debug/keel
+        run: hack/e2e.sh target/debug/keel
 
       - name: Keep the traces of a failed browser suite
         if: failure()
@@ -222,6 +228,12 @@ jobs:
       - name: Put cargo on the path
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Link the shared build directory
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          rm -rf target
+          ln -sfn "$CARGO_TARGET_DIR" target
+
       - name: Install Rust toolchain
         run: rustup show
 
@@ -274,6 +286,12 @@ jobs:
 
       - name: Put cargo on the path
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Link the shared build directory
+        run: |
+          mkdir -p "$CARGO_TARGET_DIR"
+          rm -rf target
+          ln -sfn "$CARGO_TARGET_DIR" target
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
