@@ -282,7 +282,7 @@ fn boot_none_fixture_round_trips_with_no_product_no_view_and_the_platform_group_
     assert!(boot.views.is_empty());
     assert_eq!(boot.brand.name, "keel.brand");
     assert!(boot.brand.logo.is_none());
-    assert_eq!(boot.brand.hue, 220);
+    assert_eq!(boot.brand.hue, 264);
     let principal = boot.principal.expect("the owner");
     assert_eq!(principal.level, Level::Owner);
     assert!(principal.actor.is_none());
@@ -314,7 +314,7 @@ fn boot_fixture_round_trips_with_the_platform_brand_and_a_product_on_every_group
         boot.products[0].brand.logo.as_deref(),
         Some("/brand/dns/logo.svg")
     );
-    assert_eq!(boot.products[1].brand.hue, 200);
+    assert_eq!(boot.products[1].brand.hue, 264);
     assert_eq!(boot.brand.name, "keel.brand");
     assert!(boot.brand.logo.is_none());
     let principal = boot.principal.expect("a signed-in principal");

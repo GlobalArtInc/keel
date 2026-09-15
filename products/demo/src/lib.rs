@@ -11,8 +11,8 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     api: keel::types::DESCRIPTOR_VERSION,
     brand: Brand {
         logo: LOGO,
-        hue: 150,
-        chroma: 0.1,
+        hue: 264,
+        chroma: 0.18,
     },
     modules: &[&note::MODULE],
     menu: &[MenuGroup {

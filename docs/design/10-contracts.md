@@ -626,7 +626,7 @@ descriptors are cached under.
     { "id": "panel", "name": "product.panel.brand", "edition": "lite",
       "brand": { "name": "product.panel.brand", "logo": "/brand/panel/logo.svg",
                  "hue": 200, "chroma": 0.10 } } ],
-  "brand": { "name": "keel.brand", "hue": 220, "chroma": 0.08 },
+  "brand": { "name": "keel.brand", "hue": 264, "chroma": 0.18 },
   "principal": { "id": "01J8…", "login": "res1", "level": "reseller", "account": "01J8A…",
                  "lang": "ru", "tz": "Europe/Belgrade", "actor": null, "totp": true },
   "features": ["dns.zones", "dns.dnssec", "dns.secondary", "hosting.web"],
@@ -652,7 +652,7 @@ descriptors are cached under.
 |-------|---------|
 | `keel` | version of the installation, which is the version of every product on it, and the API version |
 | `products` | the enabled products in composition order: `id`, `name` (the brand name key), `edition` and the product's own `brand`, with its logo at `/brand/<id>/logo.svg`; `edition` is the licensed edition once a lease exists and the bundle's default edition, or `null` for a bundle without editions, while none does |
-| `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 220, chroma 0.08 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; patched per hostname for white-label with the `ManifestPatch` the `ManifestSource` answers for the request's `Host` (`settings_brand`, [05-modules.md](05-modules.md)), every member optional, a patched `name` being literal text rather than a key; the socket boot carries no host and is never patched |
+| `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 264, chroma 0.18 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; patched per hostname for white-label with the `ManifestPatch` the `ManifestSource` answers for the request's `Host` (`settings_brand`, [05-modules.md](05-modules.md)), every member optional, a patched `name` being literal text rather than a key; the socket boot carries no host and is never patched |
 | `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. `tz` is `null` while the principal has no `tz` preference and on the socket; `totp` is `false` for the owner and while no module provides a `SecondFactorSource`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
 | `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
 | `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |

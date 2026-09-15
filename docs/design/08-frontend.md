@@ -299,7 +299,10 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   kernel's dictionaries carry every key of phoenix-ui's default labels in `en` and `ru`.
 - The theme is derived from the brand: `hue` and `chroma` from `/boot.brand` go through
   `PhxThemeService`, the effective logo is served from `/brand/logo.svg` and each product's from
-  `/brand/<product>/logo.svg`. `chroma` is the OKLCH chroma itself, 0 to 0.4, while
+  `/brand/<product>/logo.svg`. Every product of the line and the platform brand carry the palette
+  of the platform applications, hue 264 and OKLCH chroma 0.18 — the defaults of phoenix-ui — so an
+  installation looks the same whichever products are enabled; the brand fields exist for
+  white-label, not for a colour per product. `chroma` is the OKLCH chroma itself, 0 to 0.4, while
   `PhxThemeService` takes a multiplier of the 0.18 the phoenix stylesheet applies at 1, so the
   shell divides by that base before feeding it. White-label by hostname is a `ManifestPatch` on
   the server side, answered by the `ManifestSource` of `settings` for the request's host

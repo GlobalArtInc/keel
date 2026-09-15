@@ -518,11 +518,11 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
     assert_eq!(
         boot["products"],
         json!([{ "id": "demo", "name": "product.demo.brand", "edition": null,
-                 "brand": { "name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 150, "chroma": 0.1 } }])
+                 "brand": { "name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18 } }])
     );
     assert_eq!(boot["keel"]["api"], json!(1));
     assert_eq!(boot["brand"]["name"], json!("product.demo.brand"));
-    assert_eq!(boot["brand"]["hue"], json!(150));
+    assert_eq!(boot["brand"]["hue"], json!(264));
     assert_eq!(boot["menu"][0]["id"], json!("demo"));
     assert_eq!(boot["menu"][0]["label"], json!("menu.demo"));
     assert_eq!(boot["menu"][0]["items"][0]["path"], json!("demo/notes"));

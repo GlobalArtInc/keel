@@ -11,8 +11,8 @@ use crate::meta;
 use crate::registry::Registry;
 
 pub(crate) const PLATFORM_BRAND: &str = "keel.brand";
-pub(crate) const PLATFORM_HUE: u16 = 220;
-pub(crate) const PLATFORM_CHROMA: f64 = 0.08;
+pub(crate) const PLATFORM_HUE: u16 = 264;
+pub(crate) const PLATFORM_CHROMA: f64 = 0.18;
 pub(crate) const EFFECTIVE_LOGO: &str = "/brand/logo.svg";
 
 pub(crate) fn platform_brand() -> BootBrand {

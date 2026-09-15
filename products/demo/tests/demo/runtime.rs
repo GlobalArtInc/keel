@@ -124,7 +124,7 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
         panic!("expected an ok envelope: {boot:?}");
     };
     assert_eq!(boot.products[0].id, "demo");
-    assert_eq!(boot.products[0].brand.hue, 150);
+    assert_eq!(boot.products[0].brand.hue, 264);
     assert_eq!(boot.brand.name, "product.demo.brand");
     assert_eq!(boot.menu[0].id, "demo");
 

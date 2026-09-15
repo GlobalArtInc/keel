@@ -464,8 +464,8 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
     assert!(boot.products.is_empty());
     assert_eq!(boot.brand.name, "keel.brand");
     assert!(boot.brand.logo.is_none());
-    assert_eq!(boot.brand.hue, 220);
-    assert_eq!(boot.brand.chroma, 0.08);
+    assert_eq!(boot.brand.hue, 264);
+    assert_eq!(boot.brand.chroma, 0.18);
     assert_eq!(
         paths(&boot),
         [(

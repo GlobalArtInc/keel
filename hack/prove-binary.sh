@@ -379,9 +379,9 @@ check "GET /missing.png is 404" http_is "$site/missing.json" 404 GET /missing.pn
 check "a missing asset answers the route_not_found envelope" json_is "$site/missing.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.route_not_found"'
 check "GET /api/v1/boot is 200" http_is "$site/boot.json" 200 GET /api/v1/boot
 check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "demo" for p in doc["products"])'
-check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150 and doc["brand"]["chroma"] == 0.1'
+check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264 and doc["brand"]["chroma"] == 0.18'
 check "boot names the keel version" json_is "$site/boot.json" "doc['keel']['version'] == '$version' and doc['keel']['api'] == 1"
-check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": None, "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 150, "chroma": 0.1}}'
+check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": None, "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18}}'
 check "GET /brand/logo.svg is 200" http_is "$site/logo.svg" 200 GET /brand/logo.svg
 check "the effective logo is the demo's SVG" cmp -s "$site/logo.svg" products/demo/brand/logo.svg
 check "the effective logo is served as image/svg+xml no-store" svg_is_served "$site/logo.svg"
@@ -401,7 +401,7 @@ check "the scripted logo answers 422 on logo" json_is "$site/brand-script.json" 
 check "ctl settings.brand.delete for panel.example" keel_ok "$site/brand-delete.json" ctl settings.brand.delete host=panel.example
 check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'
 check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$site/boot-brand-gone.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
-check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 150'
+check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264'
 check "ctl keel.product.list --out json" keel_ok "$site/products.json" ctl keel.product.list --out json
 check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["note"])]'
 check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x

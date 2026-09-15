@@ -11,16 +11,16 @@
       "brand": {
         "name": "product.demo.brand",
         "logo": "/brand/demo/logo.svg",
-        "hue": 150,
-        "chroma": 0.1
+        "hue": 264,
+        "chroma": 0.18
       }
     }
   ],
   "brand": {
     "name": "product.demo.brand",
     "logo": "/brand/logo.svg",
-    "hue": 150,
-    "chroma": 0.1
+    "hue": 264,
+    "chroma": 0.18
   },
   "principal": null,
   "features": [],

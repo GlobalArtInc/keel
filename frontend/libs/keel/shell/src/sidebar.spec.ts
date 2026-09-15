@@ -244,7 +244,7 @@ describe('the sidebar rule', () => {
     const empty = twoProducts();
     empty.menu = [];
     expect(sidebarOf(empty, label)).toEqual([]);
-    expect(brandOf({ name: 'keel.brand', hue: 220, chroma: 0.08 }, () => 'keel')).toEqual({
+    expect(brandOf({ name: 'keel.brand', hue: 264, chroma: 0.18 }, () => 'keel')).toEqual({
       name: 'keel',
       logo: null,
       mark: 'K',

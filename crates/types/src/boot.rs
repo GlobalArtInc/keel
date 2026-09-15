@@ -112,8 +112,8 @@ mod tests {
             brand: BootBrand {
                 name: "keel.brand".into(),
                 logo: None,
-                hue: 220,
-                chroma: 0.08,
+                hue: 264,
+                chroma: 0.18,
             },
             principal: None,
             features: Vec::new(),
@@ -146,7 +146,7 @@ mod tests {
                     { "id": "dns", "name": "product.dns.brand", "edition": null,
                       "brand": { "name": "product.dns.brand", "logo": "/brand/dns/logo.svg", "hue": 264, "chroma": 0.12 } }
                 ],
-                "brand": { "name": "keel.brand", "hue": 220, "chroma": 0.08 },
+                "brand": { "name": "keel.brand", "hue": 264, "chroma": 0.18 },
                 "principal": null,
                 "features": [],
                 "license": null,

@@ -692,7 +692,7 @@ permission; a node whose group no enabled bundle declares, a node without a labe
 has no screen title, and a group id declared twice fail freeze. `GET /api/v1/boot` returns
 `keel { version, api }`, `products` as `{ id, name, edition, brand }` with `edition` the
 bundle's default edition while no lease exists, `brand` (the single enabled product's brand,
-otherwise the platform brand `keel.brand`, hue 220, chroma 0.08, no logo), `principal` (`null`
+otherwise the platform brand `keel.brand`, hue 264, chroma 0.18, no logo), `principal` (`null`
 for a guest; `tz: null` and `totp: false` as placeholders until M1), `features` (the union of
 the default editions), `menu` with `product` and `icon` on every group and
 `{ path, label, func, kind, icon?, badge? }` items, `views`, `meta` (also the response's `ETag`,
@@ -3251,7 +3251,7 @@ anything of M3.
   `cargo run -p keel-dev -- types --out contracts/schema --check`, `cargo test -p keel-bin
   --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`,
   `hack/check-install.sh target/debug/keel`, `hack/conformance.sh target/debug/keel`,
-  `hack/descriptors.sh target/debug/keel`, `pnpm exec playwright install --with-deps chromium`
+  `hack/descriptors.sh target/debug/keel`, `pnpm exec playwright install chromium`
   once and `hack/e2e.sh target/debug/keel`, then `hack/check-test-databases.sh`,
   `hack/check-deps.sh` and `hack/check-docs.sh`. The job `frontend`, in `frontend/`:
   `pnpm install --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`,

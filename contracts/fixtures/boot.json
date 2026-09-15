@@ -1,10 +1,10 @@
 { "keel": { "version": "1.2.0", "api": 1 },
   "products": [
     { "id": "dns", "name": "product.dns.brand", "edition": null,
-      "brand": { "name": "product.dns.brand", "logo": "/brand/dns/logo.svg", "hue": 264, "chroma": 0.12 } },
+      "brand": { "name": "product.dns.brand", "logo": "/brand/dns/logo.svg", "hue": 264, "chroma": 0.18 } },
     { "id": "panel", "name": "product.panel.brand", "edition": null,
-      "brand": { "name": "product.panel.brand", "logo": "/brand/panel/logo.svg", "hue": 200, "chroma": 0.10 } } ],
-  "brand": { "name": "keel.brand", "hue": 220, "chroma": 0.08 },
+      "brand": { "name": "product.panel.brand", "logo": "/brand/panel/logo.svg", "hue": 264, "chroma": 0.18 } } ],
+  "brand": { "name": "keel.brand", "hue": 264, "chroma": 0.18 },
   "principal": { "id": "01J8A0000000000000000000B1", "login": "res1", "level": "reseller", "account": "01J8A0000000000000000000A1",
                  "actor": null, "lang": "ru", "tz": null, "totp": false },
   "features": [],

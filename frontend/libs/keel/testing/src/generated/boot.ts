@@ -3,7 +3,7 @@ import type { Boot } from '@globalart/keel/meta';
 export const BOOT_NONE: Boot = {
   keel: { version: '0.1.0', api: 1 },
   products: [],
-  brand: { name: 'keel.brand', hue: 220, chroma: 0.08 },
+  brand: { name: 'keel.brand', hue: 264, chroma: 0.18 },
   principal: {
     id: '00000000000000000000000000',
     login: 'owner',
@@ -60,10 +60,10 @@ export const BOOT_ONE: Boot = {
       id: 'demo',
       name: 'product.demo.brand',
       edition: null,
-      brand: { name: 'product.demo.brand', logo: '/brand/demo/logo.svg', hue: 150, chroma: 0.1 },
+      brand: { name: 'product.demo.brand', logo: '/brand/demo/logo.svg', hue: 264, chroma: 0.18 },
     },
   ],
-  brand: { name: 'product.demo.brand', logo: '/brand/logo.svg', hue: 150, chroma: 0.1 },
+  brand: { name: 'product.demo.brand', logo: '/brand/logo.svg', hue: 264, chroma: 0.18 },
   principal: {
     id: '01J8A0000000000000000000B1',
     login: 'root',
@@ -191,16 +191,16 @@ export const BOOT_TWO: Boot = {
       id: 'dns',
       name: 'product.dns.brand',
       edition: null,
-      brand: { name: 'product.dns.brand', logo: '/brand/dns/logo.svg', hue: 264, chroma: 0.12 },
+      brand: { name: 'product.dns.brand', logo: '/brand/dns/logo.svg', hue: 264, chroma: 0.18 },
     },
     {
       id: 'panel',
       name: 'product.panel.brand',
       edition: null,
-      brand: { name: 'product.panel.brand', logo: '/brand/panel/logo.svg', hue: 200, chroma: 0.1 },
+      brand: { name: 'product.panel.brand', logo: '/brand/panel/logo.svg', hue: 264, chroma: 0.18 },
     },
   ],
-  brand: { name: 'keel.brand', hue: 220, chroma: 0.08 },
+  brand: { name: 'keel.brand', hue: 264, chroma: 0.18 },
   principal: {
     id: '01J8A0000000000000000000B1',
     login: 'res1',

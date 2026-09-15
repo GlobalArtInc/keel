@@ -66,7 +66,7 @@ the variable is unset, `keel-testkit` starts the container `keel-testkit-postgre
 `postgres:16` through the local Docker socket, keeps it running for the next test process and
 prints the URL it uses, which is the path the `env -u` command below proves. The frontend
 commands run in `frontend/` with `NEXUS_NPM_TOKEN` in the environment, the token of the private
-registry `@globalart/phoenix-ui` comes from; `pnpm exec playwright install --with-deps chromium`
+registry `@globalart/phoenix-ui` comes from; `pnpm exec playwright install chromium`
 is needed once for the browser suite:
 
 ```
@@ -84,7 +84,7 @@ hack/prove-binary.sh target/debug/keel
 hack/check-install.sh target/debug/keel
 hack/conformance.sh target/debug/keel
 hack/descriptors.sh target/debug/keel
-pnpm exec playwright install --with-deps chromium
+pnpm exec playwright install chromium
 hack/e2e.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
