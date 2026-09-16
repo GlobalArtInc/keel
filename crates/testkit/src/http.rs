@@ -21,9 +21,52 @@ use crate::events::EventStream;
 use crate::fixtures::Who;
 
 pub const EVENTS_PATH: &str = "/api/v1/events";
+pub const UPLOAD_BOUNDARY: &str = "keel-testkit-boundary-7f3a2c";
 
 const HOST: &str = "keel.test";
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UploadPart<'a> {
+    pub field: &'a str,
+    pub filename: &'a str,
+    pub content_type: &'a str,
+    pub bytes: &'a [u8],
+}
+
+impl<'a> UploadPart<'a> {
+    pub fn new(field: &'a str, filename: &'a str, content_type: &'a str, bytes: &'a [u8]) -> Self {
+        Self {
+            field,
+            filename,
+            content_type,
+            bytes,
+        }
+    }
+}
+
+pub fn multipart_body(params: &Value, files: &[UploadPart<'_>]) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{UPLOAD_BOUNDARY}\r\nContent-Disposition: form-data; name=\"params\"\r\nContent-Type: application/json\r\n\r\n{params}\r\n"
+        )
+        .as_bytes(),
+    );
+    for part in files {
+        body.extend_from_slice(
+            format!(
+                "--{UPLOAD_BOUNDARY}\r\nContent-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
+                part.field, part.filename, part.content_type
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(part.bytes);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{UPLOAD_BOUNDARY}--\r\n").as_bytes());
+    body
+}
 
 pub struct TestHttp {
     addr: SocketAddr,
@@ -143,6 +186,37 @@ impl TestHttp {
         .await
     }
 
+    pub async fn upload(
+        &self,
+        who: Who,
+        path: &str,
+        params: &Value,
+        files: &[UploadPart<'_>],
+    ) -> Answer {
+        self.upload_with(who, path, &[], params, files).await
+    }
+
+    pub async fn upload_with(
+        &self,
+        who: Who,
+        path: &str,
+        headers: &[(&str, &str)],
+        params: &Value,
+        files: &[UploadPart<'_>],
+    ) -> Answer {
+        let content_type = format!("multipart/form-data; boundary={UPLOAD_BOUNDARY}");
+        let mut all = vec![
+            (PRINCIPAL_HEADER, who.login()),
+            ("content-type", content_type.as_str()),
+        ];
+        all.extend_from_slice(headers);
+        let body = multipart_body(params, files);
+        match self.try_request_bytes("POST", path, &all, &body).await {
+            Ok(answer) => answer,
+            Err(error) => panic!("{error}"),
+        }
+    }
+
     pub async fn request(
         &self,
         method: &str,
@@ -163,6 +237,17 @@ impl TestHttp {
         headers: &[(&str, &str)],
         body: Option<&str>,
     ) -> Result<Answer, HttpError> {
+        self.try_request_bytes(method, path, headers, body.unwrap_or_default().as_bytes())
+            .await
+    }
+
+    pub async fn try_request_bytes(
+        &self,
+        method: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &[u8],
+    ) -> Result<Answer, HttpError> {
         let failed = |source| HttpError::Request {
             path: path.to_owned(),
             source,
@@ -179,11 +264,12 @@ impl TestHttp {
         {
             request.push_str(&format!("{name}: {value}\r\n"));
         }
-        let body = body.unwrap_or_default();
-        request.push_str(&format!("Content-Length: {}\r\n\r\n{body}", body.len()));
+        request.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+        let mut request = request.into_bytes();
+        request.extend_from_slice(body);
         let exchange = async {
             let mut stream = TcpStream::connect(self.addr).await?;
-            stream.write_all(request.as_bytes()).await?;
+            stream.write_all(&request).await?;
             let mut raw = Vec::new();
             stream.read_to_end(&mut raw).await?;
             Ok::<Vec<u8>, io::Error>(raw)
@@ -334,6 +420,26 @@ mod tests {
         .unwrap();
         assert_eq!(cleared.session_cookie(), None);
         assert!(cleared.set_cookie().unwrap().ends_with("Max-Age=0"));
+    }
+
+    #[test]
+    fn a_multipart_body_carries_the_params_part_first_and_one_part_per_file() {
+        let body = multipart_body(
+            &serde_json::json!({ "host": "panel.example" }),
+            &[UploadPart::new(
+                "logo",
+                "logo.svg",
+                "image/svg+xml",
+                b"<svg/>",
+            )],
+        );
+        let text = String::from_utf8(body).unwrap();
+        assert_eq!(
+            text,
+            format!(
+                "--{UPLOAD_BOUNDARY}\r\nContent-Disposition: form-data; name=\"params\"\r\nContent-Type: application/json\r\n\r\n{{\"host\":\"panel.example\"}}\r\n--{UPLOAD_BOUNDARY}\r\nContent-Disposition: form-data; name=\"logo\"; filename=\"logo.svg\"\r\nContent-Type: image/svg+xml\r\n\r\n<svg/>\r\n--{UPLOAD_BOUNDARY}--\r\n"
+            )
+        );
     }
 
     #[test]

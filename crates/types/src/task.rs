@@ -144,6 +144,17 @@ impl DownloadRef {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GroupResult {
+    pub updated: u64,
+}
+
+impl GroupResult {
+    pub fn new(updated: u64) -> Self {
+        Self { updated }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskProgress {
@@ -220,6 +231,18 @@ mod tests {
             serde_json::to_value(&file).unwrap(),
             json!({ "filename": "notes.csv", "contentType": "text/csv; charset=utf-8" })
         );
+    }
+
+    #[test]
+    fn a_group_result_counts_the_updated_rows() {
+        let result = GroupResult::new(3);
+        assert_eq!(
+            serde_json::to_value(result).unwrap(),
+            json!({ "updated": 3 })
+        );
+        let parsed: GroupResult = serde_json::from_value(json!({ "updated": 3 })).unwrap();
+        assert_eq!(parsed, result);
+        assert!(serde_json::from_value::<GroupResult>(json!({})).is_err());
     }
 
     #[test]

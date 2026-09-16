@@ -13,6 +13,7 @@ pub const MAX_PER_ACCOUNT: u64 = 20;
 pub const MAX_LINE: usize = 200;
 pub const LOCKED_PREFIX: &str = "locked";
 pub const DELETE_BATCH_THRESHOLD: u32 = 10;
+pub const GROUP_BATCH_THRESHOLD: u32 = 10;
 pub const FUNCTIONS: [&str; 9] = [
     "note.list",
     "note.get",
@@ -215,6 +216,20 @@ mod tests {
         assert_eq!(
             delete.limits().batch_threshold,
             Some(DELETE_BATCH_THRESHOLD)
+        );
+        let edit = registrations
+            .functions
+            .iter()
+            .find(|def| def.name() == "note.edit")
+            .expect("note.edit");
+        assert_eq!(edit.limits().batch_threshold, Some(GROUP_BATCH_THRESHOLD));
+        assert_eq!(
+            edit.descriptor()
+                .expect("the descriptor compiles")
+                .ui
+                .expect("the form block")
+                .multi,
+            ["kind", "due", "tags"]
         );
         assert_eq!(MODULE.requires, ["task", "notify"]);
         assert_eq!(MODULE.sdk, VERSION);

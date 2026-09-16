@@ -10,6 +10,7 @@ pub mod function;
 pub mod guard;
 pub mod list;
 pub mod module;
+pub mod multipart;
 pub mod prelude;
 pub mod product;
 pub mod registrar;
@@ -50,7 +51,8 @@ pub use error::{KeelError, Result};
 pub use function::{FunctionBuilder, FunctionDef, function};
 pub use guard::Guard;
 pub use keel_types::{
-    Account, Choice, Choices, Id, Level, ListQuery, OptionsQuery, Page, Principal,
+    Account, Choice, Choices, FileAttrs, GroupResult, Id, Level, ListQuery, OptionsQuery, Page,
+    Principal,
 };
 pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like, fetch_page};
 pub use module::ModuleDef;

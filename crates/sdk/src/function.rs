@@ -207,6 +207,15 @@ where
         self
     }
 
+    pub fn upload<F, Fut>(mut self, handler: F) -> FunctionDef
+    where
+        F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<R>> + Send + 'static,
+    {
+        self.def.kind = Kind::Upload;
+        self.handler(handler)
+    }
+
     pub fn handler<F, Fut>(self, handler: F) -> FunctionDef
     where
         F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
@@ -739,6 +748,25 @@ mod tests {
             json!({ "task": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } })
         );
         assert!(handle.take_download().is_none());
+    }
+
+    #[tokio::test]
+    async fn an_upload_builder_sets_the_kind_and_keeps_the_write_mode() {
+        let def = function::<Ping, Pong>("m.e.put")
+            .level(Level::Admin)
+            .unowned()
+            .upload(|call: Call<Ping>| async move {
+                Ok(Pong {
+                    text: call.params().text.to_uppercase(),
+                })
+            });
+        assert_eq!(def.kind(), Kind::Upload);
+        assert_eq!(def.mode(), Mode::Write);
+        let handle = crate::tests::read_handle();
+        let answer = (def.handler())(handle.call(json!({ "text": "hello" })))
+            .await
+            .unwrap();
+        assert_eq!(answer, json!({ "text": "HELLO" }));
     }
 
     #[tokio::test]

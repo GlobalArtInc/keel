@@ -1,23 +1,34 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Path, Query, Request, State};
-use axum::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::extract::multipart::{Field, Multipart, MultipartError};
+use axum::extract::{FromRequest, Path, Query, Request, State};
+use axum::http::header::{ALLOW, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use futures::StreamExt;
+use keel_sdk::multipart::{PARAMS_LIMIT, PARAMS_PART};
 use keel_sdk::{Download, KeelError};
-use keel_types::{Kind, Level};
+use keel_types::{ErrorCode, FieldError, FileAttrs, Kind, Level};
+use serde_json::{Map, Value};
 
 use super::Shared;
 use super::auth::Caller;
 use super::call::{body, from_query, options, respond};
 use super::live::Live;
 use super::reply;
-use crate::dispatcher::RAW_PREFIX;
+use crate::dispatcher::{Plan, RAW_PREFIX, file_encoding, file_too_large, file_type};
 use crate::registry::Function;
 
 const NO_STORE: &str = "no-store";
 const OCTET_STREAM: &str = "application/octet-stream";
+const MULTIPART: &str = "multipart/form-data";
+
+pub const BODY_NOT_MULTIPART_KEY: &str = "keel.error.body_not_multipart";
+pub const PART_UNKNOWN_KEY: &str = "keel.error.part_unknown";
+pub const PART_REPEATED_KEY: &str = "keel.error.part_repeated";
 
 pub(super) async fn get(
     State(state): State<Arc<Shared>>,
@@ -27,8 +38,26 @@ pub(super) async fn get(
     Query(pairs): Query<Vec<(String, String)>>,
     headers: HeaderMap,
 ) -> Response {
+    let Some(function) = resolve(&live, &module, &name) else {
+        return not_found(&module, &name, &caller.request_id);
+    };
+    if let Some(refused) = refuse_guest(&caller) {
+        return refused;
+    }
+    if function.def().kind() == Kind::Upload {
+        let mut response = reply::error(
+            KeelError::validation("keel.error.method_not_allowed")
+                .param("function", function.name())
+                .param("allowed", "POST"),
+            &caller.request_id,
+        );
+        response
+            .headers_mut()
+            .insert(ALLOW, HeaderValue::from_static("POST"));
+        return response;
+    }
     let params = from_query(pairs);
-    serve(&state, &live, &module, &name, caller, &headers, params).await
+    serve(&state, &live, function, caller, &headers, params).await
 }
 
 pub(super) async fn post(
@@ -38,19 +67,50 @@ pub(super) async fn post(
     caller: Caller,
     request: Request,
 ) -> Response {
+    let Some(function) = resolve(&live, &module, &name) else {
+        return not_found(&module, &name, &caller.request_id);
+    };
+    if let Some(refused) = refuse_guest(&caller) {
+        return refused;
+    }
     let headers = request.headers().clone();
-    let params = body(request, state.options.body_limit).await;
-    serve(&state, &live, &module, &name, caller, &headers, params).await
+    let params = match function.def().kind() {
+        Kind::Upload => multipart(request, function).await,
+        _ => body(request, state.options.body_limit).await,
+    };
+    serve(&state, &live, function, caller, &headers, params).await
+}
+
+fn resolve<'a>(live: &'a Live, module: &str, name: &str) -> Option<&'a Function> {
+    live.registry
+        .function(&format!("{module}.{name}"))
+        .filter(is_raw)
+}
+
+fn refuse_guest(caller: &Caller) -> Option<Response> {
+    (caller.principal.level == Level::Guest).then(|| {
+        reply::error(
+            KeelError::unauthenticated("keel.error.unauthenticated"),
+            &caller.request_id,
+        )
+    })
+}
+
+fn not_found(module: &str, name: &str, request_id: &str) -> Response {
+    reply::error(
+        KeelError::not_found("keel.error.route_not_found")
+            .param("path", format!("{RAW_PREFIX}/{module}/{name}")),
+        request_id,
+    )
 }
 
 async fn serve(
     state: &Shared,
     live: &Live,
-    module: &str,
-    name: &str,
+    function: &Function,
     caller: Caller,
     headers: &HeaderMap,
-    params: Result<serde_json::Value, KeelError>,
+    params: Result<Value, KeelError>,
 ) -> Response {
     let Caller {
         request_id,
@@ -58,20 +118,6 @@ async fn serve(
         client,
         zone,
     } = caller;
-    let func = format!("{module}.{name}");
-    let Some(function) = live.registry.function(&func).filter(is_download) else {
-        return reply::error(
-            KeelError::not_found("keel.error.route_not_found")
-                .param("path", format!("{RAW_PREFIX}/{module}/{name}")),
-            &request_id,
-        );
-    };
-    if principal.level == Level::Guest {
-        return reply::error(
-            KeelError::unauthenticated("keel.error.unauthenticated"),
-            &request_id,
-        );
-    }
     let params = match params {
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
@@ -87,8 +133,129 @@ async fn serve(
     }
 }
 
-fn is_download(function: &&Function) -> bool {
-    function.def().kind() == Kind::Download
+fn is_raw(function: &&Function) -> bool {
+    matches!(function.def().kind(), Kind::Download | Kind::Upload)
+}
+
+fn multipart_limit(files: &[(String, FileAttrs)]) -> u64 {
+    files
+        .iter()
+        .map(|(_, file)| file.max_bytes)
+        .fold(PARAMS_LIMIT as u64, u64::saturating_add)
+}
+
+async fn multipart(request: Request, function: &Function) -> Result<Value, KeelError> {
+    let plan = Plan::of_params(function.descriptor());
+    let files = plan.file_fields();
+    let limit = multipart_limit(&files);
+    let is_multipart = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case(MULTIPART)
+        });
+    if !is_multipart {
+        return Err(
+            KeelError::validation(BODY_NOT_MULTIPART_KEY).param("function", function.name())
+        );
+    }
+    let (parts, body) = request.into_parts();
+    let bytes = collect(body, limit).await?;
+    let request = Request::from_parts(parts, Body::from(bytes));
+    let mut multipart = Multipart::from_request(request, &())
+        .await
+        .map_err(|error| KeelError::validation(BODY_NOT_MULTIPART_KEY).source(error))?;
+    let mut params = Map::new();
+    let mut seen_parts: Vec<String> = Vec::new();
+    while let Some(field) = multipart.next_field().await.map_err(malformed)? {
+        let name = field.name().unwrap_or_default().to_owned();
+        if seen_parts.contains(&name) {
+            return Err(KeelError::validation(PART_REPEATED_KEY).param("part", name));
+        }
+        seen_parts.push(name.clone());
+        if name == PARAMS_PART {
+            let bytes = read_part(field, PARAMS_LIMIT as u64)
+                .await?
+                .ok_or_else(|| {
+                    KeelError::validation("keel.error.body_too_large").param("limit", PARAMS_LIMIT)
+                })?;
+            match serde_json::from_slice::<Value>(&bytes) {
+                Ok(Value::Object(object)) => params.extend(object),
+                Ok(_) | Err(_) => {
+                    return Err(KeelError::validation("keel.error.body_not_json")
+                        .param("part", PARAMS_PART));
+                }
+            }
+            continue;
+        }
+        let Some((_, attrs)) = files.iter().find(|(file, _)| *file == name) else {
+            return Err(KeelError::validation(PART_UNKNOWN_KEY).param("part", name));
+        };
+        let content_type = field.content_type().map(str::to_owned);
+        if !content_type
+            .as_deref()
+            .is_some_and(|content_type| attrs.admits(content_type))
+        {
+            return Err(refused(file_type(&name, attrs, content_type.as_deref())));
+        }
+        let Some(bytes) = read_part(field, attrs.max_bytes).await? else {
+            return Err(refused(file_too_large(&name, attrs, None)));
+        };
+        let value = if plan.is_base64(&name) {
+            STANDARD.encode(&bytes)
+        } else {
+            String::from_utf8(bytes).map_err(|_| refused(file_encoding(&name)))?
+        };
+        params.insert(name, Value::String(value));
+    }
+    Ok(Value::Object(params))
+}
+
+async fn collect(body: Body, limit: u64) -> Result<Vec<u8>, KeelError> {
+    let mut stream = body.into_data_stream();
+    let mut bytes = Vec::new();
+    let mut over = 0u64;
+    while let Some(chunk) = stream.next().await {
+        let chunk =
+            chunk.map_err(|error| KeelError::validation(BODY_NOT_MULTIPART_KEY).source(error))?;
+        if over > 0 || (bytes.len() as u64).saturating_add(chunk.len() as u64) > limit {
+            over = over.saturating_add(chunk.len() as u64);
+            if over > limit {
+                break;
+            }
+            continue;
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if over > 0 {
+        return Err(KeelError::validation("keel.error.body_too_large").param("limit", limit));
+    }
+    Ok(bytes)
+}
+
+async fn read_part(mut field: Field<'_>, cap: u64) -> Result<Option<Vec<u8>>, KeelError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = field.chunk().await.map_err(malformed)? {
+        if (bytes.len() as u64).saturating_add(chunk.len() as u64) > cap {
+            return Ok(None);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Some(bytes))
+}
+
+fn refused(field: FieldError) -> KeelError {
+    KeelError::new(ErrorCode::Validation).fields([field])
+}
+
+fn malformed(error: MultipartError) -> KeelError {
+    KeelError::validation(BODY_NOT_MULTIPART_KEY).source(error)
 }
 
 fn stream(download: Download) -> Response {
@@ -167,5 +334,21 @@ mod tests {
             "attachment; filename=\"say _hi_.txt\"; filename*=UTF-8''say%20%22hi%22.txt"
         );
         assert_eq!(percent_encode("a b+c~d/e"), "a%20b+c~d%2Fe");
+    }
+
+    #[test]
+    fn the_multipart_limit_is_the_sum_of_the_file_caps_plus_the_params_allowance() {
+        assert_eq!(multipart_limit(&[]), PARAMS_LIMIT as u64);
+        assert_eq!(
+            multipart_limit(&[
+                ("logo".to_owned(), FileAttrs::new(65536, ["image/svg+xml"])),
+                ("cover".to_owned(), FileAttrs::new(1024, ["image/png"])),
+            ]),
+            PARAMS_LIMIT as u64 + 65536 + 1024
+        );
+        assert_eq!(
+            multipart_limit(&[("blob".to_owned(), FileAttrs::new(u64::MAX, ["a/b"]))]),
+            u64::MAX
+        );
     }
 }

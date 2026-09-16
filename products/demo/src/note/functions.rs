@@ -6,7 +6,9 @@ use keel::sdk::sea_orm::{
 use keel::sdk::serde_json::{self, Map};
 use keel::types::{AccountState, ErrorCode};
 
-use super::{Batch, DELETE_BATCH_THRESHOLD, Deleted, NoteEdit, NoteKind, Pick, item};
+use super::{
+    Batch, DELETE_BATCH_THRESHOLD, Deleted, GROUP_BATCH_THRESHOLD, NoteEdit, NoteKind, Pick, item,
+};
 
 pub const DUE_AHEAD_DAYS: u64 = 7;
 
@@ -116,7 +118,9 @@ pub fn edit() -> FunctionDef {
             .recompute("note.recompute")
             .field("due")
             .show_if("kind == 'todo'")
-            .required_if("kind == 'todo'"))
+            .required_if("kind == 'todo'")
+            .multi(["kind", "due", "tags"]))
+        .batch_threshold(GROUP_BATCH_THRESHOLD)
         .handler(|call: Call<NoteEdit>| async move {
             let params = call.params();
             let tx = call.tx()?;

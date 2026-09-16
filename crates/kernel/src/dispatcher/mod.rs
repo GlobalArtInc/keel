@@ -1,4 +1,5 @@
 mod caller;
+mod group;
 pub(crate) mod guards;
 mod idempotency;
 mod list;
@@ -26,8 +27,8 @@ use keel_sdk::runtime::{
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
 use keel_sdk::{AfterContext, Download, FunctionDef, KeelError, TaskHandle};
 use keel_types::{
-    CallError, Envelope, ErrorCode, EventSubject, Id, Kind, Level, Meta, MetaPrincipal, Mode,
-    Principal,
+    CallError, Envelope, ErrorCode, EventSubject, GroupResult, Id, Kind, Level, Meta,
+    MetaPrincipal, Mode, Principal,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde_json::{Map, Value};
@@ -36,13 +37,22 @@ use crate::clock::{Clock, SystemClock};
 use crate::registry::{Function, Registry};
 
 pub use caller::CallerHandle;
+pub use group::{GROUP_BODY_KEY, MULTI_FIELD_KEY, MULTI_UNMASKED_KEY};
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
 pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed};
-pub use raw::{DOWNLOAD_ROUTE_KEY, RAW_PREFIX, download_route_error, raw_route};
+pub use raw::{
+    DOWNLOAD_ROUTE_KEY, RAW_PREFIX, UPLOAD_ROUTE_KEY, download_route_error, raw_route,
+    upload_route_error,
+};
 pub use strip::MASK;
 pub use task::BATCH_LOG_PREFIX;
-pub use validate::SchemaError;
+pub use validate::{FILE_ENCODING_KEY, FILE_TOO_LARGE_KEY, FILE_TYPE_KEY, SchemaError};
+
+pub(crate) use strip::Plan;
+pub(crate) use validate::{file_encoding, file_too_large, file_type};
+
+pub const GROUP_READ_KEY: &str = "keel.error.group_read";
 
 pub const HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -64,9 +74,15 @@ struct Inner {
 
 struct Prepared {
     validator: validate::ParamsValidator,
+    group: Option<validate::ParamsValidator>,
     params: strip::Plan,
     result: strip::Plan,
     patched: Vec<String>,
+}
+
+enum Work {
+    Single(Value),
+    Group(group::Group),
 }
 
 struct Target<'a> {
@@ -152,7 +168,9 @@ impl Recorded {
     ) -> AuditEvent {
         let def = target.function.def();
         let Recorded { mut params, client } = self;
-        let subject = def.key().and_then(|key| subject_of(&params, key));
+        let subject = def
+            .key()
+            .and_then(|key| subject_of(&params, key).or_else(|| subject_of(&params, group::IDS)));
         target.prepared.params.mask(&mut params);
         let result = match outcome {
             Ok(executed) if def.kind() == Kind::Form && def.key().is_some() => {
@@ -242,10 +260,20 @@ impl Dispatcher {
         let mut prepared = BTreeMap::new();
         for function in registry.functions() {
             let descriptor = function.descriptor();
+            let group = match (
+                group::accepts_groups(function.def(), descriptor),
+                &descriptor.ui,
+            ) {
+                (true, Some(ui)) => {
+                    Some(validate::ParamsValidator::partial(descriptor, &ui.multi)?)
+                }
+                _ => None,
+            };
             prepared.insert(
                 function.name().to_owned(),
                 Prepared {
                     validator: validate::ParamsValidator::new(descriptor)?,
+                    group,
                     params: strip::Plan::of_params(descriptor),
                     result: strip::Plan::of_result(descriptor),
                     patched: function
@@ -471,7 +499,15 @@ impl Inner {
             .tz(origin.tz)
             .task(origin.task.clone())
             .read(self.db.clone());
-        self.admit(target, &pool, &params, true).await?;
+        let group = group::detect(def, target.function.descriptor(), &params)?;
+        match &group {
+            Some(group) => self.admit_group(target, &pool, &params, group).await?,
+            None => self.admit(target, &pool, &params, true).await?,
+        }
+        let batch_key = match &group {
+            Some(_) => Some(group::IDS),
+            None => def.key(),
+        };
         let mut idempotency = None;
         if def.mode() == Mode::Write
             && principal.level != Level::Guest
@@ -487,17 +523,27 @@ impl Inner {
         }
         let (params, extra) = split_extra(params, &target.prepared.patched);
         if let Some(task) = &origin.task
-            && let Some(chunks) = task::chunks(def, &params)
+            && let Some(chunks) = task::chunks(def, batch_key, &params)
         {
             return self
                 .chunked(target, &pool, params, chunks, task.clone())
                 .await;
         }
         let body = async {
-            let params = self.before(target.function, &pool, params).await?;
+            let params = match &group {
+                Some(_) => params,
+                None => self.before(target.function, &pool, params).await?,
+            };
             if origin.task.is_none()
                 && let Some(spawned) = self
-                    .entrance(target, &pool, &params, &extra, idempotency.as_ref())
+                    .entrance(
+                        target,
+                        &pool,
+                        &params,
+                        batch_key,
+                        &extra,
+                        idempotency.as_ref(),
+                    )
                     .await?
             {
                 return Ok(spawned);
@@ -523,8 +569,11 @@ impl Inner {
                         .task(origin.task)
                         .extra(extra)
                         .write(self.db.begin().await?);
-                    self.commit(target, handle, params, idempotency, &after)
-                        .await
+                    let work = match group {
+                        Some(group) => Work::Group(group),
+                        None => Work::Single(params),
+                    };
+                    self.commit(target, handle, work, idempotency, &after).await
                 }
             }
         };
@@ -540,13 +589,16 @@ impl Inner {
         self: &Arc<Self>,
         target: &Target<'_>,
         handle: CallHandle,
-        params: Value,
+        work: Work,
         idempotency: Option<(String, String)>,
         after: &Shared,
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
         let performed = async {
-            let Performed { data, download } = self.perform(target, &handle, params, after).await?;
+            let Performed { data, download } = match work {
+                Work::Single(params) => self.perform(target, &handle, params, after).await?,
+                Work::Group(group) => self.perform_group(target, &handle, group, after).await?,
+            };
             if let Some((key, hash)) = idempotency {
                 let mut stored = data.clone();
                 target.prepared.result.mask_once(&mut stored);
@@ -643,6 +695,105 @@ impl Inner {
             .params
             .forbidden(handle.principal().level, params)?;
         target.prepared.validator.validate(params)
+    }
+
+    async fn admit_group(
+        &self,
+        target: &Target<'_>,
+        handle: &CallHandle,
+        params: &Value,
+        group: &group::Group,
+    ) -> Result<(), KeelError> {
+        let function = target.function;
+        let def = function.def();
+        let descriptor = function.descriptor();
+        guards::internal(def, handle.principal())?;
+        guards::level(&descriptor.access, handle.principal())?;
+        guards::permission(&self.registry, &descriptor.access, handle.principal())?;
+        guards::scope(function.name(), def.mode(), handle.principal())?;
+        if !self.registry.guards().is_empty() {
+            let probe = handle.call(params.clone());
+            for guard in self.registry.guards() {
+                guard.hook.check(function.name(), &probe).await?;
+            }
+        }
+        let Some(key) = def.key() else {
+            return Err(KeelError::internal(GROUP_READ_KEY).param("function", def.name()));
+        };
+        guards::owned(
+            handle.db(),
+            handle.account_scope(),
+            def,
+            &group::keyed(key, &group.ids),
+        )
+        .await?;
+        let multi = descriptor
+            .ui
+            .as_ref()
+            .map(|ui| ui.multi.as_slice())
+            .unwrap_or_default();
+        group::check_mask(
+            group,
+            multi,
+            &target.prepared.params,
+            handle.principal().level,
+        )?;
+        if let Some(validator) = &target.prepared.group {
+            validator.validate_at(group::FIELDS, &Value::Object(group.fields.clone()))?;
+        }
+        Ok(())
+    }
+
+    async fn perform_group(
+        self: &Arc<Self>,
+        target: &Target<'_>,
+        handle: &CallHandle,
+        group: group::Group,
+        after: &Shared,
+    ) -> Result<Performed, KeelError> {
+        let def = target.function.def();
+        let descriptor = target.function.descriptor();
+        let (Some(key), Some(read)) = (
+            def.key(),
+            descriptor.ui.as_ref().and_then(|ui| ui.read.as_deref()),
+        ) else {
+            return Err(KeelError::internal(GROUP_READ_KEY).param("function", def.name()));
+        };
+        let read_key = self
+            .registry
+            .function(read)
+            .and_then(|function| function.def().key())
+            .unwrap_or(key)
+            .to_owned();
+        let properties = group::properties(descriptor);
+        let mut updated = 0;
+        for id in &group.ids {
+            let mut pick = Map::new();
+            pick.insert(read_key.clone(), id.clone());
+            let current = self
+                .invoke_nested(
+                    handle.clone(),
+                    after.clone(),
+                    read.to_owned(),
+                    Value::Object(pick),
+                )
+                .await?;
+            let merged = group::merge(
+                current,
+                &properties,
+                &target.prepared.params,
+                key,
+                id,
+                &group.fields,
+            );
+            self.invoke_nested(handle.clone(), after.clone(), def.name().to_owned(), merged)
+                .await?;
+            updated += 1;
+        }
+        Ok(Performed {
+            data: serde_json::to_value(GroupResult::new(updated))?,
+            download: None,
+        })
     }
 
     async fn before(

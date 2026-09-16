@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use keel_sdk::multipart::BASE64_ENCODING;
 use keel_types::descriptor::KeelAttrs;
 use serde_json::{Map, Value};
 
@@ -14,6 +15,7 @@ pub struct Tree {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Node {
     pub attrs: KeelAttrs,
+    pub base64: bool,
     pub nested: Tree,
 }
 
@@ -49,6 +51,10 @@ fn build(schema: &Value, defs: &Map<String, Value>, depth: usize) -> Tree {
                     .unwrap_or_default();
                 let node = Node {
                     attrs,
+                    base64: property
+                        .get("contentEncoding")
+                        .and_then(Value::as_str)
+                        .is_some_and(|encoding| encoding.eq_ignore_ascii_case(BASE64_ENCODING)),
                     nested: build(property, defs, depth + 1),
                 };
                 (name.clone(), node)
@@ -127,6 +133,8 @@ mod tests {
         ip: String,
         #[schemars(extend("x-keel" = json!({ "secret": true })))]
         key: Option<String>,
+        #[schemars(extend("contentEncoding" = "base64", "x-keel" = json!({ "file": { "maxBytes": 16, "types": ["application/octet-stream"] } })))]
+        blob: Option<String>,
     }
 
     #[test]
@@ -144,6 +152,16 @@ mod tests {
         let row = tree.fields["records"].nested.items.as_deref().unwrap();
         assert_eq!(row.fields["ip"].attrs.check, Some(Check::Ip));
         assert!(row.fields["key"].attrs.secret);
+        assert!(!row.fields["key"].base64);
+        assert!(row.fields["blob"].base64);
+        assert_eq!(
+            row.fields["blob"]
+                .attrs
+                .file
+                .as_ref()
+                .map(|file| file.max_bytes),
+            Some(16)
+        );
         let primary = &tree.fields["primary"].nested;
         assert_eq!(primary.fields["ip"].attrs.check, Some(Check::Ip));
         assert!(tree.fields["name"].nested.is_empty());

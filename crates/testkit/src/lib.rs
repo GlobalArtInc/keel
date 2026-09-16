@@ -21,7 +21,7 @@ pub use database::{DatabaseError, DatabaseHandle, Server, TestDatabase};
 pub use events::{EventStream, SseFrame};
 pub use fixtures::{Accounts, Fixtures, Principals, Who};
 pub use harness::{AttachedDatabase, Builder, Error, Harness};
-pub use http::{Answer, EVENTS_PATH, TestHttp};
+pub use http::{Answer, EVENTS_PATH, TestHttp, UPLOAD_BOUNDARY, UploadPart, multipart_body};
 pub use invariants::Fixture;
 pub use socket::{CtlOutput, SocketTestError, TestSocket};
 

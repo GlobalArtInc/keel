@@ -17,7 +17,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use axum::extract::{Request, State};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
@@ -41,6 +41,7 @@ pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
 pub use events::{DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_REPLAY_WINDOW, SSE_RETRY};
 pub use i18n::Catalogue;
+pub use raw::{BODY_NOT_MULTIPART_KEY, PART_REPEATED_KEY, PART_UNKNOWN_KEY};
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
 
 pub(crate) use i18n::catalogue;
@@ -175,7 +176,12 @@ impl Http {
             .route("/call/{func}", get(call::get).post(call::post))
             .route("/i18n", get(i18n::serve))
             .route("/events", get(events::serve))
-            .route("/x/{module}/{name}", get(raw::get).post(raw::post))
+            .route(
+                "/x/{module}/{name}",
+                get(raw::get)
+                    .post(raw::post)
+                    .layer(DefaultBodyLimit::disable()),
+            )
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 auth::authenticate,

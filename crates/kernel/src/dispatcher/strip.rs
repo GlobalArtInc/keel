@@ -1,6 +1,6 @@
 use keel_sdk::KeelError;
 use keel_types::descriptor::KeelAttrs;
-use keel_types::{Descriptor, ErrorCode, FieldError, Kind, Level};
+use keel_types::{Descriptor, ErrorCode, FieldError, FileAttrs, Kind, Level};
 use serde_json::{Map, Value};
 
 use super::schema::{Tree, push_index, push_segment};
@@ -69,6 +69,33 @@ impl Plan {
         let mut paths = Vec::new();
         collect_secret(&self.0, &mut String::new(), &mut paths);
         paths
+    }
+
+    pub fn visible(&self, name: &str, level: Level) -> bool {
+        self.0
+            .fields
+            .get(name)
+            .and_then(|node| node.attrs.level)
+            .is_none_or(|required| level >= required)
+    }
+
+    pub fn file_fields(&self) -> Vec<(String, FileAttrs)> {
+        self.0
+            .fields
+            .iter()
+            .filter_map(|(name, node)| node.attrs.file.clone().map(|file| (name.clone(), file)))
+            .collect()
+    }
+
+    pub fn is_secret(&self, name: &str) -> bool {
+        self.0
+            .fields
+            .get(name)
+            .is_some_and(|node| node.attrs.secret)
+    }
+
+    pub fn is_base64(&self, name: &str) -> bool {
+        self.0.fields.get(name).is_some_and(|node| node.base64)
     }
 
     pub fn row_visible(&self, key: &str, level: Level) -> bool {

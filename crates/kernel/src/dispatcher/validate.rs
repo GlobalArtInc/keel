@@ -1,13 +1,19 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use jsonschema::paths::LocationSegment;
 use jsonschema::{JsonType, ValidationError, Validator};
 use keel_sdk::KeelError;
 use keel_sdk::runtime::LIST_QUERY_REF;
-use keel_types::{Check, Descriptor, ErrorCode, FieldError, ListQuery};
+use keel_types::{Check, Descriptor, ErrorCode, FieldError, FileAttrs, ListQuery};
 use schemars::schema_for;
 use serde_json::{Map, Value, json};
 
-use super::schema::{Tree, push_index, push_segment};
+use super::schema::{Node, Tree, push_index, push_segment};
+
+pub const FILE_TOO_LARGE_KEY: &str = "keel.error.file_too_large";
+pub const FILE_TYPE_KEY: &str = "keel.error.file_type";
+pub const FILE_ENCODING_KEY: &str = "keel.error.file_encoding";
 
 pub struct ParamsValidator {
     schema: Validator,
@@ -35,8 +41,31 @@ impl ParamsValidator {
         } else {
             params
         };
+        Self::compile(&descriptor.name, schema)
+    }
+
+    pub fn partial(descriptor: &Descriptor, names: &[String]) -> Result<Self, SchemaError> {
+        let params = descriptor.params.as_value();
+        let mut schema = Map::new();
+        schema.insert("type".to_owned(), json!("object"));
+        let properties: Map<String, Value> = params
+            .get("properties")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter(|(name, _)| names.contains(name))
+            .map(|(name, property)| (name.clone(), property.clone()))
+            .collect();
+        schema.insert("properties".to_owned(), Value::Object(properties));
+        if let Some(defs) = params.get("$defs") {
+            schema.insert("$defs".to_owned(), defs.clone());
+        }
+        Self::compile(&descriptor.name, &Value::Object(schema))
+    }
+
+    fn compile(function: &str, schema: &Value) -> Result<Self, SchemaError> {
         let validator = jsonschema::validator_for(schema).map_err(|error| SchemaError {
-            function: descriptor.name.clone(),
+            function: function.to_owned(),
             reason: error.to_string(),
         })?;
         Ok(Self {
@@ -46,16 +75,70 @@ impl ParamsValidator {
     }
 
     pub fn validate(&self, params: &Value) -> Result<(), KeelError> {
+        self.validate_at("", params)
+    }
+
+    pub fn validate_at(&self, prefix: &str, params: &Value) -> Result<(), KeelError> {
         let mut fields = Vec::new();
         for error in self.schema.iter_errors(params) {
-            unfold(&error, &mut fields);
+            unfold(&error, prefix, &mut fields);
         }
-        check(&self.checks, params, &mut String::new(), &mut fields);
+        let mut path = prefix.to_owned();
+        check(&self.checks, params, &mut path, &mut fields);
         if fields.is_empty() {
             return Ok(());
         }
         Err(KeelError::new(ErrorCode::Validation).fields(fields))
     }
+}
+
+pub fn file_too_large(path: &str, file: &FileAttrs, size: Option<u64>) -> FieldError {
+    let mut params = Map::new();
+    params.insert("limit".to_owned(), json!(file.max_bytes));
+    if let Some(size) = size {
+        params.insert("size".to_owned(), json!(size));
+    }
+    FieldError {
+        path: path.to_owned(),
+        code: Some(FILE_TOO_LARGE_KEY.to_owned()),
+        key: Some(FILE_TOO_LARGE_KEY.to_owned()),
+        params,
+    }
+}
+
+pub fn file_type(path: &str, file: &FileAttrs, found: Option<&str>) -> FieldError {
+    let mut params = Map::new();
+    params.insert("types".to_owned(), json!(file.types));
+    params.insert(
+        "type".to_owned(),
+        found.map_or(Value::Null, |found| Value::String(found.to_owned())),
+    );
+    FieldError {
+        path: path.to_owned(),
+        code: Some(FILE_TYPE_KEY.to_owned()),
+        key: Some(FILE_TYPE_KEY.to_owned()),
+        params,
+    }
+}
+
+pub fn file_encoding(path: &str) -> FieldError {
+    FieldError {
+        path: path.to_owned(),
+        code: Some(FILE_ENCODING_KEY.to_owned()),
+        key: Some(FILE_ENCODING_KEY.to_owned()),
+        params: Map::new(),
+    }
+}
+
+fn inline_size(node: &Node, text: &str) -> u64 {
+    if node.base64 {
+        let trimmed = text.trim_end_matches('=');
+        return match STANDARD.decode(text) {
+            Ok(decoded) => decoded.len() as u64,
+            Err(_) => (trimmed.len() as u64).saturating_mul(3) / 4,
+        };
+    }
+    text.len() as u64
 }
 
 fn check(tree: &Tree, value: &Value, path: &mut String, into: &mut Vec<FieldError>) {
@@ -67,6 +150,12 @@ fn check(tree: &Tree, value: &Value, path: &mut String, into: &mut Vec<FieldErro
                 };
                 let start = path.len();
                 push_segment(path, name);
+                if let (Some(file), Value::String(text)) = (&node.attrs.file, nested) {
+                    let size = inline_size(node, text);
+                    if size > file.max_bytes {
+                        into.push(file_too_large(path, file, Some(size)));
+                    }
+                }
                 if let Some(preset) = node.attrs.check {
                     match nested {
                         Value::String(text) => probe(preset, text, path, into),
@@ -115,13 +204,13 @@ fn probe(preset: Check, text: &str, path: &str, into: &mut Vec<FieldError>) {
     });
 }
 
-fn unfold(error: &ValidationError<'_>, into: &mut Vec<FieldError>) {
+fn unfold(error: &ValidationError<'_>, prefix: &str, into: &mut Vec<FieldError>) {
     let context = match error.kind() {
         ValidationErrorKind::AnyOf { context } | ValidationErrorKind::OneOfNotValid { context } => {
             context
         }
         _ => {
-            into.push(field_error(error));
+            into.push(field_error(error, prefix));
             return;
         }
     };
@@ -129,10 +218,10 @@ fn unfold(error: &ValidationError<'_>, into: &mut Vec<FieldError>) {
     match (branches.next(), branches.next()) {
         (Some(branch), None) => {
             for error in branch {
-                unfold(error, into);
+                unfold(error, prefix, into);
             }
         }
-        _ => into.push(field_error(error)),
+        _ => into.push(field_error(error, prefix)),
     }
 }
 
@@ -146,8 +235,8 @@ fn expects_null(errors: &[ValidationError<'_>]) -> bool {
     )
 }
 
-fn field_error(error: &ValidationError<'_>) -> FieldError {
-    let mut path = instance_path(error);
+fn field_error(error: &ValidationError<'_>, prefix: &str) -> FieldError {
+    let mut path = instance_path(error, prefix);
     let mut params = Map::new();
     match error.kind() {
         ValidationErrorKind::Required { property } => {
@@ -192,8 +281,8 @@ fn field_error(error: &ValidationError<'_>) -> FieldError {
     }
 }
 
-fn instance_path(error: &ValidationError<'_>) -> String {
-    let mut path = String::new();
+fn instance_path(error: &ValidationError<'_>, prefix: &str) -> String {
+    let mut path = prefix.to_owned();
     for segment in error.instance_path().segments() {
         match segment {
             LocationSegment::Property(name) => push_segment(&mut path, &name),
@@ -236,6 +325,14 @@ mod tests {
         ip: String,
         #[schemars(extend("x-keel" = json!({ "check": "port" })))]
         ports: Vec<String>,
+    }
+
+    #[derive(Deserialize, Serialize, JsonSchema)]
+    struct Put {
+        #[schemars(extend("x-keel" = json!({ "file": { "maxBytes": 8, "types": ["text/plain"] } }), "x-ui" = json!({ "control": "file" })))]
+        text: String,
+        #[schemars(extend("contentEncoding" = "base64", "x-keel" = json!({ "file": { "maxBytes": 4, "types": ["application/octet-stream"] } }), "x-ui" = json!({ "control": "file" })))]
+        blob: Option<String>,
     }
 
     fn validator() -> ParamsValidator {
@@ -370,6 +467,105 @@ mod tests {
                 "primary": null
             }))
             .unwrap();
+    }
+
+    #[test]
+    fn a_partial_validator_checks_the_named_fields_alone_under_a_path_prefix() {
+        let descriptor = function::<ZoneEdit, Nested>("t.zone.edit")
+            .kind(Kind::Form)
+            .level(Level::User)
+            .unowned()
+            .handler(|_: Call<ZoneEdit>| async { unreachable!() })
+            .descriptor()
+            .unwrap();
+        let partial =
+            ParamsValidator::partial(&descriptor, &["ttl".to_owned(), "master_ips".to_owned()])
+                .unwrap();
+        partial
+            .validate_at("fields", &json!({ "ttl": 300 }))
+            .unwrap();
+        partial.validate_at("fields", &json!({})).unwrap();
+        let wire = partial
+            .validate_at(
+                "fields",
+                &json!({ "ttl": -1, "master_ips": ["10.0.0"], "name": 7 }),
+            )
+            .unwrap_err()
+            .to_call_error();
+        let summary: Vec<(String, String)> = wire
+            .fields
+            .iter()
+            .map(|field| (field.path.clone(), field.code.clone().unwrap()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("fields.ttl".to_owned(), "schema.minimum".to_owned()),
+                ("fields.master_ips[0]".to_owned(), "check.ip".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_inline_file_value_is_measured_against_max_bytes_decoded_when_base64() {
+        let descriptor = function::<Put, Nested>("t.blob.put")
+            .level(Level::User)
+            .unowned()
+            .upload(|_: Call<Put>| async { unreachable!() })
+            .descriptor()
+            .unwrap();
+        let validator = ParamsValidator::new(&descriptor).unwrap();
+        validator
+            .validate(&json!({ "text": "12345678", "blob": "AAAAAA==" }))
+            .unwrap();
+        let wire = validator
+            .validate(&json!({ "text": "123456789", "blob": "AAAAAAA=" }))
+            .unwrap_err()
+            .to_call_error();
+        let summary: Vec<(String, String, Value, Value)> = wire
+            .fields
+            .iter()
+            .map(|field| {
+                (
+                    field.path.clone(),
+                    field.key.clone().unwrap(),
+                    field.params["limit"].clone(),
+                    field.params["size"].clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (
+                    "text".to_owned(),
+                    FILE_TOO_LARGE_KEY.to_owned(),
+                    json!(8),
+                    json!(9)
+                ),
+                (
+                    "blob".to_owned(),
+                    FILE_TOO_LARGE_KEY.to_owned(),
+                    json!(4),
+                    json!(5)
+                ),
+            ]
+        );
+        let malformed = validator
+            .validate(&json!({ "text": "ok", "blob": "not base64 at all!!" }))
+            .unwrap_err()
+            .to_call_error();
+        assert_eq!(malformed.fields[0].path, "blob");
+        let file = FileAttrs::new(8, ["text/plain"]);
+        let refused = file_type("text", &file, Some("image/png"));
+        assert_eq!(refused.key.as_deref(), Some(FILE_TYPE_KEY));
+        assert_eq!(refused.params["type"], json!("image/png"));
+        assert_eq!(refused.params["types"], json!(["text/plain"]));
+        assert_eq!(file_type("text", &file, None).params["type"], Value::Null);
+        assert_eq!(
+            file_encoding("text").key.as_deref(),
+            Some(FILE_ENCODING_KEY)
+        );
     }
 
     #[test]

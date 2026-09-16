@@ -101,6 +101,35 @@ pub struct KeelAttrs {
     pub check: Option<Check>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<FileAttrs>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAttrs {
+    pub max_bytes: u64,
+    pub types: Vec<String>,
+}
+
+impl FileAttrs {
+    pub fn new<I, S>(max_bytes: u64, types: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            max_bytes,
+            types: types.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    pub fn admits(&self, content_type: &str) -> bool {
+        let essence = content_type.split(';').next().unwrap_or_default().trim();
+        self.types
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(essence))
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -206,6 +235,32 @@ mod tests {
         let plain = json_schema!({ "type": "string" });
         assert_eq!(KeelAttrs::of(&plain).unwrap(), None);
         assert_eq!(UiAttrs::of(&plain).unwrap(), None);
+    }
+
+    #[test]
+    fn a_file_attribute_names_the_size_cap_and_the_admitted_types() {
+        let field = json_schema!({
+            "type": "string",
+            "x-keel": { "file": { "maxBytes": 65536, "types": ["image/svg+xml"] } },
+            "x-ui": { "control": "file" }
+        });
+        let keel = KeelAttrs::of(&field).unwrap().unwrap();
+        let file = keel.file.clone().expect("the file attribute");
+        assert_eq!(file, FileAttrs::new(65536, ["image/svg+xml"]));
+        assert!(file.admits("image/svg+xml"));
+        assert!(file.admits("IMAGE/SVG+XML; charset=utf-8"));
+        assert!(!file.admits("image/png"));
+        assert!(!file.admits(""));
+        assert_eq!(
+            serde_json::to_value(&keel).unwrap(),
+            json!({ "file": { "maxBytes": 65536, "types": ["image/svg+xml"] } })
+        );
+        assert_eq!(
+            UiAttrs::of(&field).unwrap().unwrap().control,
+            Some(Control::File)
+        );
+        let short = json_schema!({ "x-keel": { "file": { "maxBytes": 1 } } });
+        assert!(KeelAttrs::of(&short).is_err());
     }
 
     #[test]

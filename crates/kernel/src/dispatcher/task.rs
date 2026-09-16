@@ -23,9 +23,9 @@ pub(super) struct Chunks {
     size: usize,
 }
 
-pub(super) fn chunks(def: &FunctionDef, params: &Value) -> Option<Chunks> {
+pub(super) fn chunks(def: &FunctionDef, key: Option<&str>, params: &Value) -> Option<Chunks> {
     let threshold = usize::try_from(def.limits().batch_threshold?).ok()?;
-    let key = def.key()?;
+    let key = key?;
     let ids = params.get(key)?.as_array()?;
     if threshold == 0 || ids.len() <= threshold {
         return None;
@@ -52,6 +52,7 @@ impl Inner {
         target: &Target<'_>,
         pool: &CallHandle,
         params: &Value,
+        batch_key: Option<&str>,
         extra: &Map<String, Value>,
         idempotency: Option<&(String, String)>,
     ) -> Result<Option<Executed>, KeelError> {
@@ -59,7 +60,7 @@ impl Inner {
             return Ok(None);
         };
         let def = target.function.def();
-        if !answers_task(target) && chunks(def, params).is_none() {
+        if !answers_task(target) && chunks(def, batch_key, params).is_none() {
             return Ok(None);
         }
         let principal = pool.principal();
@@ -212,16 +213,20 @@ mod tests {
     #[test]
     fn a_key_array_above_the_threshold_is_chunked_and_one_at_or_below_it_is_not() {
         let def = batch(Some(3));
-        let above = chunks(&def, &json!({ "ids": ids(7) })).expect("seven ids over three");
+        let key = def.key();
+        let above = chunks(&def, key, &json!({ "ids": ids(7) })).expect("seven ids over three");
         assert_eq!(above.key, "ids");
         assert_eq!(above.size, 3);
         assert_eq!(above.ids.len(), 7);
-        assert!(chunks(&def, &json!({ "ids": ids(3) })).is_none());
-        assert!(chunks(&def, &json!({ "ids": ids(1) })).is_none());
-        assert!(chunks(&def, &json!({ "ids": "one" })).is_none());
-        assert!(chunks(&def, &json!({})).is_none());
-        assert!(chunks(&batch(None), &json!({ "ids": ids(7) })).is_none());
-        assert!(chunks(&batch(Some(0)), &json!({ "ids": ids(7) })).is_none());
+        assert!(chunks(&def, key, &json!({ "ids": ids(3) })).is_none());
+        assert!(chunks(&def, key, &json!({ "ids": ids(1) })).is_none());
+        assert!(chunks(&def, key, &json!({ "ids": "one" })).is_none());
+        assert!(chunks(&def, key, &json!({})).is_none());
+        assert!(chunks(&def, None, &json!({ "ids": ids(7) })).is_none());
+        assert!(chunks(&def, Some("rows"), &json!({ "ids": ids(7) })).is_none());
+        assert!(chunks(&def, Some("rows"), &json!({ "rows": ids(7) })).is_some());
+        assert!(chunks(&batch(None), key, &json!({ "ids": ids(7) })).is_none());
+        assert!(chunks(&batch(Some(0)), key, &json!({ "ids": ids(7) })).is_none());
     }
 
     #[test]

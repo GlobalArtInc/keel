@@ -13,7 +13,7 @@ use keel_sdk::system::{
 use keel_sdk::{
     ConfigSection, DashboardWidget, FunctionDef, MenuNode, ProductManifest, SettingsSource,
 };
-use keel_types::descriptor::{KeelAttrs, UiAttrs, X_KEEL, X_UI};
+use keel_types::descriptor::{Control, KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
 use keel_types::{Access, Descriptor, Kind, Platform, WidgetKind};
 use schemars::Schema;
@@ -184,6 +184,23 @@ pub enum FreezeProblem {
         field: String,
         namespace: &'static str,
         reason: String,
+    },
+    #[error(
+        "function {function}: field {field} has the file control without {X_KEEL}.file naming maxBytes and types"
+    )]
+    FileAttrsMissing { function: String, field: String },
+    #[error("function {function}: the upload carries no form block to render its fields")]
+    UploadWithoutForm { function: String },
+    #[error("function {function}: ui.multi names {field}, which is {problem}")]
+    Multi {
+        function: String,
+        field: String,
+        problem: &'static str,
+    },
+    #[error("function {function}: ui.multi needs {missing} to apply a group edit row by row")]
+    MultiWithout {
+        function: String,
+        missing: &'static str,
     },
     #[error("{ICONS_FILE} embedded in the kernel is not a JSON array of icon names: {reason}")]
     IconSet { reason: String },
@@ -891,12 +908,11 @@ impl Freezer {
     fn tasks(&mut self) {
         let runner = self.services.contains(&ServiceKey::of::<dyn TaskRunner>());
         for function in self.functions.values() {
-            let answers_task = function
-                .descriptor
-                .ui
-                .as_ref()
-                .is_some_and(|ui| ui.result == Some(ScreenResult::Task));
-            let batches = function.def.limits().batch_threshold.is_some();
+            let ui = function.descriptor.ui.as_ref();
+            let answers_task = ui.is_some_and(|ui| ui.result == Some(ScreenResult::Task));
+            let group_only =
+                function.def.kind() == Kind::Form && ui.is_some_and(|ui| !ui.multi.is_empty());
+            let batches = function.def.limits().batch_threshold.is_some() && !group_only;
             if !answers_task && !batches {
                 continue;
             }
@@ -1073,6 +1089,56 @@ impl References<'_> {
         self.params(&descriptor.params);
         if let Some(ui) = &descriptor.ui {
             self.screen(ui);
+            self.multi(descriptor, ui);
+        }
+        if descriptor.kind == Kind::Upload && descriptor.ui.is_none() {
+            self.problems.push(FreezeProblem::UploadWithoutForm {
+                function: self.function.to_owned(),
+            });
+        }
+    }
+
+    fn multi(&mut self, descriptor: &Descriptor, ui: &ScreenUi) {
+        if ui.multi.is_empty() {
+            return;
+        }
+        let properties = descriptor
+            .params
+            .as_object()
+            .and_then(|schema| schema.get("properties"))
+            .and_then(Value::as_object);
+        for field in &ui.multi {
+            let property = properties.and_then(|properties| properties.get(field));
+            let problem = match property {
+                None => Some("not a parameter"),
+                Some(_) if descriptor.key.as_deref() == Some(field.as_str()) => Some("the key"),
+                Some(property) => {
+                    let secret = Schema::try_from(property.clone())
+                        .ok()
+                        .and_then(|schema| KeelAttrs::of(&schema).ok().flatten())
+                        .is_some_and(|attrs| attrs.secret);
+                    secret.then_some("secret")
+                }
+            };
+            if let Some(problem) = problem {
+                self.problems.push(FreezeProblem::Multi {
+                    function: self.function.to_owned(),
+                    field: field.clone(),
+                    problem,
+                });
+            }
+        }
+        if descriptor.key.is_none() {
+            self.problems.push(FreezeProblem::MultiWithout {
+                function: self.function.to_owned(),
+                missing: "a key",
+            });
+        }
+        if ui.read.is_none() {
+            self.problems.push(FreezeProblem::MultiWithout {
+                function: self.function.to_owned(),
+                missing: "ui.read",
+            });
         }
     }
 
@@ -1085,6 +1151,7 @@ impl References<'_> {
             let Ok(schema) = Schema::try_from(schema.clone()) else {
                 continue;
             };
+            let mut file = false;
             match KeelAttrs::of(&schema) {
                 Ok(Some(attrs)) => {
                     if let Some(options) = &attrs.options {
@@ -1094,12 +1161,20 @@ impl References<'_> {
                             Some(Kind::Options),
                         );
                     }
+                    file = attrs.file.is_some();
                 }
                 Ok(None) => {}
                 Err(error) => self.attrs(field, X_KEEL, error),
             }
-            if let Err(error) = UiAttrs::of(&schema) {
-                self.attrs(field, X_UI, error);
+            match UiAttrs::of(&schema) {
+                Ok(Some(attrs)) if attrs.control == Some(Control::File) && !file => {
+                    self.problems.push(FreezeProblem::FileAttrsMissing {
+                        function: self.function.to_owned(),
+                        field: field.clone(),
+                    });
+                }
+                Ok(_) => {}
+                Err(error) => self.attrs(field, X_UI, error),
             }
         }
     }

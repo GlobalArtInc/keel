@@ -18,8 +18,8 @@ pub use boot::{
 };
 pub use check::Check;
 pub use descriptor::{
-    Access, Control, DESCRIPTOR_VERSION, Descriptor, KeelAttrs, Kind, MemberAccess, Mode, UiAttrs,
-    X_KEEL, X_UI,
+    Access, Control, DESCRIPTOR_VERSION, Descriptor, FileAttrs, KeelAttrs, Kind, MemberAccess,
+    Mode, UiAttrs, X_KEEL, X_UI,
 };
 pub use envelope::{CallError, Envelope, ErrorCode, FieldError, Meta, MetaActor, MetaPrincipal};
 pub use event::{
@@ -35,8 +35,8 @@ pub use principal::{
     Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via, is_mask,
 };
 pub use task::{
-    DOWNLOAD_FUNCTION, DownloadFile, DownloadLink, DownloadRef, TaskLink, TaskProgress, TaskRef,
-    TaskState, UnknownTaskState,
+    DOWNLOAD_FUNCTION, DownloadFile, DownloadLink, DownloadRef, GroupResult, TaskLink,
+    TaskProgress, TaskRef, TaskState, UnknownTaskState,
 };
 pub use ui::{
     Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,

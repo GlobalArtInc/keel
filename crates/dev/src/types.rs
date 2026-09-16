@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 
 use keel_types::{
     Account, ActionRole, Boot, CallError, Check, Choices, ColumnType, Context, Control, Descriptor,
-    DownloadFile, DownloadRef, Envelope, ErrorCode, Event, Expr, KeelAttrs, Kind, Level, ListQuery,
-    Mode, NotificationFrame, OptionsQuery, Page, Principal, ScreenResult, ScreenUi, TaskProgress,
-    TaskRef, TaskState, Tone, Total, UiAttrs,
+    DownloadFile, DownloadRef, Envelope, ErrorCode, Event, Expr, FileAttrs, GroupResult, KeelAttrs,
+    Kind, Level, ListQuery, Mode, NotificationFrame, OptionsQuery, Page, Principal, ScreenResult,
+    ScreenUi, TaskProgress, TaskRef, TaskState, Tone, Total, UiAttrs,
 };
 use schemars::generate::SchemaSettings;
 use schemars::transform::{Transform, transform_subschemas};
@@ -124,6 +124,7 @@ pub fn document() -> Result<Document, Error> {
         root::<Descriptor>(&mut generator)?,
         root::<ScreenUi>(&mut generator)?,
         root::<KeelAttrs>(&mut generator)?,
+        root::<FileAttrs>(&mut generator)?,
         root::<UiAttrs>(&mut generator)?,
         root::<Envelope<Value>>(&mut generator)?,
         root::<CallError>(&mut generator)?,
@@ -153,6 +154,7 @@ pub fn document() -> Result<Document, Error> {
         root::<TaskState>(&mut generator)?,
         root::<DownloadRef>(&mut generator)?,
         root::<DownloadFile>(&mut generator)?,
+        root::<GroupResult>(&mut generator)?,
         root::<NotificationFrame>(&mut generator)?,
     ];
     let definitions = generator.take_definitions(false);
@@ -296,7 +298,7 @@ mod tests {
         assert_eq!(document.schema["$schema"], json!(META_SCHEMA));
         assert_eq!(document.schema["$id"], json!(DOCUMENT));
         let definitions = document.schema["$defs"].as_object().unwrap();
-        assert_eq!(document.roots.len(), 33);
+        assert_eq!(document.roots.len(), 35);
         for root in &document.roots {
             assert!(definitions.contains_key(root), "{root} is under $defs");
         }
@@ -372,7 +374,7 @@ mod tests {
     #[test]
     fn every_per_type_file_is_one_ref_into_the_document() {
         let files = files().unwrap();
-        assert_eq!(files.len(), 34);
+        assert_eq!(files.len(), 36);
         for (name, content) in &files {
             if name == DOCUMENT {
                 continue;
@@ -425,11 +427,11 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let out = temporary.path().join("schema");
         let outcome = run(&out, false).unwrap();
-        assert_eq!(outcome.files.len(), 34);
+        assert_eq!(outcome.files.len(), 36);
         assert!(
             outcome
                 .to_string()
-                .starts_with("34 schema files written to")
+                .starts_with("36 schema files written to")
         );
         let stale = out.join("Gone.json");
         fs::write(&stale, "{}\n").unwrap();

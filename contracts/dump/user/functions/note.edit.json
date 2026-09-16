@@ -173,6 +173,11 @@
       "kind": {
         "recompute": "note.recompute"
       }
-    }
+    },
+    "multi": [
+      "kind",
+      "due",
+      "tags"
+    ]
   }
 }

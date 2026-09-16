@@ -5,8 +5,10 @@ use keel::prelude::*;
 use keel::sdk::chrono_tz;
 use keel::sdk::sea_orm::ConnectionTrait;
 use keel::sdk::serde_json::{self, Map};
+use keel::types::TaskState;
 use keel_demo::MANIFEST;
-use keel_demo::note::{LOCKED_PREFIX, MAX_LINE, MAX_PER_ACCOUNT};
+use keel_demo::note::{GROUP_BATCH_THRESHOLD, LOCKED_PREFIX, MAX_LINE, MAX_PER_ACCOUNT};
+use keel_system::tasks::api::Drain;
 use keel_testkit::{CallOptions, ErrorCode, Fixture, Harness, Reply, Who, tokio};
 
 struct NoteFixture {
@@ -319,6 +321,144 @@ async fn note_list_searches_and_sorts_and_note_delete_removes_a_batch_unless_a_n
         .rows("SELECT module FROM keel_outbox WHERE type = 'note.deleted'")
         .await;
     assert_eq!(events, ["note", "note"]);
+    harness.finish().await;
+}
+
+fn note_rows(page: &Value) -> Vec<(String, String, Value, Value)> {
+    let mut rows: Vec<(String, String, Value, Value)> = page["data"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|row| {
+            (
+                row["title"].as_str().expect("a title").to_owned(),
+                row["kind"].as_str().expect("a kind").to_owned(),
+                row["due"].clone(),
+                row["tags"].clone(),
+            )
+        })
+        .collect();
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
+    rows
+}
+
+#[tokio::test]
+async fn note_edit_as_a_group_sets_kind_due_and_tags_of_the_selected_notes_and_becomes_a_task_above_ten()
+ {
+    let harness = crate::demo().boot().await;
+    let first = create(&harness, Who::A1, "first memo").await;
+    let second = create(&harness, Who::A1, "second memo").await;
+    let untouched = create(&harness, Who::A1, "untouched").await;
+    let reply = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({
+                "ids": [first, second],
+                "fields": { "kind": "todo", "due": "2026-10-01", "tags": ["sprint"] },
+                "mask": ["kind", "due", "tags"]
+            }),
+        )
+        .await;
+    assert_eq!(
+        reply.data(),
+        Some(&json!({ "updated": 2 })),
+        "{:?}",
+        reply.error()
+    );
+    let page = harness.call(Who::A1, "note.list", json!({})).await;
+    assert_eq!(
+        note_rows(page.data().expect("a page")),
+        [
+            (
+                "first memo".to_owned(),
+                "todo".to_owned(),
+                json!("2026-10-01"),
+                json!(["sprint"])
+            ),
+            (
+                "second memo".to_owned(),
+                "todo".to_owned(),
+                json!("2026-10-01"),
+                json!(["sprint"])
+            ),
+            (
+                "untouched".to_owned(),
+                "memo".to_owned(),
+                Value::Null,
+                json!([])
+            ),
+        ]
+    );
+
+    let without_due = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "ids": [untouched], "fields": { "kind": "todo" }, "mask": ["kind"] }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&without_due, "due").key.as_deref(),
+        Some("keel.schema.required")
+    );
+    let titled = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "ids": [untouched], "fields": { "title": "renamed" }, "mask": ["title"] }),
+        )
+        .await;
+    assert_eq!(
+        field_error(&titled, "mask[0]").key.as_deref(),
+        Some("keel.error.multi_field")
+    );
+
+    let mut ids = vec![first, second, untouched];
+    for index in ids.len()..GROUP_BATCH_THRESHOLD as usize + 1 {
+        ids.push(create(&harness, Who::A1, &format!("memo {index}")).await);
+    }
+    let reply = harness
+        .call(
+            Who::A1,
+            "note.edit",
+            json!({ "ids": ids, "fields": { "tags": ["bulk"] }, "mask": ["tags"] }),
+        )
+        .await;
+    let data = reply
+        .data()
+        .unwrap_or_else(|| panic!("a task ref was expected: {:?}", reply.error()));
+    let task: Id = data["task"]["id"]
+        .as_str()
+        .expect("the task id")
+        .parse()
+        .expect("a ulid");
+    let drain = harness
+        .registry()
+        .services()
+        .get::<Drain>()
+        .expect("the tasks module provides the drain");
+    let state = tokio::time::timeout(std::time::Duration::from_secs(30), drain.wait(task))
+        .await
+        .expect("the job ends in time")
+        .expect("the state is read");
+    assert_eq!(state, TaskState::Done);
+    let detail = harness
+        .call(Who::A1, "task.get", json!({ "id": task }))
+        .await;
+    let detail = detail
+        .data()
+        .unwrap_or_else(|| panic!("task.get failed: {:?}", detail.error()));
+    assert_eq!(detail["function"], json!("note.edit"));
+    assert_eq!(detail["progress"], json!("11/11"));
+    assert_eq!(
+        detail["result"],
+        json!([{ "updated": 10 }, { "updated": 1 }])
+    );
+    let page = harness.call(Who::A1, "note.list", json!({})).await;
+    let rows = note_rows(page.data().expect("a page"));
+    assert_eq!(rows.len(), 11);
+    assert!(rows.iter().all(|(_, _, _, tags)| *tags == json!(["bulk"])));
     harness.finish().await;
 }
 

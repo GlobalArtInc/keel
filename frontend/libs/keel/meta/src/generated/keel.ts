@@ -383,10 +383,17 @@ export interface EventSubject {
   id: Id;
   accountId?: Id | null;
 }
+export interface FileAttrs {
+  maxBytes: number;
+  types: string[];
+}
 export interface Filter {
   key: string;
   op?: FilterOp;
   value: FilterValue;
+}
+export interface GroupResult {
+  updated: number;
 }
 export interface KeelAttrs {
   level?: Level | null;
@@ -394,6 +401,7 @@ export interface KeelAttrs {
   once?: boolean;
   check?: Check | null;
   options?: string | null;
+  file?: FileAttrs | null;
 }
 export interface ListQuery {
   page?: number;

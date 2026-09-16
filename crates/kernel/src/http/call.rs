@@ -15,7 +15,7 @@ use super::auth::{Caller, Zone};
 use super::cookie;
 use super::live::Live;
 use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION};
-use crate::dispatcher::{CallOptions, Reply, download_route_error};
+use crate::dispatcher::{CallOptions, Reply, download_route_error, upload_route_error};
 
 pub(super) const QUERY_PARAMS: &str = "q";
 
@@ -32,10 +32,8 @@ pub(super) async fn post(
         client,
         zone,
     } = caller;
-    if let Some(function) = live.registry.function(&func)
-        && function.def().kind() == Kind::Download
-    {
-        return reply::error(download_route_error(function), &request_id);
+    if let Some(error) = raw_only(&live, &func) {
+        return reply::error(error, &request_id);
     }
     let options = options(request.headers(), &request_id, client, zone);
     let params = match body(request, state.options.body_limit).await {
@@ -63,10 +61,8 @@ pub(super) async fn get(
         client,
         zone,
     } = caller;
-    if let Some(function) = live.registry.function(&func)
-        && function.def().kind() == Kind::Download
-    {
-        return reply::error(download_route_error(function), &request_id);
+    if let Some(error) = raw_only(&live, &func) {
+        return reply::error(error, &request_id);
     }
     if let Some(function) = live.registry.function(&func)
         && !matches!(function.def().kind(), Kind::List | Kind::Get)
@@ -92,6 +88,15 @@ pub(super) async fn get(
         .call(principal.clone(), &func, params, options)
         .await;
     respond(&state, &live, &principal, reply).await
+}
+
+fn raw_only(live: &Live, func: &str) -> Option<KeelError> {
+    let function = live.registry.function(func)?;
+    match function.def().kind() {
+        Kind::Download => Some(download_route_error(function)),
+        Kind::Upload => Some(upload_route_error(function)),
+        _ => None,
+    }
 }
 
 pub(super) fn options(
