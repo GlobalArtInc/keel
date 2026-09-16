@@ -41,7 +41,7 @@ describe('KeelDescriptors', () => {
     return http;
   }
 
-  it('descriptors are cached under the meta version and dropped when it changes', async () => {
+  it('descriptors are cached under the meta version and dropped, with boot refetched, when it changes', async () => {
     const http = await booted();
     const descriptors = TestBed.inject(KeelDescriptors);
 
@@ -60,6 +60,11 @@ describe('KeelDescriptors', () => {
       .expectOne('/api/v1/call/dns.zone.edit')
       .flush(OK, { headers: { 'X-Keel-Meta-Version': 'm-after' } });
     await changing;
+    const refetch = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    expect(refetch.request.headers.get('If-None-Match')).toBe(`"${BOOT.meta}"`);
+    refetch.flush({ ...BOOT, meta: 'm-after' }, { headers: { ETag: '"m-after"' } });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(TestBed.inject(KeelBoot).meta()).toBe('m-after');
 
     const third = descriptors.get('dns.zone.list');
     http.expectOne('/api/v1/functions/dns.zone.list').flush(LIST);

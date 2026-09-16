@@ -2,7 +2,7 @@ import { Location } from '@angular/common';
 import { Component, computed, effect, inject, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterOutlet } from '@angular/router';
-import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
+import { KeelBoot, KeelClient, KeelEvents, KeelI18n } from '@globalart/keel/client';
 import {
   PHX_LABELS,
   PhxErrorComponent,
@@ -68,6 +68,7 @@ export class KeelShellComponent {
   protected readonly failedText = computed(() => this.i18n.t(BOOT_FAILED_KEY));
 
   constructor() {
+    inject(KeelEvents).subscribe();
     this.client.unauthenticated.pipe(takeUntilDestroyed()).subscribe(() => this.expire());
     effect(() => {
       const brand = this.boot.brand();

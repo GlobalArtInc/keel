@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { KeelClient, type Fetched } from '@globalart/keel/client';
+import { KEEL_EVENT_SOURCE, KeelClient, KeelEvents, type Fetched } from '@globalart/keel/client';
 import type { Boot } from '@globalart/keel/meta';
 import {
   BASE_CHROMA,
@@ -12,7 +12,7 @@ import {
   keelProviders,
   plainClick,
 } from '@globalart/keel/shell';
-import { KeelMockClient } from '@globalart/keel/testing';
+import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
 import { PhxThemeService } from '@globalart/phoenix-ui';
 import { throwError, type Observable } from 'rxjs';
 
@@ -46,7 +46,14 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 
 function configure(client: KeelMockClient): ComponentFixture<KeelShellComponent> {
   TestBed.configureTestingModule({
-    providers: [...keelProviders(), { provide: KeelClient, useValue: client }],
+    providers: [
+      ...keelProviders(),
+      { provide: KeelClient, useValue: client },
+      {
+        provide: KEEL_EVENT_SOURCE,
+        useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
+      },
+    ],
   });
   const fixture = TestBed.createComponent(KeelShellComponent);
   fixture.detectChanges();
@@ -54,6 +61,8 @@ function configure(client: KeelMockClient): ComponentFixture<KeelShellComponent>
 }
 
 describe('KeelShellComponent', () => {
+  beforeEach(() => QuietEventSource.reset());
+
   afterEach(() => TestBed.resetTestingModule());
 
   it('shows the loader until the boot answers, the failure with a retry when it does not, and the layout with the menu once it does', async () => {
@@ -69,6 +78,8 @@ describe('KeelShellComponent', () => {
     await expect(failed).resolves.toBe(false);
     await settle(fixture);
     expect(loads).toHaveBeenCalledTimes(1);
+    expect(QuietEventSource.opened).toHaveLength(0);
+    expect(TestBed.inject(KeelEvents).state().phase).toBe('idle');
     expect(element.getAttribute('data-startup')).toBe('failed');
     expect(element.querySelector('phx-error .text')?.textContent?.trim()).toBe(
       'keel.shell.boot_failed',
@@ -88,6 +99,10 @@ describe('KeelShellComponent', () => {
     expect(element.getAttribute('data-startup')).toBe('ready');
     expect(router.url).toBe('/f/keel.account.list');
     expect(TestBed.inject(KeelStartup).failure()).toBeNull();
+    expect(QuietEventSource.opened).toHaveLength(1);
+    expect(QuietEventSource.last()?.url).toBe('/api/v1/events');
+    expect(QuietEventSource.last()?.init).toEqual({ withCredentials: true });
+    expect(TestBed.inject(KeelEvents).state().phase).toBe('connecting');
 
     const theme = TestBed.inject(PhxThemeService);
     expect(theme.hue()).toBe(BOOT.brand.hue);

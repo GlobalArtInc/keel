@@ -71,12 +71,56 @@ export function mergeMessages(base: Messages, extra: Messages): Messages {
   return merged;
 }
 
-export class QuietEventSource implements EventSourceLike {
-  readonly readyState = 0;
+const CONNECTING = 0;
+const OPEN = 1;
+const CLOSED = 2;
 
-  addEventListener(): void {}
+export class QuietEventSource extends EventTarget implements EventSourceLike {
+  static readonly opened: QuietEventSource[] = [];
+  readyState = CONNECTING;
 
-  close(): void {}
+  constructor(
+    readonly url = '',
+    readonly init: EventSourceInit = {},
+  ) {
+    super();
+    QuietEventSource.opened.push(this);
+  }
+
+  static last(): QuietEventSource | null {
+    return QuietEventSource.opened.at(-1) ?? null;
+  }
+
+  static reset(): void {
+    QuietEventSource.opened.length = 0;
+  }
+
+  open(): void {
+    this.readyState = OPEN;
+    this.dispatchEvent(new Event('open'));
+  }
+
+  emit(type: string, data: unknown, id?: string): void {
+    this.emitRaw(type, JSON.stringify(data), id);
+  }
+
+  emitRaw(type: string, text: string, id?: string): void {
+    this.dispatchEvent(new MessageEvent(type, { data: text, lastEventId: id ?? '' }));
+  }
+
+  fail(): void {
+    this.readyState = CLOSED;
+    this.dispatchEvent(new Event('error'));
+  }
+
+  drop(): void {
+    this.readyState = CONNECTING;
+    this.dispatchEvent(new Event('error'));
+  }
+
+  close(): void {
+    this.readyState = CLOSED;
+  }
 }
 
 export function keelStoryClient(options: WithKeelOptions = {}): KeelMockClient {
@@ -99,7 +143,10 @@ export function keelStoryProviders(
 ): (Provider | EnvironmentProviders)[] {
   return [
     { provide: KeelClient, useValue: keelStoryClient(options) },
-    { provide: KEEL_EVENT_SOURCE, useValue: () => new QuietEventSource() },
+    {
+      provide: KEEL_EVENT_SOURCE,
+      useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
+    },
     provideRouter(
       [...(options.routes ?? []), { path: '**', children: [] }],
       withComponentInputBinding(),

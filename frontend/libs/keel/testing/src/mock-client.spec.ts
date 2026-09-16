@@ -92,7 +92,7 @@ describe('KeelMockClient', () => {
     expect(client.calls[0]).toEqual({ func: 'dns.zone.list', params: {}, options: {} });
   });
 
-  it('changeMeta and expire drive the two events of the client', () => {
+  it('changeMeta, invalidateMeta and expire drive the two events of the client', () => {
     const client = mock();
     const versions: string[] = [];
     let bursts = 0;
@@ -105,6 +105,11 @@ describe('KeelMockClient', () => {
     expect(versions).toEqual(['m-next']);
     expect(client.metaVersion()).toBe('m-next');
     expect(bursts).toBe(1);
+
+    client.invalidateMeta('m-after');
+    client.invalidateMeta(null);
+    expect(versions).toEqual(['m-next', 'm-after', 'm-after']);
+    expect(client.metaVersion()).toBe('m-after');
   });
 
   it('fromDump answers the admin boot and every descriptor of the dump', async () => {

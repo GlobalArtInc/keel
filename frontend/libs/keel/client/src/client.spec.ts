@@ -67,7 +67,7 @@ function call(client: KeelClient, func: string, params: unknown, options?: CallO
 describe('KeelHttpClient', () => {
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('call posts the body and keeps the request id and the meta version', async () => {
+  it('call posts the body, keeps the request id and the meta version, and a changed version refetches boot', async () => {
     const { client, http, metaChanges, boot } = harness();
     await boot();
     expect(client.metaVersion()).toBe(BOOT.meta);
@@ -85,6 +85,11 @@ describe('KeelHttpClient', () => {
     expect(client.metaVersion()).toBe('m-changed');
     expect(client.replayed()).toBe(false);
     expect(metaChanges).toEqual(['m-changed']);
+    const refetch = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    expect(refetch.request.headers.get('If-None-Match')).toBe(`"${BOOT.meta}"`);
+    refetch.flush({ ...BOOT, meta: 'm-changed' }, { headers: { ETag: '"m-changed"' } });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(TestBed.inject(KeelBoot).meta()).toBe('m-changed');
 
     const again = call(client, 'dns.zone.edit', params);
     http.expectOne('/api/v1/call/dns.zone.edit').flush(OK, {

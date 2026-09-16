@@ -4,11 +4,18 @@ import { Component } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { AUTH_LOGOUT, KeelBoot, KeelClient } from '@globalart/keel/client';
+import {
+  AUTH_LOGOUT,
+  KEEL_EVENT_SOURCE,
+  KeelBoot,
+  KeelClient,
+  type Fetched,
+} from '@globalart/keel/client';
 import type { Boot, Envelope, ErrorCode, MetaPrincipal } from '@globalart/keel/meta';
 import { provideKeelViews } from '@globalart/keel/renderer';
 import { KeelShellComponent, keelProviders, type KeelProduct } from '@globalart/keel/shell';
-import { KeelMockClient } from '@globalart/keel/testing';
+import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
+import { map, type Observable } from 'rxjs';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 const TAG_CLOUD = 'note.tag.list';
@@ -94,14 +101,42 @@ const DEMO: KeelProduct = {
   load: async () => provideKeelViews([{ func: TAG_CLOUD, component: TagCloudComponent }]),
 };
 
-function configure(answers: Record<string, Envelope | Envelope[]>): KeelMockClient {
-  const client = new KeelMockClient({
+class ExpiringClient extends KeelMockClient {
+  expired = false;
+
+  override boot(): Observable<Fetched<Boot> | null> {
+    return super
+      .boot()
+      .pipe(
+        map((fetched) =>
+          fetched === null || !this.expired
+            ? fetched
+            : { body: { ...fetched.body, principal: null }, etag: null },
+        ),
+      );
+  }
+
+  override expire(): void {
+    this.expired = true;
+    super.expire();
+  }
+}
+
+function configure(answers: Record<string, Envelope | Envelope[]>): ExpiringClient {
+  const client = new ExpiringClient({
     boot: demoBoot(),
     catalogue: { lang: 'en', messages: MESSAGES },
     answers,
   });
   TestBed.configureTestingModule({
-    providers: [...keelProviders({ products: [DEMO] }), { provide: KeelClient, useValue: client }],
+    providers: [
+      ...keelProviders({ products: [DEMO] }),
+      { provide: KeelClient, useValue: client },
+      {
+        provide: KEEL_EVENT_SOURCE,
+        useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
+      },
+    ],
   });
   return client;
 }
@@ -284,12 +319,16 @@ describe('the login page', () => {
     expect(fixture.nativeElement.getAttribute('data-startup')).toBe('ready');
     expect(fixture.nativeElement.querySelector('keel-test-tag-cloud')).not.toBeNull();
     const loads = jest.spyOn(client, 'boot');
+    const stream = QuietEventSource.last();
+    expect(stream?.url).toBe('/api/v1/events');
+    expect(stream?.readyState).toBe(0);
 
     client.expire();
     await settle(fixture);
     expect(router.url).toBe(`/login?returnTo=${encodeURIComponent(`${SCREEN}?tab=all`)}`);
     expect(fixture.nativeElement.querySelector('keel-login')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('keel-layout')).toBeNull();
+    expect(stream?.readyState).toBe(2);
     expect(loads).toHaveBeenCalledTimes(1);
     expect(boot.loaded()).toBe(true);
 

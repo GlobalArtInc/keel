@@ -94,7 +94,13 @@ export {
   toolbarActionsOf,
 } from './list/actions';
 export type { RowScope } from './list/actions';
-export { MASK_SUFFIX, invalidations, maskMatches, matchesAny } from './list/invalidate';
+export {
+  INVALIDATE_DEBOUNCE_MS,
+  MASK_SUFFIX,
+  invalidations,
+  maskMatches,
+  matchesAny,
+} from './list/invalidate';
 export { SEARCH_PARAM, scopeOf, searchOf } from './list/scope';
 export { KeelListComponent } from './list/list.component';
 export type { ReadonlyToggle } from './list/list.component';

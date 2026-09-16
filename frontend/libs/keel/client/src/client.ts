@@ -55,6 +55,8 @@ export abstract class KeelClient {
   abstract readonly metaChanged: Observable<string>;
   abstract readonly unauthenticated: Observable<void>;
 
+  abstract invalidateMeta(version: string | null): void;
+
   abstract call<T = unknown>(
     func: string,
     params?: unknown,
@@ -127,6 +129,15 @@ export class KeelHttpClient extends KeelClient {
   readonly metaVersion = this.version.asReadonly();
   readonly metaChanged = this.metaChanges.asObservable();
   readonly unauthenticated = this.bursts.asObservable();
+
+  invalidateMeta(version: string | null): void {
+    const next = version ?? this.version();
+    if (next === null) {
+      return;
+    }
+    this.version.set(next);
+    this.metaChanges.next(next);
+  }
 
   call<T = unknown>(
     func: string,

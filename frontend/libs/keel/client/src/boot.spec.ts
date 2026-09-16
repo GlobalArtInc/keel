@@ -76,6 +76,57 @@ describe('KeelBoot', () => {
     await fourth;
   });
 
+  it('concurrent loads share one request and a changed meta version refetches a held payload alone', async () => {
+    const client = TestBed.inject(KeelClient);
+    client.invalidateMeta('m-early');
+    http.expectNone('/api/v1/boot');
+
+    const first = boot.load();
+    const second = boot.load();
+    const request = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    request.flush(BOOT, { headers: { ETag: `"${BOOT.meta}"` } });
+    expect(await first).toEqual(BOOT);
+    expect(await second).toEqual(BOOT);
+    http.expectNone('/api/v1/boot');
+
+    client.invalidateMeta('m-next');
+    const refetch = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    expect(refetch.request.headers.get('If-None-Match')).toBe(`"${BOOT.meta}"`);
+    const joined = boot.load();
+    http.expectNone('/api/v1/boot');
+    refetch.flush({ ...BOOT, meta: 'm-next' }, { headers: { ETag: '"m-next"' } });
+    expect((await joined).meta).toBe('m-next');
+    expect(boot.meta()).toBe('m-next');
+
+    client.invalidateMeta(null);
+    http
+      .expectOne({ method: 'GET', url: '/api/v1/boot' })
+      .flush(null, { status: 500, statusText: 'Server Error' });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(boot.meta()).toBe('m-next');
+    expect(boot.loaded()).toBe(true);
+
+    client.invalidateMeta('m-later');
+    const abandoned = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    expect(abandoned.request.headers.get('If-None-Match')).toBe('"m-next"');
+    boot.drop();
+    expect(boot.loaded()).toBe(false);
+    abandoned.flush({ ...BOOT, meta: 'm-later' }, { headers: { ETag: '"m-later"' } });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(boot.loaded()).toBe(false);
+    expect(boot.principal()).toBeNull();
+
+    client.invalidateMeta('m-last');
+    http.expectNone('/api/v1/boot');
+
+    const fresh = boot.load();
+    const unconditional = http.expectOne({ method: 'GET', url: '/api/v1/boot' });
+    expect(unconditional.request.headers.has('If-None-Match')).toBe(false);
+    unconditional.flush(null, { status: 304, statusText: 'Not Modified' });
+    await expect(fresh).rejects.toBeInstanceOf(TypeError);
+    expect(boot.loaded()).toBe(false);
+  });
+
   it('a 401 on boot emits unauthenticated and rejects the load', async () => {
     const bursts: number[] = [];
     TestBed.inject(KeelClient).unauthenticated.subscribe(() => bursts.push(1));

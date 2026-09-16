@@ -71,6 +71,13 @@ export class KeelMockClient extends KeelClient {
     this.metaChanges.next(version);
   }
 
+  invalidateMeta(version: string | null): void {
+    const next = version ?? this.version();
+    if (next !== null) {
+      this.changeMeta(next);
+    }
+  }
+
   expire(): void {
     this.bursts.next();
   }

@@ -9,11 +9,11 @@ import {
   KeelClient,
   KeelEvents,
   KeelI18n,
-  type EventSourceLike,
 } from '@globalart/keel/client';
 import { OPTIONS_LIMIT } from '@globalart/keel/forms';
 import type { Boot, Choices, Descriptor, Envelope, Event as KeelEvent } from '@globalart/keel/meta';
 import {
+  INVALIDATE_DEBOUNCE_MS,
   KeelActionRunner,
   KeelListComponent,
   maskMatches,
@@ -24,7 +24,7 @@ import {
   usableZone,
   type Row,
 } from '@globalart/keel/renderer';
-import { KeelMockClient } from '@globalart/keel/testing';
+import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
 import { PhxTabsService, PhxToastService, providePhoenixIcons } from '@globalart/phoenix-ui';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
@@ -90,30 +90,16 @@ const MESSAGES = {
   },
 };
 
-class FakeEventSource extends EventTarget implements EventSourceLike {
-  static opened: FakeEventSource[] = [];
-  readyState = 0;
-
-  constructor() {
-    super();
-    FakeEventSource.opened.push(this);
+function source(): QuietEventSource {
+  const last = QuietEventSource.last();
+  if (last === null) {
+    throw new Error('no event source was opened');
   }
+  return last;
+}
 
-  static last(): FakeEventSource {
-    const last = FakeEventSource.opened.at(-1);
-    if (last === undefined) {
-      throw new Error('no event source was opened');
-    }
-    return last;
-  }
-
-  frame(type: string, data: unknown): void {
-    this.dispatchEvent(new MessageEvent(type, { data: JSON.stringify(data) }));
-  }
-
-  close(): void {
-    this.readyState = 2;
-  }
+function audited(): Promise<void> {
+  return new Promise((done) => setTimeout(done, INVALIDATE_DEBOUNCE_MS + 50));
 }
 
 function ok(data: unknown, requestId = 'req-ok'): Envelope {
@@ -153,7 +139,10 @@ async function render(
       providePhoenixIcons(),
       provideRouter([{ path: 'f/:func', children: [] }]),
       { provide: KeelClient, useValue: mock },
-      { provide: KEEL_EVENT_SOURCE, useValue: () => new FakeEventSource() },
+      {
+        provide: KEEL_EVENT_SOURCE,
+        useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
+      },
     ],
   });
   await TestBed.inject(KeelBoot).load();
@@ -209,9 +198,7 @@ function withoutEdit(descriptor: Descriptor): Descriptor {
 }
 
 describe('the list renderer', () => {
-  beforeEach(() => {
-    FakeEventSource.opened = [];
-  });
+  beforeEach(() => QuietEventSource.reset());
 
   afterEach(() => {
     TestBed.inject(PhxToastService).closeAll();
@@ -466,21 +453,50 @@ describe('the list renderer', () => {
     expect(element.querySelector('phx-selection-bar .bar')).toBeNull();
   });
 
-  it('a data.invalidate matching invalidate_on reloads the table', async () => {
+  it('a burst of data.invalidate frames matching invalidate_on refetches the table once', async () => {
     const mock = client();
     const fixture = await render(mock);
     TestBed.inject(KeelEvents).subscribe();
-    const source = FakeEventSource.last();
+    const stream = source();
+    stream.open();
     const listed = mock.callsOf('dns.zone.list').length;
 
-    source.frame('data.invalidate', { ...EVENT, type: 'dns.record.created' });
+    for (let seq = 1; seq <= 5; seq += 1) {
+      stream.emit('data.invalidate', { ...EVENT, seq, type: 'dns.zone.updated' }, String(seq));
+    }
+    stream.emit('data.invalidate', { ...EVENT, seq: 6, type: 'dns.record.created' }, '6');
     await settle(fixture);
     expect(mock.callsOf('dns.zone.list')).toHaveLength(listed);
 
-    source.frame('data.invalidate', EVENT);
+    await audited();
     await settle(fixture);
     expect(mock.callsOf('dns.zone.list')).toHaveLength(listed + 1);
     expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({ page: 1, pageSize: 25 });
+    expect(TestBed.inject(KeelEvents).state().lastEventId).toBe('6');
+
+    stream.emit('data.invalidate', EVENT, String(EVENT.seq));
+    await audited();
+    await settle(fixture);
+    expect(mock.callsOf('dns.zone.list')).toHaveLength(listed + 2);
+  });
+
+  it('a frame outside the masks refetches nothing', async () => {
+    const mock = client();
+    const fixture = await render(mock);
+    TestBed.inject(KeelEvents).subscribe();
+    const stream = source();
+    stream.open();
+    const listed = mock.callsOf('dns.zone.list').length;
+
+    stream.emit('data.invalidate', { ...EVENT, type: 'dns.record.created' }, '1');
+    stream.emit('data.invalidate', { ...EVENT, type: 'dns' }, '2');
+    stream.emit('data.invalidate', { ...EVENT, type: 'dns.zones.created' }, '3');
+    stream.emit('task.progress', { id: 't', function: 'dns.zone.import', state: 'done', done: 1 });
+    stream.emit('notification', { id: 'n', key: 'k', level: 'info', createdAt: 'now' });
+    await audited();
+    await settle(fixture);
+    expect(mock.callsOf('dns.zone.list')).toHaveLength(listed);
+    expect(TestBed.inject(KeelEvents).state().lastEventId).toBe('3');
   });
 
   it('the export action is hidden while keel.export is absent', async () => {

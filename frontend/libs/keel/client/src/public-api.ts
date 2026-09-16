@@ -41,6 +41,7 @@ export { listFetch, toListQuery } from './list';
 export type { KeelListFetch, Scope, Totals } from './list';
 export { DEFAULT_LOCALE, KeelDates, UTC } from './dates';
 export {
+  AFTER_PARAM,
   DATA_INVALIDATE,
   KEEL_EVENTS_PATH,
   KEEL_EVENT_SOURCE,
@@ -50,8 +51,18 @@ export {
   MIN_BACKOFF_MS,
   NOTIFICATION,
   TASK_PROGRESS,
+  isEvent,
+  isMetaInvalidate,
+  isNotificationFrame,
+  isTaskProgress,
 } from './events';
-export type { EventSourceFactory, EventSourceLike, EventsState } from './events';
+export type {
+  EventSourceFactory,
+  EventSourceLike,
+  EventsPhase,
+  EventsState,
+  MetaInvalidate,
+} from './events';
 export { tracked } from './progress';
 export { provideKeelClient } from './provide';
 

@@ -110,6 +110,51 @@ describe('the Storybook decorator', () => {
     expect(fixture.nativeElement.textContent).toBe('Notes');
   });
 
+  it('the quiet event source records what opened it and lets a story drive frames and failures', () => {
+    TestBed.configureTestingModule({ providers: keelStoryProviders() });
+    QuietEventSource.reset();
+    expect(QuietEventSource.last()).toBeNull();
+    const source = TestBed.inject(KEEL_EVENT_SOURCE)('/api/v1/events', { withCredentials: true });
+    expect(source).toBeInstanceOf(QuietEventSource);
+    expect(QuietEventSource.last()).toBe(source);
+    const quiet = QuietEventSource.last();
+    if (quiet === null) {
+      throw new Error('the source was not recorded');
+    }
+    expect(quiet.url).toBe('/api/v1/events');
+    expect(quiet.init).toEqual({ withCredentials: true });
+    expect(quiet.readyState).toBe(0);
+
+    const seen: [string, unknown, string][] = [];
+    for (const type of ['open', 'error', 'data.invalidate', 'task.progress']) {
+      quiet.addEventListener(type, (event) => {
+        const message = event as Partial<MessageEvent>;
+        seen.push([event.type, message.data, message.lastEventId ?? '']);
+      });
+    }
+    quiet.open();
+    expect(quiet.readyState).toBe(1);
+    quiet.emit('data.invalidate', { seq: 9 }, '9');
+    quiet.emit('task.progress', { done: 1 });
+    quiet.emitRaw('task.progress', '{not json');
+    quiet.drop();
+    expect(quiet.readyState).toBe(0);
+    quiet.fail();
+    expect(quiet.readyState).toBe(2);
+    expect(seen).toEqual([
+      ['open', undefined, ''],
+      ['data.invalidate', '{"seq":9}', '9'],
+      ['task.progress', '{"done":1}', ''],
+      ['task.progress', '{not json', ''],
+      ['error', undefined, ''],
+      ['error', undefined, ''],
+    ]);
+    quiet.close();
+    expect(quiet.readyState).toBe(2);
+    QuietEventSource.reset();
+    expect(QuietEventSource.opened).toHaveLength(0);
+  });
+
   it('the story providers put the routes of the story before the catch-all', () => {
     const providers = keelStoryProviders({ routes: [{ path: 'f/:func', children: [] }] });
     TestBed.configureTestingModule({ providers });

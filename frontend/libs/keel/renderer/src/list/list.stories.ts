@@ -1,7 +1,15 @@
-import type { Choices } from '@globalart/keel/meta';
-import { ACCOUNT_ID, okEnvelope, pageEnvelope, withKeel } from '@globalart/keel/testing';
-import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
-import { expect, userEvent, within } from 'storybook/test';
+import { inject, provideAppInitializer } from '@angular/core';
+import { KeelEvents } from '@globalart/keel/client';
+import type { Choices, Event as KeelEvent } from '@globalart/keel/meta';
+import {
+  ACCOUNT_ID,
+  QuietEventSource,
+  okEnvelope,
+  pageEnvelope,
+  withKeel,
+} from '@globalart/keel/testing';
+import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 import { KeelScreenComponent } from '../screen';
 
 interface ListArgs {
@@ -263,6 +271,60 @@ export const NotesAsUser: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('Release notes 0.1')).toBeInTheDocument();
     await expect(canvas.queryByRole('columnheader', { name: /Account/ })).not.toBeInTheDocument();
+  },
+};
+
+const SAVED: KeelEvent = {
+  id: id('E1'),
+  seq: 41,
+  type: 'note.saved',
+  at: at(15, 9),
+  instanceId: id('I1'),
+  module: 'note',
+  actor: { kind: 'principal', id: id('B1') },
+  subject: { kind: 'note', id: id('N4'), accountId: ACCOUNT_ID },
+  data: { id: id('N4'), account_id: ACCOUNT_ID },
+};
+
+const ARRIVED: Note = {
+  id: id('N4'),
+  accountId: ACCOUNT_ID,
+  title: 'Arrived over the event stream',
+  body: '',
+  kind: 'memo',
+  tags: ['live'],
+  due: null,
+  createdAt: at(15, 9),
+  updatedAt: at(15, 9),
+};
+
+export const LiveInvalidation: Story = {
+  name: 'Live invalidation',
+  decorators: [
+    applicationConfig({
+      providers: [provideAppInitializer(() => inject(KeelEvents).subscribe())],
+    }),
+    withKeel({
+      calls: {
+        'note.list': [pageEnvelope(NOTES), pageEnvelope([ARRIVED, ...NOTES])],
+        'keel.account.options': okEnvelope(ACCOUNTS),
+      },
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Renew the certificates')).toBeInTheDocument();
+    await expect(canvas.queryByText(ARRIVED.title)).not.toBeInTheDocument();
+    const stream = QuietEventSource.last();
+    if (stream === null) {
+      throw new Error('the shell did not open the event stream');
+    }
+    await expect(stream.url).toBe('/api/v1/events');
+    stream.open();
+    stream.emit('data.invalidate', { ...SAVED, type: 'audit.call.recorded' }, '40');
+    stream.emit('data.invalidate', SAVED, '41');
+    await waitFor(() => expect(canvas.getByText(ARRIVED.title)).toBeInTheDocument());
+    await expect(canvas.getAllByRole('row')).toHaveLength(NOTES.length + 2);
   },
 };
 

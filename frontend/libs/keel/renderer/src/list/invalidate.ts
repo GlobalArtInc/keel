@@ -1,7 +1,8 @@
 import type { Event as KeelEvent } from '@globalart/keel/meta';
-import { filter, type Observable } from 'rxjs';
+import { auditTime, filter, type Observable } from 'rxjs';
 
 export const MASK_SUFFIX = '.*';
+export const INVALIDATE_DEBOUNCE_MS = 250;
 
 export function maskMatches(mask: string, name: string): boolean {
   if (!mask.endsWith(MASK_SUFFIX)) {
@@ -18,6 +19,10 @@ export function matchesAny(masks: readonly string[], name: string): boolean {
 export function invalidations(
   events: Observable<KeelEvent>,
   masks: () => readonly string[],
+  withinMs = INVALIDATE_DEBOUNCE_MS,
 ): Observable<KeelEvent> {
-  return events.pipe(filter((event) => matchesAny(masks(), event.type)));
+  return events.pipe(
+    filter((event) => matchesAny(masks(), event.type)),
+    auditTime(withinMs),
+  );
 }
