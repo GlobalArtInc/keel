@@ -153,10 +153,13 @@ keel ctl note.list --out table    # the rows rendered by ui.columns with transla
 keel product list                 # every bundle the binary carries, enabled or disabled
 ```
 
-`keel serve` also serves the panel: `http://localhost:1500/` opens the embedded shell, whose
-login is `auth.login` over the same API. The session cookie carries `Secure`, which a browser
-accepts on plain HTTP from `localhost` and `127.0.0.1` alone until TLS arrives in M3, so the
-panel of a remote host is opened through an SSH port forward to its listener.
+`keel serve` also serves the panel: `https://localhost:1500/` opens the embedded shell, whose
+login is `auth.login` over the same API. The listener speaks TLS alone, with the self-signed
+certificate the first start writes to `<data_dir>/tls/cert.pem` and logs by its SHA-256
+fingerprint, or with the pair `tls.cert` and `tls.key` of `config.yaml` name; a browser warns
+once about the self-signed certificate and the fingerprint tells the operator it is the right
+one. Behind a reverse proxy, `trusted_proxies` lists the proxy addresses whose `X-Forwarded-For`
+and `X-Forwarded-Host` the kernel believes.
 
 Installing the built binary on a host is `deploy/install.sh --product demo --binary <artifact>`
 on a clean Debian or Ubuntu; `deploy/README.md` describes the steps, the flags and what the

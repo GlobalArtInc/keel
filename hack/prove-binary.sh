@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+scheme=https
+cacert=""
 database=""
 site=""
 serve_pid=""
@@ -153,6 +155,21 @@ if rows != json.loads(sys.argv[2]):
 EOF
 }
 
+curl_tls() {
+  if [ -n "$cacert" ]; then
+    curl --cacert "$cacert" "$@"
+  else
+    curl "$@"
+  fi
+}
+
+ready() {
+  if [ -n "$cacert" ] && [ ! -f "$cacert" ]; then
+    return 1
+  fi
+  [ "$(curl_tls -s -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]
+}
+
 http() {
   local out=$1 method=$2 path=$3 body=${4:-} credential=${5:-} extra=${6:-}
   local status
@@ -165,9 +182,9 @@ http() {
     headers+=(-H "$extra")
   fi
   if [ -n "$body" ]; then
-    status=$(curl -sS -o "$out" -D "$out.headers" -w '%{http_code}' -X "$method" "${headers[@]}" --data "$body" "http://127.0.0.1:$port$path")
+    status=$(curl_tls -sS -o "$out" -D "$out.headers" -w '%{http_code}' -X "$method" "${headers[@]}" --data "$body" "$scheme://127.0.0.1:$port$path")
   else
-    status=$(curl -sS -o "$out" -D "$out.headers" -w '%{http_code}' -X "$method" "${headers[@]}" "http://127.0.0.1:$port$path")
+    status=$(curl_tls -sS -o "$out" -D "$out.headers" -w '%{http_code}' -X "$method" "${headers[@]}" "$scheme://127.0.0.1:$port$path")
   fi
   echo "$status"
 }
@@ -262,8 +279,8 @@ start_serve() {
       serve_pid=""
       fail "keel serve ($label) exited before it was ready"
     fi
-    if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]; then
-      echo "ok: keel serve ($label) is ready on 127.0.0.1:$port"
+    if ready; then
+      echo "ok: keel serve ($label) is ready on $scheme://127.0.0.1:$port"
       return 0
     fi
     sleep 0.1
@@ -368,6 +385,9 @@ port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
 mkdir -p "$site/run" "$site/lib"
+if [ "$scheme" = https ]; then
+  cacert="$site/lib/tls/cert.pem"
+fi
 cat >"$site/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock

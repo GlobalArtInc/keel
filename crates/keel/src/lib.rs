@@ -5,8 +5,8 @@ mod runtime;
 
 pub use std::process::ExitCode;
 
-pub use keel_kernel::Config;
 pub use keel_kernel::http::Frontend;
+pub use keel_kernel::{Config, TlsMaterial};
 pub use keel_sdk as sdk;
 pub use keel_sdk::prelude;
 pub use keel_sdk::{ModuleDef, ProductManifest};

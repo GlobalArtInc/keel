@@ -32,9 +32,9 @@ mod demo {
 
     use keel_testkit::TestDatabase;
     use keel_testkit::tokio;
+    use rustls::pki_types::pem::PemObject;
     use serde_json::{Value, json};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpStream, UnixStream};
+    use tokio::net::UnixStream;
 
     use super::KEEL;
 
@@ -57,7 +57,7 @@ mod demo {
         std::fs::write(
             &config,
             format!(
-                "listen: {listen}\nsocket: {}\ndata_dir: {}\ndatabase: {}\nlog: {{ level: warn, format: text }}\n",
+                "listen: {listen}\nsocket: {}\ndata_dir: {}\ndatabase: {}\nlog: {{ level: info, format: text }}\n",
                 socket.display(),
                 dir.path().join("lib").display(),
                 database.config().database.expose(),
@@ -100,6 +100,10 @@ mod demo {
             String::from_utf8_lossy(&output.stderr).into_owned()
         }
 
+        fn cert(&self) -> PathBuf {
+            self.dir.path().join("lib").join("tls").join("cert.pem")
+        }
+
         async fn finish(self) {
             drop(self.dir);
             self.database.finish().await;
@@ -120,50 +124,55 @@ mod demo {
         panic!("the socket {} never came up", path.display());
     }
 
+    fn client(site: &Site) -> reqwest::Client {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let pem = std::fs::read(site.cert()).expect("the site generated cert.pem");
+        reqwest::Client::builder()
+            .no_proxy()
+            .tls_certs_only([reqwest::Certificate::from_pem(&pem).expect("a certificate")])
+            .timeout(Duration::from_secs(10))
+            .build()
+            .expect("a client")
+    }
+
     async fn fetch(
-        addr: SocketAddr,
+        site: &Site,
         method: &str,
         path: &str,
         body: &str,
-    ) -> (u16, String, String) {
-        let mut stream = TcpStream::connect(addr)
+    ) -> (u16, reqwest::header::HeaderMap, String) {
+        let method: reqwest::Method = method.parse().expect("a method");
+        let response = client(site)
+            .request(method, format!("https://{}{path}", site.listen))
+            .header("host", "keel.test")
+            .header("content-type", "application/json")
+            .body(body.to_owned())
+            .send()
             .await
-            .expect("the listener answers");
-        stream
-            .write_all(
-                format!(
-                    "{method} {path} HTTP/1.1\r\nHost: keel.test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .as_bytes(),
-            )
-            .await
-            .expect("the request is sent");
-        let mut response = Vec::new();
-        stream
-            .read_to_end(&mut response)
-            .await
-            .expect("the response is read");
-        let text = String::from_utf8_lossy(&response);
-        let (head, body) = text.split_once("\r\n\r\n").expect("a head and a body");
-        let status: u16 = head
-            .split_whitespace()
-            .nth(1)
-            .and_then(|code| code.parse().ok())
-            .expect("a status");
-        (status, head.to_owned(), body.to_owned())
+            .expect("the listener answers over TLS");
+        let status = response.status().as_u16();
+        let headers = response.headers().clone();
+        let text = response.text().await.expect("the body is read");
+        (status, headers, text)
     }
 
-    async fn http(addr: SocketAddr, method: &str, path: &str, body: &str) -> (u16, Value) {
-        let (status, _, body) = fetch(addr, method, path, body).await;
+    async fn http(site: &Site, method: &str, path: &str, body: &str) -> (u16, Value) {
+        let (status, _, body) = fetch(site, method, path, body).await;
         (status, serde_json::from_str(&body).expect("a JSON body"))
     }
 
-    fn header_of<'a>(head: &'a str, name: &str) -> Option<&'a str> {
-        head.lines().find_map(|line| {
-            let (key, value) = line.split_once(':')?;
-            key.eq_ignore_ascii_case(name).then(|| value.trim())
-        })
+    fn header_of<'a>(head: &'a reqwest::header::HeaderMap, name: &str) -> Option<&'a str> {
+        head.get(name).and_then(|value| value.to_str().ok())
+    }
+
+    fn fingerprint_of(pem: &[u8]) -> String {
+        let der = rustls::pki_types::CertificateDer::from_pem_slice(pem).expect("a certificate");
+        let digest = <sha2::Sha256 as sha2::Digest>::digest(der.as_ref());
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(":")
     }
 
     fn shell_file(name: &str) -> String {
@@ -277,10 +286,11 @@ mod demo {
         let migrated = site.ok(&["migrate"]);
         assert!(migrated.contains("note: applied"), "{migrated}");
 
-        let stderr = std::fs::File::create(site.dir.path().join("serve.log"))
+        let log_file = std::fs::File::create(site.dir.path().join("serve.log"))
             .expect("the log file is created");
+        let stderr = log_file.try_clone().expect("the log file handle is cloned");
         let mut serve = tokio::process::Command::from(site.command(&["serve"]))
-            .stdout(Stdio::null())
+            .stdout(Stdio::from(log_file))
             .stderr(stderr)
             .kill_on_drop(true)
             .spawn()
@@ -314,18 +324,32 @@ mod demo {
         let refused = site.failed(&["product", "disable", "demo"]);
         assert!(refused.contains("the service is running"), "{refused}");
 
-        let (status, body) = http(site.listen, "GET", "/readyz", "").await;
+        let (status, body) = http(&site, "GET", "/healthz", "").await;
         assert_eq!(status, 200, "{body}");
-        let (status, body) = http(site.listen, "POST", "/api/v1/call/note.list", "{}").await;
+        assert_eq!(body, json!({ "status": "ok" }));
+        let log = std::fs::read_to_string(site.dir.path().join("serve.log")).expect("the log");
+        let fingerprint =
+            fingerprint_of(&std::fs::read(site.cert()).expect("the site generated cert.pem"));
+        assert!(
+            log.contains(&fingerprint),
+            "the log names the certificate fingerprint {fingerprint}: {log}"
+        );
+        assert!(
+            !log.contains("PRIVATE KEY"),
+            "the log never carries the key: {log}"
+        );
+        let (status, body) = http(&site, "GET", "/readyz", "").await;
+        assert_eq!(status, 200, "{body}");
+        let (status, body) = http(&site, "POST", "/api/v1/call/note.list", "{}").await;
         assert_eq!(status, 401, "{body}");
         assert_eq!(body["ok"], json!(false));
         assert_eq!(body["error"]["code"], json!("unauthenticated"));
-        let (status, body) = http(site.listen, "GET", "/api/v1/boot", "").await;
+        let (status, body) = http(&site, "GET", "/api/v1/boot", "").await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["products"][0]["id"], json!("demo"));
 
         let index = shell_file("index.html");
-        let (status, head, served) = fetch(site.listen, "GET", "/", "").await;
+        let (status, head, served) = fetch(&site, "GET", "/", "").await;
         assert_eq!(status, 200, "{served}");
         assert_eq!(served, index);
         assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
@@ -343,11 +367,11 @@ mod demo {
             served.contains("<script src=\"theme-boot.js\"></script>"),
             "{served}"
         );
-        let (status, _, fallback) = fetch(site.listen, "GET", "/f/note.list", "").await;
+        let (status, _, fallback) = fetch(&site, "GET", "/f/note.list", "").await;
         assert_eq!(status, 200);
         assert_eq!(fallback, index);
         let main = hashed_main(&served);
-        let (status, head, script) = fetch(site.listen, "GET", &format!("/{main}"), "").await;
+        let (status, head, script) = fetch(&site, "GET", &format!("/{main}"), "").await;
         assert_eq!(status, 200, "{main}");
         assert_eq!(script, shell_file(&main));
         assert_eq!(
@@ -359,10 +383,10 @@ mod demo {
             header_of(&head, "content-type"),
             Some("text/javascript; charset=utf-8")
         );
-        let (status, head, _) = fetch(site.listen, "GET", "/theme-boot.js", "").await;
+        let (status, head, _) = fetch(&site, "GET", "/theme-boot.js", "").await;
         assert_eq!(status, 200);
         assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
-        let (status, body) = http(site.listen, "GET", "/missing.png", "").await;
+        let (status, body) = http(&site, "GET", "/missing.png", "").await;
         assert_eq!(status, 404, "{body}");
         assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
 

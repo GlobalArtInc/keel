@@ -115,7 +115,6 @@ fn init(r: &mut Registrar) -> Result<()> {
             if started.set(contributed).is_err() {
                 tracing::warn!("the notify module was started twice; the first sources stand");
             }
-            let _ = rustls::crypto::ring::default_provider().install_default();
             let shipped = templates::shipped();
             let templates = shipped
                 .iter()

@@ -19,5 +19,6 @@ mod settings;
 mod socket;
 mod storage;
 mod tasks;
+mod tls;
 mod upload;
 mod views;

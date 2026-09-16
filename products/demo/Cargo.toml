@@ -15,4 +15,6 @@ keel-system = { workspace = true, features = ["notify"] }
 [dev-dependencies]
 keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify"] }
 keel-testkit = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
 tempfile = { workspace = true }

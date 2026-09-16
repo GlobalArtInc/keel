@@ -172,6 +172,7 @@ impl Builder {
     }
 
     pub async fn try_boot(self) -> Result<Harness, Error> {
+        keel_kernel::tls::install_provider();
         let (database, seeded) = match self.database {
             Some(database) => (database, true),
             None => (
@@ -385,6 +386,21 @@ impl Harness {
 
     pub async fn http(&self) -> TestHttp {
         self.http_with(HttpOptions::default()).await
+    }
+
+    pub async fn http_behind(&self, trusted_proxies: &[&str]) -> TestHttp {
+        let trusted_proxies = trusted_proxies
+            .iter()
+            .map(|net| match net.parse() {
+                Ok(net) => net,
+                Err(error) => panic!("{net} is not a CIDR: {error}"),
+            })
+            .collect();
+        self.http_with(HttpOptions {
+            trusted_proxies,
+            ..HttpOptions::default()
+        })
+        .await
     }
 
     pub async fn http_with(&self, options: HttpOptions) -> TestHttp {

@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+scheme=https
+cacert=""
 smtp_url=${KEEL_TEST_SMTP_URL:-}
 smtp_api=${KEEL_TEST_SMTP_API:-}
 frontend=frontend
@@ -197,6 +199,31 @@ keel_ok() {
   fi
 }
 
+curl_tls() {
+  if [ -n "$cacert" ]; then
+    curl --cacert "$cacert" "$@"
+  else
+    curl "$@"
+  fi
+}
+
+ready() {
+  if [ -n "$cacert" ] && [ ! -f "$cacert" ]; then
+    return 1
+  fi
+  [ "$(curl_tls -s -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]
+}
+
+spki_of() {
+  node -e '
+const { readFileSync } = require("node:fs");
+const { X509Certificate, createHash } = require("node:crypto");
+const certificate = new X509Certificate(readFileSync(process.argv[1]));
+const spki = certificate.publicKey.export({ type: "spki", format: "der" });
+process.stdout.write(createHash("sha256").update(spki).digest("base64"));
+' "$1"
+}
+
 start_serve() {
   serve_log="$site/serve.log"
   "$keel" --config "$site/config.yaml" serve >"$serve_log" 2>&1 &
@@ -208,8 +235,8 @@ start_serve() {
       serve_pid=""
       fail "keel serve exited before it was ready"
     fi
-    if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]; then
-      echo "keel serve is ready on 127.0.0.1:$port"
+    if ready; then
+      echo "keel serve is ready on $scheme://127.0.0.1:$port"
       return 0
     fi
     sleep 0.1
@@ -263,7 +290,7 @@ if [ -z "$admin_url" ]; then
   echo "KEEL_TEST_DATABASE_URL is not set" >&2
   exit 2
 fi
-for tool in psql curl python3 pnpm; do
+for tool in psql curl python3 pnpm node; do
   if ! command -v "$tool" >/dev/null; then
     echo "$tool is not installed" >&2
     exit 2
@@ -306,6 +333,9 @@ port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
 mkdir -p "$site/run" "$site/lib"
+if [ "$scheme" = https ]; then
+  cacert="$site/lib/tls/cert.pem"
+fi
 cat >"$site/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock
@@ -341,14 +371,21 @@ create_principal "$site/reseller.json" "$reseller_login" reseller "$reseller_acc
 create_principal "$site/user.json" "$user_login" user "$user_account" "$user_password"
 echo "created the admin $admin_login in the root account, the reseller $reseller_login in $reseller_account and the user $user_login in $user_account"
 
+e2e_env=(
+  "KEEL_E2E_URL=$scheme://127.0.0.1:$port"
+  "KEEL_E2E_ROOT_PASSWORD=$admin_password"
+  "KEEL_E2E_RES1_PASSWORD=$reseller_password"
+  "KEEL_E2E_ALICE_PASSWORD=$user_password"
+)
+if [ -n "$cacert" ]; then
+  spki=$(spki_of "$cacert")
+  echo "the browser suite trusts the certificate with the SPKI $spki"
+  e2e_env+=("KEEL_E2E_SPKI=$spki" "NODE_EXTRA_CA_CERTS=$cacert")
+fi
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  KEEL_E2E_URL="http://127.0.0.1:$port" \
-    KEEL_E2E_ROOT_PASSWORD="$admin_password" \
-    KEEL_E2E_RES1_PASSWORD="$reseller_password" \
-    KEEL_E2E_ALICE_PASSWORD="$user_password" \
-    pnpm e2e "$@"
+  env "${e2e_env[@]}" pnpm e2e "$@"
 )
 
 echo "--- the poll job, the problem and the mail"

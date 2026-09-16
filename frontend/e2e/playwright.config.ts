@@ -1,4 +1,4 @@
-import { keelBaseUrl } from '@globalart/keel/testing/playwright';
+import { chromiumArgs, keelBaseUrl } from '@globalart/keel/testing/playwright';
 import { defineConfig, devices } from '@playwright/test';
 
 const ci = process.env['CI'] !== undefined;
@@ -19,5 +19,10 @@ export default defineConfig({
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: chromiumArgs() } },
+    },
+  ],
 });

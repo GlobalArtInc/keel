@@ -4,6 +4,7 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
+use ipnet::IpNet;
 use sea_orm::sqlx::postgres::PgConnectOptions;
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,6 +17,7 @@ pub const DATABASE: &str = "postgres:///keel?host=/run/postgresql";
 pub const PASSWORD_VARIABLE: &str = "KEEL_DB_PASS";
 pub const SCHEMA: &str = "keel";
 pub const DEFAULT_LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1500);
+const ACME_UNSUPPORTED: &str = "keel.error.acme_unsupported";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Config {
@@ -25,7 +27,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub database: DatabaseUrl,
     pub tls: Tls,
-    pub trusted_proxies: Vec<String>,
+    pub trusted_proxies: Vec<IpNet>,
     pub log: Log,
     pub sections: BTreeMap<String, Value>,
 }
@@ -154,18 +156,64 @@ impl Config {
             }
             None => DatabaseUrl::default(),
         };
+        let tls = raw.tls.unwrap_or_default();
+        tls.check()?;
+        let trusted_proxies = raw
+            .trusted_proxies
+            .unwrap_or_default()
+            .iter()
+            .map(|entry| parse_net(entry))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             file: file.to_owned(),
             listen,
             socket: raw.socket.unwrap_or_else(|| PathBuf::from(SOCKET)),
             data_dir: raw.data_dir.unwrap_or_else(|| PathBuf::from(DATA_DIR)),
             database,
-            tls: raw.tls.unwrap_or_default(),
-            trusted_proxies: raw.trusted_proxies.unwrap_or_default(),
+            tls,
+            trusted_proxies,
             log: raw.log.unwrap_or_default(),
             sections: raw.sections,
         })
     }
+}
+
+impl Tls {
+    fn check(&self) -> Result<(), ConfigError> {
+        if !self.acme.trim().is_empty() {
+            return Err(ConfigError::Invalid {
+                key: "tls.acme",
+                reason: format!(
+                    "{ACME_UNSUPPORTED}: a certificate through ACME is not supported yet; leave the key empty or supply tls.cert and tls.key"
+                ),
+            });
+        }
+        match (self.cert.trim().is_empty(), self.key.trim().is_empty()) {
+            (false, true) => Err(ConfigError::Invalid {
+                key: "tls.key",
+                reason: "\"tls.cert\" is set without it; a certificate and its key are configured together".to_owned(),
+            }),
+            (true, false) => Err(ConfigError::Invalid {
+                key: "tls.cert",
+                reason: "\"tls.key\" is set without it; a certificate and its key are configured together".to_owned(),
+            }),
+            _ => Ok(()),
+        }
+    }
+}
+
+fn parse_net(entry: &str) -> Result<IpNet, ConfigError> {
+    let text = entry.trim();
+    if let Ok(net) = text.parse::<IpNet>() {
+        return Ok(net);
+    }
+    if let Ok(ip) = text.parse::<IpAddr>() {
+        return Ok(IpNet::from(ip));
+    }
+    Err(ConfigError::Invalid {
+        key: "trusted_proxies",
+        reason: format!("{entry:?} is neither a CIDR such as 10.0.0.0/8 nor an IP address"),
+    })
 }
 
 impl Raw {
@@ -386,7 +434,10 @@ log: { level: debug, format: text }
         assert_eq!(config.tls.cert, "/etc/keel/cert.pem");
         assert_eq!(config.tls.key, "/etc/keel/key.pem");
         assert!(config.tls.acme.is_empty());
-        assert_eq!(config.trusted_proxies, ["10.0.0.0/8"]);
+        assert_eq!(
+            config.trusted_proxies,
+            ["10.0.0.0/8".parse::<IpNet>().unwrap()]
+        );
         assert_eq!(config.log.level, "debug");
         assert_eq!(config.log.format, LogFormat::Text);
     }
@@ -524,6 +575,105 @@ log: { level: debug, format: text }
         let url = DatabaseUrl::parse("postgresql://keel@localhost/keel").unwrap();
         assert_eq!(url.expose(), "postgres://keel@localhost/keel");
         assert_eq!(url.to_string(), url.expose());
+    }
+
+    #[test]
+    fn trusted_proxies_are_parsed_as_cidrs_and_a_bad_entry_fails_the_start_naming_it() {
+        let config = Config::parse(
+            Some("trusted_proxies: [10.0.0.0/8, \"192.168.1.10\", \"2001:db8::/32\", \"::1\"]"),
+            no_env,
+        )
+        .unwrap();
+        assert_eq!(
+            config.trusted_proxies,
+            [
+                "10.0.0.0/8".parse::<IpNet>().unwrap(),
+                "192.168.1.10/32".parse().unwrap(),
+                "2001:db8::/32".parse().unwrap(),
+                "::1/128".parse().unwrap(),
+            ]
+        );
+        let empty = Config::parse(Some("trusted_proxies: []"), no_env).unwrap();
+        assert!(empty.trusted_proxies.is_empty());
+        for text in [
+            "trusted_proxies: [10.0.0.0/33]",
+            "trusted_proxies: [proxy.example]",
+            "trusted_proxies: [\"\"]",
+            "trusted_proxies: [10.0.0.0/8, nowhere]",
+        ] {
+            let error = Config::parse(Some(text), no_env).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    ConfigError::Invalid {
+                        key: "trusted_proxies",
+                        ..
+                    }
+                ),
+                "{text}: {error}"
+            );
+            assert!(
+                error.to_string().contains("\"trusted_proxies\""),
+                "{text}: {error}"
+            );
+        }
+        let error =
+            Config::parse(Some("trusted_proxies: [10.0.0.0/8, nowhere]"), no_env).unwrap_err();
+        assert!(error.to_string().contains("\"nowhere\""), "{error}");
+        let not_a_list = Config::parse(Some("trusted_proxies: 10.0.0.0/8"), no_env).unwrap_err();
+        assert!(
+            matches!(not_a_list, ConfigError::Parse { .. }),
+            "{not_a_list}"
+        );
+    }
+
+    #[test]
+    fn a_non_empty_acme_value_fails_the_start_until_it_is_supported_and_the_empty_string_is_unset()
+    {
+        let error = Config::parse(Some("tls: { acme: admin@example.org }"), no_env).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ConfigError::Invalid {
+                    key: "tls.acme",
+                    ..
+                }
+            ),
+            "{error}"
+        );
+        let message = error.to_string();
+        assert!(message.contains("\"tls.acme\""), "{message}");
+        assert!(message.contains(ACME_UNSUPPORTED), "{message}");
+        let sample = Config::parse(
+            Some("tls: { cert: \"\", key: \"\", acme: \"\" }\ntrusted_proxies: []\n"),
+            no_env,
+        )
+        .unwrap();
+        assert_eq!(sample.tls, Tls::default());
+        let pair = Config::parse(Some("tls: { cert: /etc/keel/cert.pem }"), no_env).unwrap_err();
+        assert!(
+            matches!(pair, ConfigError::Invalid { key: "tls.key", .. }),
+            "{pair}"
+        );
+        assert!(pair.to_string().contains("\"tls.key\""), "{pair}");
+        let other = Config::parse(Some("tls: { key: /etc/keel/key.pem }"), no_env).unwrap_err();
+        assert!(
+            matches!(
+                other,
+                ConfigError::Invalid {
+                    key: "tls.cert",
+                    ..
+                }
+            ),
+            "{other}"
+        );
+        let both = Config::parse(
+            Some("tls: { cert: /etc/keel/cert.pem, key: /etc/keel/key.pem }"),
+            no_env,
+        )
+        .unwrap();
+        assert_eq!(both.tls.cert, "/etc/keel/cert.pem");
+        assert_eq!(both.tls.key, "/etc/keel/key.pem");
     }
 
     #[test]

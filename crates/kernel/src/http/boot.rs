@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use axum::Extension;
 use axum::extract::State;
-use axum::http::{HeaderMap, Uri};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json, Response};
 use keel_types::Principal;
 
 use super::Shared;
 use super::auth::Zone;
-use super::brand::host_name;
+use super::brand::HostName;
 use super::live::Live;
 use super::reply::{self, RequestId};
 use crate::boot;
@@ -19,10 +19,9 @@ pub(super) async fn serve(
     Extension(RequestId(request_id)): Extension<RequestId>,
     Extension(principal): Extension<Principal>,
     Extension(Zone(tz)): Extension<Zone>,
+    HostName(host): HostName,
     headers: HeaderMap,
-    uri: Uri,
 ) -> Response {
-    let host = host_name(&headers, &uri);
     let payload =
         match boot::payload(&live.registry, &state.db, &principal, tz, host.as_deref()).await {
             Ok(payload) => payload,

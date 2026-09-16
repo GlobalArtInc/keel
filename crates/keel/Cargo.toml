@@ -18,6 +18,8 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
 schemars = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }

@@ -5,7 +5,7 @@ use keel::sdk::prelude::*;
 use keel::sdk::system::SecretCipher;
 use keel::sdk::{Registrar, migrator};
 use keel::types::{Envelope, ErrorCode};
-use keel::{Change, Config, Error, ExitCode, Frontend, Runtime};
+use keel::{Change, Config, Error, ExitCode, Frontend, Running, Runtime, TlsMaterial};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::dispatcher::CallOptions;
 use keel_kernel::secret::{DataKeyCipher, Key, Sealed};
@@ -14,6 +14,8 @@ use keel_testkit::TestDatabase;
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
@@ -173,42 +175,40 @@ impl Site {
     }
 }
 
-async fn http_fetch(addr: SocketAddr, path: &str) -> (u16, String, String) {
-    let mut stream = TcpStream::connect(addr)
-        .await
-        .expect("the listener answers");
-    stream
-        .write_all(
-            format!("GET {path} HTTP/1.1\r\nHost: keel.test\r\nConnection: close\r\n\r\n")
-                .as_bytes(),
-        )
-        .await
-        .expect("the request is sent");
-    let mut response = Vec::new();
-    stream
-        .read_to_end(&mut response)
-        .await
-        .expect("the response is read");
-    let text = String::from_utf8_lossy(&response);
-    let (head, body) = text.split_once("\r\n\r\n").expect("a head and a body");
-    let status: u16 = head
-        .split_whitespace()
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .expect("a status");
-    (status, head.to_owned(), body.to_owned())
+fn client(trusting: &TlsMaterial) -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .tls_certs_only([
+            reqwest::Certificate::from_pem(trusting.certificate_pem().as_bytes())
+                .expect("the certificate parses"),
+        ])
+        .timeout(HTTP_TIMEOUT)
+        .build()
+        .expect("a client")
 }
 
-async fn http_get(addr: SocketAddr, path: &str) -> (u16, Value) {
-    let (status, _, body) = http_fetch(addr, path).await;
+async fn http_fetch(running: &Running, path: &str) -> (u16, reqwest::header::HeaderMap, String) {
+    let url = running.url(path);
+    assert!(url.starts_with("https://"), "{url}");
+    let response = client(running.tls())
+        .get(url)
+        .header("host", "keel.test")
+        .send()
+        .await
+        .expect("the listener answers");
+    let status = response.status().as_u16();
+    let headers = response.headers().clone();
+    let body = response.text().await.expect("the body is read");
+    (status, headers, body)
+}
+
+async fn http_get(running: &Running, path: &str) -> (u16, Value) {
+    let (status, _, body) = http_fetch(running, path).await;
     (status, serde_json::from_str(&body).expect("a JSON body"))
 }
 
-fn header_of<'a>(head: &'a str, name: &str) -> Option<&'a str> {
-    head.lines().find_map(|line| {
-        let (key, value) = line.split_once(':')?;
-        key.eq_ignore_ascii_case(name).then(|| value.trim())
-    })
+fn header_of<'a>(head: &'a reqwest::header::HeaderMap, name: &str) -> Option<&'a str> {
+    head.get(name).and_then(|value| value.to_str().ok())
 }
 
 #[tokio::test]
@@ -241,16 +241,123 @@ async fn a_runtime_of_the_bare_kernel_with_no_products_starts_on_a_temporary_soc
     assert_eq!(principal.level, Level::Owner);
     assert_eq!(principal.login, OWNER_LOGIN);
     assert_eq!(principal.account, Id::ROOT_ACCOUNT);
-    let (status, body) = http_get(running.http_addr(), "/readyz").await;
+    let (status, body) = http_get(&running, "/readyz").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body, json!({ "status": "ready" }));
-    let (status, body) = http_get(running.http_addr(), "/api/v1/call/keel.account.list").await;
+    let (status, body) = http_get(&running, "/api/v1/call/keel.account.list").await;
     assert_eq!(status, 401, "{body}");
     assert_eq!(body["error"]["code"], json!("unauthenticated"));
     let addr = running.http_addr();
     running.stop().await.expect("the runtime stops");
     assert!(!site.config.socket.exists());
     assert!(TcpStream::connect(addr).await.is_err());
+    site.finish().await;
+}
+
+#[tokio::test]
+async fn the_runtime_listens_on_tls_alone_and_a_plain_request_gets_no_http_answer() {
+    let site = site().await;
+    let running = Runtime::new()
+        .start(&site.config)
+        .await
+        .expect("the bare kernel starts");
+    let tls_dir = site.config.data_dir.join("tls");
+    let stored = std::fs::read_to_string(tls_dir.join("cert.pem")).expect("cert.pem is written");
+    assert_eq!(stored, running.tls().certificate_pem());
+    assert!(tls_dir.join("key.pem").is_file());
+    assert_eq!(
+        running.url("/healthz"),
+        format!("https://{}/healthz", running.http_addr())
+    );
+
+    let (status, body) = http_get(&running, "/healthz").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, json!({ "status": "ok" }));
+
+    let other = TlsMaterial::generate(&keel_kernel::tls::Names::for_host(
+        None,
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+    ))
+    .expect("another pair");
+    let refused = client(&other).get(running.url("/healthz")).send().await;
+    let error = refused.expect_err("a client that does not trust the certificate is refused");
+    assert!(error.is_connect() || error.is_request(), "{error}");
+
+    let mut plain = TcpStream::connect(running.http_addr())
+        .await
+        .expect("the port accepts a connection");
+    plain
+        .write_all(b"GET /healthz HTTP/1.1\r\nHost: keel.test\r\nConnection: close\r\n\r\n")
+        .await
+        .expect("the plain request is written");
+    let mut answer = Vec::new();
+    let _ = tokio::time::timeout(HTTP_TIMEOUT, plain.read_to_end(&mut answer)).await;
+    let text = String::from_utf8_lossy(&answer);
+    assert!(
+        !text.starts_with("HTTP/"),
+        "a plain request gets no HTTP answer: {text:?}"
+    );
+
+    let fingerprint = running.tls().fingerprint();
+    assert_eq!(fingerprint.len(), 95, "{fingerprint}");
+    running.stop().await.expect("the runtime stops");
+    let again = Runtime::new()
+        .start(&site.config)
+        .await
+        .expect("the bare kernel starts again");
+    assert_eq!(
+        again.tls().fingerprint(),
+        fingerprint,
+        "the stored pair is reused at the next start"
+    );
+    again.stop().await.expect("the runtime stops");
+    site.finish().await;
+}
+
+static PROVIDER_SEEN_AT_START: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+static WATCHER: ModuleDef = ModuleDef {
+    id: "watcher",
+    version: "0.1.0",
+    sdk: keel::sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: watcher_init,
+};
+
+fn watcher_init(r: &mut Registrar) -> Result<()> {
+    r.start(|_| async {
+        PROVIDER_SEEN_AT_START.store(
+            rustls::crypto::CryptoProvider::get_default().is_some(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        Ok(())
+    });
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_runtime_installs_the_ring_provider_before_the_modules_start() {
+    let site = site().await;
+    let running = Runtime::new()
+        .module(&WATCHER)
+        .start(&site.config)
+        .await
+        .expect("the kernel starts with the watcher");
+    assert!(
+        PROVIDER_SEEN_AT_START.load(std::sync::atomic::Ordering::SeqCst),
+        "the watcher module saw a process-level TLS provider in its start hook"
+    );
+    let provider = rustls::crypto::CryptoProvider::get_default().expect("a provider is installed");
+    assert!(
+        std::ptr::eq(
+            provider.secure_random,
+            rustls::crypto::ring::default_provider().secure_random
+        ),
+        "the installed provider is ring"
+    );
+    running.stop().await.expect("the runtime stops");
     site.finish().await;
 }
 
@@ -263,32 +370,31 @@ async fn a_runtime_with_an_embedded_frontend_serves_the_index_and_its_assets_bes
         .start(&site.config)
         .await
         .expect("the kernel with a frontend starts");
-    let addr = running.http_addr();
-    let (status, head, body) = http_fetch(addr, "/").await;
+    let (status, head, body) = http_fetch(&running, "/").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body, include_str!("frontend/index.html"));
     assert_eq!(header_of(&head, "cache-control"), Some("no-store"));
     assert!(
         header_of(&head, "content-security-policy")
             .is_some_and(|policy| policy.starts_with("default-src 'self'")),
-        "{head}"
+        "{head:?}"
     );
-    let (status, _, screen) = http_fetch(addr, "/f/keel.account.list").await;
+    let (status, _, screen) = http_fetch(&running, "/f/keel.account.list").await;
     assert_eq!(status, 200);
     assert_eq!(screen, body);
-    let (status, head, script) = http_fetch(addr, "/main-abc123.js").await;
+    let (status, head, script) = http_fetch(&running, "/main-abc123.js").await;
     assert_eq!(status, 200, "{script}");
     assert_eq!(script, include_str!("frontend/main-abc123.js"));
     assert_eq!(
         header_of(&head, "cache-control"),
         Some("public, max-age=31536000, immutable")
     );
-    let (status, body) = http_get(addr, "/missing.png").await;
+    let (status, body) = http_get(&running, "/missing.png").await;
     assert_eq!(status, 404, "{body}");
     assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
-    let (status, body) = http_get(addr, "/api/v1/call/keel.account.list").await;
+    let (status, body) = http_get(&running, "/api/v1/call/keel.account.list").await;
     assert_eq!(status, 401, "{body}");
-    let (status, body) = http_get(addr, "/readyz").await;
+    let (status, body) = http_get(&running, "/readyz").await;
     assert_eq!(status, 200, "{body}");
     running.stop().await.expect("the runtime stops");
     site.finish().await;

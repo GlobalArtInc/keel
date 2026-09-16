@@ -2,6 +2,7 @@ mod client;
 mod report;
 mod suite;
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -23,6 +24,8 @@ struct Args {
     admin_password: String,
     #[arg(long, env = "KEEL_CONFORMANCE_USER_LOGIN")]
     user_login: String,
+    #[arg(long, env = "KEEL_CONFORMANCE_CACERT", value_name = "PEM")]
+    cacert: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -30,6 +33,7 @@ async fn main() -> ExitCode {
     let args = Args::parse();
     let settings = Settings {
         url: args.url,
+        cacert: args.cacert,
         admin_login: args.admin_login,
         admin_password: args.admin_password,
         user_login: args.user_login,

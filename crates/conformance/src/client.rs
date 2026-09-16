@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::Duration;
 
 use keel_types::{CallError, Envelope, ErrorCode, Meta};
@@ -48,11 +49,31 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(url: &str) -> Result<Self, Failure> {
+    pub fn new(url: &str, cacert: Option<&Path>) -> Result<Self, Failure> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .timeout(TIMEOUT)
+        let mut builder = reqwest::Client::builder().no_proxy().timeout(TIMEOUT);
+        if let Some(path) = cacert {
+            let pem = std::fs::read(path).map_err(|error| {
+                fail(format!(
+                    "--cacert {} could not be read: {error}",
+                    path.display()
+                ))
+            })?;
+            let certificates = reqwest::Certificate::from_pem_bundle(&pem).map_err(|error| {
+                fail(format!(
+                    "--cacert {} is not a PEM certificate: {error}",
+                    path.display()
+                ))
+            })?;
+            if certificates.is_empty() {
+                return Err(fail(format!(
+                    "--cacert {} holds no CERTIFICATE block",
+                    path.display()
+                )));
+            }
+            builder = builder.tls_certs_only(certificates);
+        }
+        let http = builder
             .build()
             .map_err(|error| fail(format!("the HTTP client could not be built: {error}")))?;
         Ok(Self {

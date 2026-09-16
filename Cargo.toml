@@ -22,6 +22,7 @@ anyhow = "1"
 argon2 = "0.6"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["multipart"] }
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 base64 = "0.22"
 base32 = "0.5"
 blake3 = "1"
@@ -32,6 +33,7 @@ clap = { version = "4", features = ["derive", "env"] }
 croner = "4"
 futures = "0.3"
 hmac = "0.13"
+hostname = "0.4"
 http = "1"
 indexmap = { version = "2", features = ["serde"] }
 insta = { version = "1", features = ["json", "redactions"] }
@@ -41,6 +43,7 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 migrator = { package = "sqlmig", version = "0.2.1" }
 minijinja = { version = "2", features = ["custom_syntax"] }
 rand = "0.10"
+rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
 roxmltree = "0.21"

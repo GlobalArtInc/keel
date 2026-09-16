@@ -8,6 +8,7 @@ mod descriptors;
 mod events;
 mod i18n;
 mod live;
+mod proxy;
 mod raw;
 mod reply;
 
@@ -16,12 +17,15 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use axum::{Router, middleware};
+use axum_server::tls_rustls::RustlsConfig;
+use ipnet::IpNet;
 use keel_sdk::KeelError;
 use keel_types::Principal;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
@@ -32,6 +36,7 @@ use tokio::task::JoinHandle;
 
 use crate::dispatcher::Dispatcher;
 use crate::registry::Registry;
+use crate::tls::TlsMaterial;
 
 use events::Streams;
 use live::Live;
@@ -49,12 +54,14 @@ pub(crate) use reply::acceptable_request_id;
 
 pub(crate) const API_PREFIX: &str = "/api/v1";
 pub const BODY_LIMIT: usize = 1024 * 1024;
+pub const TLS_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug)]
 pub struct HttpOptions {
     pub body_limit: usize,
     pub frontend: Option<Frontend>,
     pub sse_replay_window: u64,
+    pub trusted_proxies: Vec<IpNet>,
 }
 
 impl Default for HttpOptions {
@@ -63,6 +70,22 @@ impl Default for HttpOptions {
             body_limit: BODY_LIMIT,
             frontend: None,
             sse_replay_window: SSE_REPLAY_WINDOW,
+            trusted_proxies: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scheme {
+    Http,
+    Https,
+}
+
+impl Scheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Https => "https",
         }
     }
 }
@@ -122,6 +145,8 @@ pub enum HttpError {
     Serve(#[source] io::Error),
     #[error("the kernel is already attached to the transport")]
     Attached,
+    #[error(transparent)]
+    Tls(crate::tls::TlsError),
 }
 
 #[derive(Clone)]
@@ -139,8 +164,14 @@ pub(crate) struct Shared {
 
 pub struct Served {
     addr: SocketAddr,
-    stop: Option<oneshot::Sender<()>>,
+    scheme: Scheme,
+    stop: Option<Stop>,
     task: JoinHandle<Result<(), HttpError>>,
+}
+
+enum Stop {
+    Plain(oneshot::Sender<()>),
+    Tls(axum_server::Handle<SocketAddr>),
 }
 
 impl Http {
@@ -225,7 +256,8 @@ impl Http {
         }));
         Ok(Served {
             addr,
-            stop: Some(stop),
+            scheme: Scheme::Http,
+            stop: Some(Stop::Plain(stop)),
             task,
         })
     }
@@ -234,6 +266,32 @@ impl Http {
         self.bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
             .await
     }
+
+    pub async fn bind_tls(self, addr: SocketAddr, tls: &TlsMaterial) -> Result<Served, HttpError> {
+        let config = tls.server_config().map_err(HttpError::Tls)?;
+        let listener = TcpListener::bind(addr)
+            .await
+            .map_err(|source| HttpError::Bind { addr, source })?;
+        let addr = listener.local_addr().map_err(HttpError::LocalAddr)?;
+        let listener = listener.into_std().map_err(HttpError::LocalAddr)?;
+        let handle = axum_server::Handle::new();
+        let server = axum_server::from_tcp_rustls(listener, RustlsConfig::from_config(config))
+            .map_err(HttpError::Serve)?
+            .handle(handle.clone());
+        let service = self
+            .router()
+            .into_make_service_with_connect_info::<SocketAddr>();
+        let task = tokio::spawn(async move {
+            tracing::info!(%addr, "https listening");
+            server.serve(service).await.map_err(HttpError::Serve)
+        });
+        Ok(Served {
+            addr,
+            scheme: Scheme::Https,
+            stop: Some(Stop::Tls(handle)),
+            task,
+        })
+    }
 }
 
 impl Served {
@@ -241,13 +299,21 @@ impl Served {
         self.addr
     }
 
+    pub fn scheme(&self) -> Scheme {
+        self.scheme
+    }
+
     pub fn url(&self, path: &str) -> String {
-        format!("http://{}{path}", self.addr)
+        format!("{}://{}{path}", self.scheme.as_str(), self.addr)
     }
 
     pub async fn stop(mut self) -> Result<(), HttpError> {
-        if let Some(stop) = self.stop.take() {
-            let _ = stop.send(());
+        match self.stop.take() {
+            Some(Stop::Plain(stop)) => {
+                let _ = stop.send(());
+            }
+            Some(Stop::Tls(handle)) => handle.graceful_shutdown(Some(TLS_SHUTDOWN_GRACE)),
+            None => {}
         }
         match self.task.await {
             Ok(outcome) => outcome,

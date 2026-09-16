@@ -8,7 +8,9 @@ use keel_system::auth::{
     GUEST_PER_MINUTE, LOCKOUT_MINUTES, LOCKOUT_THRESHOLD, MODULE, decode_totp_secret, totp_code,
     totp_step,
 };
-use keel_testkit::{CallOptions, ErrorCode, Harness, Reply, Who, tokio};
+use keel_testkit::{
+    CallOptions, ErrorCode, Harness, PRINCIPAL_HEADER, Reply, TestHttp, Who, tokio,
+};
 
 const PASSWORD: &str = "correct-horse";
 const ATTACKER: &str = "10.1.1.1";
@@ -458,5 +460,141 @@ async fn the_ip_rule_and_unlock_descriptors_match_their_snapshots() {
         "{names:?}"
     );
     assert!(!names.contains(&"auth.unlock".to_owned()), "{names:?}");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn an_ip_rule_a_lockout_and_the_audit_record_see_the_forwarded_address_behind_a_trusted_proxy()
+ {
+    let builder = Harness::new().module(&MODULE);
+    #[cfg(feature = "audit")]
+    let builder = builder.module(&keel_system::audit::MODULE);
+    let harness = builder.boot().await;
+    for who in [Who::Admin, Who::A1] {
+        let id = harness.principal(who).id;
+        let set = harness
+            .call(
+                Who::Owner,
+                "auth.password.set",
+                json!({ "principal": id, "password": PASSWORD }),
+            )
+            .await;
+        assert!(set.data().is_some(), "{who}: {:?}", set.error());
+    }
+    let behind = harness.http_behind(&["127.0.0.0/8"]).await;
+    let direct = harness.http().await;
+    let forwarded = ("x-forwarded-for", "203.0.113.9, 127.0.0.2");
+    let login_body = json!({ "login": "a1", "password": PASSWORD }).to_string();
+    async fn login(
+        http: &TestHttp,
+        headers: Vec<(&'static str, &'static str)>,
+        body: String,
+    ) -> keel_testkit::Answer {
+        let mut all = vec![
+            (PRINCIPAL_HEADER, Who::Guest.login()),
+            ("content-type", "application/json"),
+        ];
+        all.extend(headers);
+        http.request("POST", "/api/v1/call/auth.login", &all, Some(&body))
+            .await
+    }
+
+    rule(&harness, "deny", "203.0.113.0/24", "guest").await;
+    let denied = login(&behind, vec![forwarded], login_body.clone()).await;
+    assert_eq!(denied.status, 403, "{}", denied.body);
+    assert_eq!(denied.json()["error"]["key"], json!("auth.error.ip_denied"));
+    let ignored = login(&direct, vec![forwarded], login_body.clone()).await;
+    assert_eq!(ignored.status, 200, "{}", ignored.body);
+    let listed = behind
+        .post(Who::A1, "/api/v1/call/keel.account.list", &json!({}))
+        .await;
+    assert_eq!(listed.status, 200, "{}", listed.body);
+    let denied_list = behind
+        .request(
+            "POST",
+            "/api/v1/call/keel.account.list",
+            &[
+                (PRINCIPAL_HEADER, Who::A1.login()),
+                ("content-type", "application/json"),
+                forwarded,
+            ],
+            Some("{}"),
+        )
+        .await;
+    assert_eq!(denied_list.status, 403, "{}", denied_list.body);
+    assert_eq!(
+        denied_list.json()["error"]["key"],
+        json!("auth.error.ip_denied")
+    );
+    let rules = harness
+        .call(Who::Admin, "auth.ip_rule.list", json!({}))
+        .await;
+    let id = rules.data().expect("a page")["data"][0]["id"]
+        .as_str()
+        .expect("an id")
+        .to_owned();
+    let deleted = harness
+        .call(Who::Admin, "auth.ip_rule.delete", json!({ "id": id }))
+        .await;
+    assert_eq!(deleted.data(), Some(&json!({ "deleted": true })));
+
+    let wrong = json!({ "login": "a1", "password": "wrong-password" }).to_string();
+    for _ in 0..LOCKOUT_THRESHOLD {
+        let reply = login(&behind, vec![forwarded], wrong.clone()).await;
+        assert_eq!(reply.status, 401, "{}", reply.body);
+    }
+    let locked = login(&behind, vec![forwarded], login_body.clone()).await;
+    assert_eq!(locked.status, 403, "{}", locked.body);
+    assert_eq!(locked.json()["error"]["key"], json!("auth.error.locked"));
+    let other_address = login(
+        &behind,
+        vec![("x-forwarded-for", "198.51.100.7")],
+        login_body.clone(),
+    )
+    .await;
+    assert_eq!(other_address.status, 200, "{}", other_address.body);
+    let peer_itself = login(&direct, vec![forwarded], login_body.clone()).await;
+    assert_eq!(peer_itself.status, 200, "{}", peer_itself.body);
+    assert_eq!(lockout(&harness).len(), 1);
+
+    #[cfg(feature = "audit")]
+    {
+        harness
+            .registry()
+            .services()
+            .get::<keel_system::audit::api::Flush>()
+            .expect("the audit module provides Flush")
+            .flush()
+            .await
+            .expect("the worker answers the flush");
+        let recorded = harness
+            .database()
+            .rows("SELECT coalesce(ip, '-') || ' ' || status || ' ' || coalesce(error_key, '-') FROM audit_call WHERE function = 'auth.login' AND via = 'http' ORDER BY at, id")
+            .await;
+        assert!(
+            recorded
+                .iter()
+                .filter(|row| row.starts_with("203.0.113.9 "))
+                .count()
+                >= LOCKOUT_THRESHOLD as usize + 2,
+            "the forwarded address is recorded: {recorded:?}"
+        );
+        assert!(
+            recorded.contains(&"203.0.113.9 failed auth.error.locked".to_owned()),
+            "{recorded:?}"
+        );
+        assert!(
+            recorded.contains(&"198.51.100.7 committed -".to_owned()),
+            "{recorded:?}"
+        );
+        assert!(
+            recorded
+                .iter()
+                .any(|row| row.starts_with("127.0.0.1 committed")),
+            "the untrusted peer is recorded as itself: {recorded:?}"
+        );
+    }
+    direct.stop().await.expect("the server stops");
+    behind.stop().await.expect("the server stops");
     harness.finish().await;
 }

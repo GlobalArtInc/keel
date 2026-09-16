@@ -7,6 +7,7 @@ LIB=/var/lib/keel
 RUN=/run/keel
 UNIT=/etc/systemd/system/keel.service
 LINK=/usr/local/bin/keel
+CERT=$LIB/tls/cert.pem
 DEFAULT_LISTEN=127.0.0.1:1500
 DEFAULT_ADMIN="admin"
 ROOT_ACCOUNT=00000000000000000000000000
@@ -28,6 +29,7 @@ link_installed=0
 service_started=0
 touched=0
 db_created=0
+install_curl=0
 
 usage() {
   cat <<EOF
@@ -227,6 +229,13 @@ shown_host() {
   esac
 }
 
+listen_unspecified() {
+  case $(listen_host) in
+    0.0.0.0|::) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 check_host() {
   begin "checking the host"
   if [ "$(id -u)" -ne 0 ]; then
@@ -250,6 +259,9 @@ check_host() {
   fi
   if [ "$(uname -s)" != "Linux" ]; then
     fail "this is not a Linux host"
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    install_curl=1
   fi
   need tar runuser useradd groupadd getent sha256sum install hostname awk
   local name
@@ -303,16 +315,19 @@ apt_install() {
   apt-get install -y -q --no-install-recommends "$@"
 }
 
+ensure_curl() {
+  if [ "$install_curl" -eq 1 ]; then
+    apt_install curl ca-certificates
+  fi
+  need curl
+}
+
 fetch_binary() {
   begin "fetching the binary"
   tmp=$(mktemp -d /tmp/keel-install.XXXXXX)
   local source name
   case $binary in
     https://*)
-      if ! command -v curl >/dev/null 2>&1; then
-        apt_install curl ca-certificates
-        begin "fetching the binary"
-      fi
       name=${binary##*/}
       say "downloading $binary"
       curl -fsSL --proto '=https' --proto-redir '=https' -o "$tmp/$name" "$binary"
@@ -531,12 +546,15 @@ prepare_database() {
 
 ready_status() {
   local host=$1 port=$2
-  (
-    exec 3<>"/dev/tcp/$host/$port" || exit 1
-    printf 'GET /readyz HTTP/1.0\r\nHost: %s\r\n\r\n' "$host" >&3
-    read -r -t 5 _ status _ <&3
-    printf '%s\n' "${status:-}"
-  ) 2>/dev/null || true
+  if [ ! -f "$CERT" ]; then
+    printf 'no-certificate\n'
+    return
+  fi
+  case $host in
+    *:*) host="[$host]" ;;
+  esac
+  curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 --cacert "$CERT" "https://$host:$port/readyz" 2>/dev/null || true
+  printf '\n'
 }
 
 start_service() {
@@ -546,7 +564,7 @@ start_service() {
   local host port waited status
   host=$(probe_host)
   port=$(listen_port)
-  begin "waiting for /readyz on $listen"
+  begin "waiting for /readyz on https://$listen with the certificate $CERT"
   waited=0
   while :; do
     if ! systemctl is-active --quiet keel.service; then
@@ -610,10 +628,21 @@ create_admin() {
   admin_id=$id
 }
 
+certificate_fingerprint() {
+  local fingerprint=""
+  fingerprint=$(journalctl -u keel.service --no-pager -o cat 2>/dev/null | grep -oE '([0-9A-F]{2}:){31}[0-9A-F]{2}' | tail -n 1) || true
+  if [ -z "$fingerprint" ] && command -v openssl >/dev/null 2>&1 && [ -f "$CERT" ]; then
+    fingerprint=$(openssl x509 -in "$CERT" -noout -fingerprint -sha256 2>/dev/null | sed 's/^.*=//') || true
+  fi
+  printf '%s\n' "${fingerprint:-(not found; see journalctl -u keel for the line \"tls certificate\")}"
+}
+
 report() {
-  local host port
+  local host port name fingerprint
   host=$(shown_host)
   port=$(listen_port)
+  name=$(hostname)
+  fingerprint=$(certificate_fingerprint)
   say ""
   say "keel $version is installed on $(hostname)"
   say ""
@@ -633,17 +662,27 @@ report() {
   say "  unit:         keel.service (enabled, running)"
   say "  postgres:     database keel, role keel, peer authentication on $PG_SOCKET_DIR port $pg_port"
   say ""
-  say "  URL:          http://$host:$port/"
+  say "  URL:          https://$host:$port/"
+  if listen_unspecified; then
+    say "  names:        $name, localhost, 127.0.0.1 and ::1 are the names the certificate carries; a browser"
+    say "                reaching the host by another address, $host included, warns about the name as well"
+  fi
+  say "  certificate:  $CERT (self-signed, SHA-256 $fingerprint)"
   say "  login:        $admin"
   say "  password:     $password"
   say "  principal:    $admin_id"
   say ""
   say "The password is shown once and is stored nowhere by the installer."
-  say "The URL serves the panel. Until TLS arrives a browser accepts the session cookie on plain HTTP"
-  say "from localhost alone, so open it through a port forward: ssh -L $port:$host:$port <this host>,"
-  say "then http://localhost:$port/. The same login over the API:"
-  say "  curl -sS -X POST http://$host:$port/api/v1/call/auth.login -H 'Content-Type: application/json' \\"
-  say "    -d '{\"login\":\"$admin\",\"password\":\"<the password above>\"}'"
+  say "The URL serves the panel over TLS with the self-signed certificate above; a browser warns once"
+  say "and shows the fingerprint, which must match the one printed here. A reverse proxy in front"
+  say "trusts $CERT and is named in trusted_proxies of $ETC/config.yaml."
+  say "The same login over the API:"
+  if listen_unspecified; then
+    say "  curl -sS --cacert $CERT --resolve \"$name:$port:$host\" -X POST https://$name:$port/api/v1/call/auth.login \\"
+  else
+    say "  curl -sS --cacert $CERT -X POST https://$host:$port/api/v1/call/auth.login \\"
+  fi
+  say "    -H 'Content-Type: application/json' -d '{\"login\":\"$admin\",\"password\":\"<the password above>\"}'"
   say ""
   say "Checks:"
   say "  systemctl status keel"
@@ -651,7 +690,8 @@ report() {
   say "  runuser -u keel -- keel ctl keel.account.list --out table"
   say "  runuser -u keel -- keel product list"
   say ""
-  say "The listener is plain HTTP; TLS, the privileged agent, updates and the setup link arrive with later milestones (see deploy/README.md)."
+  say "An operator's certificate goes into tls.cert and tls.key of $ETC/config.yaml; ACME, the privileged agent,"
+  say "updates and the setup link arrive with later milestones (see deploy/README.md)."
 }
 
 main() {
@@ -660,6 +700,7 @@ main() {
   trap on_exit EXIT
   check_host
   confirm
+  ensure_curl
   fetch_binary
   ensure_postgres
   ensure_role_and_database

@@ -6,6 +6,8 @@ timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 dev=${2:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+scheme=https
+cacert=""
 dump=contracts/dump
 openapi=contracts/openapi.json
 frontend=frontend
@@ -97,6 +99,21 @@ keel_ok() {
   fi
 }
 
+curl_tls() {
+  if [ -n "$cacert" ]; then
+    curl --cacert "$cacert" "$@"
+  else
+    curl "$@"
+  fi
+}
+
+ready() {
+  if [ -n "$cacert" ] && [ ! -f "$cacert" ]; then
+    return 1
+  fi
+  [ "$(curl_tls -s -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]
+}
+
 start_serve() {
   serve_log="$site/serve.log"
   "$keel" --config "$site/config.yaml" serve >"$serve_log" 2>&1 &
@@ -108,8 +125,8 @@ start_serve() {
       serve_pid=""
       fail "keel serve exited before it was ready"
     fi
-    if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]; then
-      echo "keel serve is ready on 127.0.0.1:$port"
+    if ready; then
+      echo "keel serve is ready on $scheme://127.0.0.1:$port"
       return 0
     fi
     sleep 0.1
@@ -197,6 +214,9 @@ port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
 mkdir -p "$site/run" "$site/lib"
+if [ "$scheme" = https ]; then
+  cacert="$site/lib/tls/cert.pem"
+fi
 cat >"$site/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock
@@ -222,12 +242,15 @@ create_principal "$site/reseller.json" "$reseller_login" reseller "$reseller_acc
 create_principal "$site/user.json" "$user_login" user "$user_account" "$user_password"
 echo "created the admin $admin_login in the root account, the reseller $reseller_login in $reseller_account and the user $user_login in $user_account"
 
-url="http://127.0.0.1:$port"
+url="$scheme://127.0.0.1:$port"
 logins=(
   --as "admin=$admin_login:$admin_password"
   --as "reseller=$reseller_login:$reseller_password"
   --as "user=$user_login:$user_password"
 )
+if [ -n "$cacert" ]; then
+  logins+=(--cacert "$cacert")
+fi
 if [ -n "${KEEL_UPDATE_DUMP:-}" ]; then
   echo "--- keel-dev descriptors dump"
   "$dev" descriptors dump --url "$url" --out "$dump" "${logins[@]}"

@@ -14,6 +14,7 @@ pub mod registry;
 pub mod secret;
 pub mod socket;
 pub mod storage;
+pub mod tls;
 
 mod boot;
 mod grants;
@@ -30,3 +31,4 @@ pub use loader::{BootError, Composition, Kernel};
 pub use registry::Registry;
 pub use socket::{Socket, SocketError};
 pub use storage::{Storage, StorageError};
+pub use tls::{TlsError, TlsMaterial};

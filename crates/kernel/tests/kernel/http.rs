@@ -27,6 +27,8 @@ use tower::ServiceExt;
 const ROOT: &str = "00000000000000000000000000";
 const RESELLER: &str = "01J8A0000000000000000000A1";
 const CUSTOMER: &str = "01J8A0000000000000000000A2";
+const FORWARDED_FOR: &str = "x-forwarded-for";
+const FORWARDED_HOST: &str = "x-forwarded-host";
 
 const EN: &str = r#"{ "probe": { "greeting": "Hello", "only_en": "English only" } }"#;
 const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
@@ -1538,4 +1540,192 @@ async fn every_request_without_a_bearer_token_is_checked_for_cross_site() {
         .await;
     assert_eq!(bearer.status, StatusCode::OK, "{}", bearer.body);
     bench.finish().await;
+}
+
+fn behind_proxies() -> HttpOptions {
+    HttpOptions {
+        trusted_proxies: ["127.0.0.0/8", "10.0.0.0/8"]
+            .iter()
+            .map(|net| net.parse().expect("a net"))
+            .collect(),
+        ..HttpOptions::default()
+    }
+}
+
+async fn client_seen(bench: &Bench, headers: &[(&str, &str)], connected_peer: bool) -> Value {
+    let mut request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/call/probe.client")
+        .header(COOKIE, format!("{SESSION_COOKIE}={}", user()));
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let request = request.body(Body::empty()).expect("a request");
+    let answer = bench
+        .send(if connected_peer {
+            connected(request)
+        } else {
+            request
+        })
+        .await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    answer.data()["client"]["ip"].clone()
+}
+
+#[tokio::test]
+async fn x_forwarded_for_is_honoured_from_a_trusted_proxy_alone_and_the_rightmost_untrusted_entry_wins()
+ {
+    let behind = bench_with(Composition::new().module(&PROBE), behind_proxies()).await;
+    let chain = [(FORWARDED_FOR, "203.0.113.9, 198.51.100.2, 10.1.2.3")];
+    assert_eq!(
+        client_seen(&behind, &chain, true).await,
+        json!("198.51.100.2")
+    );
+    assert_eq!(
+        client_seen(&behind, &[(FORWARDED_FOR, "203.0.113.9")], true).await,
+        json!("203.0.113.9")
+    );
+    assert_eq!(
+        client_seen(&behind, &[(FORWARDED_FOR, "10.1.1.1, 127.0.0.2")], true).await,
+        json!("127.0.0.1"),
+        "a chain of trusted proxies alone leaves the peer address"
+    );
+    assert_eq!(
+        client_seen(&behind, &chain, false).await,
+        json!(null),
+        "without a peer address nothing is trusted"
+    );
+    assert_eq!(client_seen(&behind, &[], true).await, json!("127.0.0.1"));
+    behind.finish().await;
+
+    let direct = bench().await;
+    assert_eq!(
+        client_seen(&direct, &chain, true).await,
+        json!("127.0.0.1"),
+        "an untrusted peer cannot forward an address"
+    );
+    direct.finish().await;
+}
+
+async fn same_site_post(bench: &Bench, headers: &[(&str, &str)]) -> Answer {
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri("/api/v1/call/probe.ping")
+        .header(HOST, "upstream.internal:1500")
+        .header(COOKIE, format!("{SESSION_COOKIE}={}", user()))
+        .header(CONTENT_TYPE, "application/json");
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    bench
+        .send(connected(
+            request.body(Body::from("{}")).expect("a request"),
+        ))
+        .await
+}
+
+#[tokio::test]
+async fn a_same_site_post_is_admitted_by_the_forwarded_host_behind_a_trusted_proxy_alone() {
+    let behind = bench_with(Composition::new().module(&PROBE), behind_proxies()).await;
+    let forwarded = [
+        (FORWARDED_HOST, "panel.example"),
+        (ORIGIN.as_str(), "https://panel.example"),
+    ];
+    let admitted = same_site_post(&behind, &forwarded).await;
+    assert_eq!(admitted.status, StatusCode::OK, "{}", admitted.body);
+    assert_eq!(admitted.data()["level"], json!("user"));
+    let with_port = same_site_post(
+        &behind,
+        &[
+            (FORWARDED_HOST, "panel.example:8443"),
+            (ORIGIN.as_str(), "https://PANEL.example:8443"),
+        ],
+    )
+    .await;
+    assert_eq!(with_port.status, StatusCode::OK, "{}", with_port.body);
+    let foreign = same_site_post(
+        &behind,
+        &[
+            (FORWARDED_HOST, "panel.example"),
+            (ORIGIN.as_str(), "https://upstream.internal:1500"),
+        ],
+    )
+    .await;
+    assert_eq!(foreign.status, StatusCode::FORBIDDEN, "{}", foreign.body);
+    assert_eq!(foreign.key(), "keel.error.cross_site");
+    behind.finish().await;
+
+    let direct = bench().await;
+    let refused = same_site_post(&direct, &forwarded).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.body);
+    assert_eq!(refused.key(), "keel.error.cross_site");
+    let host_stands = same_site_post(
+        &direct,
+        &[
+            (FORWARDED_HOST, "panel.example"),
+            (ORIGIN.as_str(), "https://upstream.internal:1500"),
+        ],
+    )
+    .await;
+    assert_eq!(host_stands.status, StatusCode::OK, "{}", host_stands.body);
+    direct.finish().await;
+}
+
+#[tokio::test]
+async fn a_malformed_forwarded_for_or_host_falls_back_to_the_peer_and_the_host_header() {
+    let behind = bench_with(Composition::new().module(&PROBE), behind_proxies()).await;
+    for malformed in ["nowhere", "203.0.113.9:4321", "203.0.113.9, unknown", ""] {
+        assert_eq!(
+            client_seen(&behind, &[(FORWARDED_FOR, malformed)], true).await,
+            json!("127.0.0.1"),
+            "{malformed:?}"
+        );
+    }
+    for malformed in [
+        "https://panel.example",
+        "panel.example/admin",
+        "a.example, b.example",
+        "",
+    ] {
+        let stands = same_site_post(
+            &behind,
+            &[
+                (FORWARDED_HOST, malformed),
+                (ORIGIN.as_str(), "https://upstream.internal:1500"),
+            ],
+        )
+        .await;
+        assert_eq!(
+            stands.status,
+            StatusCode::OK,
+            "{malformed:?}: {}",
+            stands.body
+        );
+        let refused = same_site_post(
+            &behind,
+            &[
+                (FORWARDED_HOST, malformed),
+                (ORIGIN.as_str(), "https://panel.example"),
+            ],
+        )
+        .await;
+        assert_eq!(
+            refused.status,
+            StatusCode::FORBIDDEN,
+            "{malformed:?}: {}",
+            refused.body
+        );
+    }
+    let boot = bench_with(Composition::new().module(&PROBE), behind_proxies()).await;
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/boot")
+        .header(HOST, "upstream.internal:1500")
+        .header(FORWARDED_HOST, "panel.example/admin")
+        .body(Body::empty())
+        .expect("a request");
+    let answer = boot.send(connected(request)).await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    boot.finish().await;
+    behind.finish().await;
 }

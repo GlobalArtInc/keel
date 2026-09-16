@@ -6,6 +6,8 @@ export { expect };
 export type E2ERole = 'admin' | 'reseller' | 'user';
 
 export const E2E_URL_VARIABLE = 'KEEL_E2E_URL';
+export const E2E_SPKI_VARIABLE = 'KEEL_E2E_SPKI';
+export const IGNORE_SPKI_ERRORS_FLAG = '--ignore-certificate-errors-spki-list';
 export const E2E_LOGINS: Readonly<Record<E2ERole, string>> = {
   admin: 'root',
   reseller: 'res1',
@@ -77,6 +79,14 @@ function required(env: Environment, variable: string): string {
 
 export function keelBaseUrl(env: Environment = hostEnvironment()): string {
   return required(env, E2E_URL_VARIABLE).replace(/\/+$/, '');
+}
+
+export function chromiumArgs(env: Environment = hostEnvironment()): string[] {
+  const spki = env[E2E_SPKI_VARIABLE];
+  if (spki === undefined || spki === '') {
+    return [];
+  }
+  return [`${IGNORE_SPKI_ERRORS_FLAG}=${spki}`];
 }
 
 export function keelSite(env: Environment = hostEnvironment(), baseURL?: string): E2ESite {

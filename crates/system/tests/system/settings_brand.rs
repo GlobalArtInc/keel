@@ -325,3 +325,73 @@ async fn the_brand_descriptors_match_their_snapshots() {
     }
     harness.finish().await;
 }
+
+#[tokio::test]
+async fn x_forwarded_host_from_a_trusted_proxy_selects_the_brand_patch() {
+    let harness = boot().await;
+    let behind = harness.http_behind(&["127.0.0.0/8"]).await;
+    let direct = harness.http().await;
+    let set = harness
+        .call(
+            Who::Admin,
+            "settings.brand.set",
+            json!({ "host": HOST, "name": "Panel Example", "logo": PANEL_LOGO, "hue": 350 }),
+        )
+        .await;
+    assert!(set.data().is_some(), "{:?}", set.error());
+    let upstream = [("host", "upstream.internal:1500")];
+    let forwarded = [
+        ("host", "upstream.internal:1500"),
+        ("x-forwarded-host", "Panel.Example:8443"),
+    ];
+    let patched = behind
+        .request("GET", "/api/v1/boot", &forwarded, None)
+        .await;
+    assert_eq!(patched.status, 200, "{}", patched.body);
+    assert_eq!(patched.json()["brand"]["name"], json!("Panel Example"));
+    assert_eq!(patched.json()["brand"]["hue"], json!(350));
+    let logo = behind
+        .request("GET", "/brand/logo.svg", &forwarded, None)
+        .await;
+    assert_svg(
+        &logo,
+        PANEL_LOGO,
+        "the forwarded host behind a trusted proxy",
+    );
+
+    let plain = behind.request("GET", "/api/v1/boot", &upstream, None).await;
+    assert_eq!(plain.status, 200, "{}", plain.body);
+    assert_eq!(plain.json()["brand"]["name"], json!("product.demo.brand"));
+    let ignored = direct
+        .request("GET", "/api/v1/boot", &forwarded, None)
+        .await;
+    assert_eq!(ignored.status, 200, "{}", ignored.body);
+    assert_eq!(
+        ignored.json()["brand"]["name"],
+        json!("product.demo.brand"),
+        "an untrusted peer cannot forward a host"
+    );
+    let ignored_logo = direct
+        .request("GET", "/brand/logo.svg", &forwarded, None)
+        .await;
+    assert_svg(&ignored_logo, DEMO_LOGO, "the untrusted peer");
+    let malformed = behind
+        .request(
+            "GET",
+            "/api/v1/boot",
+            &[
+                ("host", "upstream.internal:1500"),
+                ("x-forwarded-host", "https://panel.example/admin"),
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(malformed.status, 200, "{}", malformed.body);
+    assert_eq!(
+        malformed.json()["brand"]["name"],
+        json!("product.demo.brand")
+    );
+    direct.stop().await.expect("the server stops");
+    behind.stop().await.expect("the server stops");
+    harness.finish().await;
+}

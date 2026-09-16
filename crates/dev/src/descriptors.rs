@@ -44,6 +44,12 @@ pub enum Error {
     },
     #[error("the HTTP client failed: {0}")]
     Http(#[from] reqwest::Error),
+    #[error("--cacert {}: {source}", path.display())]
+    Cacert {
+        path: PathBuf,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("{method} {path} answered {status}: {body}")]
     Answered {
         method: Method,
@@ -266,12 +272,23 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(url: &str) -> Result<Self, Error> {
+    pub fn new(url: &str, cacert: Option<&Path>) -> Result<Self, Error> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .timeout(TIMEOUT)
-            .build()?;
+        let mut builder = reqwest::Client::builder().no_proxy().timeout(TIMEOUT);
+        if let Some(path) = cacert {
+            let failed = |source: Box<dyn std::error::Error + Send + Sync>| Error::Cacert {
+                path: path.to_owned(),
+                source,
+            };
+            let pem = fs::read(path).map_err(|error| failed(Box::new(error)))?;
+            let certificates = reqwest::Certificate::from_pem_bundle(&pem)
+                .map_err(|error| failed(Box::new(error)))?;
+            if certificates.is_empty() {
+                return Err(failed("the file holds no CERTIFICATE block".into()));
+            }
+            builder = builder.tls_certs_only(certificates);
+        }
+        let http = builder.build()?;
         Ok(Self {
             http,
             base: url.trim_end_matches('/').to_owned(),
@@ -375,7 +392,12 @@ fn session_pair(set_cookie: &str) -> Option<String> {
     Some(pair.to_owned())
 }
 
-pub async fn dump(url: &str, out: &Path, logins: &[Login]) -> Result<Dumped, Error> {
+pub async fn dump(
+    url: &str,
+    cacert: Option<&Path>,
+    out: &Path,
+    logins: &[Login],
+) -> Result<Dumped, Error> {
     let mut seen = BTreeSet::new();
     for login in logins {
         if login.level == Level::Guest {
@@ -385,7 +407,7 @@ pub async fn dump(url: &str, out: &Path, logins: &[Login]) -> Result<Dumped, Err
             return Err(Error::LevelTwice(login.level));
         }
     }
-    let client = Client::new(url)?;
+    let client = Client::new(url, cacert)?;
     let mut levels = vec![Level::Guest];
     let mut files = dump_level(&client, out, Level::Guest, None).await?;
     for login in logins {
@@ -580,9 +602,14 @@ pub fn files_under(root: &Path) -> Result<BTreeSet<String>, Error> {
     Ok(paths)
 }
 
-pub async fn check(url: &str, dir: &Path, logins: &[Login]) -> Result<Diff, Error> {
+pub async fn check(
+    url: &str,
+    cacert: Option<&Path>,
+    dir: &Path,
+    logins: &[Login],
+) -> Result<Diff, Error> {
     let temporary = tempfile::tempdir().map_err(io(&std::env::temp_dir()))?;
-    dump(url, temporary.path(), logins).await?;
+    dump(url, cacert, temporary.path(), logins).await?;
     diff_labelled(
         dir,
         temporary.path(),
@@ -738,6 +765,37 @@ mod tests {
 
     fn login(text: &str) -> Login {
         text.parse().unwrap()
+    }
+
+    const CACERT: &str = "-----BEGIN CERTIFICATE-----\nMIIBPDCB46ADAgECAgkAjV0nv83bZuYwCgYIKoZIzj0EAwIwFDESMBAGA1UEAwwJ\na2VlbC50ZXN0MB4XDTI2MDkxNjExNTUwMloXDTM2MDkxMzExNTUwMlowFDESMBAG\nA1UEAwwJa2VlbC50ZXN0MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAENDKfeUdk\nMU5iCUU9EvdblbRMXMsnLw1hE2ABqZxWzewdk1OGnLdRt1Nwvi7bOExiI888Z3lv\nYxyUy10txTnmq6MeMBwwGgYDVR0RBBMwEYIJa2VlbC50ZXN0hwR/AAABMAoGCCqG\nSM49BAMCA0gAMEUCIC91i0gyNvK0EwDe9smH6XUvWz1hogNOGblyUHUmnGZeAiEA\nsZspc60D8jeme2bdIqYAKl1mePsxIEvC92uMuTkeHdU=\n-----END CERTIFICATE-----\n";
+
+    #[tokio::test]
+    async fn dump_accepts_a_cacert_against_a_plain_server_and_names_a_file_it_cannot_read() {
+        let (url, _site) = serve().await;
+        let temporary = tempfile::tempdir().unwrap();
+        let cacert = temporary.path().join("cert.pem");
+        fs::write(&cacert, CACERT).unwrap();
+        let out = temporary.path().join("dump");
+        let dumped = dump(&url, Some(&cacert), &out, &[login("admin=root:pw-root")])
+            .await
+            .unwrap();
+        assert_eq!(dumped.levels, [Level::Guest, Level::Admin]);
+        let clean = check(&url, Some(&cacert), &out, &[login("admin=root:pw-root")])
+            .await
+            .unwrap();
+        assert!(clean.is_empty(), "{clean}");
+
+        let missing = temporary.path().join("nowhere.pem");
+        let error = dump(&url, Some(&missing), &out, &[]).await.unwrap_err();
+        assert!(matches!(error, Error::Cacert { .. }), "{error}");
+        assert!(
+            error.to_string().contains(&missing.display().to_string()),
+            "{error}"
+        );
+        let garbage = temporary.path().join("garbage.pem");
+        fs::write(&garbage, "not a certificate").unwrap();
+        let error = dump(&url, Some(&garbage), &out, &[]).await.unwrap_err();
+        assert!(matches!(error, Error::Cacert { .. }), "{error}");
     }
 
     #[test]
@@ -906,7 +964,7 @@ mod tests {
         let out = temporary.path().join("dump");
         let logins = [login("admin=root:pw-root"), login("user=alice:pw-alice")];
 
-        let dumped = dump(&url, &out, &logins).await.unwrap();
+        let dumped = dump(&url, None, &out, &logins).await.unwrap();
         assert_eq!(dumped.levels, [Level::Guest, Level::Admin, Level::User]);
         assert_eq!(dumped.files, 4 + 7 + 5);
         assert_eq!(
@@ -970,11 +1028,11 @@ mod tests {
 
         let stale = out.join("admin/functions/gone.json");
         fs::write(&stale, "{}\n").unwrap();
-        dump(&url, &out, &logins[..1]).await.unwrap();
+        dump(&url, None, &out, &logins[..1]).await.unwrap();
         assert!(!stale.exists());
         assert!(out.join("user/boot.json").exists());
 
-        let clean = check(&url, &out, &logins).await.unwrap();
+        let clean = check(&url, None, &out, &logins).await.unwrap();
         assert!(clean.is_empty(), "{clean}");
         assert_eq!(clean.compared, 16);
         fs::write(
@@ -982,7 +1040,7 @@ mod tests {
             "{\n  \"name\": \"note.list\",\n  \"module\": \"tags\"\n}\n",
         )
         .unwrap();
-        let drifted = check(&url, &out, &logins).await.unwrap();
+        let drifted = check(&url, None, &out, &logins).await.unwrap();
         assert_eq!(drifted.files.len(), 1);
         assert_eq!(drifted.files[0].path, "admin/functions/note.list.json");
         assert!(
@@ -1011,12 +1069,13 @@ mod tests {
         let (url, _site) = serve().await;
         let temporary = tempfile::tempdir().unwrap();
         let out = temporary.path().join("dump");
-        let refused = dump(&url, &out, &[login("guest=root:pw-root")])
+        let refused = dump(&url, None, &out, &[login("guest=root:pw-root")])
             .await
             .unwrap_err();
         assert!(matches!(refused, Error::GuestLogin), "{refused}");
         let twice = dump(
             &url,
+            None,
             &out,
             &[login("admin=root:pw-root"), login("admin=root:pw-root")],
         )
@@ -1025,7 +1084,7 @@ mod tests {
         assert!(matches!(twice, Error::LevelTwice(Level::Admin)), "{twice}");
         assert!(!out.exists());
 
-        let wrong = dump(&url, &out, &[login("admin=root:nope")])
+        let wrong = dump(&url, None, &out, &[login("admin=root:nope")])
             .await
             .unwrap_err();
         match wrong {
@@ -1040,7 +1099,7 @@ mod tests {
         }
         assert!(out.join("guest/boot.json").exists());
 
-        let totp = dump(&url, &out, &[login("admin=totp:pw-totp")])
+        let totp = dump(&url, None, &out, &[login("admin=totp:pw-totp")])
             .await
             .unwrap_err();
         match totp {
@@ -1051,7 +1110,7 @@ mod tests {
             other => panic!("expected the state, got {other}"),
         }
 
-        let mislabelled = dump(&url, &out, &[login("reseller=alice:pw-alice")])
+        let mislabelled = dump(&url, None, &out, &[login("reseller=alice:pw-alice")])
             .await
             .unwrap_err();
         match mislabelled {
@@ -1068,7 +1127,9 @@ mod tests {
         }
         assert!(!out.join("reseller").exists());
 
-        let unreachable = dump("http://127.0.0.1:1", &out, &[]).await.unwrap_err();
+        let unreachable = dump("http://127.0.0.1:1", None, &out, &[])
+            .await
+            .unwrap_err();
         assert!(matches!(unreachable, Error::Http(_)), "{unreachable}");
     }
 }

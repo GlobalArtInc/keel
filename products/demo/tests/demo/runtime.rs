@@ -1,15 +1,14 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
 
 use keel::prelude::*;
 use keel::sdk::serde_json;
 use keel::types::{Envelope, ErrorCode};
-use keel::{Change, Config, Runtime};
+use keel::{Change, Config, Running, Runtime};
 use keel_demo::MANIFEST;
 use keel_demo::note::FUNCTIONS;
 use keel_testkit::{TestDatabase, TestSocket, Who, tokio};
 use tempfile::TempDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 
 struct Site {
     database: TestDatabase,
@@ -51,33 +50,30 @@ impl Site {
     }
 }
 
-async fn http(addr: SocketAddr, method: &str, path: &str, body: &str) -> (u16, Value) {
-    let mut stream = TcpStream::connect(addr)
+async fn http(running: &Running, method: &str, path: &str, body: &str) -> (u16, Value) {
+    let url = running.url(path);
+    assert!(url.starts_with("https://"), "{url}");
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .tls_certs_only([reqwest::Certificate::from_pem(
+            running.tls().certificate_pem().as_bytes(),
+        )
+        .expect("the certificate parses")])
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("a client");
+    let method: reqwest::Method = method.parse().expect("a method");
+    let response = client
+        .request(method, url)
+        .header("host", "keel.test")
+        .header("content-type", "application/json")
+        .body(body.to_owned())
+        .send()
         .await
         .expect("the listener answers");
-    stream
-        .write_all(
-            format!(
-                "{method} {path} HTTP/1.1\r\nHost: keel.test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            )
-            .as_bytes(),
-        )
-        .await
-        .expect("the request is sent");
-    let mut response = Vec::new();
-    stream
-        .read_to_end(&mut response)
-        .await
-        .expect("the response is read");
-    let text = String::from_utf8_lossy(&response);
-    let (head, body) = text.split_once("\r\n\r\n").expect("a head and a body");
-    let status: u16 = head
-        .split_whitespace()
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .expect("a status");
-    (status, serde_json::from_str(body).expect("a JSON body"))
+    let status = response.status().as_u16();
+    let text = response.text().await.expect("the body is read");
+    (status, serde_json::from_str(&text).expect("a JSON body"))
 }
 
 #[tokio::test]
@@ -165,14 +161,14 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     );
     assert!(lines[1].starts_with("x "), "{}", table.text);
 
-    let (status, body) = http(running.http_addr(), "GET", "/readyz", "").await;
+    let (status, body) = http(&running, "GET", "/readyz", "").await;
     assert_eq!(status, 200, "{body}");
-    let (status, body) = http(running.http_addr(), "POST", "/api/v1/call/note.list", "{}").await;
+    let (status, body) = http(&running, "POST", "/api/v1/call/note.list", "{}").await;
     assert_eq!(status, 401, "{body}");
     assert_eq!(body["ok"], json!(false));
     assert_eq!(body["error"]["code"], json!("unauthenticated"));
     assert!(body["error"]["requestId"].is_string(), "{body}");
-    let (status, body) = http(running.http_addr(), "GET", "/api/v1/boot", "").await;
+    let (status, body) = http(&running, "GET", "/api/v1/boot", "").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["products"][0]["id"], json!("demo"));
     assert_eq!(body["brand"]["name"], json!("product.demo.brand"));
@@ -220,7 +216,7 @@ async fn with_demo_disabled_the_note_functions_are_unknown_and_no_note_table_is_
         assert_eq!(error.code, ErrorCode::NotFound, "{function}");
         assert_eq!(error.key, "keel.error.function_not_found", "{function}");
     }
-    let (status, body) = http(running.http_addr(), "GET", "/api/v1/boot", "").await;
+    let (status, body) = http(&running, "GET", "/api/v1/boot", "").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["products"], json!([]));
     assert_eq!(body["brand"]["name"], json!("keel.brand"));

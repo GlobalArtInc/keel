@@ -10,14 +10,13 @@ repository.workspace = true
 default = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks"]
 audit = ["dep:tokio", "dep:tracing"]
 cron = ["dep:croner", "dep:tokio", "dep:tracing"]
-notify = ["cron", "dep:lettre", "dep:minijinja", "dep:rustls", "dep:tokio", "dep:tracing"]
+notify = ["cron", "dep:lettre", "dep:minijinja", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
 webhooks = [
   "notify",
   "dep:hmac",
   "dep:rand",
   "dep:reqwest",
-  "dep:rustls",
   "dep:sha2",
   "dep:thiserror",
   "dep:tokio",
@@ -49,7 +48,6 @@ minijinja = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
-rustls = { workspace = true, optional = true }
 sha1 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }

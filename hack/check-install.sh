@@ -75,6 +75,16 @@ fi
 check "install.sh --help prints the usage and exits 0" prints_usage deploy/install.sh
 check "uninstall.sh --help prints the usage and exits 0" prints_usage deploy/uninstall.sh
 check "the sample config carries every key of the kernel" test "$(grep -cE '^(listen|socket|data_dir|database|tls|trusted_proxies|log):' deploy/config-sample.yaml)" = "7"
+check "install.sh needs curl" grep -qE '^\s+need .*\bcurl\b' deploy/install.sh
+check "install.sh installs curl when it is absent" grep -qE 'apt_install curl ca-certificates' deploy/install.sh
+check "install.sh waits for /readyz with the generated certificate" grep -qE 'curl .*--cacert "\$CERT" "https://\$host:\$port/readyz"' deploy/install.sh
+check "install.sh names the certificate under the data directory" grep -qE '^CERT=\$LIB/tls/cert\.pem$' deploy/install.sh
+check "install.sh prints the https address" grep -qE 'say "  URL:          https://\$host:\$port/"' deploy/install.sh
+check "install.sh prints the certificate fingerprint" grep -qE 'SHA-256 \$fingerprint' deploy/install.sh
+check "install.sh shows the API example over https" grep -qE "curl -sS --cacert \\\$CERT -X POST https://" deploy/install.sh
+check "install.sh names the certificate's subjects when listen is unspecified" grep -qE 'names:.*\$name, localhost, 127\.0\.0\.1 and ::1' deploy/install.sh
+check "install.sh pins the API example to a certificate name when listen is unspecified" grep -qE 'curl -sS --cacert \$CERT --resolve \\"\$name:\$port:\$host\\" -X POST https://\$name:\$port/' deploy/install.sh
+check "install.sh prints no plain address" test "$(grep -cE 'http://\$host' deploy/install.sh)" = "0"
 
 if [ -z "$keel" ]; then
   cargo build -p keel-bin

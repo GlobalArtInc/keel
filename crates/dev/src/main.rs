@@ -63,6 +63,8 @@ enum Descriptors {
     Dump {
         #[arg(long)]
         url: String,
+        #[arg(long, value_name = "PEM")]
+        cacert: Option<PathBuf>,
         #[arg(long)]
         out: PathBuf,
         #[arg(long = "as", value_name = "LEVEL=LOGIN:PASSWORD")]
@@ -76,6 +78,8 @@ enum Descriptors {
     Check {
         #[arg(long)]
         url: String,
+        #[arg(long, value_name = "PEM")]
+        cacert: Option<PathBuf>,
         #[arg(long)]
         dir: PathBuf,
         #[arg(long = "as", value_name = "LEVEL=LOGIN:PASSWORD")]
@@ -114,14 +118,25 @@ async fn run(command: Command) -> Result<bool, Error> {
             println!("{}", types::run(&out, check)?);
             Ok(true)
         }
-        Command::Descriptors(Descriptors::Dump { url, out, logins }) => {
-            println!("{}", descriptors::dump(&url, &out, &logins).await?);
+        Command::Descriptors(Descriptors::Dump {
+            url,
+            cacert,
+            out,
+            logins,
+        }) => {
+            println!(
+                "{}",
+                descriptors::dump(&url, cacert.as_deref(), &out, &logins).await?
+            );
             Ok(true)
         }
         Command::Descriptors(Descriptors::Diff { a, b }) => report(descriptors::diff(&a, &b)?),
-        Command::Descriptors(Descriptors::Check { url, dir, logins }) => {
-            report(descriptors::check(&url, &dir, &logins).await?)
-        }
+        Command::Descriptors(Descriptors::Check {
+            url,
+            cacert,
+            dir,
+            logins,
+        }) => report(descriptors::check(&url, cacert.as_deref(), &dir, &logins).await?),
         Command::Views(Views::Share { dump, frontend }) => {
             let shares = views::share(&dump, &frontend)?;
             print!("{shares}");

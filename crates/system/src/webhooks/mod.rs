@@ -79,7 +79,6 @@ fn init(r: &mut Registrar) -> Result<()> {
         .i18n("en", include_str!("../../i18n/webhooks/en.json"))
         .i18n("ru", include_str!("../../i18n/webhooks/ru.json"))
         .start(|ctx| async move {
-            let _ = rustls::crypto::ring::default_provider().install_default();
             let started = started::Started::new(started::Seams {
                 db: ctx.db(),
                 clock: ctx.require::<dyn Clock>()?,

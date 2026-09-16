@@ -7,8 +7,10 @@ use std::sync::Arc;
 use keel_kernel::http::Frontend;
 use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::socket::Serving;
+use keel_kernel::tls;
 use keel_kernel::{
     Config, Dispatcher, Http, HttpOptions, Instance, Kernel, Readiness, Served, Socket, Storage,
+    TlsMaterial,
 };
 use keel_sdk::{ModuleDef, ProductManifest};
 
@@ -28,6 +30,7 @@ pub struct Running {
     readiness: Arc<Readiness>,
     kernel: Kernel,
     http: Served,
+    tls: TlsMaterial,
     socket: Serving,
     products: Vec<String>,
 }
@@ -53,6 +56,9 @@ impl Runtime {
     }
 
     pub async fn start(&self, config: &Config) -> Result<Running, Error> {
+        if tls::install_provider() {
+            tracing::debug!("the TLS provider is installed");
+        }
         let storage = Storage::connect(config).await?;
         let outcome = self.start_with(config, &storage).await;
         match outcome {
@@ -69,16 +75,23 @@ impl Runtime {
     async fn start_with(&self, config: &Config, storage: &Storage) -> Result<Running, Error> {
         let enabled = self.enabled(storage).await?.ids;
         let instance = Instance::establish(&config.data_dir, storage.db()).await?;
+        let tls = TlsMaterial::load(&config.tls, &config.data_dir, config.listen)?;
+        tracing::info!(
+            fingerprint = %tls.fingerprint(),
+            cert = %tls.source().map(|source| source.cert_path().display().to_string()).unwrap_or_default(),
+            "tls certificate"
+        );
         let readiness = Readiness::new();
         let http = Http::new(
             storage.db().clone(),
             readiness.clone(),
             HttpOptions {
                 frontend: self.frontend.clone(),
+                trusted_proxies: config.trusted_proxies.clone(),
                 ..HttpOptions::default()
             },
         );
-        let served = http.clone().bind(config.listen).await?;
+        let served = http.clone().bind_tls(config.listen, &tls).await?;
         let booted = self.boot(config, storage, &enabled, &instance, &http).await;
         match booted {
             Ok((kernel, socket)) => {
@@ -86,7 +99,7 @@ impl Runtime {
                 tracing::info!(
                     version = VERSION,
                     products = ?enabled,
-                    http = %served.addr(),
+                    https = %served.addr(),
                     socket = %socket.path().display(),
                     "keel is ready"
                 );
@@ -96,6 +109,7 @@ impl Runtime {
                     readiness,
                     kernel,
                     http: served,
+                    tls,
                     socket,
                     products: enabled,
                 })
@@ -183,6 +197,14 @@ impl fmt::Debug for Running {
 impl Running {
     pub fn http_addr(&self) -> SocketAddr {
         self.http.addr()
+    }
+
+    pub fn url(&self, path: &str) -> String {
+        self.http.url(path)
+    }
+
+    pub fn tls(&self) -> &TlsMaterial {
+        &self.tls
     }
 
     pub fn socket(&self) -> &Path {

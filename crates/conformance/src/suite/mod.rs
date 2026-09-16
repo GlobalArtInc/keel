@@ -15,6 +15,7 @@ use crate::report::{Aborted, Failure, Outcome, Report, ensure, fail};
 
 pub struct Settings {
     pub url: String,
+    pub cacert: Option<std::path::PathBuf>,
     pub admin_login: String,
     pub admin_password: String,
     pub user_login: String,
@@ -34,7 +35,7 @@ pub struct User {
 
 pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
     let mut suite = Suite {
-        client: Client::new(&settings.url)?,
+        client: Client::new(&settings.url, settings.cacert.as_deref())?,
         settings,
         report: Report::default(),
     };

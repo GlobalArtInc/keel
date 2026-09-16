@@ -9,15 +9,20 @@ repository.workspace = true
 [dependencies]
 aes-gcm = { workspace = true }
 axum = { workspace = true }
+axum-server = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 futures = { workspace = true }
+hostname = { workspace = true }
+ipnet = { workspace = true }
 jsonschema = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }
 rand = { workspace = true }
+rcgen = { workspace = true }
 rust-embed = { workspace = true }
+rustls = { workspace = true }
 schemars = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }
@@ -31,6 +36,7 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }
+reqwest = { workspace = true }
 tempfile = { workspace = true }
 tower = { workspace = true, features = ["util"] }
 ulid = { workspace = true }

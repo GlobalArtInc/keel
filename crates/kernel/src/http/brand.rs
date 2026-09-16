@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use axum::Extension;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::{FromRequestParts, Path, State};
 use axum::http::header::{
-    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HOST, X_CONTENT_TYPE_OPTIONS,
+    CACHE_CONTROL, CONTENT_SECURITY_POLICY, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS,
 };
+use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::Response;
 use keel_sdk::system::ManifestPatch;
@@ -13,6 +14,7 @@ use keel_sdk::{Asset, KeelError};
 
 use super::Shared;
 use super::live::Live;
+use super::proxy;
 use super::reply::{self, RequestId};
 use crate::boot;
 
@@ -22,14 +24,30 @@ const OCTET_STREAM: &str = "application/octet-stream";
 const CACHE_NO_STORE: &str = "no-store";
 const IMAGE_POLICY: &str = "default-src 'none'; style-src 'unsafe-inline'";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct HostName(pub(super) Option<String>);
+
+impl FromRequestParts<Arc<Shared>> for HostName {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<Shared>,
+    ) -> Result<Self, Self::Rejection> {
+        let trusted = proxy::is_trusted(
+            proxy::peer(&parts.extensions),
+            &state.options.trusted_proxies,
+        );
+        Ok(Self(host_name(&parts.headers, &parts.uri, trusted)))
+    }
+}
+
 pub(super) async fn effective(
     State(state): State<Arc<Shared>>,
     live: Live,
     Extension(RequestId(request_id)): Extension<RequestId>,
-    headers: HeaderMap,
-    uri: Uri,
+    HostName(host): HostName,
 ) -> Response {
-    let host = host_name(&headers, &uri);
     match boot::patch(&live.registry, &state.db, host.as_deref()).await {
         Ok(Some(ManifestPatch {
             logo: Some(logo), ..
@@ -82,12 +100,8 @@ fn image(content_type: &str, body: Bytes) -> Response {
     response
 }
 
-pub(super) fn host_name(headers: &HeaderMap, uri: &Uri) -> Option<String> {
-    let authority = headers
-        .get(HOST)
-        .and_then(|value| value.to_str().ok())
-        .or_else(|| uri.authority().map(|authority| authority.as_str()))?;
-    let authority = authority.trim();
+pub(super) fn host_name(headers: &HeaderMap, uri: &Uri, trusted_peer: bool) -> Option<String> {
+    let authority = proxy::authority(headers, uri, trusted_peer)?.trim();
     let host = if let Some(rest) = authority.strip_prefix('[') {
         let end = rest.find(']')?;
         &authority[..end + 2]
@@ -103,7 +117,7 @@ mod tests {
 
     fn headers(host: &'static str) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(HOST, HeaderValue::from_static(host));
+        headers.insert(axum::http::header::HOST, HeaderValue::from_static(host));
         headers
     }
 
@@ -111,28 +125,41 @@ mod tests {
     fn the_host_name_is_the_host_header_without_its_port_in_lower_case() {
         let uri = Uri::from_static("/api/v1/boot");
         assert_eq!(
-            host_name(&headers("panel.example:1500"), &uri).as_deref(),
+            host_name(&headers("panel.example:1500"), &uri, false).as_deref(),
             Some("panel.example")
         );
         assert_eq!(
-            host_name(&headers("Panel.Example"), &uri).as_deref(),
+            host_name(&headers("Panel.Example"), &uri, false).as_deref(),
             Some("panel.example")
         );
         assert_eq!(
-            host_name(&headers("127.0.0.1:8080"), &uri).as_deref(),
+            host_name(&headers("127.0.0.1:8080"), &uri, false).as_deref(),
             Some("127.0.0.1")
         );
         assert_eq!(
-            host_name(&headers("[::1]:8080"), &uri).as_deref(),
+            host_name(&headers("[::1]:8080"), &uri, false).as_deref(),
             Some("[::1]")
         );
-        assert_eq!(host_name(&headers(""), &uri), None);
-        assert_eq!(host_name(&headers(":1500"), &uri), None);
-        assert_eq!(host_name(&HeaderMap::new(), &uri), None);
+        assert_eq!(host_name(&headers(""), &uri, false), None);
+        assert_eq!(host_name(&headers(":1500"), &uri, false), None);
+        assert_eq!(host_name(&HeaderMap::new(), &uri, false), None);
         let absolute = Uri::from_static("http://Keel.Test:9/api/v1/boot");
         assert_eq!(
-            host_name(&HeaderMap::new(), &absolute).as_deref(),
+            host_name(&HeaderMap::new(), &absolute, false).as_deref(),
             Some("keel.test")
+        );
+        let mut forwarded = headers("upstream.internal:1500");
+        forwarded.insert(
+            super::proxy::X_FORWARDED_HOST,
+            HeaderValue::from_static("Panel.Example:8443"),
+        );
+        assert_eq!(
+            host_name(&forwarded, &uri, true).as_deref(),
+            Some("panel.example")
+        );
+        assert_eq!(
+            host_name(&forwarded, &uri, false).as_deref(),
+            Some("upstream.internal")
         );
     }
 

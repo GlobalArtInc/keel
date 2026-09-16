@@ -6,6 +6,8 @@ timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 conformance=${2:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+scheme=https
+cacert=""
 database=""
 site=""
 serve_pid=""
@@ -92,6 +94,21 @@ keel_ok() {
   fi
 }
 
+curl_tls() {
+  if [ -n "$cacert" ]; then
+    curl --cacert "$cacert" "$@"
+  else
+    curl "$@"
+  fi
+}
+
+ready() {
+  if [ -n "$cacert" ] && [ ! -f "$cacert" ]; then
+    return 1
+  fi
+  [ "$(curl_tls -s -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]
+}
+
 start_serve() {
   serve_log="$site/serve.log"
   "$keel" --config "$site/config.yaml" serve >"$serve_log" 2>&1 &
@@ -103,8 +120,8 @@ start_serve() {
       serve_pid=""
       fail "keel serve exited before it was ready"
     fi
-    if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]; then
-      echo "keel serve is ready on 127.0.0.1:$port"
+    if ready; then
+      echo "keel serve is ready on $scheme://127.0.0.1:$port"
       return 0
     fi
     sleep 0.1
@@ -184,6 +201,9 @@ port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
 mkdir -p "$site/run" "$site/lib"
+if [ "$scheme" = https ]; then
+  cacert="$site/lib/tls/cert.pem"
+fi
 cat >"$site/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock
@@ -212,9 +232,10 @@ keel_ok "$site/private-targets.json" ctl settings.set key=webhook.private_target
 echo "allowed webhook deliveries to private targets for the suite's listener"
 
 echo "--- keel-conformance"
-KEEL_CONFORMANCE_ADMIN_PASSWORD="$admin_password" "$conformance" \
-  --url "http://127.0.0.1:$port" \
-  --admin-login "$admin_login" \
-  --user-login "$user_login"
+conformance_args=(--url "$scheme://127.0.0.1:$port" --admin-login "$admin_login" --user-login "$user_login")
+if [ -n "$cacert" ]; then
+  conformance_args+=(--cacert "$cacert")
+fi
+KEEL_CONFORMANCE_ADMIN_PASSWORD="$admin_password" "$conformance" "${conformance_args[@]}"
 
 stop_serve || fail "keel serve did not stop cleanly"

@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
-use axum::http::header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE, HOST, ORIGIN, USER_AGENT};
+use axum::extract::{FromRequestParts, Request, State};
+use axum::http::header::{ACCEPT_LANGUAGE, AUTHORIZATION, COOKIE, ORIGIN, USER_AGENT};
 use axum::http::request::Parts;
 use axum::http::{Extensions, HeaderMap};
 use axum::middleware::Next;
 use axum::response::Response;
 use chrono_tz::Tz;
+use ipnet::IpNet;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{
     Authenticated, Authenticator, Client, Credential, PreferenceSource, Preferences, SessionChange,
@@ -19,6 +19,7 @@ use keel_types::{ErrorCode, Id, Level, Principal, Scope, Via};
 use super::Shared;
 use super::cookie;
 use super::live::Live;
+use super::proxy;
 use super::reply;
 use crate::grants;
 use crate::loader::REQUIRED_LANGUAGE;
@@ -91,14 +92,13 @@ pub(super) async fn authenticate(
     let request_id = reply::request_id_in(request.extensions());
     let headers = request.headers();
     let credential = credential(headers);
-    let authority = request
-        .uri()
-        .authority()
-        .map(|authority| authority.as_str());
+    let trusted = &state.options.trusted_proxies;
+    let trusted_peer = proxy::is_trusted(proxy::peer(request.extensions()), trusted);
+    let authority = proxy::authority(headers, request.uri(), trusted_peer);
     if !matches!(credential, Some(Credential::Bearer(_))) && cross_site(headers, authority) {
         return reply::error(KeelError::forbidden("keel.error.cross_site"), &request_id);
     }
-    let mut client = client(headers, request.extensions());
+    let mut client = client(headers, request.extensions(), trusted);
     let mut zone = Zone::default();
     let principal = match credential {
         Some(credential) => {
@@ -176,11 +176,15 @@ async fn resolve(
     Err(KeelError::unauthenticated("keel.error.unauthenticated"))
 }
 
-pub(super) fn client(headers: &HeaderMap, extensions: &Extensions) -> Client {
+pub(super) fn client(headers: &HeaderMap, extensions: &Extensions, trusted: &[IpNet]) -> Client {
+    let peer = proxy::peer(extensions);
+    let ip = if proxy::is_trusted(peer, trusted) {
+        proxy::forwarded_for(headers, trusted).or(peer)
+    } else {
+        peer
+    };
     Client {
-        ip: extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map(|ConnectInfo(addr)| addr.ip()),
+        ip,
         user_agent: headers
             .get(USER_AGENT)
             .and_then(|value| value.to_str().ok())
@@ -229,13 +233,7 @@ pub(super) fn cross_site(headers: &HeaderMap, authority: Option<&str>) -> bool {
         return true;
     }
     match headers.get(ORIGIN).and_then(|value| value.to_str().ok()) {
-        Some(origin) => !origin_matches(
-            origin,
-            headers
-                .get(HOST)
-                .and_then(|value| value.to_str().ok())
-                .or(authority),
-        ),
+        Some(origin) => !origin_matches(origin, authority),
         None => false,
     }
 }
@@ -301,7 +299,11 @@ mod tests {
 
     #[test]
     fn a_request_is_cross_site_when_the_browser_says_so_or_the_origin_is_foreign() {
-        let refused = |pairs: &[(&'static str, &'static str)]| cross_site(&headers(pairs), None);
+        let uri = axum::http::Uri::from_static("/api/v1/call/x");
+        let refused = |pairs: &[(&'static str, &'static str)]| {
+            let map = headers(pairs);
+            cross_site(&map, proxy::authority(&map, &uri, false))
+        };
         assert!(refused(&[("origin", "https://evil.example")]));
         assert!(refused(&[("sec-fetch-site", "cross-site")]));
         assert!(!refused(&[("sec-fetch-site", "same-origin")]));
@@ -321,20 +323,45 @@ mod tests {
             &headers(&[("origin", "https://panel.example")]),
             Some("panel.example")
         ));
+        let forwarded = headers(&[
+            ("host", "upstream.internal:1500"),
+            ("x-forwarded-host", "panel.example"),
+            ("origin", "https://panel.example"),
+        ]);
+        assert!(cross_site(
+            &forwarded,
+            proxy::authority(&forwarded, &uri, false)
+        ));
+        assert!(!cross_site(
+            &forwarded,
+            proxy::authority(&forwarded, &uri, true)
+        ));
     }
 
     #[test]
     fn the_client_is_read_from_the_connection_and_the_user_agent_header() {
         let mut extensions = Extensions::new();
-        let bare = client(&headers(&[("user-agent", " probe/1 ")]), &extensions);
+        let bare = client(&headers(&[("user-agent", " probe/1 ")]), &extensions, &[]);
         assert_eq!(bare.ip, None);
         assert_eq!(bare.user_agent.as_deref(), Some("probe/1"));
         assert!(bare.session.is_none());
-        let addr: SocketAddr = "127.0.0.1:4321".parse().expect("an address");
-        extensions.insert(ConnectInfo(addr));
-        let connected = client(&headers(&[("user-agent", "")]), &extensions);
+        let addr: std::net::SocketAddr = "127.0.0.1:4321".parse().expect("an address");
+        extensions.insert(axum::extract::ConnectInfo(addr));
+        let connected = client(&headers(&[("user-agent", "")]), &extensions, &[]);
         assert_eq!(connected.ip, Some(addr.ip()));
         assert_eq!(connected.user_agent, None);
+        let forwarded = headers(&[("x-forwarded-for", "203.0.113.9")]);
+        let untrusted = client(&forwarded, &extensions, &[]);
+        assert_eq!(untrusted.ip, Some(addr.ip()));
+        let trusted: Vec<IpNet> = vec!["127.0.0.0/8".parse().expect("a net")];
+        let behind = client(&forwarded, &extensions, &trusted);
+        assert_eq!(behind.ip, Some("203.0.113.9".parse().expect("an address")));
+        let malformed = client(
+            &headers(&[("x-forwarded-for", "nowhere")]),
+            &extensions,
+            &trusted,
+        );
+        assert_eq!(malformed.ip, Some(addr.ip()));
     }
 
     #[test]
