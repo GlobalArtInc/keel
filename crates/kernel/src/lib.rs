@@ -2,6 +2,7 @@ pub mod clock;
 pub mod config;
 pub mod ctl;
 pub mod dispatcher;
+pub mod export;
 pub mod http;
 pub mod instance;
 pub mod keel;

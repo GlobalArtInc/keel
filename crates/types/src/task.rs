@@ -3,8 +3,11 @@ use std::str::FromStr;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::id::Id;
+
+pub const DOWNLOAD_FUNCTION: &str = "task.download";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -91,6 +94,58 @@ impl TaskRef {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct DownloadFile {
+    pub filename: String,
+    pub content_type: String,
+}
+
+impl DownloadFile {
+    pub fn new(filename: impl Into<String>, content_type: impl Into<String>) -> Self {
+        Self {
+            filename: filename.into(),
+            content_type: content_type.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DownloadRef {
+    pub download: DownloadLink,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DownloadLink {
+    pub function: String,
+    pub params: Map<String, Value>,
+}
+
+impl DownloadRef {
+    pub fn new(function: impl Into<String>, params: Map<String, Value>) -> Self {
+        Self {
+            download: DownloadLink {
+                function: function.into(),
+                params,
+            },
+        }
+    }
+
+    pub fn of_task(id: Id) -> Self {
+        let mut params = Map::new();
+        params.insert("id".to_owned(), Value::String(id.to_string()));
+        Self::new(DOWNLOAD_FUNCTION, params)
+    }
+
+    pub fn function(&self) -> &str {
+        &self.download.function
+    }
+
+    pub fn params(&self) -> &Map<String, Value> {
+        &self.download.params
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskProgress {
     pub id: Id,
     pub function: String,
@@ -143,6 +198,28 @@ mod tests {
             serde_json::from_value(json!({ "task": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } }))
                 .unwrap();
         assert_eq!(parsed, reference);
+    }
+
+    #[test]
+    fn a_download_ref_points_at_task_download_with_the_job_id_and_a_file_names_its_type() {
+        let id: Id = "01J9Q3W6B1R8N5X2K4T7M0V9Z3".parse().unwrap();
+        let reference = DownloadRef::of_task(id);
+        assert_eq!(reference.function(), DOWNLOAD_FUNCTION);
+        assert_eq!(
+            serde_json::to_value(&reference).unwrap(),
+            json!({ "download": { "function": "task.download", "params": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } } })
+        );
+        let parsed: DownloadRef = serde_json::from_value(json!({
+            "download": { "function": "dns.zone.export", "params": { "zone": "example.org" } }
+        }))
+        .unwrap();
+        assert_eq!(parsed.function(), "dns.zone.export");
+        assert_eq!(parsed.params()["zone"], json!("example.org"));
+        let file = DownloadFile::new("notes.csv", "text/csv; charset=utf-8");
+        assert_eq!(
+            serde_json::to_value(&file).unwrap(),
+            json!({ "filename": "notes.csv", "contentType": "text/csv; charset=utf-8" })
+        );
     }
 
     #[test]

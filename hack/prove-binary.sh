@@ -591,8 +591,31 @@ check "ctl note.export format=csv" keel_ok "$site/export.json" ctl note.export f
 check "note.export answers a task ref" json_is "$site/export.json" 'doc["ok"] is True and list(doc["data"]) == ["task"] and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["task"]["id"])'
 export_id=$(json_get "$site/export.json" 'doc["data"]["task"]["id"]')
 check "task.get answers done within ${timeout}s" task_reaches "$site/export-done.json" "$export_id" done
-check "task.get answers the note count as progress, the exported count and a log line per note" json_is "$site/export-done.json" 'doc["data"]["function"] == "note.export" and doc["data"]["class"] == "export" and doc["data"]["progress"] == "4/4" and doc["data"]["result"] == {"exported": 4} and sorted(line.split(" ", 1)[1] for line in doc["data"]["logTail"]) == ["exported alpha", "exported beta", "exported hers", "exported x"]'
+check "task.get answers the note count as progress, the exported count, the download and a log line per note" json_is "$site/export-done.json" "doc['data']['function'] == 'note.export' and doc['data']['class'] == 'export' and doc['data']['progress'] == '4/4' and doc['data']['result'] == {'exported': 4, 'download': {'function': 'task.download', 'params': {'id': '$export_id'}}} and sorted(line.split(' ', 1)[1] for line in doc['data']['logTail']) == ['exported alpha', 'exported beta', 'exported hers', 'exported x']"
 check "the export file holds the header and one record per note" test "$(cut -d, -f2 "$site/lib/tasks/$export_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
+check "GET /api/v1/x/task/download as root streams the export file" http_is "$site/export-download.csv" 200 GET "/api/v1/x/task/download?id=$export_id" '' "$root_cookie"
+check "the download answers the stored file byte for byte" cmp -s "$site/export-download.csv" "$site/lib/tasks/$export_id.out"
+check "the download names the file and its type" header_matches "$site/export-download.csv.headers" content-disposition '^attachment; filename="notes.csv"$'
+check "the download is served as csv no-store" test "$(header_of "$site/export-download.csv.headers" content-type)" = "text/csv; charset=utf-8" -a "$(header_of "$site/export-download.csv.headers" cache-control)" = "no-store"
+check "GET /api/v1/x/task/download as alice is 404 for the owner's export" http_is "$site/export-download-alice.json" 404 GET "/api/v1/x/task/download?id=$export_id" '' "$verified_cookie"
+check "POST /api/v1/call/task.download is 422 naming the raw route" http_is "$site/export-call-route.json" 422 POST /api/v1/call/task.download "{\"id\":\"$export_id\"}" "$root_cookie"
+check "the call route answers keel.error.download_route" json_is "$site/export-call-route.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.download_route" and doc["error"]["params"]["route"] == "/api/v1/x/task/download"'
+check "ctl task.download is refused with the raw route" keel_fails "$site/export-ctl-route.json" ctl task.download "id=$export_id"
+check "ctl task.download answers keel.error.download_route" json_is "$site/export-ctl-route.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.download_route"'
+check "GET /api/v1/x/keel/export for note.list as root streams a csv" http_is "$site/export.csv" 200 GET "/api/v1/x/keel/export?func=note.list&format=csv" '' "$root_cookie"
+check "the export names the list and the day" header_matches "$site/export.csv.headers" content-disposition '^attachment; filename="note.list-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\.csv"$'
+check "the export is served as csv no-store" test "$(header_of "$site/export.csv.headers" content-type)" = "text/csv; charset=utf-8" -a "$(header_of "$site/export.csv.headers" cache-control)" = "no-store"
+check "the export header row carries the translated column labels" test "$(head -n 1 "$site/export.csv" | tr -d '\r')" = "Title,Kind,Tags,Due,Updated,Account"
+check "the export holds one record per note" test "$(tail -n +2 "$site/export.csv" | tr -d '\r' | grep -c .)" = "4"
+check "GET /api/v1/x/keel/export for note.list as alice streams her csv" http_is "$site/export-alice.csv" 200 GET "/api/v1/x/keel/export?func=note.list" '' "$verified_cookie"
+check "alice's header row lacks the account column" test "$(head -n 1 "$site/export-alice.csv" | tr -d '\r')" = "Title,Kind,Tags,Due,Updated"
+check "alice's export holds her note alone" test "$(tail -n +2 "$site/export-alice.csv" | tr -d '\r' | cut -d, -f1)" = "hers"
+check "POST /api/v1/x/keel/export with columns accountId as alice is 422" http_is "$site/export-columns.json" 422 POST /api/v1/x/keel/export '{"func":"note.list","columns":["accountId"]}' "$verified_cookie"
+check "GET /api/v1/x/keel/export with a token scoped to note.list alone is 403" http_is "$site/export-token.json" 403 GET "/api/v1/x/keel/export?func=note.list" '' "$token"
+check "the scoped token is refused by the token scope guard" json_is "$site/export-token.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.token_scope"'
+check "the refused export names the columns field" json_is "$site/export-columns.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "columns" and doc["error"]["fields"][0]["key"] == "keel.error.export_columns"'
+check "GET /api/v1/x/keel/export for note.list as json is one array" http_is "$site/export.json" 200 GET "/api/v1/x/keel/export?func=note.list&format=json" '' "$root_cookie"
+check "the json export holds one object per note" json_is "$site/export.json" 'isinstance(doc, list) and len(doc) == 4 and sorted(row["title"] for row in doc) == ["alpha", "beta", "hers", "x"]'
 check "ctl note.export format=csv pace=500" keel_ok "$site/export-paced.json" ctl note.export format=csv pace=500
 check "the paced export answers a task ref" json_is "$site/export-paced.json" 'doc["ok"] is True and list(doc["data"]) == ["task"]'
 paced_id=$(json_get "$site/export-paced.json" 'doc["data"]["task"]["id"]')
@@ -601,7 +624,7 @@ check "keel serve stops on SIGTERM while the export runs" stop_serve
 check "the export is interrupted with its checkpoint kept" test "$(task_sql "SELECT state || ' ' || (checkpoint_json->>'written' = progress_done::text)::text FROM keel.task_job WHERE id = '$paced_id'")" = "interrupted true"
 start_serve resumed
 check "task.get answers done after the restart" task_reaches "$site/export-resumed.json" "$paced_id" done
-check "the resumed export answers the note count with each exported line exactly once" json_is "$site/export-resumed.json" 'doc["data"]["state"] == "done" and doc["data"]["progress"] == "4/4" and doc["data"]["result"] == {"exported": 4} and doc["data"]["error"] is None and sorted(line.split(" ", 1)[1] for line in doc["data"]["logTail"]) == ["exported alpha", "exported beta", "exported hers", "exported x"]'
+check "the resumed export answers the note count with each exported line exactly once" json_is "$site/export-resumed.json" "doc['data']['state'] == 'done' and doc['data']['progress'] == '4/4' and doc['data']['result'] == {'exported': 4, 'download': {'function': 'task.download', 'params': {'id': '$paced_id'}}} and doc['data']['error'] is None and sorted(line.split(' ', 1)[1] for line in doc['data']['logTail']) == ['exported alpha', 'exported beta', 'exported hers', 'exported x']"
 check "the resumed export file holds each record once" test "$(cut -d, -f2 "$site/lib/tasks/$paced_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
 check "ctl note.delete of two ids runs inline" keel_ok "$site/delete-inline.json" ctl note.delete "ids=$(json_get "$site/import.json" 'json.dumps(doc["data"]["ids"])')"
 check "note.delete answers the deleted count" json_is "$site/delete-inline.json" 'doc["ok"] is True and doc["data"] == {"deleted": 2}'

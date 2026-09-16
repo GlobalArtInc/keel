@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use keel_types::descriptor::{Access, DESCRIPTOR_VERSION, Descriptor, Kind, Mode};
-use keel_types::{Level, ListQuery, Page, Sort, SortDir};
+use keel_types::{DownloadFile, Level, ListQuery, Page, Sort, SortDir};
 use schemars::{JsonSchema, Schema, json_schema, schema_for};
 use sea_orm::{IdenStatic, Iterable, PrimaryKeyToColumn};
 use serde::Serialize;
@@ -17,6 +17,7 @@ use serde_json::Value;
 
 use crate::access::Owned;
 use crate::call::Call;
+use crate::download::DownloadOutcome;
 use crate::error::{KeelError, Result};
 use crate::list::{ListSource, ListSpec};
 use crate::ui::{UiDef, UiError};
@@ -26,6 +27,7 @@ pub type ErasedHandler =
 
 pub const LIST_QUERY_REF: &str = "keel://ListQuery";
 pub const DEFAULT_CLASS: &str = "default";
+pub const STORED_INLINE_KEY: &str = "keel.error.download_stored_inline";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedDef {
@@ -250,6 +252,52 @@ where
             list,
             handler,
         }
+    }
+}
+
+impl<P> FunctionBuilder<P, DownloadFile>
+where
+    P: DeserializeOwned + JsonSchema + Send + 'static,
+{
+    pub fn download<F, Fut>(mut self, handler: F) -> FunctionDef
+    where
+        F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<DownloadOutcome>> + Send + 'static,
+    {
+        self.def.kind = Kind::Download;
+        let handler = Arc::new(handler);
+        let erased: ErasedHandler = Arc::new(move |call: Call<Value>| {
+            let handler = handler.clone();
+            Box::pin(async move {
+                let (state, raw) = call.into_parts();
+                let params: P = serde_json::from_value(raw).map_err(|error| {
+                    KeelError::validation("keel.error.validation").source(error)
+                })?;
+                let call = Call::from_parts(state, params);
+                let slot = Call::from_parts(call.state_clone(), ());
+                let outcome = handler(call).await?;
+                let answer = match outcome {
+                    DownloadOutcome::Body(download) => {
+                        let info = download.info();
+                        slot.attach_download(download);
+                        serde_json::to_value(info)?
+                    }
+                    DownloadOutcome::Stored {
+                        filename,
+                        content_type,
+                    } => {
+                        let file = DownloadFile::new(filename, content_type);
+                        slot.task()
+                            .ok_or_else(|| KeelError::internal(STORED_INLINE_KEY))?
+                            .stored(file.clone());
+                        serde_json::to_value(file)?
+                    }
+                    DownloadOutcome::Task(reference) => serde_json::to_value(reference)?,
+                };
+                Ok(answer)
+            })
+        });
+        self.finish(erased, None)
     }
 }
 
@@ -635,6 +683,62 @@ mod tests {
             .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) })
             .descriptor()
             .expect("a handler list enforces no spec");
+    }
+
+    #[tokio::test]
+    async fn a_download_builder_answers_the_file_and_hands_the_body_to_the_call() {
+        let def = function::<Ping, DownloadFile>("m.e.fetch")
+            .level(Level::User)
+            .unowned()
+            .download(|call: Call<Ping>| async move {
+                Ok(match call.params().text.as_str() {
+                    "stored" => DownloadOutcome::stored("kept.csv", "text/csv"),
+                    "task" => keel_types::TaskRef::new(
+                        "01J9Q3W6B1R8N5X2K4T7M0V9Z3".parse().expect("an id"),
+                    )
+                    .into(),
+                    text => {
+                        crate::download::Download::bytes("out.txt", "text/plain", text.to_owned())
+                            .into()
+                    }
+                })
+            });
+        assert_eq!(def.kind(), Kind::Download);
+        assert_eq!(def.mode(), Mode::Read);
+        let descriptor = serde_json::to_value(def.descriptor().unwrap()).unwrap();
+        assert_eq!(descriptor["kind"], json!("download"));
+        assert_eq!(descriptor["result"]["title"], json!("DownloadFile"));
+        assert_eq!(
+            descriptor["result"]["required"],
+            json!(["filename", "contentType"])
+        );
+
+        let handle = crate::tests::read_handle();
+        let answer = (def.handler())(handle.call(json!({ "text": "hello" })))
+            .await
+            .unwrap();
+        assert_eq!(
+            answer,
+            json!({ "filename": "out.txt", "contentType": "text/plain" })
+        );
+        let download = handle.take_download().expect("the body is attached");
+        assert_eq!(download.collect().await.unwrap(), b"hello");
+        assert!(handle.take_download().is_none());
+
+        let error = (def.handler())(handle.call(json!({ "text": "stored" })))
+            .await
+            .unwrap_err();
+        assert_eq!(error.key(), STORED_INLINE_KEY);
+        assert!(handle.take_download().is_none());
+
+        let answer = (def.handler())(handle.call(json!({ "text": "task" })))
+            .await
+            .unwrap();
+        assert_eq!(
+            answer,
+            json!({ "task": { "id": "01J9Q3W6B1R8N5X2K4T7M0V9Z3" } })
+        );
+        assert!(handle.take_download().is_none());
     }
 
     #[tokio::test]

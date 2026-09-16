@@ -34,7 +34,10 @@ pub use options::{Choice, Choices, OptionsQuery};
 pub use principal::{
     Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via, is_mask,
 };
-pub use task::{TaskLink, TaskProgress, TaskRef, TaskState, UnknownTaskState};
+pub use task::{
+    DOWNLOAD_FUNCTION, DownloadFile, DownloadLink, DownloadRef, TaskLink, TaskProgress, TaskRef,
+    TaskState, UnknownTaskState,
+};
 pub use ui::{
     Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,
     Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,

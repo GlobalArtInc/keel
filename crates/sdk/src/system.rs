@@ -7,7 +7,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use keel_types::{BootProblems, CallError, Event, Id, Level, Mode, Principal, TaskState};
+use keel_types::{
+    BootProblems, CallError, DownloadFile, Event, Id, Level, Mode, Principal, TaskState,
+};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::watch;
@@ -230,6 +232,7 @@ pub trait TaskSink: Send + Sync {
     fn resume_from(&self) -> Option<Value>;
     fn is_cancelled(&self) -> bool;
     fn output_path(&self) -> PathBuf;
+    fn stored(&self, file: DownloadFile);
 }
 
 #[derive(Clone, Debug, Default)]

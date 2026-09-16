@@ -866,6 +866,48 @@
         "result"
       ]
     },
+    "DownloadFile": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string"
+        },
+        "contentType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "contentType"
+      ]
+    },
+    "DownloadLink": {
+      "type": "object",
+      "properties": {
+        "function": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "function",
+        "params"
+      ]
+    },
+    "DownloadRef": {
+      "type": "object",
+      "properties": {
+        "download": {
+          "$ref": "#/$defs/DownloadLink"
+        }
+      },
+      "required": [
+        "download"
+      ]
+    },
     "Empty": {
       "type": "object",
       "properties": {

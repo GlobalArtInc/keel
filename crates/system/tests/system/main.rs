@@ -46,6 +46,8 @@ mod settings_pref;
 mod tasks;
 #[cfg(feature = "tasks")]
 mod tasks_alone;
+#[cfg(feature = "tasks")]
+mod tasks_download;
 #[cfg(feature = "webhooks")]
 mod webhooks;
 #[cfg(feature = "webhooks")]

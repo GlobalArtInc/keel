@@ -11,6 +11,7 @@ pub const CLASS: &str = "export";
 const MAX_PACE_MS: u64 = 2000;
 pub const CSV_HEADER: &str = "id,title,kind,due,tags";
 pub const LOG_PREFIX: &str = "exported";
+pub const FILE_STEM: &str = "notes";
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel::sdk::serde")]
@@ -83,8 +84,18 @@ pub fn export() -> FunctionDef {
                     keel::sdk::tokio::time::sleep(pace).await;
                 }
             }
+            task.stored(file_of(format));
             Ok(Exported { exported: written })
         })
+}
+
+pub fn file_of(format: ExportFormat) -> DownloadFile {
+    match format {
+        ExportFormat::Csv => {
+            DownloadFile::new(format!("{FILE_STEM}.csv"), "text/csv; charset=utf-8")
+        }
+        ExportFormat::Json => DownloadFile::new(format!("{FILE_STEM}.json"), "application/json"),
+    }
 }
 
 fn record(format: ExportFormat, note: &item::Model) -> Result<String> {
@@ -169,6 +180,18 @@ mod tests {
         assert_eq!(descriptor["kind"], json!("action"));
         assert!(export().is_resumable());
         assert_eq!(export().class(), CLASS);
+    }
+
+    #[test]
+    fn the_stored_file_is_named_and_typed_after_the_format() {
+        assert_eq!(
+            file_of(ExportFormat::Csv),
+            DownloadFile::new("notes.csv", "text/csv; charset=utf-8")
+        );
+        assert_eq!(
+            file_of(ExportFormat::Json),
+            DownloadFile::new("notes.json", "application/json")
+        );
     }
 
     #[test]

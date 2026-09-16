@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use keel_types::Id;
+use keel_types::{DownloadFile, Id};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -67,6 +67,10 @@ impl TaskHandle {
 
     pub fn output(&self) -> Result<TaskOutput> {
         TaskOutput::open(self.0.output_path())
+    }
+
+    pub fn stored(&self, file: DownloadFile) {
+        self.0.stored(file);
     }
 }
 
@@ -145,6 +149,7 @@ mod tests {
         cancelled: bool,
         checkpoint: Option<Value>,
         seen: Mutex<Vec<String>>,
+        file: Mutex<Option<DownloadFile>>,
     }
 
     impl Default for Recording {
@@ -155,6 +160,7 @@ mod tests {
                 cancelled: false,
                 checkpoint: None,
                 seen: Mutex::new(Vec::new()),
+                file: Mutex::new(None),
             }
         }
     }
@@ -202,6 +208,10 @@ mod tests {
         fn output_path(&self) -> PathBuf {
             self.dir.join(format!("{}.{OUTPUT_EXTENSION}", self.id))
         }
+
+        fn stored(&self, file: DownloadFile) {
+            *self.file.lock().unwrap() = Some(file);
+        }
     }
 
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -218,6 +228,7 @@ mod tests {
             cancelled: true,
             checkpoint: Some(json!({ "last": 4 })),
             seen: Mutex::new(Vec::new()),
+            file: Mutex::new(None),
         });
         let handle = TaskHandle::new(sink.clone());
         assert_eq!(handle.id(), sink.id);
@@ -251,6 +262,11 @@ mod tests {
         drop(again);
         let written = std::fs::read_to_string(dir.join(format!("{}.out", sink.id))).unwrap();
         assert_eq!(written, "a,b\nc,d\n");
+        handle.stored(DownloadFile::new("rows.csv", "text/csv"));
+        assert_eq!(
+            *sink.file.lock().unwrap(),
+            Some(DownloadFile::new("rows.csv", "text/csv"))
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 

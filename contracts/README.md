@@ -35,6 +35,9 @@ The wire contract of the platform, in a form both sides can check against.
   `keel-dev openapi --dump contracts/dump --out contracts/openapi.json`: one
   `POST /api/v1/call/<func>` per function, the parameter schema as its request body, the
   envelope around the result schema as its `200` response and the error envelope as `default`;
+  a `kind: download` function is described at its raw route `/api/v1/x/<module>/<name>` instead,
+  as `GET` with the parameters in the `q` query member and `POST` with them in the body, its `200`
+  the streamed file and the `{ filename, contentType }` result schema kept under `x-keel.result`;
   the `keel://` references and the `$defs` of the descriptors are hoisted under
   `components/schemas`, a local definition keeping its name when nothing else claims it and
   taking `<func>.<params|result>.<name>` otherwise. `hack/descriptors.sh` runs `--check` after

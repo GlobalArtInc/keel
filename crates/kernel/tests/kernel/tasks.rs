@@ -226,6 +226,13 @@ impl TaskSink for SinkDouble {
     fn output_path(&self) -> PathBuf {
         PathBuf::from("/nonexistent")
     }
+
+    fn stored(&self, file: DownloadFile) {
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(format!("stored {} {}", file.filename, file.content_type));
+    }
 }
 
 static RUNNER: LazyLock<Arc<RunnerDouble>> = LazyLock::new(Arc::default);

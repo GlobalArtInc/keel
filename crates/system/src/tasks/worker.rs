@@ -154,8 +154,8 @@ impl Job {
         let cancelled = self.sink.cancel_requested();
         let draining = self.shared.is_draining();
         let (state, stored) = match outcome {
-            Ok(value) if cancelled => (TaskState::Cancelled, Outcome::Result(value)),
-            Ok(value) => (TaskState::Done, Outcome::Result(value)),
+            Ok(value) if cancelled => (TaskState::Cancelled, self.result(value)),
+            Ok(value) => (TaskState::Done, self.result(value)),
             Err(error) if error.key() == CALLER_UNAVAILABLE => {
                 tracing::warn!(task = %self.id, "the caller is not filled yet; the job is queued again");
                 (TaskState::Queued, Outcome::Requeued)
@@ -178,6 +178,32 @@ impl Job {
             .transition(self.id, &[TaskState::Running], state, stored)
             .await?;
         Ok(())
+    }
+}
+
+impl Job {
+    fn result(&self, value: Value) -> Outcome {
+        let file = self.sink.stored_file();
+        let value = match file {
+            Some(_) => with_download(value, self.id),
+            None => value,
+        };
+        Outcome::Result { value, file }
+    }
+}
+
+fn with_download(value: Value, id: Id) -> Value {
+    let reference = match serde_json::to_value(DownloadRef::of_task(id)) {
+        Ok(Value::Object(reference)) => reference,
+        _ => return value,
+    };
+    match value {
+        Value::Object(mut object) => {
+            object.extend(reference);
+            Value::Object(object)
+        }
+        Value::Null => Value::Object(reference),
+        other => other,
     }
 }
 

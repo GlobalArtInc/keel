@@ -24,5 +24,6 @@
   "task.error.cancelled": "The task was cancelled",
   "task.error.state": "The stored state {state} of task {id} is unknown",
   "task.error.principal": "The stored principal of task {id} cannot be read",
+  "task.error.no_file": "The task {id} left no file to download",
   "task.error.log": "The task log at {path} could not be written"
 }

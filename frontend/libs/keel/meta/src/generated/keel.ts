@@ -341,6 +341,17 @@ export interface FieldUi {
   readonly_if?: Expr | null;
   recompute?: string | null;
 }
+export interface DownloadFile {
+  filename: string;
+  contentType: string;
+}
+export interface DownloadLink {
+  function: string;
+  params: Record<string, unknown>;
+}
+export interface DownloadRef {
+  download: DownloadLink;
+}
 export interface Meta {
   requestId: string;
   principal?: MetaPrincipal | null;

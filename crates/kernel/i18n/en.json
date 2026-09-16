@@ -128,6 +128,14 @@
       "admin": "Administrator",
       "owner": "Owner"
     },
+    "export": {
+      "func": "List",
+      "query": "Query",
+      "columns": "Columns",
+      "format": "Format",
+      "format.csv": "CSV",
+      "format.json": "JSON"
+    },
     "account": {
       "list": { "title": "Accounts" },
       "create": { "title": "New account" },
@@ -284,6 +292,14 @@
       "outbox_row": "The outbox row {seq} carries an unreadable {member}",
       "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
       "task_output": "The task output at {path} could not be opened",
+      "download_route": "The function {function} streams a file; fetch it at {route}",
+      "download_stored_inline": "A stored download can only be written inside a task",
+      "tasks_unavailable": "Background tasks are not available on this installation",
+      "spawn_inside_task": "A task cannot spawn itself again",
+      "invocation_unknown": "The call does not know which function it runs",
+      "export_columns": "The column {column} is not part of the list {function}",
+      "export_output": "The export could not be written",
+      "export_page": "The list {function} answered a page the export cannot read",
       "list": {
         "page": "The page must be 1 or more",
         "page_size": "The page size must be 1 or more",

@@ -17,6 +17,7 @@ pub struct JobSink {
     cancelled: AtomicBool,
     seq: AtomicI64,
     last: Mutex<Reported>,
+    file: Mutex<Option<DownloadFile>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -42,7 +43,15 @@ impl JobSink {
             cancelled: AtomicBool::new(false),
             seq: AtomicI64::new(last_seq),
             last: Mutex::new(last),
+            file: Mutex::new(None),
         }
+    }
+
+    pub fn stored_file(&self) -> Option<DownloadFile> {
+        self.file
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     pub fn request_cancel(&self) {
@@ -149,5 +158,9 @@ impl TaskSink for JobSink {
 
     fn output_path(&self) -> PathBuf {
         log::output_path(&self.shared.data_dir, self.id)
+    }
+
+    fn stored(&self, file: DownloadFile) {
+        *self.file.lock().unwrap_or_else(PoisonError::into_inner) = Some(file);
     }
 }

@@ -8,6 +8,7 @@ mod descriptors;
 mod events;
 mod i18n;
 mod live;
+mod raw;
 mod reply;
 
 use std::future::Future;
@@ -174,6 +175,7 @@ impl Http {
             .route("/call/{func}", get(call::get).post(call::post))
             .route("/i18n", get(i18n::serve))
             .route("/events", get(events::serve))
+            .route("/x/{module}/{name}", get(raw::get).post(raw::post))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 auth::authenticate,

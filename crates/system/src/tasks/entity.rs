@@ -33,6 +33,8 @@ pub mod job {
         pub created_at: DateTimeUtc,
         pub started_at: Option<DateTimeUtc>,
         pub finished_at: Option<DateTimeUtc>,
+        pub file_name: Option<String>,
+        pub file_type: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

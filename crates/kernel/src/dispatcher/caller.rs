@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use keel_sdk::KeelError;
 use keel_sdk::async_trait::async_trait;
@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use super::{CallOptions, Dispatcher};
 use crate::grants;
+use crate::registry::Registry;
 
 #[derive(Default)]
 pub struct CallerHandle {
@@ -40,6 +41,11 @@ impl CallerHandle {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
+    }
+
+    pub(crate) fn registry(&self) -> Option<Arc<Registry>> {
+        self.dispatcher()
+            .map(|dispatcher| dispatcher.registry().clone())
     }
 }
 

@@ -15,7 +15,7 @@ use super::auth::{Caller, Zone};
 use super::cookie;
 use super::live::Live;
 use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION};
-use crate::dispatcher::{CallOptions, Reply};
+use crate::dispatcher::{CallOptions, Reply, download_route_error};
 
 pub(super) const QUERY_PARAMS: &str = "q";
 
@@ -32,6 +32,11 @@ pub(super) async fn post(
         client,
         zone,
     } = caller;
+    if let Some(function) = live.registry.function(&func)
+        && function.def().kind() == Kind::Download
+    {
+        return reply::error(download_route_error(function), &request_id);
+    }
     let options = options(request.headers(), &request_id, client, zone);
     let params = match body(request, state.options.body_limit).await {
         Ok(params) => params,
@@ -59,6 +64,11 @@ pub(super) async fn get(
         zone,
     } = caller;
     if let Some(function) = live.registry.function(&func)
+        && function.def().kind() == Kind::Download
+    {
+        return reply::error(download_route_error(function), &request_id);
+    }
+    if let Some(function) = live.registry.function(&func)
         && !matches!(function.def().kind(), Kind::List | Kind::Get)
     {
         let mut response = reply::error(
@@ -84,7 +94,12 @@ pub(super) async fn get(
     respond(&state, &live, &principal, reply).await
 }
 
-fn options(headers: &HeaderMap, request_id: &str, client: Client, zone: Zone) -> CallOptions {
+pub(super) fn options(
+    headers: &HeaderMap,
+    request_id: &str,
+    client: Client,
+    zone: Zone,
+) -> CallOptions {
     CallOptions {
         request_id: Some(request_id.to_owned()),
         idempotency_key: headers
@@ -99,7 +114,7 @@ fn options(headers: &HeaderMap, request_id: &str, client: Client, zone: Zone) ->
     }
 }
 
-async fn body(request: Request, limit: usize) -> Result<Value, KeelError> {
+pub(super) async fn body(request: Request, limit: usize) -> Result<Value, KeelError> {
     let bytes = to_bytes(request.into_body(), limit)
         .await
         .map_err(|error| {
@@ -136,7 +151,12 @@ pub(super) fn from_query(pairs: Vec<(String, String)>) -> Result<Value, KeelErro
     Ok(Value::Object(params))
 }
 
-async fn respond(state: &Shared, live: &Live, principal: &Principal, reply: Reply) -> Response {
+pub(super) async fn respond(
+    state: &Shared,
+    live: &Live,
+    principal: &Principal,
+    reply: Reply,
+) -> Response {
     let mut response = reply::envelope(&reply.envelope);
     match state.meta_version(&live.registry, principal).await {
         Ok(version) => {

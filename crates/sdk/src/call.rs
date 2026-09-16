@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono_tz::Tz;
 use futures::future::BoxFuture;
-use keel_types::{EventSubject, Id, Mode, Principal};
+use keel_types::{EventSubject, Id, Mode, Principal, TaskRef};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -13,11 +13,14 @@ use serde_json::{Map, Value};
 
 use crate::access::AccountScope;
 use crate::db::Db;
+use crate::download::Download;
 use crate::error::{KeelError, Result};
 use crate::services::Services;
 use crate::settings::SettingsSource;
-use crate::system::{Client, SessionChange};
+use crate::system::{Client, SessionChange, TaskRunner, TaskSpec};
 use crate::task::TaskHandle;
+
+pub const TASKS_UNAVAILABLE_KEY: &str = "keel.error.tasks_unavailable";
 
 pub struct Call<P> {
     state: Arc<CallState>,
@@ -40,6 +43,16 @@ pub(crate) struct CallState {
     after_commit: Mutex<Vec<AfterCommitHook>>,
     session: Mutex<Option<SessionChange>>,
     resolved: Mutex<Option<Id>>,
+    download: Mutex<Option<Download>>,
+    invoked: Mutex<Option<Invoked>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Invoked {
+    pub function: String,
+    pub params: Value,
+    pub class: String,
+    pub resumable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -205,6 +218,39 @@ impl<P> Call<P> {
         })
     }
 
+    pub async fn spawn_self_as_task(&self) -> Result<TaskRef> {
+        if self.state.task.is_some() {
+            return Err(KeelError::internal("keel.error.spawn_inside_task"));
+        }
+        let runner = self
+            .state
+            .services
+            .get::<dyn TaskRunner>()
+            .ok_or_else(|| KeelError::unavailable(TASKS_UNAVAILABLE_KEY))?;
+        let invoked = self
+            .state
+            .invoked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| KeelError::internal("keel.error.invocation_unknown"))?;
+        let mut params = invoked.params;
+        if let Value::Object(object) = &mut params {
+            object.extend(self.state.extra.clone());
+        }
+        let id = runner
+            .spawn(TaskSpec {
+                function: invoked.function,
+                params,
+                principal: self.state.principal.clone(),
+                class: invoked.class,
+                resumable: invoked.resumable,
+                request_id: Some(self.state.request_id.clone()),
+            })
+            .await?;
+        Ok(TaskRef::new(id))
+    }
+
     pub async fn resolve_account(&self, requested: Option<Id>) -> Result<Id> {
         let own = self.state.principal.account_id;
         let resolved = match requested {
@@ -237,6 +283,18 @@ impl<P> Call<P> {
             .session
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = Some(change);
+    }
+
+    pub(crate) fn state_clone(&self) -> Arc<CallState> {
+        self.state.clone()
+    }
+
+    pub(crate) fn attach_download(&self, download: Download) {
+        *self
+            .state
+            .download
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(download);
     }
 
     pub(crate) fn into_parts(self) -> (Arc<CallState>, P) {
@@ -354,6 +412,8 @@ impl CallBuilder {
             after_commit: Mutex::new(Vec::new()),
             session: Mutex::new(None),
             resolved: Mutex::new(None),
+            download: Mutex::new(None),
+            invoked: Mutex::new(None),
         }))
     }
 }
@@ -433,6 +493,22 @@ impl CallHandle {
             .resolved
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub fn take_download(&self) -> Option<Download> {
+        self.0
+            .download
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    pub fn set_invoked(&self, invoked: Invoked) {
+        *self
+            .0
+            .invoked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(invoked);
     }
 
     pub fn take_after_commit(&self) -> Vec<AfterCommitHook> {

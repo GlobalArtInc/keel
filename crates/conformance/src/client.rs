@@ -94,13 +94,28 @@ impl Client {
         credential: Credential,
         extra: &[(HeaderName, &str)],
     ) -> Result<Answer, Failure> {
-        let path = format!("{API_PREFIX}/call/{func}");
+        self.post(
+            &format!("{API_PREFIX}/call/{func}"),
+            params,
+            credential,
+            extra,
+        )
+        .await
+    }
+
+    pub async fn post(
+        &mut self,
+        path: &str,
+        params: Value,
+        credential: Credential,
+        extra: &[(HeaderName, &str)],
+    ) -> Result<Answer, Failure> {
         let request = self
             .http
             .post(format!("{}{path}", self.base))
             .header(CONTENT_TYPE, "application/json")
             .body(params.to_string());
-        self.send(Method::POST, &path, request, credential, extra)
+        self.send(Method::POST, path, request, credential, extra)
             .await
     }
 

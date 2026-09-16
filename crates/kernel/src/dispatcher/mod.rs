@@ -5,6 +5,7 @@ mod list;
 mod live;
 mod masks;
 mod outbox;
+mod raw;
 mod schema;
 pub(crate) mod strip;
 mod task;
@@ -19,9 +20,11 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use futures::future::BoxFuture;
-use keel_sdk::runtime::{AfterCommitHook, Before, CallBuilder, CallHandle, Invoker, Stored};
+use keel_sdk::runtime::{
+    AfterCommitHook, Before, CallBuilder, CallHandle, Invoked, Invoker, Stored,
+};
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
-use keel_sdk::{AfterContext, KeelError, TaskHandle};
+use keel_sdk::{AfterContext, Download, FunctionDef, KeelError, TaskHandle};
 use keel_types::{
     CallError, Envelope, ErrorCode, EventSubject, Id, Kind, Level, Meta, MetaPrincipal, Mode,
     Principal,
@@ -36,6 +39,7 @@ pub use caller::CallerHandle;
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
 pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed};
+pub use raw::{DOWNLOAD_ROUTE_KEY, RAW_PREFIX, download_route_error, raw_route};
 pub use strip::MASK;
 pub use task::BATCH_LOG_PREFIX;
 pub use validate::SchemaError;
@@ -79,11 +83,12 @@ pub struct CallOptions {
     pub task: Option<TaskHandle>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Reply {
     pub envelope: Envelope<Value>,
     pub replay: bool,
     pub session: Option<SessionChange>,
+    pub download: Option<Download>,
 }
 
 impl Reply {
@@ -112,6 +117,16 @@ struct Executed {
     after: Vec<AfterCommitHook>,
     context: Option<AfterContext>,
     session: Option<SessionChange>,
+    download: Option<Download>,
+}
+
+struct Performed {
+    data: Value,
+    download: Option<Download>,
+}
+
+fn audited(def: &FunctionDef) -> bool {
+    def.mode() == Mode::Write || matches!(def.kind(), Kind::Download | Kind::Upload)
 }
 
 struct Origin {
@@ -317,11 +332,11 @@ impl Dispatcher {
                 &request_id,
             );
         };
-        let mode = target.function.def().mode();
-        let recorded = (mode == Mode::Write && self.inner.audit.is_some()).then(|| Recorded {
-            params: params.clone(),
-            client: options.client.clone(),
-        });
+        let recorded =
+            (audited(target.function.def()) && self.inner.audit.is_some()).then(|| Recorded {
+                params: params.clone(),
+                client: options.client.clone(),
+            });
         let outcome = self
             .inner
             .execute(
@@ -364,6 +379,7 @@ impl Dispatcher {
                     envelope: Envelope::ok(executed.data, meta),
                     replay: executed.replay,
                     session: executed.session,
+                    download: executed.download,
                 }
             }
             Err(error) => error_reply(error, &request_id),
@@ -402,6 +418,7 @@ fn error_reply(error: KeelError, request_id: &str) -> Reply {
         envelope: Envelope::err(wire),
         replay: false,
         session: None,
+        download: None,
     }
 }
 
@@ -487,13 +504,14 @@ impl Inner {
             }
             match def.mode() {
                 Mode::Read => {
-                    let data = self.perform(target, &pool, params, &after).await?;
+                    let performed = self.perform(target, &pool, params, &after).await?;
                     Ok(Executed {
-                        data,
+                        data: performed.data,
                         replay: false,
                         after: Vec::new(),
                         context: None,
                         session: pool.take_session_change(),
+                        download: performed.download,
                     })
                 }
                 Mode::Write => {
@@ -528,7 +546,7 @@ impl Inner {
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
         let performed = async {
-            let data = self.perform(target, &handle, params, after).await?;
+            let Performed { data, download } = self.perform(target, &handle, params, after).await?;
             if let Some((key, hash)) = idempotency {
                 let mut stored = data.clone();
                 target.prepared.result.mask_once(&mut stored);
@@ -546,11 +564,11 @@ impl Inner {
                     return Err(Failure::Race { key, hash });
                 }
             }
-            Ok::<Value, Failure>(data)
+            Ok::<Performed, Failure>(Performed { data, download })
         }
         .await;
         let outcome = match performed {
-            Ok(data) => {
+            Ok(Performed { data, download }) => {
                 let mut hooks = take(after);
                 hooks.extend(handle.take_after_commit());
                 let context = handle.after_context();
@@ -574,6 +592,7 @@ impl Inner {
                     after: hooks,
                     context: Some(context),
                     session,
+                    download,
                 })
             }
             Err(failure) => {
@@ -658,18 +677,26 @@ impl Inner {
         handle: &CallHandle,
         params: Value,
         shared: &Shared,
-    ) -> Result<Value, KeelError> {
+    ) -> Result<Performed, KeelError> {
         let function = target.function;
-        let write = function.def().mode() == Mode::Write;
+        let def = function.def();
+        let write = def.mode() == Mode::Write;
         let keyed = write
-            .then(|| function.def().key().and_then(|key| single_id(&params, key)))
+            .then(|| def.key().and_then(|key| single_id(&params, key)))
             .flatten();
         if write {
             for hook in function.within() {
                 (hook.hook)(handle.call(params.clone())).await?;
             }
         }
-        let mut data = (function.def().handler())(handle.call(params)).await?;
+        handle.set_invoked(Invoked {
+            function: def.name().to_owned(),
+            params: params.clone(),
+            class: def.class().to_owned(),
+            resumable: def.is_resumable(),
+        });
+        let mut data = (def.handler())(handle.call(params)).await?;
+        let download = handle.take_download();
         if write {
             for patched in function.patched() {
                 let Some(value) = handle.extra().get(&patched.name).cloned() else {
@@ -709,7 +736,7 @@ impl Inner {
             }
         }
         self.project(target, handle.principal().level, &mut data);
-        Ok(data)
+        Ok(Performed { data, download })
     }
 
     fn project(&self, target: &Target<'_>, level: Level, data: &mut Value) {
@@ -753,6 +780,9 @@ impl Inner {
                     .param("function", func),
             );
         }
+        if target.function.def().kind() == Kind::Download {
+            return Err(download_route_error(target.function));
+        }
         self.admit(&target, &outer, &params, false).await?;
         let (params, extra) = split_extra(params, &target.prepared.patched);
         let pool = self.nested(&outer, &after).read(self.db.clone());
@@ -762,13 +792,13 @@ impl Inner {
             .extra(extra)
             .with_db(mode, outer.db().clone());
         drop(outer);
-        let data = self.perform(&target, &handle, params, &after).await?;
+        let performed = self.perform(&target, &handle, params, &after).await?;
         after
             .after
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .extend(handle.take_after_commit());
-        Ok(data)
+        Ok(performed.data)
     }
 }
 
@@ -784,6 +814,7 @@ fn replay(record: idempotency::Record, func: &str, hash: &str) -> Result<Execute
             after: Vec::new(),
             context: None,
             session: None,
+            download: None,
         })
     } else {
         Err(KeelError::idempotency_mismatch(

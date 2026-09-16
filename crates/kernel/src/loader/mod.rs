@@ -1,9 +1,9 @@
 mod composition;
 mod freeze;
-mod i18n;
+pub(crate) mod i18n;
 mod icons;
 mod init;
-mod keys;
+pub(crate) mod keys;
 mod lifecycle;
 mod migrate;
 mod patch;

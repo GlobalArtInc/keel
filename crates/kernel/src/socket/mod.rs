@@ -13,7 +13,7 @@ use std::time::Duration;
 use keel_sdk::KeelError;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::PrincipalSource;
-use keel_types::{Envelope, Meta, Principal, Via};
+use keel_types::{Envelope, Kind, Meta, Principal, Via};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -23,7 +23,7 @@ use tokio::sync::oneshot;
 use tokio::task::{JoinHandle, JoinSet};
 
 use crate::boot;
-use crate::dispatcher::{CallOptions, Dispatcher, generate_request_id};
+use crate::dispatcher::{CallOptions, Dispatcher, download_route_error, generate_request_id};
 use crate::grants;
 use crate::http::{Projection, acceptable_request_id, catalogue};
 use crate::keel::StoredPrincipals;
@@ -246,6 +246,14 @@ impl Socket {
                 run_as,
             } => {
                 let request_id = request_id.filter(|id| acceptable_request_id(id));
+                if let Some(function) = self.dispatcher.registry().function(&func)
+                    && function.def().kind() == Kind::Download
+                {
+                    return error_envelope(
+                        download_route_error(function),
+                        &request_id.unwrap_or_else(generate_request_id),
+                    );
+                }
                 let principal = match run_as {
                     Some(login) => match self.run_as(&login).await {
                         Ok(principal) => principal,

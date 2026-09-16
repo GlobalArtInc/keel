@@ -4,9 +4,9 @@ use std::time::Duration;
 use keel::prelude::*;
 use keel::sdk::serde_json;
 use keel::types::{TaskProgress, TaskState};
-use keel_demo::note::{EXPORT_CLASS, EXPORT_CSV_HEADER, EXPORT_LOG_PREFIX};
+use keel_demo::note::{EXPORT_CLASS, EXPORT_CSV_HEADER, EXPORT_LOG_PREFIX, export_file_of};
 use keel_system::tasks::api::Drain;
-use keel_system::tasks::{FRAME_KIND, output_path};
+use keel_system::tasks::{DOWNLOAD_FUNCTION, FRAME_KIND, output_path};
 use keel_testkit::{Answer, Harness, Reply, TestHttp, Who, tokio};
 
 const WAIT: Duration = Duration::from_secs(30);
@@ -130,6 +130,13 @@ fn exported_titles(detail: &Value) -> Vec<String> {
     titles
 }
 
+fn exported_result(exported: u64, id: Id) -> Value {
+    json!({
+        "exported": exported,
+        "download": { "function": DOWNLOAD_FUNCTION, "params": { "id": id.to_string() } }
+    })
+}
+
 fn output_lines(data_dir: &Path, id: Id) -> Vec<String> {
     std::fs::read_to_string(output_path(data_dir, id))
         .expect("the export output exists")
@@ -189,7 +196,7 @@ async fn note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_chec
     assert_eq!(detail["state"], json!("done"));
     assert_eq!(detail["resumable"], json!(true));
     assert_eq!(detail["progress"], json!("3/3"));
-    assert_eq!(detail["result"], json!({ "exported": 3 }));
+    assert_eq!(detail["result"], exported_result(3, id));
     assert_eq!(detail["params"]["format"], json!("csv"));
     assert_eq!(detail["checkpoint"]["written"], json!(3));
     assert!(detail["checkpoint"]["lastId"].is_string(), "{detail}");
@@ -208,6 +215,76 @@ async fn note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_chec
     let page = listed.data().expect("the list answers");
     assert_eq!(page["total"], json!(1));
     assert_eq!(page["data"][0]["function"], json!("note.export"));
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn note_export_ends_with_exported_and_a_download_that_task_download_streams_as_the_callers_csv()
+ {
+    let harness = crate::demo().boot().await;
+    create(&harness, Who::A1, "milk, eggs").await;
+    create(&harness, Who::A1, "plain").await;
+    create(&harness, Who::A2, "theirs").await;
+    let http = harness.http().await;
+    let id = export(&http, Who::A1, json!({ "format": "csv" })).await;
+    assert_eq!(wait_final(&harness, id).await, TaskState::Done);
+    let detail = detail(&harness, Who::A1, id).await;
+    assert_eq!(detail["result"], exported_result(2, id));
+    let download = &detail["result"]["download"];
+    let route = format!(
+        "/api/v1/x/task/{}?id={}",
+        download["function"]
+            .as_str()
+            .and_then(|function| function.strip_prefix("task."))
+            .expect("the download names a task function"),
+        download["params"]["id"].as_str().expect("the job id")
+    );
+    let file = export_file_of(ExportFormat::Csv);
+
+    let got = http.get(Who::A1, &route).await;
+    assert_eq!(got.status, 200, "{}", got.body);
+    assert_eq!(got.header("content-type"), Some(file.content_type.as_str()));
+    assert_eq!(
+        got.header("content-disposition"),
+        Some(format!("attachment; filename=\"{}\"", file.filename).as_str())
+    );
+    assert_eq!(got.header("cache-control"), Some("no-store"));
+    let lines: Vec<&str> = got.body.lines().collect();
+    assert_eq!(lines[0], EXPORT_CSV_HEADER);
+    assert_eq!(lines.len(), 3);
+    let mut titles: Vec<String> = lines[1..]
+        .iter()
+        .map(|line| {
+            if line.contains("\"milk, eggs\"") {
+                "milk, eggs".to_owned()
+            } else {
+                line.split(',').nth(1).expect("a title column").to_owned()
+            }
+        })
+        .collect();
+    titles.sort();
+    assert_eq!(titles, ["milk, eggs", "plain"]);
+    assert_eq!(
+        got.body,
+        std::fs::read_to_string(output_path(harness.data_dir(), id)).expect("the file")
+    );
+
+    let foreign = http.get(Who::A2, &route).await;
+    assert_eq!(foreign.status, 404, "{}", foreign.body);
+
+    let as_json = export(&http, Who::A1, json!({ "format": "json" })).await;
+    assert_eq!(wait_final(&harness, as_json).await, TaskState::Done);
+    let got = http
+        .get(Who::A1, &format!("/api/v1/x/task/download?id={as_json}"))
+        .await;
+    assert_eq!(got.status, 200, "{}", got.body);
+    assert_eq!(got.header("content-type"), Some("application/json"));
+    assert_eq!(
+        got.header("content-disposition"),
+        Some("attachment; filename=\"notes.json\"")
+    );
+    assert_eq!(got.body.lines().count(), 2);
     http.stop().await.expect("the server stops");
     harness.finish().await;
 }
@@ -307,7 +384,7 @@ async fn note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_wr
     let detail = detail(&second, Who::A1, id).await;
     assert_eq!(detail["state"], json!("done"));
     assert_eq!(detail["progress"], json!("4/4"));
-    assert_eq!(detail["result"], json!({ "exported": 4 }));
+    assert_eq!(detail["result"], exported_result(4, id));
     assert_eq!(detail["error"], Value::Null);
     assert_eq!(exported_titles(&detail), titles);
     let lines = output_lines(dir.path(), id);

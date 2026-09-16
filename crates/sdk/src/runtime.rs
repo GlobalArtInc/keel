@@ -1,4 +1,7 @@
-pub use crate::call::{AfterCommitHook, CallBuilder, CallHandle, Emitted, Invoker, StillShared};
+pub use crate::call::{
+    AfterCommitHook, CallBuilder, CallHandle, Emitted, Invoked, Invoker, StillShared,
+    TASKS_UNAVAILABLE_KEY,
+};
 pub use crate::config::Section;
 pub use crate::context::Spawner;
 pub use crate::db::Db;

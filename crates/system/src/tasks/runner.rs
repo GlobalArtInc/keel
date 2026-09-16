@@ -197,9 +197,17 @@ impl Shared {
                 .col_expr(job::Column::StartedAt, Expr::value(None::<DateTime<Utc>>))
                 .col_expr(job::Column::FinishedAt, Expr::value(None::<DateTime<Utc>>))
                 .col_expr(job::Column::ErrorJson, Expr::value(None::<Value>)),
-            Outcome::Result(result) => update
+            Outcome::Result { value, file } => update
                 .col_expr(job::Column::FinishedAt, Expr::value(Some(now)))
-                .col_expr(job::Column::ResultJson, Expr::value(Some(result))),
+                .col_expr(job::Column::ResultJson, Expr::value(Some(value)))
+                .col_expr(
+                    job::Column::FileName,
+                    Expr::value(file.as_ref().map(|file| file.filename.clone())),
+                )
+                .col_expr(
+                    job::Column::FileType,
+                    Expr::value(file.map(|file| file.content_type)),
+                ),
             Outcome::Error(error) => update
                 .col_expr(job::Column::FinishedAt, Expr::value(Some(now)))
                 .col_expr(
@@ -220,7 +228,10 @@ impl Shared {
 pub enum Outcome {
     Started,
     Requeued,
-    Result(Value),
+    Result {
+        value: Value,
+        file: Option<DownloadFile>,
+    },
     Error(CallError),
     Ended,
 }
@@ -315,6 +326,8 @@ impl TaskRunner for Runner {
             created_at: Set(now),
             started_at: Set(None),
             finished_at: Set(None),
+            file_name: Set(None),
+            file_type: Set(None),
         }
         .insert(&shared.db)
         .await?;
@@ -444,6 +457,8 @@ mod tests {
             created_at: Utc::now(),
             started_at: None,
             finished_at: None,
+            file_name: None,
+            file_type: None,
         };
         let error = state_of(&row).expect_err("paused is not a state");
         assert_eq!(error.key(), ERROR_STATE);

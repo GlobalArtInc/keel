@@ -1,0 +1,171 @@
+{
+  "keel": 1,
+  "name": "keel.export",
+  "module": "keel",
+  "kind": "download",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "ExportParams",
+    "type": "object",
+    "properties": {
+      "func": {
+        "type": "string"
+      },
+      "query": {
+        "$ref": "#/$defs/ListQuery",
+        "default": {
+          "page": 1,
+          "pageSize": 25
+        }
+      },
+      "columns": {
+        "type": [
+          "array",
+          "null"
+        ],
+        "items": {
+          "type": "string"
+        }
+      },
+      "format": {
+        "$ref": "#/$defs/ExportFormat",
+        "default": "csv"
+      }
+    },
+    "required": [
+      "func"
+    ],
+    "$defs": {
+      "ListQuery": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 25
+          },
+          "search": {
+            "type": "string"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Sort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Filter"
+            }
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "Sort": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "dir": {
+            "$ref": "#/$defs/SortDir"
+          }
+        },
+        "required": [
+          "key",
+          "dir"
+        ]
+      },
+      "SortDir": {
+        "type": "string",
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
+      "Filter": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/$defs/FilterOp"
+          },
+          "value": {
+            "$ref": "#/$defs/FilterValue"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
+      "FilterOp": {
+        "type": "string",
+        "enum": [
+          "eq",
+          "ne",
+          "gt",
+          "gte",
+          "lt",
+          "lte"
+        ]
+      },
+      "FilterValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "json"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "DownloadFile",
+    "type": "object",
+    "properties": {
+      "filename": {
+        "type": "string"
+      },
+      "contentType": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "filename",
+      "contentType"
+    ]
+  }
+}

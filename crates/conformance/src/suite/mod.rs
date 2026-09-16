@@ -1,6 +1,7 @@
 mod auth;
 mod boot;
 mod errors;
+mod export;
 mod health;
 mod lists;
 mod tokens;
@@ -37,12 +38,13 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         settings,
         report: Report::default(),
     };
-    let groups: [(&str, Step); 7] = [
+    let groups: [(&str, Step); 8] = [
         ("health", |suite| Box::pin(health::run(suite))),
         ("boot", |suite| Box::pin(boot::run(suite))),
         ("auth", |suite| Box::pin(auth::run(suite))),
         ("token", |suite| Box::pin(tokens::run(suite))),
         ("list", |suite| Box::pin(lists::run(suite))),
+        ("export", |suite| Box::pin(export::run(suite))),
         ("error", |suite| Box::pin(errors::run(suite))),
         ("webhook", |suite| Box::pin(webhooks::run(suite))),
     ];

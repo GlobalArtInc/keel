@@ -98,6 +98,7 @@ impl Inner {
             after: Vec::new(),
             context: None,
             session: pool.take_session_change(),
+            download: None,
         }))
     }
 
@@ -167,6 +168,7 @@ impl Inner {
             after: Vec::new(),
             context: None,
             session: None,
+            download: None,
         })
     }
 }

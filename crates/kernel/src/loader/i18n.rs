@@ -138,7 +138,7 @@ fn merge_into(
     }
 }
 
-fn find<'a>(messages: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
+pub(crate) fn find<'a>(messages: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     if let Some(value) = messages.get(key) {
         return Some(value);
     }

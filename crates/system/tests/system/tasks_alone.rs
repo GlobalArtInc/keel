@@ -10,7 +10,7 @@ async fn tasks_alone_boots_with_its_tables_holds_its_lock_and_answers_task_list_
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_task")
         .await;
-    assert_eq!(applied, ["1"]);
+    assert_eq!(applied, ["2"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'task\\_%' ORDER BY table_name")

@@ -1,5 +1,6 @@
 pub mod api;
 
+mod download;
 mod entity;
 mod functions;
 mod leader;
@@ -11,6 +12,7 @@ mod worker;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{AdvisoryLock, Caller, ContextExt, LiveEvents, ParamMasker, TaskRunner};
 
+pub use download::{ERROR_NO_FILE, FUNCTION as DOWNLOAD_FUNCTION};
 pub use functions::{LOG_TAIL, PERMISSION_MANAGE as MANAGE, PERMISSION_READ as READ};
 pub use leader::LOCK_KEY;
 pub use log::{
@@ -23,7 +25,7 @@ pub use runner::{
 };
 pub use worker::{POLL, STOP_GRACE};
 
-pub const FUNCTIONS: [&str; 3] = ["task.list", "task.get", "task.cancel"];
+pub const FUNCTIONS: [&str; 4] = ["task.list", "task.get", "task.cancel", "task.download"];
 pub const MENU_PATH: &str = "system/tasks";
 
 static MIGRATIONS: migrator::Migrations =
@@ -52,6 +54,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::list())
         .function(functions::get())
         .function(functions::cancel())
+        .function(download::download())
         .permission(READ, &[Level::User, Level::Reseller])
         .permission(MANAGE, &[Level::User, Level::Reseller])
         .menu(
@@ -109,6 +112,7 @@ mod tests {
                 ("task.list", Kind::List, Mode::Read, Level::User),
                 ("task.get", Kind::Get, Mode::Read, Level::User),
                 ("task.cancel", Kind::Action, Mode::Write, Level::User),
+                ("task.download", Kind::Download, Mode::Read, Level::User),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
