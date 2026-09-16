@@ -119,6 +119,7 @@ jobs:
         uses: pnpm/action-setup@v6
         with:
           package_json_file: frontend/package.json
+          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install node
         uses: actions/setup-node@v4
@@ -356,6 +357,7 @@ jobs:
         uses: pnpm/action-setup@v6
         with:
           package_json_file: frontend/package.json
+          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install node
         uses: actions/setup-node@v4
