@@ -205,6 +205,12 @@ async fn delivery_of_message(harness: &Harness, message: Id) -> Option<Id> {
         .ok()
 }
 
+async fn channel_row(harness: &Harness, id: Id) -> Reply {
+    harness
+        .call(Who::Admin, CHANNEL_GET, json!({ "id": id }))
+        .await
+}
+
 async fn wait_attempt(harness: &Harness, id: Id, attempt: i64) -> Value {
     wait_until(&format!("attempt {attempt} of {id}"), || async {
         delivery_row(harness, id).await["attempt"].as_i64() >= Some(attempt)
@@ -574,11 +580,14 @@ async fn a_refused_smtp_connection_follows_the_ladder_and_the_fifth_failure_rais
         let wait = LADDER[usize::try_from(attempt - 1).expect("an index")];
         let expected = now + keel_sdk::chrono::Duration::from_std(wait).expect("a delta");
         assert_eq!(row["nextAt"], json!(expected), "attempt {attempt}");
-        let channel_row = harness
-            .call(Who::Admin, CHANNEL_GET, json!({ "id": channel }))
-            .await;
-        assert_eq!(data(&channel_row)["lastError"], json!(error));
-        assert_eq!(data(&channel_row)["lastSentAt"], Value::Null);
+        wait_until("the channel records the error", || async {
+            data(&channel_row(&harness, channel).await)["lastError"] == json!(error)
+        })
+        .await;
+        assert_eq!(
+            data(&channel_row(&harness, channel).await)["lastSentAt"],
+            Value::Null
+        );
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(
             delivery_row(&harness, delivery).await["attempt"],
