@@ -185,6 +185,12 @@ fn data(reply: &Reply) -> &Value {
         .unwrap_or_else(|| panic!("a result was expected, got {:?}", reply.error()))
 }
 
+async fn channel_row(harness: &Harness, id: Id) -> Reply {
+    harness
+        .call(Who::Admin, CHANNEL_GET, json!({ "id": id }))
+        .await
+}
+
 async fn sent_deliveries(harness: &Harness) -> Reply {
     harness
         .call(
@@ -273,11 +279,14 @@ async fn a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_t
     );
     assert_eq!(data(&sent)["data"][0]["attempt"], json!(1));
     assert!(data(&sent)["data"][0]["sentAt"].is_string());
-    let channel_row = harness
-        .call(Who::Admin, CHANNEL_GET, json!({ "id": channel }))
-        .await;
-    assert!(data(&channel_row)["lastSentAt"].is_string());
-    assert_eq!(data(&channel_row)["lastError"], Value::Null);
+    wait_until("the channel records the sending", || async {
+        data(&channel_row(&harness, channel).await)["lastSentAt"].is_string()
+    })
+    .await;
+    assert_eq!(
+        data(&channel_row(&harness, channel).await)["lastError"],
+        Value::Null
+    );
     assert_eq!(problem.subject, subject);
 
     let tested = harness
