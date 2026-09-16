@@ -342,7 +342,11 @@ async fn a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded
             "skipped 12:00:00 12:00:00 12:00:00 -"
         ]
     );
-    assert!(scheduler(&harness).running().is_empty());
+    wait_until("every job of the hour finishes", || {
+        let running = running.clone();
+        async move { running.running().is_empty() }
+    })
+    .await;
     assert_eq!(
         recorded(id_of(&rows[0])).map(|(job, _)| job),
         Some(SLOW.to_owned())
