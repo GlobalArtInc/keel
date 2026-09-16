@@ -367,12 +367,16 @@ impl Harness {
         )
     }
 
+    pub fn readiness(&self) -> &Arc<Readiness> {
+        &self.readiness
+    }
+
     pub fn router(&self) -> Router {
-        let http = Http::new(
-            self.db().clone(),
-            self.readiness.clone(),
-            HttpOptions::default(),
-        );
+        self.router_with(HttpOptions::default())
+    }
+
+    pub fn router_with(&self, options: HttpOptions) -> Router {
+        let http = Http::new(self.db().clone(), self.readiness.clone(), options);
         if let Err(error) = http.attach(self.dispatcher.clone()) {
             panic!("{error}");
         }
@@ -380,7 +384,11 @@ impl Harness {
     }
 
     pub async fn http(&self) -> TestHttp {
-        match TestHttp::bind(self.router()).await {
+        self.http_with(HttpOptions::default()).await
+    }
+
+    pub async fn http_with(&self, options: HttpOptions) -> TestHttp {
+        match TestHttp::bind(self.router_with(options)).await {
             Ok(server) => server,
             Err(error) => panic!("{error}"),
         }

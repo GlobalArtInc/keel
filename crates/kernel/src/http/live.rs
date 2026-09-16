@@ -8,7 +8,7 @@ use keel_sdk::system::Authenticator;
 
 use super::Shared;
 use super::reply;
-use crate::dispatcher::Dispatcher;
+use crate::dispatcher::{Dispatcher, LiveBus, OutboxFeed};
 use crate::registry::Registry;
 
 #[derive(Clone)]
@@ -16,6 +16,8 @@ pub(super) struct Live {
     pub(super) dispatcher: Arc<Dispatcher>,
     pub(super) registry: Arc<Registry>,
     pub(super) authenticators: Arc<[Arc<dyn Authenticator>]>,
+    pub(super) bus: Option<Arc<LiveBus>>,
+    pub(super) outbox: Option<Arc<OutboxFeed>>,
 }
 
 impl Live {
@@ -26,10 +28,14 @@ impl Live {
             .of::<Arc<dyn Authenticator>>()
             .cloned()
             .collect();
+        let bus = registry.services().get::<LiveBus>();
+        let outbox = registry.services().get::<OutboxFeed>();
         Self {
             dispatcher,
             registry,
             authenticators,
+            bus,
+            outbox,
         }
     }
 }

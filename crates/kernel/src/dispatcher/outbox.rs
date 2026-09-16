@@ -108,6 +108,23 @@ impl OutboxFeed {
         });
     }
 
+    pub async fn newest(&self) -> Result<u64, KeelError> {
+        let (db, _) = self.attached()?;
+        let row = db
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                "SELECT COALESCE(MAX(seq), 0) AS seq FROM keel_outbox",
+            ))
+            .await?;
+        let seq: i64 = match row {
+            Some(row) => row.try_get("", "seq")?,
+            None => 0,
+        };
+        let seq = u64::try_from(seq).unwrap_or_default();
+        self.publish(seq);
+        Ok(seq)
+    }
+
     fn attached(&self) -> Result<(DatabaseConnection, Id), KeelError> {
         self.attached
             .lock()

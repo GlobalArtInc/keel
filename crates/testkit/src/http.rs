@@ -9,7 +9,7 @@ use axum::http::HeaderValue;
 use axum::http::header::AUTHORIZATION;
 use axum::middleware::{self, Next};
 use axum::response::Response;
-use keel_kernel::http::SESSION_COOKIE;
+use keel_kernel::http::{LAST_EVENT_ID, SESSION_COOKIE};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -17,7 +17,10 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::auth::PRINCIPAL_HEADER;
+use crate::events::EventStream;
 use crate::fixtures::Who;
+
+pub const EVENTS_PATH: &str = "/api/v1/events";
 
 const HOST: &str = "keel.test";
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -108,6 +111,23 @@ impl TestHttp {
     pub async fn get(&self, who: Who, path: &str) -> Answer {
         self.request("GET", path, &[(PRINCIPAL_HEADER, who.login())], None)
             .await
+    }
+
+    pub async fn events(&self, who: Who, last_event_id: Option<u64>) -> EventStream {
+        let id = last_event_id.map(|id| id.to_string());
+        let header = LAST_EVENT_ID;
+        let mut headers = vec![(PRINCIPAL_HEADER, who.login())];
+        if let Some(id) = &id {
+            headers.push((header.as_str(), id.as_str()));
+        }
+        self.stream(EVENTS_PATH, &headers).await
+    }
+
+    pub async fn stream(&self, path: &str, headers: &[(&str, &str)]) -> EventStream {
+        match EventStream::open(self.addr, path, headers).await {
+            Ok(stream) => stream,
+            Err(error) => panic!("{error}"),
+        }
     }
 
     pub async fn post(&self, who: Who, path: &str, body: &Value) -> Answer {

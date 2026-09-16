@@ -8,7 +8,7 @@ use keel_sdk::types::{TaskProgress, TaskState, Via};
 use keel_sdk::{Registrar, TaskHandle};
 use keel_system::tasks::api::Drain;
 use keel_system::tasks::{ERROR_FINISHED, ERROR_INTERRUPTED, FRAME_KIND, MODULE, log_path};
-use keel_testkit::{Harness, Who, tokio};
+use keel_testkit::{EventStream, Harness, Who, tokio};
 use tokio::sync::broadcast::Receiver;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -403,6 +403,76 @@ async fn a_spawned_job_runs_under_the_stored_principal_and_records_progress_step
     assert!(frames.iter().all(|frame| frame.function == "probe.count"));
     let inline = harness.call(Who::A1, "probe.count", json!({})).await;
     assert_eq!(inline.data().expect("inline")["task"], json!(null));
+    harness.finish().await;
+}
+
+async fn progress_until(stream: &mut EventStream, id: Id, state: TaskState) -> Vec<TaskProgress> {
+    let mut seen = Vec::new();
+    loop {
+        let frame = stream.next_event().await;
+        if frame.event.as_deref() != Some(FRAME_KIND) {
+            continue;
+        }
+        assert_eq!(frame.id, None, "{frame:?}");
+        let progress: TaskProgress =
+            keel_sdk::serde_json::from_value(frame.json()).expect("a progress frame");
+        if progress.id != id {
+            continue;
+        }
+        let done = progress.state == state;
+        seen.push(progress);
+        if done {
+            return seen;
+        }
+    }
+}
+
+#[tokio::test]
+async fn task_progress_frames_of_a_job_arrive_on_the_owners_stream_in_order() {
+    let harness = boot().await;
+    let http = harness.http().await;
+    let mut owner = http.events(Who::A1, None).await;
+    let mut other = http.events(Who::A2, None).await;
+    let mut admin = http.events(Who::Admin, None).await;
+    for stream in [&mut owner, &mut other, &mut admin] {
+        assert_eq!(stream.status(), 200);
+        assert!(stream.next().await.is_comment());
+    }
+    let id = runner(&harness)
+        .spawn(spec(&harness, Who::A1, "probe.count", json!({}), "default"))
+        .await
+        .expect("the job is spawned");
+    assert_eq!(wait_final(&harness, id).await, TaskState::Done);
+    let frames = progress_until(&mut owner, id, TaskState::Done).await;
+    let states: Vec<(TaskState, u64)> = frames
+        .iter()
+        .map(|frame| (frame.state, frame.done))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            (TaskState::Queued, 0),
+            (TaskState::Running, 0),
+            (TaskState::Running, 1),
+            (TaskState::Running, 2),
+            (TaskState::Running, 3),
+            (TaskState::Done, 3),
+        ]
+    );
+    assert!(frames.iter().all(|frame| frame.function == "probe.count"));
+    assert_eq!(frames[2].message.as_deref(), Some("step 1"));
+    assert_eq!(frames[2].total, Some(3));
+    let mirrored = progress_until(&mut admin, id, TaskState::Done).await;
+    assert_eq!(
+        mirrored, frames,
+        "the admin's stream carries the same frames"
+    );
+    assert!(
+        other.quiet(Duration::from_millis(700)).await,
+        "another user's stream carries no frame of the job"
+    );
+    drop((owner, other, admin));
+    http.stop().await.expect("the server stops");
     harness.finish().await;
 }
 

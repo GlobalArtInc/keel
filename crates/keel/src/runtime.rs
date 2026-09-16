@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use keel_kernel::http::{BODY_LIMIT, Frontend};
+use keel_kernel::http::Frontend;
 use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::socket::Serving;
 use keel_kernel::{
@@ -74,8 +74,8 @@ impl Runtime {
             storage.db().clone(),
             readiness.clone(),
             HttpOptions {
-                body_limit: BODY_LIMIT,
                 frontend: self.frontend.clone(),
+                ..HttpOptions::default()
             },
         );
         let served = http.clone().bind(config.listen).await?;

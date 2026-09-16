@@ -5,6 +5,7 @@ mod brand;
 mod call;
 mod cookie;
 mod descriptors;
+mod events;
 mod i18n;
 mod live;
 mod reply;
@@ -25,17 +26,19 @@ use keel_types::Principal;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::json;
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::dispatcher::Dispatcher;
 use crate::registry::Registry;
 
+use events::Streams;
 use live::Live;
 
 pub use assets::Frontend;
 pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
+pub use events::{DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_REPLAY_WINDOW, SSE_RETRY};
 pub use i18n::Catalogue;
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
 
@@ -49,6 +52,7 @@ pub const BODY_LIMIT: usize = 1024 * 1024;
 pub struct HttpOptions {
     pub body_limit: usize,
     pub frontend: Option<Frontend>,
+    pub sse_replay_window: u64,
 }
 
 impl Default for HttpOptions {
@@ -56,14 +60,24 @@ impl Default for HttpOptions {
         Self {
             body_limit: BODY_LIMIT,
             frontend: None,
+            sse_replay_window: SSE_REPLAY_WINDOW,
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Readiness {
     migrated: AtomicBool,
-    draining: AtomicBool,
+    draining: watch::Sender<bool>,
+}
+
+impl Default for Readiness {
+    fn default() -> Self {
+        Self {
+            migrated: AtomicBool::new(false),
+            draining: watch::Sender::new(false),
+        }
+    }
 }
 
 impl Readiness {
@@ -76,7 +90,7 @@ impl Readiness {
     }
 
     pub fn draining(&self) {
-        self.draining.store(true, Ordering::SeqCst);
+        self.draining.send_replace(true);
     }
 
     pub(crate) fn is_migrated(&self) -> bool {
@@ -84,7 +98,11 @@ impl Readiness {
     }
 
     pub(crate) fn is_draining(&self) -> bool {
-        self.draining.load(Ordering::SeqCst)
+        *self.draining.borrow()
+    }
+
+    pub(crate) fn drained(&self) -> watch::Receiver<bool> {
+        self.draining.subscribe()
     }
 }
 
@@ -114,6 +132,7 @@ pub(crate) struct Shared {
     readiness: Arc<Readiness>,
     options: HttpOptions,
     live: OnceLock<Live>,
+    streams: Arc<Streams>,
 }
 
 pub struct Served {
@@ -124,14 +143,20 @@ pub struct Served {
 
 impl Http {
     pub fn new(db: DatabaseConnection, readiness: Arc<Readiness>, options: HttpOptions) -> Self {
+        let streams = Arc::new(Streams::new(readiness.clone()));
         Self {
             state: Arc::new(Shared {
                 db,
                 readiness,
                 options,
                 live: OnceLock::new(),
+                streams,
             }),
         }
+    }
+
+    pub fn open_streams(&self) -> usize {
+        self.state.streams.open()
     }
 
     pub fn attach(&self, dispatcher: Arc<Dispatcher>) -> Result<(), HttpError> {
@@ -148,6 +173,7 @@ impl Http {
             .route("/functions/{name}", get(descriptors::one))
             .route("/call/{func}", get(call::get).post(call::post))
             .route("/i18n", get(i18n::serve))
+            .route("/events", get(events::serve))
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 auth::authenticate,

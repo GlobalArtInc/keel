@@ -5,6 +5,7 @@ mod brand;
 mod cipher;
 mod descriptors;
 mod dispatcher;
+mod events;
 mod grants;
 mod http;
 mod instance;

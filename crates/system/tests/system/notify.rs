@@ -20,7 +20,7 @@ use keel_system::notify::{
     FUNCTIONS, INTERNAL_FUNCTIONS, MENU_PATH, MESSAGE_CLEAR, MESSAGE_CREATE, MESSAGE_LIST,
     MESSAGE_MARK, MODULE, POLL_JOB, PROBLEM_GET, PROBLEM_LIST, WIDGET_LIMIT, drop_account,
 };
-use keel_testkit::{Fixture, Harness, Reply, Who, tokio};
+use keel_testkit::{EventStream, Fixture, Harness, Reply, Who, tokio};
 
 const PATIENCE: Duration = Duration::from_secs(15);
 const QUIET: Duration = Duration::from_millis(500);
@@ -640,6 +640,69 @@ async fn a_notification_frame_is_published_after_commit_and_not_for_a_rolled_bac
         ["probe.hello warning probe -"]
     );
     assert_eq!(events(&harness, EVENT_MESSAGE_CREATED).await.len(), 1);
+    harness.finish().await;
+}
+
+async fn notification_on(stream: &mut EventStream) -> NotificationFrame {
+    loop {
+        let frame = stream.next_event().await;
+        if frame.event.as_deref() != Some(FRAME_KIND) {
+            continue;
+        }
+        assert_eq!(frame.id, None, "{frame:?}");
+        return serde_json::from_value(frame.json()).expect("a notification frame");
+    }
+}
+
+async fn no_notification_on(stream: &mut EventStream, within: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + within;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match stream.next_within(remaining).await {
+            Ok(Some(frame)) if frame.event.as_deref() == Some(FRAME_KIND) => return false,
+            Ok(Some(_)) => {}
+            Ok(None) | Err(_) => return true,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_notification_frame_arrives_on_the_recipients_stream_when_a_message_is_written() {
+    let harness = boot().await;
+    let http = harness.http().await;
+    let mut recipient = http.events(Who::Admin, None).await;
+    let mut bystander = http.events(Who::A1, None).await;
+    for stream in [&mut recipient, &mut bystander] {
+        assert_eq!(stream.status(), 200);
+        assert!(stream.next().await.is_comment());
+    }
+    let admin = harness.principal(Who::Admin).clone();
+    let ids = Notifier::notify(
+        caller(&harness).as_ref(),
+        Recipients::Principal(admin.id),
+        "probe.hello",
+        json!({ "who": "admin" }),
+        NotificationLevel::Warning,
+    )
+    .await
+    .expect("the message is created");
+    assert_eq!(ids.len(), 1);
+    let notification = notification_on(&mut recipient).await;
+    assert_eq!(notification.id, ids[0]);
+    assert_eq!(notification.key, "probe.hello");
+    assert_eq!(notification.params, json!({ "who": "admin" }));
+    assert_eq!(notification.level, NotificationLevel::Warning);
+    assert_eq!(notification.created_at, harness.clock().now());
+    assert!(
+        no_notification_on(&mut bystander, QUIET).await,
+        "a user's stream carries no notification addressed to the admin"
+    );
+    assert_eq!(
+        messages(&harness, Who::Admin).await,
+        ["probe.hello warning probe -"]
+    );
+    drop((recipient, bystander));
+    http.stop().await.expect("the server stops");
     harness.finish().await;
 }
 
