@@ -9,8 +9,8 @@ use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::socket::Serving;
 use keel_kernel::tls;
 use keel_kernel::{
-    Config, Dispatcher, Http, HttpOptions, Instance, Kernel, Readiness, Served, Socket, Storage,
-    TlsMaterial,
+    Config, Dispatcher, Http, HttpError, HttpOptions, Instance, Kernel, Readiness, Served, Socket,
+    Storage, TlsMaterial,
 };
 use keel_sdk::{ModuleDef, ProductManifest};
 
@@ -75,7 +75,8 @@ impl Runtime {
     async fn start_with(&self, config: &Config, storage: &Storage) -> Result<Running, Error> {
         let enabled = self.enabled(storage).await?.ids;
         let instance = Instance::establish(&config.data_dir, storage.db()).await?;
-        let tls = TlsMaterial::load(&config.tls, &config.data_dir, config.listen)?;
+        let tls = TlsMaterial::load(&config.tls, &config.data_dir, config.listen)
+            .map_err(HttpError::Tls)?;
         tracing::info!(
             fingerprint = %tls.fingerprint(),
             cert = %tls.source().map(|source| source.cert_path().display().to_string()).unwrap_or_default(),

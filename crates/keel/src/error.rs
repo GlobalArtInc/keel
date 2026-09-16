@@ -5,7 +5,7 @@ use keel_kernel::instance::InstanceError;
 use keel_kernel::loader::{BootError, CompositionError, MigrateError, StopError};
 use keel_kernel::logging::LoggingError;
 use keel_kernel::products::ProductsError;
-use keel_kernel::{ConfigError, HttpError, SocketError, StorageError, TlsError};
+use keel_kernel::{ConfigError, HttpError, SocketError, StorageError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -27,8 +27,6 @@ pub enum Error {
     Boot(#[from] BootError),
     #[error("the dispatcher could not compile a schema: {0}")]
     Schema(#[from] keel_kernel::dispatcher::SchemaError),
-    #[error(transparent)]
-    Tls(#[from] TlsError),
     #[error(transparent)]
     Http(#[from] HttpError),
     #[error(transparent)]
