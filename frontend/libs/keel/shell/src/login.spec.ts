@@ -4,7 +4,7 @@ import { Component } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { KeelBoot, KeelClient } from '@globalart/keel/client';
+import { AUTH_LOGOUT, KeelBoot, KeelClient } from '@globalart/keel/client';
 import type { Boot, Envelope, ErrorCode, MetaPrincipal } from '@globalart/keel/meta';
 import { provideKeelViews } from '@globalart/keel/renderer';
 import { KeelShellComponent, keelProviders, type KeelProduct } from '@globalart/keel/shell';
@@ -297,5 +297,23 @@ describe('the login page', () => {
     await settle(fixture);
     expect(router.url).toBe(`/login?returnTo=${encodeURIComponent(`${SCREEN}?tab=all`)}`);
     expect(loads).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 401 that arrives while the logout is already on its way leaves the plain /login in place', async () => {
+    const client = configure({ [AUTH_LOGOUT]: ok({}) });
+    const fixture = TestBed.createComponent(KeelShellComponent);
+    const router = TestBed.inject(Router);
+    fixture.detectChanges();
+    await router.navigateByUrl(SCREEN);
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('keel-test-tag-cloud')).not.toBeNull();
+
+    const leaving = router.navigateByUrl('/logout');
+    client.expire();
+    await expect(leaving).resolves.toBe(true);
+    await settle(fixture);
+    expect(client.callsOf(AUTH_LOGOUT)).toHaveLength(1);
+    expect(router.url).toBe('/login');
+    expect(fixture.nativeElement.querySelector('keel-login')).not.toBeNull();
   });
 });

@@ -86,7 +86,11 @@ export class KeelShellComponent {
 
   private expire(): void {
     const current = this.router.url;
-    if (authRoute(current)) {
+    const pending = this.router.getCurrentNavigation();
+    if (
+      authRoute(current) ||
+      (pending !== null && authRoute(this.router.serializeUrl(pending.extractedUrl)))
+    ) {
       return;
     }
     this.startup.reset();

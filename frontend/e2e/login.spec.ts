@@ -5,16 +5,23 @@ const CREDENTIALS_MESSAGE = 'The login or the password is wrong';
 const NOTE_LIST = '/f/note.list';
 const SECURITY = '/f/auth.totp.enroll';
 
+const STEP_MARGIN_MS = 5_000;
+
 class Codes {
   private last: number | null = null;
 
   constructor(private readonly totp: TOTP) {}
 
-  next(): string {
-    const now = Math.floor(Date.now() / 1000 / this.totp.period);
+  async next(): Promise<string> {
+    const period = this.totp.period * 1000;
+    const left = period - (Date.now() % period);
+    if (left < STEP_MARGIN_MS) {
+      await new Promise((done) => setTimeout(done, left));
+    }
+    const now = Math.floor(Date.now() / period);
     const step = this.last === null ? now - 1 : Math.max(this.last + 1, now - 1);
     this.last = step;
-    return this.totp.generate({ timestamp: step * this.totp.period * 1000 });
+    return this.totp.generate({ timestamp: step * period });
   }
 }
 
@@ -81,7 +88,7 @@ keelTest.describe('login', () => {
       const codes = new Codes(parsed as TOTP);
       expect(shownSecret.replace(/\s+/g, '')).toContain(parsed.secret.base32);
 
-      await enroll.locator('input[autocomplete="one-time-code"]').fill(codes.next());
+      await enroll.locator('input[autocomplete="one-time-code"]').fill(await codes.next());
       await enroll.locator('button.confirm').click();
       await expect(enroll).toHaveAttribute('data-stage', 'recovery');
       await expect(enroll.locator('[data-recovery] li')).toHaveCount(10);
@@ -96,7 +103,7 @@ keelTest.describe('login', () => {
         .fill(keelSite.logins.admin.password);
       await password.locator('button[type="submit"]').click();
       const code = page.locator('keel-login form[data-step="code"]');
-      await code.locator('input[autocomplete="one-time-code"]').fill(codes.next());
+      await code.locator('input[autocomplete="one-time-code"]').fill(await codes.next());
       await code.locator('button[type="submit"]').click();
       await expect(page.locator('keel-layout')).toBeVisible();
 
@@ -104,7 +111,7 @@ keelTest.describe('login', () => {
       await expect(totp).toHaveAttribute('data-enrolled', 'true');
       await totp.locator('button.disable').click();
       const disable = page.locator('keel-totp-disable');
-      await disable.locator('input[autocomplete="one-time-code"]').fill(codes.next());
+      await disable.locator('input[autocomplete="one-time-code"]').fill(await codes.next());
       await disable.locator('button.disable').click();
       await expect(totp).toHaveAttribute('data-enrolled', 'false');
     },
