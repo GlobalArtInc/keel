@@ -17,7 +17,14 @@ import {
   KeelDescriptors,
   KeelI18n,
 } from '@globalart/keel/client';
-import { isObject, unreachable, type Saved } from '@globalart/keel/forms';
+import {
+  defsOf,
+  isObject,
+  propertiesOf,
+  resolveSchema,
+  unreachable,
+  type Saved,
+} from '@globalart/keel/forms';
 import type { CallError, Descriptor } from '@globalart/keel/meta';
 import {
   PhxErrorComponent,
@@ -54,20 +61,64 @@ import { KeelWizardComponent } from './wizard/wizard.component';
 export type ScreenState =
   | { phase: 'loading' }
   | { phase: 'view'; view: KeelView; injector: Injector }
-  | { phase: 'screen'; descriptor: Descriptor }
+  | { phase: 'screen'; descriptor: Descriptor; params: Record<string, unknown> }
   | { phase: 'missing'; product: string }
   | { phase: 'failed'; error: CallError };
 
 const LOADING: ScreenState = { phase: 'loading' };
 const NO_PARAMS: Record<string, unknown> = {};
 
-export function paramsOf(query: ParamMap): Record<string, unknown> {
+const TYPED_FROM_QUERY: readonly string[] = ['integer', 'number', 'boolean', 'array'];
+
+function parsedJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function accepts(type: string, value: unknown): boolean {
+  switch (type) {
+    case 'integer':
+      return Number.isInteger(value);
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'array':
+      return Array.isArray(value);
+    default:
+      return false;
+  }
+}
+
+export function typedParams(
+  params: Record<string, unknown>,
+  schema: unknown,
+): Record<string, unknown> {
+  const properties = propertiesOf(schema);
+  const defs = defsOf(schema);
+  const typed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params)) {
+    const { type } = resolveSchema(properties[key], defs);
+    if (typeof value !== 'string' || type === null || !TYPED_FROM_QUERY.includes(type)) {
+      typed[key] = value;
+      continue;
+    }
+    const parsed = parsedJson(value);
+    typed[key] = accepts(type, parsed) ? parsed : value;
+  }
+  return typed;
+}
+
+export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const key of query.keys) {
     const values = query.getAll(key);
     params[key] = values.length === 1 ? values[0] : values;
   }
-  return params;
+  return schema === undefined ? params : typedParams(params, schema);
 }
 
 @Component({
@@ -107,23 +158,23 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
       @case ('screen') {
         @switch (descriptor().kind) {
           @case ('list') {
-            <keel-list [descriptor]="descriptor()" [params]="screenParams()" />
+            <keel-list [descriptor]="descriptor()" [params]="typedParams()" />
           }
           @case ('form') {
             <keel-form-screen
               [descriptor]="descriptor()"
-              [params]="screenParams()"
+              [params]="typedParams()"
               (saved)="done.emit($event)"
               (closed)="closed.emit()"
             />
           }
           @case ('get') {
-            <keel-object [descriptor]="descriptor()" [params]="screenParams()" />
+            <keel-object [descriptor]="descriptor()" [params]="typedParams()" />
           }
           @case ('action') {
             <keel-action
               [descriptor]="descriptor()"
-              [params]="screenParams()"
+              [params]="typedParams()"
               (done)="done.emit($event)"
               (closed)="closed.emit()"
             />
@@ -131,7 +182,7 @@ export function paramsOf(query: ParamMap): Record<string, unknown> {
           @case ('wizard') {
             <keel-wizard
               [descriptor]="descriptor()"
-              [params]="screenParams()"
+              [params]="typedParams()"
               (done)="done.emit($event)"
               (closed)="closed.emit()"
             />
@@ -196,6 +247,13 @@ export class KeelScreenComponent {
     { initialValue: LOADING },
   );
 
+  private readonly screen = computed(() => {
+    const state = this.state();
+    if (state.phase !== 'screen') {
+      throw new TypeError(`the screen ${this.func()} has no descriptor`);
+    }
+    return state;
+  });
   protected readonly view = computed(() => {
     const state = this.state();
     if (state.phase !== 'view') {
@@ -203,13 +261,8 @@ export class KeelScreenComponent {
     }
     return state;
   });
-  protected readonly descriptor = computed(() => {
-    const state = this.state();
-    if (state.phase !== 'screen') {
-      throw new TypeError(`the screen ${this.func()} has no descriptor`);
-    }
-    return state.descriptor;
-  });
+  protected readonly descriptor = computed(() => this.screen().descriptor);
+  protected readonly typedParams = computed(() => this.screen().params);
   protected readonly failure = computed(() => {
     const state = this.state();
     if (state.phase !== 'failed') {
@@ -247,7 +300,9 @@ export class KeelScreenComponent {
     }
     return from(this.descriptors.get(func)).pipe(
       map((descriptor): ScreenState =>
-        view === undefined ? { phase: 'screen', descriptor } : this.mount(view, params, descriptor),
+        view === undefined
+          ? { phase: 'screen', descriptor, params: typedParams(params, descriptor.params) }
+          : this.mount(view, params, descriptor),
       ),
       catchError((error: unknown) =>
         of<ScreenState>({

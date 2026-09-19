@@ -12,6 +12,7 @@ export {
   RETURN_TO,
   authRoute,
   firstSegment,
+  hasDashboard,
   keelGuard,
   keelHome,
   keelLogout,
@@ -84,7 +85,6 @@ export {
   LOGOUT_ENTRY,
   PREF_SET,
   RAIL_HELP_KEY,
-  RAIL_LATER_KEY,
   RAIL_NOTIFICATIONS_KEY,
   RAIL_TASKS_KEY,
   SECURITY_FUNCTION,
@@ -123,6 +123,52 @@ export {
 } from './not-found';
 
 export { SHELL_VIEWS, provideKeelShellViews } from './views';
+export {
+  KeelTaskWatch,
+  TASKS_EMPTY_KEY,
+  TASKS_ID_KEY,
+  TASKS_LOG_KEY,
+  TASKS_REQUEST_KEY,
+  TASKS_TITLE_KEY,
+  activeIds,
+  functionLabel,
+} from './tasks/tasks';
+export { KeelTaskDrawerComponent, progressOf } from './tasks/task-drawer.component';
+export type { DetailState, JobsState, TaskDrawerData } from './tasks/task-drawer.component';
+export {
+  KeelNotificationCentreComponent,
+  NOTIFICATIONS_CLEAR_KEY,
+  NOTIFICATIONS_DISMISS_KEY,
+  NOTIFICATIONS_NO_PROBLEMS_KEY,
+  NOTIFICATIONS_PROBLEMS_KEY,
+  NOTIFICATIONS_SEEN_KEY,
+  NOTIFICATIONS_TITLE_KEY,
+  NOTIFICATIONS_UNREAD_KEY,
+} from './notifications/notification-centre.component';
+export type {
+  NotificationCentreData,
+  NotificationView,
+} from './notifications/notification-centre.component';
+export {
+  ABOUT_API_KEY,
+  ABOUT_EDITION_KEY,
+  ABOUT_NO_PRODUCTS_KEY,
+  ABOUT_PRODUCTS_KEY,
+  ABOUT_TITLE_KEY,
+  ABOUT_VERSION_KEY,
+  KeelAboutComponent,
+  productViews,
+} from './about/about.component';
+export type { ProductView } from './about/about.component';
+export {
+  DEFAULT_WIDGET_LIMIT,
+  HOME_OPEN_KEY,
+  HOME_TITLE_KEY,
+  KeelHomeComponent,
+  limitOf,
+  widgetId,
+} from './home/home.component';
+export type { WidgetState } from './home/home.component';
 export {
   KEY_FIELD,
   SETTINGS_DEFAULT_KEY,

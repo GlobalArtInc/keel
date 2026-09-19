@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { KeelBoot, KeelCallError, KeelClient, KeelI18n } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
-import { KeelScreenComponent, paramsOf } from '@globalart/keel/renderer';
+import { KeelScreenComponent, paramsOf, typedParams } from '@globalart/keel/renderer';
 import { KeelMockClient } from '@globalart/keel/testing';
 import { convertToParamMap, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -227,5 +227,50 @@ describe('keel-screen', () => {
       tag: ['a', 'b'],
     });
     expect(paramsOf(convertToParamMap({}))).toEqual({});
+  });
+
+  it('a query value on an integer field of the descriptor is posted as a number and one on a string field stays a string', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        format: { $ref: '#/$defs/Format', default: 'csv' },
+        pace: { type: 'integer', minimum: 0 },
+        ratio: { type: 'number' },
+        dry: { type: 'boolean' },
+        tags: { type: 'array', items: { type: 'string' } },
+        note: { type: ['string', 'null'] },
+      },
+      $defs: { Format: { type: 'string', enum: ['csv', 'json'] } },
+    };
+    expect(
+      typedParams(
+        {
+          format: 'csv',
+          pace: '300',
+          ratio: '0.5',
+          dry: 'true',
+          tags: '["a","b"]',
+          note: '42',
+          free: '7',
+        },
+        schema,
+      ),
+    ).toEqual({
+      format: 'csv',
+      pace: 300,
+      ratio: 0.5,
+      dry: true,
+      tags: ['a', 'b'],
+      note: '42',
+      free: '7',
+    });
+    expect(typedParams({ pace: '1.5', dry: 'yes', tags: 'a' }, schema)).toEqual({
+      pace: '1.5',
+      dry: 'yes',
+      tags: 'a',
+    });
+    expect(
+      paramsOf(convertToParamMap({ pace: '300', format: 'csv', tag: ['a', 'b'] }), schema),
+    ).toEqual({ pace: 300, format: 'csv', tag: ['a', 'b'] });
   });
 });

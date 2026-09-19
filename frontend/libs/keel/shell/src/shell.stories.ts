@@ -1,4 +1,5 @@
 import type { Routes } from '@angular/router';
+import type { TaskRow } from '@globalart/keel/client';
 import type { Boot, Choices } from '@globalart/keel/meta';
 import { SCREEN_PATH } from '@globalart/keel/renderer';
 import {
@@ -14,7 +15,8 @@ import {
   type CannedAnswer,
 } from '@globalart/keel/testing';
 import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, screen, userEvent, waitFor, within } from 'storybook/test';
+import { KeelHomeComponent } from './home/home.component';
 import { KeelLayoutComponent } from './layout/layout.component';
 import { KeelLoginComponent } from './login/login.component';
 import { screenRoutes } from './routes';
@@ -81,10 +83,66 @@ const ACCOUNT_ROWS = [
   },
 ];
 
+const PROBLEM_KEY = 'note.overdue';
+const PROBLEM = {
+  id: '01J8A0000000000000000000P1',
+  key: PROBLEM_KEY,
+  subject: ACCOUNT_ID,
+  severity: 'warning',
+  params: { count: 1 },
+  accountId: ACCOUNT_ID,
+  source: 'poll',
+  count: 1,
+  open: true,
+  raisedAt: '2026-09-12T08:00:00.000Z',
+  updatedAt: '2026-09-12T08:00:00.000Z',
+  clearedAt: null,
+};
+
+const MESSAGES_ROWS = [
+  {
+    id: '01J8A0000000000000000000M1',
+    key: 'notify.problem.raised',
+    params: PROBLEM,
+    level: 'warning',
+    source: 'problem',
+    problem: PROBLEM.id,
+    unread: true,
+    readAt: null,
+    createdAt: '2026-09-12T08:00:00.000Z',
+  },
+];
+
+function job(id: string, state: TaskRow['state'], done: number, total: number): TaskRow {
+  return {
+    id,
+    function: 'note.export',
+    class: 'export',
+    state,
+    progress: `${done}/${total}`,
+    done,
+    total,
+    resumable: true,
+    requestId: `req-${id.slice(-2)}`,
+    createdAt: '2026-09-12T09:00:00.000Z',
+    accountId: ACCOUNT_ID,
+    principalId: '01J8A0000000000000000000U1',
+  };
+}
+
+const JOBS = [
+  job('01J8A0000000000000000000J1', 'running', 2, 4),
+  job('01J8A0000000000000000000J2', 'done', 3, 3),
+];
+
 const CALLS: Record<string, CannedAnswer> = {
   'note.list': pageEnvelope(NOTES),
   'keel.account.list': pageEnvelope(ACCOUNT_ROWS),
   'keel.account.options': okEnvelope(ACCOUNTS),
+  'task.list': pageEnvelope(JOBS),
+  'task.get': okEnvelope({ ...JOBS[0], params: {}, logTail: ['exported Alpha', 'exported Beta'] }),
+  'notify.message.list': pageEnvelope(MESSAGES_ROWS),
+  'notify.problem.list': pageEnvelope([PROBLEM]),
 };
 
 const FIXTURE_MESSAGES = {
@@ -274,5 +332,91 @@ export const Totp: Story = {
     await expect(await canvas.findByLabelText(/^Code/)).toBeInTheDocument();
     await expect(canvas.getByRole('button', { name: 'Verify' })).toBeInTheDocument();
     await expect(canvas.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+  },
+};
+
+export const Tasks: Story = {
+  decorators: [withKeel({ boot: KEEL_BOOT.one, calls: CALLS, routes: routesTo('note.list') })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText('Renew the certificates');
+    const item = canvasElement.querySelector<HTMLElement>('phx-rail-item[data-rail="tasks"]');
+    await waitFor(() => expect(item?.querySelector('.badge')).toHaveTextContent('1'));
+    await userEvent.click(canvas.getByRole('button', { name: 'Tasks' }));
+    const drawer = await screen.findByRole('heading', { name: 'Tasks' });
+    await expect(drawer).toBeInTheDocument();
+    const jobs = await screen.findAllByRole('button', { name: /Export notes/ });
+    await expect(jobs).toHaveLength(JOBS.length);
+    await userEvent.click(jobs[0]);
+    await expect(await screen.findByRole('textbox', { name: 'Log' })).toHaveValue(
+      'exported Alpha\nexported Beta',
+    );
+    await expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  },
+};
+
+export const Notifications: Story = {
+  decorators: [withKeel({ boot: KEEL_BOOT.one, calls: CALLS, routes: routesTo('note.list') })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText('Renew the certificates');
+    const item = canvasElement.querySelector<HTMLElement>(
+      'phx-rail-item[data-rail="notifications"]',
+    );
+    await waitFor(() => expect(item?.querySelector('.badge')).toHaveTextContent('1'));
+    await expect(
+      canvasElement.querySelector('phx-sidebar-item[data-func="note.list"] .badge'),
+    ).toHaveTextContent('1');
+    await userEvent.click(canvas.getByRole('button', { name: 'Notifications' }));
+    await expect(
+      await screen.findByText(`Problem ${PROBLEM_KEY} raised for ${ACCOUNT_ID}`),
+    ).toBeInTheDocument();
+    await expect(screen.getByRole('heading', { name: 'Open problems' })).toBeInTheDocument();
+    await expect(
+      document.querySelector(`[data-problems] [data-problem="${PROBLEM_KEY}"]`),
+    ).toHaveTextContent('Seen 1 times');
+  },
+};
+
+export const Home: Story = {
+  decorators: [
+    withKeel({
+      boot: KEEL_BOOT.one,
+      calls: CALLS,
+      routes: [
+        { path: SCREEN_PATH, children: screenRoutes([]) },
+        { path: '', pathMatch: 'full', component: KeelHomeComponent },
+      ],
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    const card = canvasElement.querySelector('phx-widget-card');
+    await expect(card).toHaveTextContent('Problems');
+    await expect(await canvas.findByText(PROBLEM_KEY)).toBeInTheDocument();
+    await expect(canvas.getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      `/${SCREEN_PATH}/notify.problem.list`,
+    );
+  },
+};
+
+export const About: Story = {
+  decorators: [withKeel({ boot: KEEL_BOOT.one, calls: CALLS, routes: routesTo('note.list') })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText('Renew the certificates');
+    await userEvent.click(canvas.getByRole('button', { name: 'Help' }));
+    await expect(
+      await screen.findByRole('heading', { name: 'About this installation' }),
+    ).toBeInTheDocument();
+    const about = document.querySelector('keel-about');
+    await expect(about?.querySelector('phx-prop-list')).toHaveTextContent(
+      `Version ${KEEL_BOOT.one.keel.version} API version ${KEEL_BOOT.one.keel.api}`,
+    );
+    await expect(about?.querySelector('.product[data-product="demo"]')).toHaveTextContent(
+      'Keel Demo',
+    );
   },
 };

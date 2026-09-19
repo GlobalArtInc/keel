@@ -74,7 +74,8 @@ pub fn export() -> FunctionDef {
                 output.flush().map_err(output_failed)?;
                 written += 1;
                 task.log(&format!("{LOG_PREFIX} {}", note.title)).await?;
-                task.progress(written, Some(total), None).await?;
+                task.progress(written, Some(total), Some(&note.title))
+                    .await?;
                 task.checkpoint(&Checkpoint {
                     last_id: Some(note.id),
                     written,

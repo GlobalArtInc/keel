@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterOutlet } from '@angular/router';
-import { KeelBoot, KeelI18n } from '@globalart/keel/client';
+import { KeelBoot, KeelI18n, KeelProblems } from '@globalart/keel/client';
 import { unreachable } from '@globalart/keel/forms';
 import type { BootBrand } from '@globalart/keel/meta';
 import { describeError } from '@globalart/keel/renderer';
@@ -71,7 +71,9 @@ export function plainClick(event: MouseEvent): boolean {
                     [label]="entry.label"
                     [icon]="entry.icon"
                     [href]="entry.url"
+                    [badge]="problems.badge(entry.problem)"
                     [active]="isActive(entry)"
+                    [attr.data-func]="entry.func"
                     (click)="open($event, entry)"
                   />
                 }
@@ -133,6 +135,7 @@ export function plainClick(event: MouseEvent): boolean {
   `,
 })
 export class KeelLayoutComponent {
+  protected readonly problems = inject(KeelProblems);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
   private readonly router = inject(Router);

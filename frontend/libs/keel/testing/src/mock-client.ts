@@ -5,6 +5,7 @@ import {
   requestIdOf,
   type CallOptions,
   type Catalogue,
+  type DownloadResult,
   type Fetched,
 } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
@@ -26,9 +27,16 @@ export interface RecordedCall {
   options: CallOptions;
 }
 
+export interface RecordedDownload {
+  func: string;
+  params: unknown;
+}
+
 export class KeelMockClient extends KeelClient {
   readonly calls: RecordedCall[] = [];
+  readonly downloads: RecordedDownload[] = [];
   private readonly answers = new Map<string, Envelope[]>();
+  private readonly files = new Map<string, DownloadResult>();
   private readonly requestId = signal<string | null>(null);
   private readonly replay = signal(false);
   private readonly version = signal<string | null>(null);
@@ -59,6 +67,11 @@ export class KeelMockClient extends KeelClient {
       throw new RangeError(`the canned answers of ${func} are empty`);
     }
     this.answers.set(func, sequence);
+    return this;
+  }
+
+  file(func: string, result: DownloadResult): this {
+    this.files.set(func, result);
     return this;
   }
 
@@ -98,6 +111,15 @@ export class KeelMockClient extends KeelClient {
     }
     this.requestId.set(requestIdOf(envelope));
     return of(envelope as Envelope<T>);
+  }
+
+  download(func: string, params: unknown = {}): Observable<DownloadResult> {
+    this.downloads.push({ func, params });
+    const result = this.files.get(func);
+    if (result === undefined) {
+      throw new Error(`no canned file for ${func}`);
+    }
+    return of(result);
   }
 
   boot(): Observable<Fetched<Boot> | null> {

@@ -11,7 +11,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
+import { KeelBoot, KeelClient, KeelI18n, isTaskRef } from '@globalart/keel/client';
 import {
   KeelFindingsComponent,
   KeelPageComponent,
@@ -33,6 +33,7 @@ import {
 import { formLoader } from '../form/loader';
 import { BACK_KEY, FINISH_KEY, NEXT_KEY, RETRY_KEY, describeError } from '../messages';
 import { KeelNavigation } from '../navigation';
+import { KeelTasks } from '../tasks/follow';
 import { firstInvalidPage, stepsOf, validateStep } from './steps';
 
 const NO_PAGES: readonly FormPage[] = [];
@@ -151,6 +152,7 @@ export class KeelWizardComponent {
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
   private readonly navigation = inject(KeelNavigation);
+  private readonly tasks = inject(KeelTasks);
   private readonly widgets = injectKeelWidgets();
   private readonly loader = formLoader(() => ({
     client: this.client,
@@ -247,12 +249,18 @@ export class KeelWizardComponent {
       this.active.set(index + 1);
       return;
     }
-    const envelope = await form.submit();
-    if (envelope === null || !envelope.ok) {
+    const submitted = await form.submit();
+    if (submitted === null || !submitted.ok) {
       const failed = firstInvalidPage(pages);
       if (failed >= 0) {
         this.active.set(failed);
       }
+      return;
+    }
+    const envelope = isTaskRef(submitted.data)
+      ? await this.tasks.follow(submitted.data, { title: this.i18n.t(form.title) })
+      : submitted;
+    if (envelope === null || !envelope.ok) {
       return;
     }
     this.done.emit(envelope);

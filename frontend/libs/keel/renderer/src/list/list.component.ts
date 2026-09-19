@@ -24,6 +24,7 @@ import type { Action, Column, Descriptor, Envelope, InlineEdit } from '@globalar
 import {
   PhxButtonComponent,
   PhxDataTableComponent,
+  PhxListTableComponent,
   PhxPageHeaderComponent,
   PhxSelectionBarComponent,
   PhxTableCellDirective,
@@ -39,7 +40,19 @@ import {
   type PhxRowEvent,
   type PhxSelectionAction,
 } from '@globalart/phoenix-ui';
-import { Subject, catchError, firstValueFrom, from, map, merge, of, switchMap } from 'rxjs';
+import {
+  Subject,
+  catchError,
+  combineLatest,
+  firstValueFrom,
+  from,
+  map,
+  merge,
+  of,
+  startWith,
+  switchMap,
+  type Observable,
+} from 'rxjs';
 import { KeelActionRunner, keyOf, labelKeyOf, substitute, type Row } from '../action/runner';
 import { columnsOf, totalsOf, type ColumnTotal } from '../columns';
 import { describeError } from '../messages';
@@ -68,7 +81,10 @@ export interface ReadonlyToggle {
 
 type RowKey = string | number;
 
+export type CompactRows = { phase: 'loading' } | { phase: 'loaded'; rows: Row[]; total: number };
+
 const DEFAULT_EMPTY_ICON: PhxIconName = 'plus';
+const COMPACT_LOADING: CompactRows = { phase: 'loading' };
 
 @Component({
   selector: 'keel-list',
@@ -77,67 +93,84 @@ const DEFAULT_EMPTY_ICON: PhxIconName = 'plus';
     PhxButtonComponent,
     PhxSelectionBarComponent,
     PhxDataTableComponent,
+    PhxListTableComponent,
     PhxTableCellDirective,
     PhxToggleComponent,
   ],
   template: `
-    <phx-page-header [title]="title()">
-      @for (action of toolbar(); track action.id) {
-        <button
-          phxActions
-          [phxButton]="appearanceOf(action)"
-          type="button"
-          [icon]="iconOf(action)"
-          [attr.data-action]="action.id"
-          (click)="run(action)"
-        >
-          {{ labelOf(action) }}
-        </button>
-      }
-    </phx-page-header>
-    <phx-selection-bar
-      [count]="selection().size"
-      [actions]="bulk()"
-      (action)="runBulk($event)"
-      (clear)="clearSelection()"
-    />
-    @for (fetch of [fetch()]; track fetch) {
-      <phx-data-table
+    @if (compact() !== null) {
+      <phx-list-table
+        class="compact"
         [columns]="columns()"
-        [fetch]="fetch"
+        [rows]="firstRowsOf(compactRows())"
         [rowKey]="key()"
+        [loading]="compactRows().phase === 'loading'"
+        [skeletonRows]="compact() ?? 1"
+        [footer]="false"
         [label]="title()"
-        [searchable]="searchable()"
-        [search]="search()"
-        [selectable]="selectable()"
-        [selection]="selection()"
-        (selectionChange)="selection.set($event)"
-        [rowActions]="rowActions()"
-        [clickable]="clickable()"
-        [reload]="reload"
         [emptyTitle]="emptyTitle()"
-        [emptyIcon]="emptyIcon()"
-        [emptyActionLabel]="emptyActionLabel()"
+        [clickable]="clickable()"
         (rowClick)="onRowClick($event)"
-        (rowAction)="onRowAction($event)"
-        (cellChange)="onCellChange($event)"
-        (linkClick)="onLink($event)"
-        (emptyAction)="runEmpty()"
-        (loaded)="remember($event)"
-      >
-        @for (toggle of readonlyToggles(); track toggle.key) {
-          <ng-template [phxTableCell]="toggle.key" let-value>
-            <phx-toggle [checked]="!!value" disabled [ariaLabel]="toggle.label" />
-          </ng-template>
+      />
+    } @else {
+      <phx-page-header [title]="title()">
+        @for (action of toolbar(); track action.id) {
+          <button
+            phxActions
+            [phxButton]="appearanceOf(action)"
+            type="button"
+            [icon]="iconOf(action)"
+            [attr.data-action]="action.id"
+            (click)="run(action)"
+          >
+            {{ labelOf(action) }}
+          </button>
         }
-        <span phxTableStats class="totals">
-          @for (total of totals(); track total.key) {
-            <span class="total" [attr.data-total]="total.key"
-              >{{ total.label }}: {{ total.value }}</span
-            >
+      </phx-page-header>
+      <phx-selection-bar
+        [count]="selection().size"
+        [actions]="bulk()"
+        (action)="runBulk($event)"
+        (clear)="clearSelection()"
+      />
+      @for (fetch of [fetch()]; track fetch) {
+        <phx-data-table
+          [columns]="columns()"
+          [fetch]="fetch"
+          [rowKey]="key()"
+          [label]="title()"
+          [searchable]="searchable()"
+          [search]="search()"
+          [selectable]="selectable()"
+          [selection]="selection()"
+          (selectionChange)="selection.set($event)"
+          [rowActions]="rowActions()"
+          [clickable]="clickable()"
+          [reload]="reload"
+          [emptyTitle]="emptyTitle()"
+          [emptyIcon]="emptyIcon()"
+          [emptyActionLabel]="emptyActionLabel()"
+          (rowClick)="onRowClick($event)"
+          (rowAction)="onRowAction($event)"
+          (cellChange)="onCellChange($event)"
+          (linkClick)="onLink($event)"
+          (emptyAction)="runEmpty()"
+          (loaded)="remember($event)"
+        >
+          @for (toggle of readonlyToggles(); track toggle.key) {
+            <ng-template [phxTableCell]="toggle.key" let-value>
+              <phx-toggle [checked]="!!value" disabled [ariaLabel]="toggle.label" />
+            </ng-template>
           }
-        </span>
-      </phx-data-table>
+          <span phxTableStats class="totals">
+            @for (total of totals(); track total.key) {
+              <span class="total" [attr.data-total]="total.key"
+                >{{ total.label }}: {{ total.value }}</span
+              >
+            }
+          </span>
+        </phx-data-table>
+      }
     }
   `,
   styles: `
@@ -160,12 +193,14 @@ const DEFAULT_EMPTY_ICON: PhxIconName = 'plus';
   `,
   host: {
     '[attr.data-list]': 'descriptor().name',
+    '[attr.data-compact]': 'compact()',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class KeelListComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
+  readonly compact = input<number | null>(null);
 
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
@@ -195,6 +230,20 @@ export class KeelListComponent {
   readonly search = computed(() => searchOf(this.params()));
   readonly fetch = computed<KeelListFetch<Row>>(() =>
     listFetch<Row>(this.descriptor().name, this.scope(), this.client),
+  );
+  readonly compactRows = toSignal(
+    combineLatest([toObservable(this.fetch), toObservable(this.compact)]).pipe(
+      switchMap(([fetch, limit]) =>
+        limit === null
+          ? of(COMPACT_LOADING)
+          : this.reload.pipe(
+              startWith(null),
+              switchMap(() => this.firstRows(fetch, limit)),
+              startWith(COMPACT_LOADING),
+            ),
+      ),
+    ),
+    { initialValue: COMPACT_LOADING },
   );
   readonly exportable = toSignal(
     toObservable(this.descriptor).pipe(
@@ -319,6 +368,25 @@ export class KeelListComponent {
 
   refresh(): void {
     this.refreshes.next();
+  }
+
+  protected firstRowsOf(state: CompactRows): Row[] {
+    return state.phase === 'loaded' ? state.rows : [];
+  }
+
+  private firstRows(fetch: KeelListFetch<Row>, limit: number): Observable<CompactRows> {
+    return fetch({
+      page: 1,
+      pageSize: limit,
+      offset: 0,
+      limit,
+      search: '',
+      sort: null,
+      filters: [],
+    }).pipe(
+      map((page): CompactRows => ({ phase: 'loaded', rows: page.data, total: page.total })),
+      catchError(() => of<CompactRows>({ phase: 'loaded', rows: [], total: 0 })),
+    );
   }
 
   clearSelection(): void {

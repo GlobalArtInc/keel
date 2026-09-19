@@ -22,6 +22,7 @@ export interface MenuEntry {
   url: string;
   label: string;
   icon: PhxIconName | null;
+  problem: string | null;
 }
 
 export interface SidebarGroup {
@@ -48,6 +49,7 @@ export function menuEntries(items: readonly BootMenuItem[], label: Translate): M
     url: `/${SCREEN_PATH}/${item.func}`,
     label: label(item.label),
     icon: isIconName(item.icon) ? item.icon : null,
+    problem: item.badge?.problem ?? null,
   }));
 }
 

@@ -1,10 +1,11 @@
 import { Injectable, inject } from '@angular/core';
-import { KeelClient, KeelI18n } from '@globalart/keel/client';
+import { KeelClient, KeelI18n, isTaskRef } from '@globalart/keel/client';
 import { newIdempotencyKey, unreachable } from '@globalart/keel/forms';
 import { entityPrefix, type Action, type Descriptor, type Envelope } from '@globalart/keel/meta';
 import { PhxConfirmService, PhxToastService, type PhxConfirmOptions } from '@globalart/phoenix-ui';
 import { firstValueFrom } from 'rxjs';
 import { CONFIRM_COUNT_KEY, CONFIRM_MANY_KEY, CONFIRM_ONE_KEY, describeError } from '../messages';
+import { KeelTasks } from '../tasks/follow';
 
 export const ROW_PLACEHOLDER = '$id';
 export const DEFAULT_KEY = 'id';
@@ -59,6 +60,7 @@ export class KeelActionRunner {
   private readonly i18n = inject(KeelI18n);
   private readonly confirms = inject(PhxConfirmService);
   private readonly toasts = inject(PhxToastService);
+  private readonly tasks = inject(KeelTasks);
 
   label(request: ActionRequest): string {
     return this.i18n.t(labelKeyOf(request.descriptor, request.action));
@@ -78,6 +80,10 @@ export class KeelActionRunner {
     ).catch((error: unknown): Envelope<T> => ({ ok: false, error: unreachable(error) }));
     if (!envelope.ok) {
       this.toasts.danger(describeError(this.i18n, envelope.error), { title: label });
+      return envelope;
+    }
+    if (isTaskRef(envelope.data)) {
+      return this.tasks.follow<T>(envelope.data, { title: label });
     }
     return envelope;
   }

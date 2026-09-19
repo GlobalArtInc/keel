@@ -4,14 +4,23 @@ import {
   computed,
   effect,
   inject,
+  signal,
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
-import { unreachable } from '@globalart/keel/forms';
-import type { Envelope } from '@globalart/keel/meta';
-import { describeError } from '@globalart/keel/renderer';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  KeelBoot,
+  KeelClient,
+  KeelI18n,
+  KeelNotifications,
+  KeelProblems,
+} from '@globalart/keel/client';
+import { unreachable } from '@globalart/keel/forms';
+import type { Envelope, Id } from '@globalart/keel/meta';
+import { KeelTasks, describeError } from '@globalart/keel/renderer';
+import {
+  PhxDrawerService,
   PhxDropdownComponent,
   PhxModalService,
   PhxRailComponent,
@@ -24,9 +33,16 @@ import {
   type PhxUserMenuLanguage,
 } from '@globalart/phoenix-ui';
 import { firstValueFrom } from 'rxjs';
+import { KeelAboutComponent } from '../about/about.component';
 import { LOGOUT_PATH, screenUrl } from '../guard';
 import { levelLabel, type Translate } from '../layout/sidebar';
+import {
+  KeelNotificationCentreComponent,
+  type NotificationCentreData,
+} from '../notifications/notification-centre.component';
 import { TOTP_ENROLL } from '../security/totp';
+import { KeelTaskDrawerComponent, type TaskDrawerData } from '../tasks/task-drawer.component';
+import { KeelTaskWatch } from '../tasks/tasks';
 import { ACT_AS_TITLE_KEY, KeelActAsComponent } from './act-as.component';
 import { KeelSu } from './su';
 
@@ -38,7 +54,7 @@ export const LANGUAGE_PREFIX = 'keel.shell.language';
 export const RAIL_NOTIFICATIONS_KEY = 'keel.shell.rail.notifications';
 export const RAIL_TASKS_KEY = 'keel.shell.rail.tasks';
 export const RAIL_HELP_KEY = 'keel.shell.rail.help';
-export const RAIL_LATER_KEY = 'keel.shell.rail.later';
+export const DRAWER_WIDTH = 466;
 export const USER_LANGUAGE_KEY = 'keel.shell.user.language';
 export const USER_THEME_KEY = 'keel.shell.user.theme';
 export const USER_ACT_AS_KEY = 'keel.shell.user.act_as';
@@ -107,15 +123,24 @@ export function languageOptions(label: Translate): PhxUserMenuLanguage[] {
       <phx-rail-item
         icon="bell"
         data-rail="notifications"
-        disabled
-        [label]="later(notificationsKey)"
+        [label]="labelOf(notificationsKey)"
+        [badge]="badgeOf(notifications.unread())"
+        [disabled]="!notifiable()"
+        (click)="openNotifications()"
       />
-      <phx-rail-item icon="list-checks" data-rail="tasks" disabled [label]="later(tasksKey)" />
+      <phx-rail-item
+        icon="list-checks"
+        data-rail="tasks"
+        [label]="labelOf(tasksKey)"
+        [badge]="badgeOf(tasks.count())"
+        [disabled]="!taskable()"
+        (click)="openTasks(null)"
+      />
       <phx-rail-item
         icon="circle-question-mark"
         data-rail="help"
-        disabled
-        [label]="later(helpKey)"
+        [label]="labelOf(helpKey)"
+        (click)="openAbout()"
       />
     </phx-rail>
   `,
@@ -128,18 +153,30 @@ export function languageOptions(label: Translate): PhxUserMenuLanguage[] {
   `,
   host: {
     '[attr.data-actable]': 'su.available()',
+    '[attr.data-notifiable]': 'notifiable()',
+    '[attr.data-taskable]': 'taskable()',
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class KeelRailComponent {
   protected readonly su = inject(KeelSu);
+  protected readonly notifications = inject(KeelNotifications);
+  protected readonly tasks = inject(KeelTaskWatch);
+  private readonly problems = inject(KeelProblems);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
   private readonly client = inject(KeelClient);
   private readonly theme = inject(PhxThemeService);
   private readonly toasts = inject(PhxToastService);
   private readonly modals = inject(PhxModalService);
+  private readonly drawers = inject(PhxDrawerService);
   private readonly router = inject(Router);
+  private readonly mayNotify = signal(false);
+  private readonly mayTask = signal(false);
+  private readonly mayProblems = signal(false);
+
+  readonly notifiable = this.mayNotify.asReadonly();
+  readonly taskable = this.mayTask.asReadonly();
 
   protected readonly notificationsKey = RAIL_NOTIFICATIONS_KEY;
   protected readonly tasksKey = RAIL_TASKS_KEY;
@@ -165,12 +202,81 @@ export class KeelRailComponent {
   constructor() {
     effect(() => {
       this.boot.principal();
-      untracked(() => void this.su.probe());
+      untracked(() => {
+        void this.su.probe();
+        void this.probe();
+      });
+    });
+    inject(KeelTasks)
+      .details$.pipe(takeUntilDestroyed())
+      .subscribe((id) => this.openTasks(id));
+  }
+
+  labelOf(key: string): string {
+    return this.i18n.t(key);
+  }
+
+  badgeOf(count: number): number | null {
+    return count > 0 ? count : null;
+  }
+
+  async probe(): Promise<void> {
+    if (this.boot.principal() === null) {
+      this.mayNotify.set(false);
+      this.mayTask.set(false);
+      this.mayProblems.set(false);
+      this.notifications.drop();
+      this.tasks.drop();
+      this.problems.stop();
+      return;
+    }
+    const [notifiable, taskable, problems] = await Promise.all([
+      this.notifications.available(),
+      this.tasks.available(),
+      this.problems.watch(),
+    ]);
+    this.mayNotify.set(notifiable);
+    this.mayTask.set(taskable);
+    this.mayProblems.set(problems);
+    await Promise.all([
+      notifiable ? this.notifications.refresh() : Promise.resolve(null),
+      taskable ? this.tasks.list() : Promise.resolve(null),
+    ]);
+  }
+
+  openNotifications(): void {
+    if (!this.notifiable()) {
+      return;
+    }
+    void this.notifications.refresh();
+    if (this.mayProblems()) {
+      void this.problems.refresh();
+    }
+    const data: NotificationCentreData = { problems: this.mayProblems() };
+    this.drawers.open(KeelNotificationCentreComponent, {
+      width: DRAWER_WIDTH,
+      label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
+      data,
     });
   }
 
-  later(key: string): string {
-    return `${this.i18n.t(key)} (${this.i18n.t(RAIL_LATER_KEY)})`;
+  openTasks(id: Id | null): void {
+    if (!this.taskable()) {
+      return;
+    }
+    const data: TaskDrawerData = { id };
+    this.drawers.open(KeelTaskDrawerComponent, {
+      width: DRAWER_WIDTH,
+      label: this.i18n.t(RAIL_TASKS_KEY),
+      data,
+    });
+  }
+
+  openAbout(): void {
+    this.drawers.open(KeelAboutComponent, {
+      width: DRAWER_WIDTH,
+      label: this.i18n.t(RAIL_HELP_KEY),
+    });
   }
 
   async switchLanguage(lang: string | null): Promise<void> {

@@ -295,6 +295,14 @@
       "unsupported": "Screens of kind {kind} are not rendered yet"
     },
     "shell": {
+      "about": {
+        "api": "API version",
+        "edition": "Edition {edition}",
+        "no_products": "No product is enabled",
+        "products": "Products",
+        "title": "About this installation",
+        "version": "Version"
+      },
       "act_as": {
         "empty": "No principal matches",
         "enter": "Enter",
@@ -306,6 +314,10 @@
         "exit": "Return to your own session"
       },
       "boot_failed": "The installation did not answer; reload the page",
+      "home": {
+        "open": "Open",
+        "title": "Overview"
+      },
       "language": {
         "en": "English",
         "ru": "Russian"
@@ -329,9 +341,17 @@
         "text": "The address {path} does not exist in this installation",
         "title": "Page not found"
       },
+      "notifications": {
+        "clear": "Clear read notifications",
+        "dismiss": "Dismiss",
+        "no_problems": "No problem is open",
+        "problems": "Open problems",
+        "seen": "Seen {count} times",
+        "title": "Notifications",
+        "unread": "unread"
+      },
       "rail": {
         "help": "Help",
-        "later": "Available in a later release",
         "notifications": "Notifications",
         "tasks": "Tasks"
       },
@@ -354,6 +374,15 @@
         "default": "Default",
         "title": "Setting {key}",
         "value": "Value"
+      },
+      "tasks": {
+        "details": "Details",
+        "empty": "No tasks have run yet",
+        "failed": "The task {function} failed",
+        "id": "Task",
+        "log": "Log",
+        "request": "Request",
+        "title": "Tasks"
       },
       "user": {
         "act_as": "Act as",

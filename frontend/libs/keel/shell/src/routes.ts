@@ -11,6 +11,7 @@ import {
   keelLogout,
   keelReady,
 } from './guard';
+import { KeelHomeComponent } from './home/home.component';
 import { KeelLoginComponent } from './login/login.component';
 import { KeelNotFoundComponent } from './not-found';
 import { KeelProducts } from './products';
@@ -36,7 +37,13 @@ export function keelRoutes(): Routes {
       component: KeelLayoutComponent,
       canActivate: [keelGuard],
       children: [
-        { path: '', pathMatch: 'full', component: KeelNotFoundComponent, canActivate: [keelHome] },
+        {
+          path: '',
+          pathMatch: 'full',
+          component: KeelHomeComponent,
+          canActivate: [keelHome],
+          providers: [widgets, views],
+        },
         {
           path: SCREEN_PATH,
           canMatch: [keelReady],

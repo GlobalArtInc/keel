@@ -206,6 +206,42 @@ describe('KeelHttpClient', () => {
     expect(progress.active()).toBe(false);
   });
 
+  it('download posts to the raw route of the function and answers the blob with its file name or the error envelope', async () => {
+    const { client, http } = harness();
+    const pending = firstValueFrom(client.download('task.download', { id: 't1' }));
+    const request = http.expectOne({ method: 'POST', url: '/api/v1/x/task/download' });
+    expect(request.request.body).toEqual({ id: 't1' });
+    expect(request.request.responseType).toBe('blob');
+    request.flush(new Blob(['a,b\n'], { type: 'text/csv' }), {
+      headers: {
+        'Content-Disposition': 'attachment; filename="notes.csv"',
+        'X-Keel-Request-Id': 'req-dl',
+      },
+    });
+    const result = await pending;
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.file.filename).toBe('notes.csv');
+      expect(await result.file.blob.text()).toBe('a,b\n');
+    }
+    expect(client.lastRequestId()).toBe('req-dl');
+
+    const refused = firstValueFrom(client.download('keel.export', { func: 'note.list' }));
+    http.expectOne({ method: 'POST', url: '/api/v1/x/keel/export' }).flush(
+      new Blob([
+        JSON.stringify({
+          ok: false,
+          error: { code: 'forbidden', key: 'keel.error.forbidden', requestId: 'req-no' },
+        }),
+      ]),
+      { status: 403, statusText: 'Forbidden' },
+    );
+    expect(await refused).toEqual({
+      ok: false,
+      error: { code: 'forbidden', key: 'keel.error.forbidden', requestId: 'req-no' },
+    });
+  });
+
   it('an answer that is not an envelope is an error rather than a result', async () => {
     const { client, http } = harness();
     const pending = call(client, 'dns.zone.list', {});

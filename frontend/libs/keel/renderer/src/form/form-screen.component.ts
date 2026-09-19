@@ -9,11 +9,12 @@ import {
   output,
   untracked,
 } from '@angular/core';
-import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
+import { KeelBoot, KeelClient, KeelI18n, isTaskRef } from '@globalart/keel/client';
 import { KeelFormComponent, injectKeelWidgets, type Saved } from '@globalart/keel/forms';
 import type { Descriptor } from '@globalart/keel/meta';
 import { PhxErrorComponent, PhxLoaderComponent, PhxPanelComponent } from '@globalart/phoenix-ui';
 import { RETRY_KEY, describeError } from '../messages';
+import { KeelTasks } from '../tasks/follow';
 import { formLoader } from './loader';
 
 @Component({
@@ -32,7 +33,7 @@ import { formLoader } from './loader';
         </phx-panel>
       }
       @case ('ready') {
-        <keel-form [form]="form()" (closed)="closed.emit()" (submitted)="saved.emit($event)" />
+        <keel-form [form]="form()" (closed)="closed.emit()" (submitted)="submitted($event)" />
       }
     }
   `,
@@ -64,6 +65,7 @@ export class KeelFormScreenComponent {
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
+  private readonly tasks = inject(KeelTasks);
   private readonly widgets = injectKeelWidgets();
   private readonly loader = formLoader(() => ({
     client: this.client,
@@ -97,5 +99,17 @@ export class KeelFormScreenComponent {
 
   reload(): void {
     this.loader.reload(this.descriptor(), this.params());
+  }
+
+  async submitted(envelope: Saved): Promise<void> {
+    if (!isTaskRef(envelope.data)) {
+      this.saved.emit(envelope);
+      return;
+    }
+    const title = this.i18n.t(this.form().title);
+    const outcome = await this.tasks.follow(envelope.data, { title });
+    if (outcome?.ok) {
+      this.saved.emit(outcome);
+    }
   }
 }

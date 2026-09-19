@@ -57,12 +57,7 @@ const EN: Messages = {
         logout: 'Log out',
       },
       language: { en: 'English', ru: 'Russian' },
-      rail: {
-        notifications: 'Notifications',
-        tasks: 'Tasks',
-        help: 'Help',
-        later: 'Available in a later release',
-      },
+      rail: { notifications: 'Notifications', tasks: 'Tasks', help: 'Help' },
     },
   },
   settings: { error: { pref_owner: 'The owner has no preferences' } },
@@ -245,14 +240,13 @@ describe('the rail and the user menu', () => {
     expect(
       element.querySelector('phx-rail-item[data-rail="user"] button')?.getAttribute('aria-label'),
     ).toBe('owner');
-    const disabled = [...element.querySelectorAll('phx-rail-item[disabled] button')].map((button) =>
+    const disabled = [...element.querySelectorAll('phx-rail-item button[disabled]')].map((button) =>
       button.getAttribute('aria-label'),
     );
-    expect(disabled).toEqual([
-      'Notifications (Available in a later release)',
-      'Tasks (Available in a later release)',
-      'Help (Available in a later release)',
-    ]);
+    expect(disabled).toEqual(['Notifications', 'Tasks']);
+    expect(
+      element.querySelector('phx-rail-item[data-rail="help"] button')?.getAttribute('aria-label'),
+    ).toBe('Help');
 
     const menu = await openUserMenu(harness, element);
     expect(menu.querySelector('.who__name')?.textContent).toBe('owner');

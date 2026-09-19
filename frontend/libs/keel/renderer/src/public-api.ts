@@ -27,7 +27,7 @@ export {
   VIEW_MISSING_KEY,
   describeError,
 } from './messages';
-export { KeelScreenComponent, paramsOf } from './screen';
+export { KeelScreenComponent, paramsOf, typedParams } from './screen';
 export type { ScreenState } from './screen';
 export { objectRows } from './object/rows';
 export type { ObjectRow, ObjectValue } from './object/rows';
@@ -61,6 +61,10 @@ export {
   validateStep,
 } from './wizard/steps';
 export { KeelNavigation, SCREEN_PATH, objectTab } from './navigation';
+export { KeelTasks, TASK_FAILED_KEY, TASK_POLL_MS, valueOf } from './tasks/follow';
+export type { Frame, TaskOpener } from './tasks/follow';
+export { KeelDownloads } from './tasks/download';
+export { TASK_DETAILS_KEY } from './tasks/progress.component';
 export type { ScreenTarget } from './navigation';
 export {
   COLUMN_TYPES,
@@ -103,6 +107,6 @@ export {
 } from './list/invalidate';
 export { SEARCH_PARAM, scopeOf, searchOf } from './list/scope';
 export { KeelListComponent } from './list/list.component';
-export type { ReadonlyToggle } from './list/list.component';
+export type { CompactRows, ReadonlyToggle } from './list/list.component';
 
 export const KEEL_RENDERER_VERSION = '0.1.0';

@@ -26,6 +26,17 @@ if (typeof globalThis.ResizeObserver !== 'function') {
   globalThis.ResizeObserver = IdleResizeObserver;
 }
 
+if (typeof Blob.prototype.text !== 'function') {
+  Blob.prototype.text = function text(this: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(this);
+    });
+  };
+}
+
 const CSS_PARSING = 'Could not parse CSS stylesheet';
 const reportError = console.error.bind(console);
 console.error = (...args: unknown[]) => {

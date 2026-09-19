@@ -20,6 +20,8 @@ catcher_image=axllent/mailpit:v1.31.1
 admin_login=root
 reseller_login=res1
 user_login=alice
+polled_tag=@polled
+guest_per_minute=120
 
 usage() {
   echo "usage: hack/e2e.sh [path/to/keel] [playwright arguments...]" >&2
@@ -357,6 +359,7 @@ smtp_host=${smtp_host%:*}
 
 keel_ok "$site/enable.out" product enable demo
 start_serve
+keel_ok "$site/rate.json" ctl settings.set key=auth.rate.guest_per_minute value=$guest_per_minute
 
 root_account=00000000000000000000000000
 admin_password=$(secret)
@@ -385,7 +388,7 @@ fi
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" pnpm e2e "$@"
+  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag" "$@"
 )
 
 echo "--- the poll job, the problem and the mail"
@@ -399,5 +402,11 @@ check "notify.problem.list shows note.overdue for alice's account" problem_liste
 check "the catcher lists the mail whose subject names note.overdue" mail_arrives "$site/mail.json" "note.overdue"
 check "the mail is addressed from and to the channel's addresses" json_is "$site/mail.json" "any(message['Subject'] == 'Problem note.overdue raised for $user_account' and message['From']['Address'] == 'keel@example.org' and message['To'][0]['Address'] == 'ops@example.org' for message in doc['messages'])"
 check "notify.delivery.list shows a sent delivery per notified principal" deliveries_sent 2
+
+echo "--- pnpm e2e $polled_tag"
+(
+  cd "$frontend"
+  env "${e2e_env[@]}" pnpm e2e --grep "$polled_tag"
+)
 
 stop_serve || fail "keel serve did not stop cleanly"

@@ -127,9 +127,16 @@ export const keelGuard: CanActivateFn = async (_route, state) => {
   return boot.principal ? true : loginUrl(router, state.url);
 };
 
+export function hasDashboard(boot: Pick<Boot, 'dashboard'> | null): boolean {
+  return (boot?.dashboard.length ?? 0) > 0;
+}
+
 export const keelHome: CanActivateFn = () => {
   const boot = inject(KeelBoot);
   const router = inject(Router);
+  if (hasDashboard(boot.payload())) {
+    return true;
+  }
   const first = boot.menu().flatMap((group) => group.items)[0];
   return first === undefined ? true : screenUrl(router, first.func);
 };

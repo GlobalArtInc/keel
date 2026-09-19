@@ -8,7 +8,19 @@ import {
 import { Injectable, inject, signal, type Signal } from '@angular/core';
 import type { Boot, CallError, Descriptor, Envelope, Messages } from '@globalart/keel/meta';
 import { PhxGlobalProgressService } from '@globalart/phoenix-ui';
-import { Observable, Subject, catchError, map, of, retry, tap, throwError } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  catchError,
+  from,
+  map,
+  of,
+  retry,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
+import { CONTENT_DISPOSITION, downloadUrl, filenameOf, type DownloadResult } from './download';
 import { tracked } from './progress';
 
 export const API_PREFIX = '/api/v1';
@@ -63,6 +75,8 @@ export abstract class KeelClient {
     options?: CallOptions,
   ): Observable<Envelope<T>>;
 
+  abstract download(func: string, params?: unknown): Observable<DownloadResult>;
+
   abstract boot(etag?: string | null): Observable<Fetched<Boot> | null>;
 
   abstract descriptor(func: string): Observable<Descriptor>;
@@ -104,6 +118,14 @@ export function sessionExpired(body: unknown): boolean {
 
 function isNetworkFailure(error: unknown): boolean {
   return error instanceof HttpErrorResponse && error.status === 0;
+}
+
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 function bodyOf<T>(response: HttpResponse<T>): T {
@@ -163,6 +185,38 @@ export class KeelHttpClient extends KeelClient {
             return of(this.settle<T>(error.headers, error.status, error.error, func));
           }
           return throwError(() => error);
+        }),
+        tracked(this.progress),
+      );
+  }
+
+  download(func: string, params: unknown = {}): Observable<DownloadResult> {
+    return this.http
+      .post(downloadUrl(func), params ?? {}, { observe: 'response', responseType: 'blob' })
+      .pipe(
+        map((response): DownloadResult => {
+          this.observe(response.headers, response.status);
+          return {
+            ok: true,
+            file: {
+              blob: bodyOf(response),
+              filename: filenameOf(response.headers.get(CONTENT_DISPOSITION)),
+            },
+          };
+        }),
+        catchError((error: unknown) => {
+          if (!(error instanceof HttpErrorResponse) || !(error.error instanceof Blob)) {
+            return throwError(() => error);
+          }
+          return from(error.error.text()).pipe(
+            switchMap((text) => {
+              const body = parsed(text);
+              this.observe(error.headers, error.status, body);
+              return isEnvelope(body) && !body.ok
+                ? of<DownloadResult>({ ok: false, error: body.error })
+                : throwError(() => error);
+            }),
+          );
         }),
         tracked(this.progress),
       );

@@ -64,6 +64,32 @@ export type {
   MetaInvalidate,
 } from './events';
 export { tracked } from './progress';
+export { RAW_PREFIX, downloadUrl, filenameOf } from './download';
+export type { DownloadResult, DownloadedFile } from './download';
+export {
+  ACTIVE_STATES,
+  TASK_CANCEL,
+  TASK_GET,
+  TASK_LIST,
+  isActive,
+  isDownloadRef,
+  isTaskRef,
+  recentTasks,
+} from './tasks';
+export type { TaskDetail, TaskRow } from './tasks';
+export {
+  KeelNotifications,
+  MESSAGE_CLEAR,
+  MESSAGE_LIST,
+  MESSAGE_MARK,
+  mayCall,
+  noteOf,
+  problemKeyOf,
+  recentMessages,
+} from './notifications';
+export type { Note } from './notifications';
+export { KeelProblems, PROBLEM_LIST, countsByKey, openProblems } from './problems';
+export type { Problem, Severity } from './problems';
 export { provideKeelClient } from './provide';
 
 export const KEEL_CLIENT_VERSION = '0.1.0';
