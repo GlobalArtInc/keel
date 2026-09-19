@@ -1,89 +1,135 @@
 {
-  "notify.problem.list.title": "Проблемы",
-  "notify.problem.empty": "Открытых проблем нет",
-  "notify.problem.column.key": "Проблема",
-  "notify.problem.column.severity": "Серьёзность",
-  "notify.problem.column.subject": "Объект",
-  "notify.problem.column.count": "Замечена",
-  "notify.problem.column.open": "Состояние",
-  "notify.problem.column.raisedAt": "Возникла",
-  "notify.problem.column.clearedAt": "Устранена",
-  "notify.problem.column.accountId": "Аккаунт",
-  "notify.problem.severity.warning": "Предупреждение",
-  "notify.problem.severity.critical": "Критично",
-  "notify.problem.open.true": "Открыта",
-  "notify.problem.open.false": "Устранена",
-  "notify.problem.raised": "Проблема {key} возникла у {subject}",
-  "notify.problem.cleared": "Проблема {key} устранена у {subject}",
-  "notify.message.list.title": "Уведомления",
-  "notify.message.empty": "Уведомлений нет",
-  "notify.message.column.key": "Сообщение",
-  "notify.message.column.level": "Уровень",
-  "notify.message.column.source": "Источник",
-  "notify.message.column.unread": "Состояние",
-  "notify.message.column.createdAt": "Получено",
-  "notify.message.column.readAt": "Прочитано",
-  "notify.message.level.info": "Сведения",
-  "notify.message.level.warning": "Предупреждение",
-  "notify.message.level.error": "Ошибка",
-  "notify.message.unread.true": "Не прочитано",
-  "notify.message.unread.false": "Прочитано",
-  "notify.message.action.mark_read": "Отметить прочитанным",
-  "notify.message.action.clear": "Убрать прочитанные уведомления",
-  "notify.error.severity": "Сохранённая серьёзность {severity} проблемы {id} неизвестна",
-  "notify.error.level": "Сохранённый уровень {level} уведомления {id} неизвестен",
-  "notify.error.id": "Сохранённый идентификатор {id} не является идентификатором",
-  "notify.error.account": "Сохранённый аккаунт {account} проблемы {id} не является идентификатором",
-  "notify.channel.list.title": "Каналы доставки",
-  "notify.channel.empty": "Ни один канал ещё не доставляет уведомления",
-  "notify.channel.set.title": "Канал",
-  "notify.channel.column.name": "Название",
-  "notify.channel.column.kind": "Тип",
-  "notify.channel.column.enabled": "Включён",
-  "notify.channel.column.lastSentAt": "Последняя отправка",
-  "notify.channel.column.lastError": "Последняя ошибка",
-  "notify.channel.column.createdAt": "Создан",
-  "notify.channel.kind.email": "Электронная почта",
-  "notify.channel.kind.telegram": "Telegram",
-  "notify.channel.kind.webhook": "Вебхук",
-  "notify.channel.action.create": "Добавить канал",
-  "notify.channel.action.edit": "Изменить",
-  "notify.channel.action.test": "Отправить проверочное письмо",
-  "notify.channel.action.delete": "Удалить",
-  "notify.channel.id": "Канал",
-  "notify.channel.kind": "Тип",
-  "notify.channel.name": "Название",
-  "notify.channel.enabled": "Включён",
-  "notify.channel.email": "Настройки почты",
-  "notify.channel.page.main": "Канал",
-  "notify.channel.page.email": "Почта",
-  "notify.delivery.list.title": "Доставки",
-  "notify.delivery.empty": "Доставок ещё не было",
-  "notify.delivery.column.channel": "Канал",
-  "notify.delivery.column.messageKey": "Сообщение",
-  "notify.delivery.column.state": "Состояние",
-  "notify.delivery.column.attempt": "Попыток",
-  "notify.delivery.column.nextAt": "Следующая попытка",
-  "notify.delivery.column.error": "Ошибка",
-  "notify.delivery.column.sentAt": "Отправлено",
-  "notify.delivery.column.createdAt": "Создана",
-  "notify.delivery.state.pending": "Ожидает",
-  "notify.delivery.state.sent": "Отправлена",
-  "notify.delivery.state.failed": "Не удалась",
-  "notify.delivery_failed": "Доставка почты через канал {channel} не удалась",
-  "notify.test": "Проверочное письмо из канала {channel}",
-  "notify.error.channel_kind_unavailable": "Каналы типа {kind} пока недоступны",
-  "notify.error.channel_kind": "Сохранённый тип {kind} канала {id} неизвестен",
-  "notify.error.channel_config": "Сохранённые настройки канала {id} не читаются",
-  "notify.error.channel_email_missing": "Почтовому каналу нужны настройки почты",
-  "notify.error.channel_gone": "Канал {id} больше не существует",
-  "notify.error.message_gone": "Уведомление {id} больше не существует",
-  "notify.error.email_address": "{value} не является адресом электронной почты",
-  "notify.error.email_transport": "Не удалось собрать почтовый транспорт к {host}: {reason}",
-  "notify.error.email_send": "Письмо на {host} не отправлено: {reason}",
-  "notify.error.template_twice": "Почтовый шаблон {id} добавлен дважды",
-  "notify.error.template_syntax": "{part} почтового шаблона {id} на языке {lang} не разбирается: {reason}",
-  "notify.error.template_placeholder": "{part} почтового шаблона {id} на языке {lang} содержит подстановку {found}; подстановки пишутся в одиночных фигурных скобках",
-  "notify.error.template_missing": "Ни один почтовый шаблон не отображает {id}",
-  "notify.error.template_render": "{part} почтового шаблона {id} на языке {lang} не отобразился: {reason}"
+  "notify": {
+    "channel": {
+      "action": {
+        "create": "Добавить канал",
+        "delete": "Удалить",
+        "edit": "Изменить",
+        "test": "Отправить проверочное письмо"
+      },
+      "column": {
+        "createdAt": "Создан",
+        "enabled": "Включён",
+        "kind": "Тип",
+        "lastError": "Последняя ошибка",
+        "lastSentAt": "Последняя отправка",
+        "name": "Название"
+      },
+      "email": "Настройки почты",
+      "empty": "Ни один канал ещё не доставляет уведомления",
+      "enabled": "Включён",
+      "id": "Канал",
+      "kind": "Тип",
+      "kind.email": "Электронная почта",
+      "kind.telegram": "Telegram",
+      "kind.webhook": "Вебхук",
+      "list": {
+        "title": "Каналы доставки"
+      },
+      "name": "Название",
+      "page": {
+        "email": "Почта",
+        "main": "Канал"
+      },
+      "set": {
+        "title": "Канал"
+      }
+    },
+    "delivery": {
+      "column": {
+        "attempt": "Попыток",
+        "channel": "Канал",
+        "createdAt": "Создана",
+        "error": "Ошибка",
+        "messageKey": "Сообщение",
+        "nextAt": "Следующая попытка",
+        "sentAt": "Отправлено",
+        "state": "Состояние"
+      },
+      "empty": "Доставок ещё не было",
+      "list": {
+        "title": "Доставки"
+      },
+      "state": {
+        "failed": "Не удалась",
+        "pending": "Ожидает",
+        "sent": "Отправлена"
+      }
+    },
+    "delivery_failed": "Доставка почты через канал {channel} не удалась",
+    "error": {
+      "account": "Сохранённый аккаунт {account} проблемы {id} не является идентификатором",
+      "channel_config": "Сохранённые настройки канала {id} не читаются",
+      "channel_email_missing": "Почтовому каналу нужны настройки почты",
+      "channel_gone": "Канал {id} больше не существует",
+      "channel_kind": "Сохранённый тип {kind} канала {id} неизвестен",
+      "channel_kind_unavailable": "Каналы типа {kind} пока недоступны",
+      "email_address": "{value} не является адресом электронной почты",
+      "email_send": "Письмо на {host} не отправлено: {reason}",
+      "email_transport": "Не удалось собрать почтовый транспорт к {host}: {reason}",
+      "id": "Сохранённый идентификатор {id} не является идентификатором",
+      "level": "Сохранённый уровень {level} уведомления {id} неизвестен",
+      "message_gone": "Уведомление {id} больше не существует",
+      "severity": "Сохранённая серьёзность {severity} проблемы {id} неизвестна",
+      "template_missing": "Ни один почтовый шаблон не отображает {id}",
+      "template_placeholder": "{part} почтового шаблона {id} на языке {lang} содержит подстановку {found}; подстановки пишутся в одиночных фигурных скобках",
+      "template_render": "{part} почтового шаблона {id} на языке {lang} не отобразился: {reason}",
+      "template_syntax": "{part} почтового шаблона {id} на языке {lang} не разбирается: {reason}",
+      "template_twice": "Почтовый шаблон {id} добавлен дважды"
+    },
+    "message": {
+      "action": {
+        "clear": "Убрать прочитанные уведомления",
+        "mark_read": "Отметить прочитанным"
+      },
+      "column": {
+        "createdAt": "Получено",
+        "key": "Сообщение",
+        "level": "Уровень",
+        "readAt": "Прочитано",
+        "source": "Источник",
+        "unread": "Состояние"
+      },
+      "empty": "Уведомлений нет",
+      "level": {
+        "error": "Ошибка",
+        "info": "Сведения",
+        "warning": "Предупреждение"
+      },
+      "list": {
+        "title": "Уведомления"
+      },
+      "unread": {
+        "false": "Прочитано",
+        "true": "Не прочитано"
+      }
+    },
+    "problem": {
+      "cleared": "Проблема {key} устранена у {subject}",
+      "column": {
+        "accountId": "Аккаунт",
+        "clearedAt": "Устранена",
+        "count": "Замечена",
+        "key": "Проблема",
+        "open": "Состояние",
+        "raisedAt": "Возникла",
+        "severity": "Серьёзность",
+        "subject": "Объект"
+      },
+      "empty": "Открытых проблем нет",
+      "list": {
+        "title": "Проблемы"
+      },
+      "open": {
+        "false": "Устранена",
+        "true": "Открыта"
+      },
+      "raised": "Проблема {key} возникла у {subject}",
+      "severity": {
+        "critical": "Критично",
+        "warning": "Предупреждение"
+      }
+    },
+    "test": "Проверочное письмо из канала {channel}"
+  }
 }

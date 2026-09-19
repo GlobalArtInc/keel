@@ -255,7 +255,7 @@ impl Answer {
     }
 }
 
-fn kind_of(value: &Value) -> &'static str {
+pub(crate) fn kind_of(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "boolean",

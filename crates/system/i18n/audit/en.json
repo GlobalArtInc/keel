@@ -1,19 +1,29 @@
 {
-  "audit.list.title": "Audit trail",
-  "audit.empty": "No calls have been recorded yet",
-  "audit.column.at": "When",
-  "audit.column.function": "Function",
-  "audit.column.principalLogin": "Principal",
-  "audit.column.principalId": "Principal id",
-  "audit.column.actorLogin": "Actor",
-  "audit.column.via": "Via",
-  "audit.column.ip": "Address",
-  "audit.column.subject": "Subject",
-  "audit.column.status": "Outcome",
-  "audit.column.errorKey": "Error",
-  "audit.column.elapsedMs": "Duration, ms",
-  "audit.column.requestId": "Request",
-  "audit.status.committed": "Committed",
-  "audit.status.failed": "Failed",
-  "audit.error.not_running": "The audit worker is not running"
+  "audit": {
+    "column": {
+      "actorLogin": "Actor",
+      "at": "When",
+      "elapsedMs": "Duration, ms",
+      "errorKey": "Error",
+      "function": "Function",
+      "ip": "Address",
+      "principalId": "Principal id",
+      "principalLogin": "Principal",
+      "requestId": "Request",
+      "status": "Outcome",
+      "subject": "Subject",
+      "via": "Via"
+    },
+    "empty": "No calls have been recorded yet",
+    "error": {
+      "not_running": "The audit worker is not running"
+    },
+    "list": {
+      "title": "Audit trail"
+    },
+    "status": {
+      "committed": "Committed",
+      "failed": "Failed"
+    }
+  }
 }

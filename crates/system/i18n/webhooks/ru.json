@@ -1,54 +1,80 @@
 {
-  "webhook.subscription.list.title": "Вебхуки",
-  "webhook.subscription.empty": "Подписок на вебхуки пока нет",
-  "webhook.subscription.set.title": "Подписка на вебхуки",
-  "webhook.subscription.column.name": "Название",
-  "webhook.subscription.column.url": "URL",
-  "webhook.subscription.column.events": "События",
-  "webhook.subscription.column.enabled": "Включена",
-  "webhook.subscription.column.createdAt": "Создана",
-  "webhook.subscription.action.create": "Добавить подписку",
-  "webhook.subscription.action.edit": "Изменить",
-  "webhook.subscription.action.deliveries": "Доставки",
-  "webhook.subscription.action.delete": "Удалить",
-  "webhook.subscription.id": "Подписка",
-  "webhook.subscription.name": "Название",
-  "webhook.subscription.url": "URL",
-  "webhook.subscription.secret": "Секрет подписи",
-  "webhook.subscription.events": "Маски событий",
-  "webhook.subscription.enabled": "Включена",
-  "webhook.subscription.account": "Аккаунт",
-  "webhook.subscription.page.main": "Подписка",
-  "webhook.subscription.page.owner": "Владелец",
-  "webhook.delivery.list.title": "Доставки вебхуков",
-  "webhook.delivery.empty": "Ни одной доставки ещё не было",
-  "webhook.delivery.column.eventId": "Событие",
-  "webhook.delivery.column.type": "Тип",
-  "webhook.delivery.column.state": "Состояние",
-  "webhook.delivery.column.attempt": "Попыток",
-  "webhook.delivery.column.nextAt": "Следующая попытка",
-  "webhook.delivery.column.lastStatus": "Последний статус",
-  "webhook.delivery.column.lastError": "Последняя ошибка",
-  "webhook.delivery.column.createdAt": "Создана",
-  "webhook.delivery.state.pending": "Ожидает",
-  "webhook.delivery.state.delivered": "Доставлена",
-  "webhook.delivery.state.failed": "Ошибка",
-  "webhook.delivery.state.dead": "Отброшена",
-  "webhook.delivery.action.retry": "Повторить",
-  "webhook.private_targets": "Разрешить вебхуки на приватные адреса",
-  "webhook.dead_letter": "Доставки вебхуков в {name} окончательно не удались",
-  "webhook.error.url": "{value} не является веб-адресом: {reason}",
-  "webhook.error.url_private": "URL указывает на приватный или незащищённый адрес ({reason}: {detail}); включите webhook.private_targets, чтобы разрешить его",
-  "webhook.error.url_unresolved": "Имя {host} не разрешается: {reason}",
-  "webhook.error.secret_short": "Секрет подписи короче {min} байт",
-  "webhook.error.mask": "{mask} не является маской события; укажите module.* или имя события через точку",
-  "webhook.error.entropy": "Не удалось сгенерировать секрет подписи",
-  "webhook.error.id": "Сохранённый идентификатор {id} не является идентификатором",
-  "webhook.error.not_retryable": "Доставка {id} в состоянии {state}; повторить можно только неудавшуюся или отброшенную доставку",
-  "webhook.error.subscription_gone": "Подписка этой доставки больше не существует",
-  "webhook.error.event_gone": "События этой доставки больше нет в исходящей очереди",
-  "webhook.error.secret": "Не удалось открыть секрет подписи",
-  "webhook.error.client": "Не удалось собрать HTTP-клиент",
-  "webhook.error.send": "Доставка не отправлена",
-  "webhook.error.status": "Получатель ответил статусом не 2xx"
+  "webhook": {
+    "dead_letter": "Доставки вебхуков в {name} окончательно не удались",
+    "delivery": {
+      "action": {
+        "retry": "Повторить"
+      },
+      "column": {
+        "attempt": "Попыток",
+        "createdAt": "Создана",
+        "eventId": "Событие",
+        "lastError": "Последняя ошибка",
+        "lastStatus": "Последний статус",
+        "nextAt": "Следующая попытка",
+        "state": "Состояние",
+        "type": "Тип"
+      },
+      "empty": "Ни одной доставки ещё не было",
+      "list": {
+        "title": "Доставки вебхуков"
+      },
+      "state": {
+        "dead": "Отброшена",
+        "delivered": "Доставлена",
+        "failed": "Ошибка",
+        "pending": "Ожидает"
+      }
+    },
+    "error": {
+      "client": "Не удалось собрать HTTP-клиент",
+      "entropy": "Не удалось сгенерировать секрет подписи",
+      "event_gone": "События этой доставки больше нет в исходящей очереди",
+      "id": "Сохранённый идентификатор {id} не является идентификатором",
+      "mask": "{mask} не является маской события; укажите module.* или имя события через точку",
+      "not_retryable": "Доставка {id} в состоянии {state}; повторить можно только неудавшуюся или отброшенную доставку",
+      "secret": "Не удалось открыть секрет подписи",
+      "secret_short": "Секрет подписи короче {min} байт",
+      "send": "Доставка не отправлена",
+      "status": "Получатель ответил статусом не 2xx",
+      "subscription_gone": "Подписка этой доставки больше не существует",
+      "url": "{value} не является веб-адресом: {reason}",
+      "url_private": "URL указывает на приватный или незащищённый адрес ({reason}: {detail}); включите webhook.private_targets, чтобы разрешить его",
+      "url_unresolved": "Имя {host} не разрешается: {reason}"
+    },
+    "private_targets": "Разрешить вебхуки на приватные адреса",
+    "subscription": {
+      "account": "Аккаунт",
+      "action": {
+        "create": "Добавить подписку",
+        "delete": "Удалить",
+        "deliveries": "Доставки",
+        "edit": "Изменить"
+      },
+      "column": {
+        "createdAt": "Создана",
+        "enabled": "Включена",
+        "events": "События",
+        "name": "Название",
+        "url": "URL"
+      },
+      "empty": "Подписок на вебхуки пока нет",
+      "enabled": "Включена",
+      "events": "Маски событий",
+      "id": "Подписка",
+      "list": {
+        "title": "Вебхуки"
+      },
+      "name": "Название",
+      "page": {
+        "main": "Подписка",
+        "owner": "Владелец"
+      },
+      "secret": "Секрет подписи",
+      "set": {
+        "title": "Подписка на вебхуки"
+      },
+      "url": "URL"
+    }
+  }
 }

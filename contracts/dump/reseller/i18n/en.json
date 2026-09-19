@@ -1,951 +1,1163 @@
 {
   "lang": "en",
   "messages": {
-    "menu": {
-      "system": "System",
-      "demo": "Demo"
-    },
     "keel": {
-      "brand": "Keel",
-      "id": "Id",
-      "name": "Name",
-      "title": "Title",
-      "kind": "Kind",
-      "state": "State",
-      "login": "Login",
-      "role": "Role",
-      "lang": "Language",
-      "createdAt": "Created",
-      "updatedAt": "Updated",
-      "column": {
-        "id": "Id",
-        "name": "Name",
-        "title": "Title",
+      "account": {
+        "action": {
+          "create": "New account",
+          "edit": "Edit"
+        },
+        "column": {
+          "createdAt": "Created",
+          "id": "Account",
+          "kind": "Kind",
+          "origin": "Origin",
+          "parentId": "Parent",
+          "state": "State"
+        },
+        "create": {
+          "title": "New account"
+        },
+        "empty": "No accounts yet",
+        "error": {
+          "kind_reserved": "The kind {kind} is reserved for the root account",
+          "parent_cycle": "An account cannot be moved under itself or under one of its own accounts",
+          "path_unknown": "The stored path of an account carries the segment {segment}, which is not a ULID",
+          "root_immutable": "The root account cannot be changed"
+        },
+        "id": "Account",
         "kind": "Kind",
-        "state": "State",
-        "login": "Login",
-        "role": "Role",
-        "lang": "Language",
-        "createdAt": "Created",
-        "updatedAt": "Updated"
+        "list": {
+          "title": "Accounts"
+        },
+        "page": {
+          "main": "Account"
+        },
+        "parent": "Parent account",
+        "state": {
+          "active": "Active",
+          "deleting": "Deleting",
+          "suspended": "Suspended"
+        },
+        "update": {
+          "title": "Account"
+        }
       },
       "action": {
-        "create": "New",
-        "edit": "Edit",
-        "delete": "Delete",
-        "refresh": "Refresh",
-        "export": "Export",
-        "save": "Save",
-        "retry": "Retry",
-        "done": "{action} completed",
         "back": "Back",
+        "create": "New",
+        "delete": "Delete",
+        "done": "{action} completed",
+        "edit": "Edit",
+        "export": "Export",
+        "finish": "Finish",
         "next": "Next",
-        "finish": "Finish"
+        "refresh": "Refresh",
+        "retry": "Retry",
+        "save": "Save"
+      },
+      "brand": "Keel",
+      "check": {
+        "cidr": "Enter a network in CIDR notation",
+        "domain": "Enter a domain name",
+        "email": "Enter an e-mail address",
+        "int": "Enter a whole number",
+        "ip": "Enter an IP address",
+        "name": "Enter a name: a letter followed by letters, digits, underscores or dashes",
+        "path": "Enter an absolute path",
+        "port": "Enter a port between 1 and 65535"
+      },
+      "column": {
+        "createdAt": "Created",
+        "id": "Id",
+        "kind": "Kind",
+        "lang": "Language",
+        "login": "Login",
+        "name": "Name",
+        "role": "Role",
+        "state": "State",
+        "title": "Title",
+        "updatedAt": "Updated"
+      },
+      "confirm": {
+        "count": "Type {count} to confirm",
+        "many": "Continue with {action} for {count} items?",
+        "one": "Continue with {action}?"
+      },
+      "createdAt": "Created",
+      "error": {
+        "account_not_found": "The account does not exist or is outside your scope",
+        "actor_not_delegated": "The actor arrived without delegation",
+        "body_not_json": "The request body is not JSON",
+        "body_not_multipart": "The request body is not multipart/form-data",
+        "body_too_large": "The request body is above {limit} bytes",
+        "call_still_shared": "The call is still referenced when it should commit",
+        "caller_unavailable": "The function {function} cannot be called yet: the dispatcher is not ready",
+        "config_missing": "The configuration section {section} is not contributed",
+        "conflict": "The change conflicts with the current state",
+        "cross_site": "The request comes from another site",
+        "download_route": "The function {function} streams a file; fetch it at {route}",
+        "download_stored_inline": "A stored download can only be written inside a task",
+        "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",
+        "export_columns": "The column {column} is not part of the list {function}",
+        "export_output": "The export could not be written",
+        "export_page": "The list {function} answered a page the export cannot read",
+        "file_encoding": "The file is not UTF-8 text",
+        "file_too_large": "The file is above {limit} bytes",
+        "file_type": "The file type {type} is not accepted; expected one of {types}",
+        "forbidden": "You are not allowed to do this",
+        "forbidden_field": "A field is above your level",
+        "frame_unknown": "The frame is not a func, describe or i18n frame",
+        "function_not_found": "The function {function} does not exist",
+        "group_body": "A group edit takes ids, fields and mask",
+        "group_read": "The function {function} cannot apply a group edit: it has no key or no read function",
+        "hook_timeout": "A hook of {module} on {function} took too long",
+        "idempotency_mismatch": "The same idempotency key was used with a different request",
+        "idempotency_race": "The same request is being processed; retry",
+        "internal": "Internal error",
+        "internal_only": "The function {function} is internal; it runs through the kernel alone",
+        "invocation_unknown": "The call does not know which function it runs",
+        "invoke_unavailable": "Nested calls are not available here",
+        "invoke_write_outside_transaction": "The write function {function} cannot be invoked from a read call",
+        "level": "The level {level} is required",
+        "license": "The feature is not licensed",
+        "limit_exceeded": "The limit is reached",
+        "list": {
+          "filter_value": "The value {value} does not fit the field",
+          "list_value_op": "A list of values only works with equality on {field}",
+          "not_filterable": "The list cannot be filtered by {field}",
+          "not_sortable": "The list cannot be sorted by {field}",
+          "page": "The page must be 1 or more",
+          "page_size": "The page size must be 1 or more",
+          "unknown_field": "The field {field} does not exist"
+        },
+        "lock_failed": "The lock {key} could not be taken",
+        "lock_unavailable": "The lock {key} cannot be taken: the database is not attached",
+        "masker_unavailable": "The parameters of {function} cannot be masked yet: the registries are not frozen",
+        "method_not_allowed": "The function {function} is called with {allowed}",
+        "multi_field": "The field {field} cannot be edited across several rows",
+        "multi_unmasked": "The field {field} is not in the mask of the group edit",
+        "not_found": "Not found",
+        "outbox_row": "The outbox row {seq} carries an unreadable {member}",
+        "outbox_seq": "The outbox did not answer the sequence number of a written event",
+        "outbox_unavailable": "The outbox cannot be read yet: the dispatcher is not attached",
+        "owned_composite_key": "The function {function} is owned through a composite key",
+        "ownership_undeclared": "The function {function} declares neither owned nor unowned",
+        "part_repeated": "The part {part} is sent twice",
+        "part_unknown": "The part {part} matches no file field",
+        "peer": "A neighbouring product did not answer",
+        "permission": "The permission {permission} is required",
+        "principal_not_found": "The principal {login} does not exist",
+        "query_not_json": "The parameter {parameter} is not JSON",
+        "query_not_object": "The parameter {parameter} is not a JSON object",
+        "rate_limited": "Too many requests",
+        "read_call_has_no_outbox": "A read call has no outbox",
+        "read_call_has_no_transaction": "A read call has no transaction",
+        "request": "{message} (request {id})",
+        "route_not_found": "The path {path} does not exist",
+        "secret_open": "The sealed value does not open under the data key",
+        "secret_seal": "The value could not be sealed under the data key",
+        "service_missing": "The service {service} is not provided",
+        "setting_value": "The setting {key} has no usable value",
+        "spawn_inside_task": "A task cannot spawn itself again",
+        "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
+        "task_output": "The task output at {path} could not be opened",
+        "tasks_unavailable": "Background tasks are not available on this installation",
+        "timeout": "The call took too long",
+        "token_read_only": "The token is read-only and {function} writes",
+        "token_scope": "The token is not scoped to {function}",
+        "unauthenticated": "Sign in to continue",
+        "unauthenticated_route": "The route serves calls without the authentication middleware",
+        "unavailable": "Temporarily unavailable",
+        "upload_route": "The function {function} takes a file; post it as multipart to {route}",
+        "validation": "The request is not valid",
+        "write_call_without_transaction": "A write call lost its transaction"
+      },
+      "export": {
+        "columns": "Columns",
+        "format": "Format",
+        "format.csv": "CSV",
+        "format.json": "JSON",
+        "func": "List",
+        "query": "Query"
+      },
+      "id": "Id",
+      "kind": "Kind",
+      "lang": "Language",
+      "level": {
+        "admin": "Administrator",
+        "guest": "Guest",
+        "owner": "Owner",
+        "reseller": "Reseller",
+        "service": "Service",
+        "user": "User"
+      },
+      "login": "Login",
+      "name": "Name",
+      "once": {
+        "title": "Shown only once: copy the values now"
       },
       "page": {
         "main": "Main"
       },
-      "once": {
-        "title": "Shown only once: copy the values now"
+      "principal": {
+        "account": "Account",
+        "action": {
+          "create": "New principal",
+          "edit": "Edit"
+        },
+        "column": {
+          "accountId": "Account",
+          "createdAt": "Created",
+          "lang": "Language",
+          "level": "Level",
+          "login": "Login",
+          "origin": "Origin",
+          "role": "Role",
+          "state": "State"
+        },
+        "create": {
+          "title": "New principal"
+        },
+        "empty": "No principals yet",
+        "error": {
+          "account_unknown": "The stored account {account} of principal {id} is not a ULID",
+          "id_unknown": "The stored id {id} of a principal is not a ULID",
+          "level_above_caller": "The level {level} is above your own",
+          "level_account": "A principal of level {level} cannot belong to an account of kind {kind}",
+          "level_guest": "A principal cannot have the guest level",
+          "level_unknown": "The stored level {level} of principal {id} is not on the ladder",
+          "login_exists": "A principal with this login exists"
+        },
+        "lang": "Language",
+        "level": "Level",
+        "list": {
+          "title": "Principals"
+        },
+        "login": "Login",
+        "page": {
+          "main": "Principal"
+        },
+        "role": "Role",
+        "state": {
+          "active": "Active",
+          "suspended": "Suspended"
+        },
+        "update": {
+          "title": "Principal"
+        }
       },
-      "confirm": {
-        "one": "Continue with {action}?",
-        "many": "Continue with {action} for {count} items?",
-        "count": "Type {count} to confirm"
+      "product": {
+        "action": {
+          "disable": "Disable",
+          "enable": "Enable"
+        },
+        "column": {
+          "enabledAt": "Enabled at",
+          "enabledBy": "Enabled by",
+          "id": "Product",
+          "modules": "Modules",
+          "name": "Name",
+          "state": "State",
+          "version": "Version"
+        },
+        "empty": "No products are compiled into this installation",
+        "error": {
+          "stored": "The stored product set cannot be read: {reason}",
+          "unknown": "The product {id} is not carried by this installation"
+        },
+        "list": {
+          "title": "Products"
+        },
+        "state": {
+          "disabled": "Disabled",
+          "enabled": "Enabled"
+        }
       },
-      "value": {
-        "true": "Yes",
-        "false": "No"
-      },
-      "view": {
-        "missing": "The screen {view} belongs to {product}, whose views are not part of this shell"
+      "role": "Role",
+      "schema": {
+        "additionalProperties": "The field is not part of the form",
+        "anyOf": "The value does not fit",
+        "const": "The value is fixed",
+        "enum": "The value is not one of the allowed values",
+        "format": "The value has the wrong format",
+        "maxItems": "Too many items",
+        "maxLength": "The value is too long",
+        "maximum": "The value is too large",
+        "minItems": "Too few items",
+        "minLength": "The value is too short",
+        "minimum": "The value is too small",
+        "oneOf": "The value does not fit",
+        "pattern": "The value has the wrong format",
+        "required": "This field is required",
+        "type": "The value has the wrong type",
+        "uniqueItems": "The items must be unique"
       },
       "screen": {
         "unsupported": "Screens of kind {kind} are not rendered yet"
       },
       "shell": {
-        "loading": "Loading",
-        "boot_failed": "The installation did not answer; reload the page",
-        "login": {
-          "title": "Sign in",
-          "login": "Login",
-          "password": "Password",
-          "submit": "Sign in",
-          "code": "Code",
-          "code_hint": "Enter the code from your authenticator app, or a recovery code",
-          "verify": "Verify",
-          "key": "Signing in with the login key",
-          "key_failed": "The login key was not accepted",
-          "failed": "Sign-in failed"
-        },
-        "logout": "Log out",
-        "not_found": {
-          "title": "Page not found",
-          "text": "The address {path} does not exist in this installation",
-          "home": "Go to the start page"
+        "act_as": {
+          "empty": "No principal matches",
+          "enter": "Enter",
+          "search": "Search by login",
+          "title": "Act as a principal"
         },
         "acting_as": {
           "banner": "You are acting as {login}",
           "exit": "Return to your own session"
         },
-        "act_as": {
-          "title": "Act as a principal",
-          "search": "Search by login",
-          "enter": "Enter",
-          "empty": "No principal matches"
-        },
-        "user": {
-          "language": "Language",
-          "theme": "Theme",
-          "act_as": "Act as",
-          "sessions": "Sessions",
-          "tokens": "API tokens",
-          "security": "Security",
-          "logout": "Log out"
-        },
+        "boot_failed": "The installation did not answer; reload the page",
         "language": {
           "en": "English",
           "ru": "Russian"
         },
+        "loading": "Loading",
+        "login": {
+          "code": "Code",
+          "code_hint": "Enter the code from your authenticator app, or a recovery code",
+          "failed": "Sign-in failed",
+          "key": "Signing in with the login key",
+          "key_failed": "The login key was not accepted",
+          "login": "Login",
+          "password": "Password",
+          "submit": "Sign in",
+          "title": "Sign in",
+          "verify": "Verify"
+        },
+        "logout": "Log out",
+        "not_found": {
+          "home": "Go to the start page",
+          "text": "The address {path} does not exist in this installation",
+          "title": "Page not found"
+        },
         "rail": {
-          "notifications": "Notifications",
-          "tasks": "Tasks",
           "help": "Help",
-          "later": "Available in a later release"
+          "later": "Available in a later release",
+          "notifications": "Notifications",
+          "tasks": "Tasks"
         },
         "security": {
-          "title": "Security",
-          "password": "Password",
-          "password_hint": "Change the password of your account",
-          "totp": "Second factor",
-          "enrolled": "A second factor is enrolled",
-          "not_enrolled": "No second factor is enrolled",
-          "enroll": "Set up",
           "confirm": "Confirm",
           "disable": "Disable",
+          "enroll": "Set up",
+          "enrolled": "A second factor is enrolled",
+          "not_enrolled": "No second factor is enrolled",
+          "password": "Password",
+          "password_hint": "Change the password of your account",
+          "recovery": "Recovery codes",
+          "recovery_hint": "Store these codes now: they are shown only once",
           "secret": "Secret",
           "secret_hint": "Scan the code or enter the secret in your authenticator app, then confirm with a code",
-          "recovery": "Recovery codes",
-          "recovery_hint": "Store these codes now: they are shown only once"
+          "title": "Security",
+          "totp": "Second factor"
         },
         "settings": {
+          "default": "Default",
           "title": "Setting {key}",
-          "value": "Value",
-          "default": "Default"
+          "value": "Value"
+        },
+        "user": {
+          "act_as": "Act as",
+          "language": "Language",
+          "logout": "Log out",
+          "security": "Security",
+          "sessions": "Sessions",
+          "theme": "Theme",
+          "tokens": "API tokens"
         }
       },
-      "level": {
-        "guest": "Guest",
-        "service": "Service",
-        "user": "User",
-        "reseller": "Reseller",
-        "admin": "Administrator",
-        "owner": "Owner"
+      "state": "State",
+      "title": "Title",
+      "updatedAt": "Updated",
+      "value": {
+        "false": "No",
+        "true": "Yes"
       },
-      "export": {
-        "func": "List",
-        "query": "Query",
-        "columns": "Columns",
-        "format": "Format",
-        "format.csv": "CSV",
-        "format.json": "JSON"
-      },
-      "account": {
-        "list": {
-          "title": "Accounts"
-        },
-        "create": {
-          "title": "New account"
-        },
-        "update": {
-          "title": "Account"
-        },
-        "empty": "No accounts yet",
-        "id": "Account",
-        "kind": "Kind",
-        "parent": "Parent account",
-        "state": {
-          "active": "Active",
-          "suspended": "Suspended",
-          "deleting": "Deleting"
-        },
-        "column": {
-          "id": "Account",
-          "kind": "Kind",
-          "state": "State",
-          "parentId": "Parent",
-          "createdAt": "Created",
-          "origin": "Origin"
-        },
-        "action": {
-          "create": "New account",
-          "edit": "Edit"
-        },
-        "page": {
-          "main": "Account"
-        },
-        "error": {
-          "kind_reserved": "The kind {kind} is reserved for the root account",
-          "root_immutable": "The root account cannot be changed",
-          "path_unknown": "The stored path of an account carries the segment {segment}, which is not a ULID",
-          "parent_cycle": "An account cannot be moved under itself or under one of its own accounts"
-        }
-      },
-      "principal": {
-        "list": {
-          "title": "Principals"
-        },
-        "create": {
-          "title": "New principal"
-        },
-        "update": {
-          "title": "Principal"
-        },
-        "empty": "No principals yet",
-        "login": "Login",
-        "level": "Level",
-        "role": "Role",
-        "lang": "Language",
-        "account": "Account",
-        "state": {
-          "active": "Active",
-          "suspended": "Suspended"
-        },
-        "column": {
-          "login": "Login",
-          "level": "Level",
-          "role": "Role",
-          "state": "State",
-          "accountId": "Account",
-          "lang": "Language",
-          "createdAt": "Created",
-          "origin": "Origin"
-        },
-        "action": {
-          "create": "New principal",
-          "edit": "Edit"
-        },
-        "page": {
-          "main": "Principal"
-        },
-        "error": {
-          "login_exists": "A principal with this login exists",
-          "level_guest": "A principal cannot have the guest level",
-          "level_above_caller": "The level {level} is above your own",
-          "level_account": "A principal of level {level} cannot belong to an account of kind {kind}",
-          "level_unknown": "The stored level {level} of principal {id} is not on the ladder",
-          "id_unknown": "The stored id {id} of a principal is not a ULID",
-          "account_unknown": "The stored account {account} of principal {id} is not a ULID"
-        }
-      },
-      "product": {
-        "list": {
-          "title": "Products"
-        },
-        "empty": "No products are compiled into this installation",
-        "state": {
-          "enabled": "Enabled",
-          "disabled": "Disabled"
-        },
-        "column": {
-          "id": "Product",
-          "name": "Name",
-          "version": "Version",
-          "state": "State",
-          "enabledAt": "Enabled at",
-          "enabledBy": "Enabled by",
-          "modules": "Modules"
-        },
-        "action": {
-          "enable": "Enable",
-          "disable": "Disable"
-        },
-        "error": {
-          "unknown": "The product {id} is not carried by this installation",
-          "stored": "The stored product set cannot be read: {reason}"
-        }
-      },
-      "error": {
-        "validation": "The request is not valid",
-        "forbidden": "You are not allowed to do this",
-        "forbidden_field": "A field is above your level",
-        "unauthenticated": "Sign in to continue",
-        "not_found": "Not found",
-        "conflict": "The change conflicts with the current state",
-        "idempotency_mismatch": "The same idempotency key was used with a different request",
-        "idempotency_race": "The same request is being processed; retry",
-        "limit_exceeded": "The limit is reached",
-        "license": "The feature is not licensed",
-        "rate_limited": "Too many requests",
-        "unavailable": "Temporarily unavailable",
-        "peer": "A neighbouring product did not answer",
-        "internal": "Internal error",
-        "request": "{message} (request {id})",
-        "level": "The level {level} is required",
-        "permission": "The permission {permission} is required",
-        "function_not_found": "The function {function} does not exist",
-        "principal_not_found": "The principal {login} does not exist",
-        "account_not_found": "The account does not exist or is outside your scope",
-        "timeout": "The call took too long",
-        "hook_timeout": "A hook of {module} on {function} took too long",
-        "actor_not_delegated": "The actor arrived without delegation",
-        "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",
-        "invoke_unavailable": "Nested calls are not available here",
-        "invoke_write_outside_transaction": "The write function {function} cannot be invoked from a read call",
-        "read_call_has_no_transaction": "A read call has no transaction",
-        "read_call_has_no_outbox": "A read call has no outbox",
-        "write_call_without_transaction": "A write call lost its transaction",
-        "call_still_shared": "The call is still referenced when it should commit",
-        "config_missing": "The configuration section {section} is not contributed",
-        "setting_value": "The setting {key} has no usable value",
-        "service_missing": "The service {service} is not provided",
-        "ownership_undeclared": "The function {function} declares neither owned nor unowned",
-        "owned_composite_key": "The function {function} is owned through a composite key",
-        "token_scope": "The token is not scoped to {function}",
-        "token_read_only": "The token is read-only and {function} writes",
-        "internal_only": "The function {function} is internal; it runs through the kernel alone",
-        "cross_site": "The request comes from another site",
-        "unauthenticated_route": "The route serves calls without the authentication middleware",
-        "secret_seal": "The value could not be sealed under the data key",
-        "secret_open": "The sealed value does not open under the data key",
-        "method_not_allowed": "The function {function} is called with {allowed}",
-        "body_too_large": "The request body is above {limit} bytes",
-        "body_not_json": "The request body is not JSON",
-        "query_not_json": "The parameter {parameter} is not JSON",
-        "query_not_object": "The parameter {parameter} is not a JSON object",
-        "route_not_found": "The path {path} does not exist",
-        "frame_unknown": "The frame is not a func, describe or i18n frame",
-        "caller_unavailable": "The function {function} cannot be called yet: the dispatcher is not ready",
-        "masker_unavailable": "The parameters of {function} cannot be masked yet: the registries are not frozen",
-        "lock_unavailable": "The lock {key} cannot be taken: the database is not attached",
-        "lock_failed": "The lock {key} could not be taken",
-        "outbox_unavailable": "The outbox cannot be read yet: the dispatcher is not attached",
-        "outbox_seq": "The outbox did not answer the sequence number of a written event",
-        "outbox_row": "The outbox row {seq} carries an unreadable {member}",
-        "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
-        "task_output": "The task output at {path} could not be opened",
-        "download_route": "The function {function} streams a file; fetch it at {route}",
-        "download_stored_inline": "A stored download can only be written inside a task",
-        "tasks_unavailable": "Background tasks are not available on this installation",
-        "spawn_inside_task": "A task cannot spawn itself again",
-        "invocation_unknown": "The call does not know which function it runs",
-        "export_columns": "The column {column} is not part of the list {function}",
-        "export_output": "The export could not be written",
-        "export_page": "The list {function} answered a page the export cannot read",
-        "group_body": "A group edit takes ids, fields and mask",
-        "group_read": "The function {function} cannot apply a group edit: it has no key or no read function",
-        "multi_field": "The field {field} cannot be edited across several rows",
-        "multi_unmasked": "The field {field} is not in the mask of the group edit",
-        "upload_route": "The function {function} takes a file; post it as multipart to {route}",
-        "body_not_multipart": "The request body is not multipart/form-data",
-        "part_unknown": "The part {part} matches no file field",
-        "part_repeated": "The part {part} is sent twice",
-        "file_type": "The file type {type} is not accepted; expected one of {types}",
-        "file_too_large": "The file is above {limit} bytes",
-        "file_encoding": "The file is not UTF-8 text",
-        "list": {
-          "page": "The page must be 1 or more",
-          "page_size": "The page size must be 1 or more",
-          "not_sortable": "The list cannot be sorted by {field}",
-          "not_filterable": "The list cannot be filtered by {field}",
-          "unknown_field": "The field {field} does not exist",
-          "filter_value": "The value {value} does not fit the field",
-          "list_value_op": "A list of values only works with equality on {field}"
-        }
-      },
-      "check": {
-        "domain": "Enter a domain name",
-        "ip": "Enter an IP address",
-        "cidr": "Enter a network in CIDR notation",
-        "email": "Enter an e-mail address",
-        "int": "Enter a whole number",
-        "name": "Enter a name: a letter followed by letters, digits, underscores or dashes",
-        "port": "Enter a port between 1 and 65535",
-        "path": "Enter an absolute path"
-      },
-      "schema": {
-        "required": "This field is required",
-        "type": "The value has the wrong type",
-        "enum": "The value is not one of the allowed values",
-        "const": "The value is fixed",
-        "minimum": "The value is too small",
-        "maximum": "The value is too large",
-        "minLength": "The value is too short",
-        "maxLength": "The value is too long",
-        "pattern": "The value has the wrong format",
-        "format": "The value has the wrong format",
-        "minItems": "Too few items",
-        "maxItems": "Too many items",
-        "uniqueItems": "The items must be unique",
-        "additionalProperties": "The field is not part of the form",
-        "anyOf": "The value does not fit",
-        "oneOf": "The value does not fit"
+      "view": {
+        "missing": "The screen {view} belongs to {product}, whose views are not part of this shell"
       }
     },
+    "menu": {
+      "system": "System",
+      "demo": "Demo"
+    },
     "phx": {
+      "addToFavourites": "Add to favourites",
+      "apply": "Apply",
+      "ascending": "Ascending",
+      "back": "Back",
+      "breadcrumb": "Breadcrumb",
+      "cancel": "Cancel",
+      "chooseFile": "Choose file",
+      "chooseTime": "Choose time",
+      "chroma": "Saturation",
+      "clear": "Clear",
       "close": "Close",
       "closeAll": "Close all",
-      "cancel": "Cancel",
-      "ok": "Ok",
+      "collapse": "Collapse",
+      "collapseAll": "Collapse all",
       "confirm": "Confirm",
-      "back": "Back",
-      "more": "More",
-      "search": "Search",
-      "clear": "Clear",
-      "loading": "Loading",
-      "total": "Total",
-      "selected": "Selected",
-      "perPage": "Per page",
-      "of": "of",
-      "page": "Page",
-      "nothingFound": "Nothing found",
-      "nothingMatches": "No records match the current search.",
+      "copied": "Copied",
+      "copy": "Copy",
+      "dark": "Dark",
+      "decrease": "Decrease",
+      "descending": "Descending",
+      "done": "Done",
+      "dropFilesHere": "Drop files here",
+      "edit": "Edit",
+      "editPath": "Edit path",
+      "expand": "Expand",
+      "expandAll": "Expand all",
+      "filter": "Filter",
+      "generatePassword": "Generate password",
+      "help": "Help",
+      "hideNotifications": "Hide notifications",
+      "hidePassword": "Hide password",
+      "hours": "Hours",
+      "hue": "Hue",
+      "increase": "Increase",
+      "light": "Light",
       "loadFailed": "Could not load the data",
       "loadFailedText": "The request failed. Check the connection and try again.",
-      "retry": "Retry",
-      "showPassword": "Show password",
-      "hidePassword": "Hide password",
-      "generatePassword": "Generate password",
-      "copy": "Copy",
-      "copied": "Copied",
-      "required": "Required",
-      "collapse": "Collapse",
-      "expand": "Expand",
-      "menu": "Menu",
-      "pin": "Pin",
-      "unpin": "Unpin",
-      "unlimited": "Unlimited",
       "loadMore": "Load more",
-      "increase": "Increase",
-      "decrease": "Decrease",
-      "today": "Today",
-      "previousMonth": "Previous month",
-      "nextMonth": "Next month",
-      "chooseFile": "Choose file",
-      "dropFilesHere": "Drop files here",
-      "removeFile": "Remove file",
-      "light": "Light",
-      "dark": "Dark",
-      "system": "System",
-      "hue": "Hue",
-      "chroma": "Saturation",
-      "reset": "Reset",
-      "showMore": "Show more",
-      "showLess": "Show less",
-      "hideNotifications": "Hide notifications",
-      "showNotifications": "Show notifications",
-      "openNotificationCenter": "Open notification center",
+      "loading": "Loading",
       "markAllRead": "Mark all as read",
+      "menu": "Menu",
+      "minutes": "Minutes",
+      "more": "More",
+      "next": "Next",
+      "nextMonth": "Next month",
+      "nextPage": "Next page",
       "noNotifications": "No notifications",
-      "help": "Help",
-      "passwordStrength": "Password strength",
-      "passwordWeak": "Weak",
+      "nothingFound": "Nothing found",
+      "nothingMatches": "No records match the current search.",
+      "of": "of",
+      "ok": "Ok",
+      "openCalendar": "Open calendar",
+      "openNotificationCenter": "Open notification center",
+      "page": "Page",
+      "pagination": "Pagination",
       "passwordFair": "Fair",
       "passwordGood": "Good",
+      "passwordStrength": "Password strength",
       "passwordStrong": "Strong",
-      "apply": "Apply",
-      "filter": "Filter",
-      "sort": "Sort",
-      "ascending": "Ascending",
-      "descending": "Descending",
-      "remove": "Remove",
-      "previousPage": "Previous page",
-      "nextPage": "Next page",
-      "pagination": "Pagination",
-      "breadcrumb": "Breadcrumb",
-      "up": "Up",
-      "editPath": "Edit path",
+      "passwordWeak": "Weak",
       "path": "Path",
-      "addToFavourites": "Add to favourites",
+      "perPage": "Per page",
+      "pin": "Pin",
+      "previousMonth": "Previous month",
+      "previousPage": "Previous page",
+      "remove": "Remove",
+      "removeFile": "Remove file",
       "removeFromFavourites": "Remove from favourites",
-      "edit": "Edit",
+      "required": "Required",
+      "reset": "Reset",
+      "resizeColumn": "Resize column",
+      "retry": "Retry",
+      "save": "Save",
+      "search": "Search",
       "selectAll": "Select all",
       "selectRow": "Select row",
-      "resizeColumn": "Resize column",
-      "expandAll": "Expand all",
-      "collapseAll": "Collapse all",
-      "openCalendar": "Open calendar",
-      "chooseTime": "Choose time",
-      "hours": "Hours",
-      "minutes": "Minutes",
-      "yesterday": "Yesterday",
-      "next": "Next",
-      "done": "Done",
+      "selected": "Selected",
+      "showLess": "Show less",
+      "showMore": "Show more",
+      "showNotifications": "Show notifications",
+      "showPassword": "Show password",
       "skip": "Skip",
-      "save": "Save"
+      "sort": "Sort",
+      "system": "System",
+      "today": "Today",
+      "total": "Total",
+      "unlimited": "Unlimited",
+      "unpin": "Unpin",
+      "up": "Up",
+      "yesterday": "Yesterday"
     },
-    "audit.list.title": "Audit trail",
-    "audit.empty": "No calls have been recorded yet",
-    "audit.column.at": "When",
-    "audit.column.function": "Function",
-    "audit.column.principalLogin": "Principal",
-    "audit.column.principalId": "Principal id",
-    "audit.column.actorLogin": "Actor",
-    "audit.column.via": "Via",
-    "audit.column.ip": "Address",
-    "audit.column.subject": "Subject",
-    "audit.column.status": "Outcome",
-    "audit.column.errorKey": "Error",
-    "audit.column.elapsedMs": "Duration, ms",
-    "audit.column.requestId": "Request",
-    "audit.status.committed": "Committed",
-    "audit.status.failed": "Failed",
-    "audit.error.not_running": "The audit worker is not running",
-    "auth.login": "Login",
-    "auth.password": "Password",
-    "auth.method": "Login method",
-    "auth.login.title": "Sign in",
-    "auth.login.state.authenticated": "Signed in",
-    "auth.logout.title": "Sign out",
-    "auth.password.set.title": "Change password",
-    "auth.password.principal": "Principal",
-    "auth.password.current": "Current password",
-    "auth.password.password": "New password",
-    "auth.error.credentials": "The login or the password is wrong",
-    "auth.error.current_required": "The current password is required",
-    "auth.error.not_below": "The password of a principal at level {level} cannot be set by a caller at level {caller}",
-    "auth.error.http_only": "Signing in is possible over HTTP only",
-    "auth.error.session_only": "This call needs a session",
-    "auth.error.method_unknown": "The login method {method} is not available",
-    "auth.error.hashing": "The password could not be processed",
-    "auth.error.entropy": "The system gave no randomness",
-    "auth.error.not_started": "The auth module has not started",
-    "auth.error.session_principal": "The session names a principal that cannot be read",
-    "auth.error.session_account": "The session names an account that cannot be read",
-    "auth.token.list.title": "API tokens",
-    "auth.token.create.title": "New API token",
-    "auth.token.empty": "No API tokens yet",
-    "auth.token.name": "Name",
-    "auth.token.level": "Level ceiling",
-    "auth.token.scope": "Scope",
-    "auth.token.scope.full": "Everything the principal may call",
-    "auth.token.scope.read_only": "Read only",
-    "auth.token.ipAllow": "Allowed networks",
-    "auth.token.expiresAt": "Expires",
-    "auth.token.token": "Token",
-    "auth.token.column.name": "Name",
-    "auth.token.column.level": "Level ceiling",
-    "auth.token.column.scope": "Scope",
-    "auth.token.column.ipAllow": "Allowed networks",
-    "auth.token.column.expiresAt": "Expires",
-    "auth.token.column.lastUsedAt": "Last used",
-    "auth.token.column.revokedAt": "Revoked",
-    "auth.token.action.create": "New token",
-    "auth.token.action.revoke": "Revoke",
-    "auth.error.token_owner": "The owner has no tokens; create one as a stored principal",
-    "auth.error.token_level": "The level ceiling {level} must lie between service and your level {caller}",
-    "auth.error.token_mask": "The mask {mask} is neither a function name nor a prefix ending in .*",
-    "auth.error.token_scope": "A token cannot be wider than the scope it is created under",
-    "auth.error.token_expires_past": "The expiry must lie in the future",
-    "auth.error.token_net": "The stored network {net} of a token cannot be read",
-    "auth.error.token_principal": "The token names a principal that cannot be read",
-    "auth.error.token_level_unknown": "The stored level {level} of token {id} is not on the ladder",
-    "auth.login.state.totp": "A second factor is required",
-    "auth.totp.enroll.title": "Set up a second factor",
-    "auth.totp.confirm.title": "Confirm the second factor",
-    "auth.totp.disable.title": "Disable the second factor",
-    "auth.totp.verify.title": "Enter the code",
-    "auth.totp.code": "Code",
-    "auth.totp.challenge": "Sign-in challenge",
-    "auth.totp.principal": "Principal",
-    "auth.totp.recoveryCodes": "Recovery codes",
-    "auth.error.code": "The code is wrong",
-    "auth.error.code_required": "A code is required",
-    "auth.error.challenge": "The sign-in challenge is no longer valid; sign in again",
-    "auth.error.totp_enrolled": "A second factor is already enrolled; disable it first",
-    "auth.error.totp_not_enrolled": "No second factor is being set up",
-    "auth.error.totp_owner": "The owner has no second factor; it signs in over the socket",
-    "auth.error.totp_secret": "The stored second factor cannot be read",
-    "auth.error.totp_principal": "The second factor names a principal that cannot be read",
-    "auth.su.title": "Act as a principal",
-    "auth.su.exit.title": "Return to your own session",
-    "auth.su.principal": "Principal",
-    "auth.error.su_nested": "You are already acting as another principal; return first",
-    "auth.error.not_delegated": "You are not acting as another principal",
-    "auth.key.issue.title": "Issue a one-time login key",
-    "auth.key.redeem.title": "Sign in with a login key",
-    "auth.key.principal": "Principal",
-    "auth.key.ttl": "Valid for (seconds)",
-    "auth.key.redirect": "Land on",
-    "auth.key.key": "Login key",
-    "auth.key.url": "Login link",
-    "auth.error.key": "The login key is not valid; it may have been used or expired",
-    "auth.error.redirect": "The landing path must start with a single / and stay inside the installation",
-    "auth.error.key_principal": "The login key names a principal that cannot be read",
-    "auth.error.key_issuer": "The login key names an issuer that cannot be read",
-    "auth.unlock.title": "Unlock a login",
-    "auth.error.rate_limited": "Too many requests from your address; wait a minute",
-    "auth.error.locked": "Signing in is locked for this login from your address; try again later",
-    "auth.error.ip_denied": "Access from your address is not allowed",
-    "auth.error.password_short": "The password must be at least {min} characters long",
-    "auth.error.password_login": "The password must differ from the login",
-    "auth.error.ip_rule_action": "The stored action {action} of rule {id} is neither allow nor deny",
-    "auth.error.ip_rule_net": "The stored network {net} of rule {id} cannot be read",
-    "auth.error.ip_rule_level": "The stored level {level} of rule {id} is not on the ladder",
-    "auth.error.session_actor": "The session names an actor that cannot be read",
-    "auth.ip_rule.list.title": "IP rules",
-    "auth.ip_rule.create.title": "New IP rule",
-    "auth.ip_rule.empty": "No IP rules yet",
-    "auth.ip_rule.action": "Action",
-    "auth.ip_rule.action.allow": "Allow",
-    "auth.ip_rule.action.deny": "Deny",
-    "auth.ip_rule.cidr": "Network",
-    "auth.ip_rule.level": "Applies from level",
-    "auth.ip_rule.comment": "Comment",
-    "auth.ip_rule.column.action": "Action",
-    "auth.ip_rule.column.cidr": "Network",
-    "auth.ip_rule.column.level": "Applies from level",
-    "auth.ip_rule.column.comment": "Comment",
-    "auth.ip_rule.action.create": "New rule",
-    "auth.ip_rule.action.delete": "Delete",
-    "auth.session.list.title": "Sessions",
-    "auth.session.empty": "No sessions",
-    "auth.session.column.kind": "Kind",
-    "auth.session.column.ip": "Address",
-    "auth.session.column.userAgent": "Client",
-    "auth.session.column.idleUntil": "Idle until",
-    "auth.session.column.absoluteUntil": "Expires",
-    "auth.session.column.actor": "Actor",
-    "auth.session.column.current": "This session",
-    "auth.session.column.revokedAt": "Revoked",
-    "auth.session.kind.session": "Session",
-    "auth.session.kind.su": "Delegated",
-    "auth.session.action.revoke": "Revoke",
-    "auth.grant.list.title": "Permission grants",
-    "auth.grant.set.title": "Grant or deny a permission",
-    "auth.grant.empty": "No stored grants: every principal holds the defaults of its level",
-    "auth.grant.principal": "Principal",
-    "auth.grant.key": "Permission",
-    "auth.grant.granted": "Granted",
-    "auth.grant.granted.true": "Granted",
-    "auth.grant.granted.false": "Denied",
-    "auth.grant.column.principalLogin": "Principal",
-    "auth.grant.column.key": "Permission",
-    "auth.grant.column.granted": "Decision",
-    "auth.grant.column.accountId": "Account",
-    "auth.grant.action.set": "Grant or deny",
-    "auth.grant.action.delete": "Remove",
-    "auth.error.unknown_permission": "The permission {key} is not registered on this installation",
-    "auth.error.grant_not_held": "You cannot grant {key}: you do not hold it yourself",
-    "auth.error.grant_id": "The stored id {id} of a grant is not a ULID",
-    "auth.error.grant_principal": "The grant {id} names a principal {principal} that cannot be read",
-    "cron.job.list.title": "Scheduled jobs",
-    "cron.job.empty": "No module has contributed a job",
-    "cron.job.column.id": "Job",
-    "cron.job.column.module": "Module",
-    "cron.job.column.schedule": "Schedule",
-    "cron.job.column.effective": "Effective schedule",
-    "cron.job.column.lastRunAt": "Last run",
-    "cron.job.column.lastOutcome": "Last outcome",
-    "cron.job.column.nextRunAt": "Next run",
-    "cron.job.lastOutcome.running": "Running",
-    "cron.job.lastOutcome.ok": "Ok",
-    "cron.job.lastOutcome.failed": "Failed",
-    "cron.job.lastOutcome.skipped": "Skipped",
-    "cron.job.lastOutcome.interrupted": "Interrupted",
-    "cron.job.action.run": "Run now",
-    "cron.run.list.title": "Job runs",
-    "cron.run.empty": "No job has run yet",
-    "cron.run.column.job": "Job",
-    "cron.run.column.scheduledAt": "Scheduled",
-    "cron.run.column.startedAt": "Started",
-    "cron.run.column.finishedAt": "Finished",
-    "cron.run.column.outcome": "Outcome",
-    "cron.run.column.error": "Error",
-    "cron.run.outcome.running": "Running",
-    "cron.run.outcome.ok": "Ok",
-    "cron.run.outcome.failed": "Failed",
-    "cron.run.outcome.skipped": "Skipped",
-    "cron.run.outcome.interrupted": "Interrupted",
-    "cron.error.schedule": "The schedule {schedule} of the job {job} does not parse: {reason}",
-    "cron.error.unknown_job": "No module contributes the job {id}",
-    "cron.error.running": "The job {id} is running; wait for it to finish",
-    "cron.error.not_leader": "This node does not hold the schedule; the job {id} runs on the leader",
-    "cron.error.not_running": "The scheduler has not started",
-    "cron.error.run_not_found": "The run {run} does not exist",
-    "cron.error.outcome": "The stored outcome {outcome} of the run {run} is unknown",
-    "notify.problem.list.title": "Problems",
-    "notify.problem.empty": "No problem is open",
-    "notify.problem.column.key": "Problem",
-    "notify.problem.column.severity": "Severity",
-    "notify.problem.column.subject": "Subject",
-    "notify.problem.column.count": "Seen",
-    "notify.problem.column.open": "State",
-    "notify.problem.column.raisedAt": "Raised",
-    "notify.problem.column.clearedAt": "Cleared",
-    "notify.problem.column.accountId": "Account",
-    "notify.problem.severity.warning": "Warning",
-    "notify.problem.severity.critical": "Critical",
-    "notify.problem.open.true": "Open",
-    "notify.problem.open.false": "Cleared",
-    "notify.problem.raised": "Problem {key} raised for {subject}",
-    "notify.problem.cleared": "Problem {key} cleared for {subject}",
-    "notify.message.list.title": "Notifications",
-    "notify.message.empty": "No notifications",
-    "notify.message.column.key": "Message",
-    "notify.message.column.level": "Level",
-    "notify.message.column.source": "Source",
-    "notify.message.column.unread": "State",
-    "notify.message.column.createdAt": "Received",
-    "notify.message.column.readAt": "Read",
-    "notify.message.level.info": "Info",
-    "notify.message.level.warning": "Warning",
-    "notify.message.level.error": "Error",
-    "notify.message.unread.true": "Unread",
-    "notify.message.unread.false": "Read",
-    "notify.message.action.mark_read": "Mark as read",
-    "notify.message.action.clear": "Clear read notifications",
-    "notify.error.severity": "The stored severity {severity} of the problem {id} is unknown",
-    "notify.error.level": "The stored level {level} of the notification {id} is unknown",
-    "notify.error.id": "The stored id {id} is not an identifier",
-    "notify.error.account": "The stored account {account} of the problem {id} is not an identifier",
-    "notify.channel.list.title": "Delivery channels",
-    "notify.channel.empty": "No channel delivers notifications yet",
-    "notify.channel.set.title": "Channel",
-    "notify.channel.column.name": "Name",
-    "notify.channel.column.kind": "Kind",
-    "notify.channel.column.enabled": "Enabled",
-    "notify.channel.column.lastSentAt": "Last sent",
-    "notify.channel.column.lastError": "Last error",
-    "notify.channel.column.createdAt": "Created",
-    "notify.channel.kind.email": "Email",
-    "notify.channel.kind.telegram": "Telegram",
-    "notify.channel.kind.webhook": "Webhook",
-    "notify.channel.action.create": "Add channel",
-    "notify.channel.action.edit": "Edit",
-    "notify.channel.action.test": "Send test email",
-    "notify.channel.action.delete": "Delete",
-    "notify.channel.id": "Channel",
-    "notify.channel.kind": "Kind",
-    "notify.channel.name": "Name",
-    "notify.channel.enabled": "Enabled",
-    "notify.channel.email": "Email settings",
-    "notify.channel.page.main": "Channel",
-    "notify.channel.page.email": "Email",
-    "notify.delivery.list.title": "Deliveries",
-    "notify.delivery.empty": "No delivery has been attempted",
-    "notify.delivery.column.channel": "Channel",
-    "notify.delivery.column.messageKey": "Message",
-    "notify.delivery.column.state": "State",
-    "notify.delivery.column.attempt": "Attempts",
-    "notify.delivery.column.nextAt": "Next attempt",
-    "notify.delivery.column.error": "Error",
-    "notify.delivery.column.sentAt": "Sent",
-    "notify.delivery.column.createdAt": "Created",
-    "notify.delivery.state.pending": "Pending",
-    "notify.delivery.state.sent": "Sent",
-    "notify.delivery.state.failed": "Failed",
-    "notify.delivery_failed": "Mail delivery to the channel {channel} failed",
-    "notify.test": "Test email from the channel {channel}",
-    "notify.error.channel_kind_unavailable": "Channels of kind {kind} are not available yet",
-    "notify.error.channel_kind": "The stored kind {kind} of the channel {id} is unknown",
-    "notify.error.channel_config": "The stored configuration of the channel {id} cannot be read",
-    "notify.error.channel_email_missing": "An email channel needs its email settings",
-    "notify.error.channel_gone": "The channel {id} no longer exists",
-    "notify.error.message_gone": "The notification {id} no longer exists",
-    "notify.error.email_address": "{value} is not an email address",
-    "notify.error.email_transport": "The mail transport to {host} could not be built: {reason}",
-    "notify.error.email_send": "The mail to {host} was not sent: {reason}",
-    "notify.error.template_twice": "The mail template {id} is contributed twice",
-    "notify.error.template_syntax": "The {part} of the mail template {id} in {lang} does not parse: {reason}",
-    "notify.error.template_placeholder": "The {part} of the mail template {id} in {lang} carries the placeholder {found}; placeholders are written with single braces",
-    "notify.error.template_missing": "No mail template renders {id}",
-    "notify.error.template_render": "The {part} of the mail template {id} in {lang} did not render: {reason}",
-    "settings.list.title": "Settings",
-    "settings.set.title": "Setting",
-    "settings.empty": "No settings are defined",
-    "settings.key": "Key",
-    "settings.value": "Value",
-    "settings.column.key": "Key",
-    "settings.column.module": "Module",
-    "settings.column.level": "Level",
-    "settings.column.value": "Value",
-    "settings.column.scope": "Set for",
-    "settings.level.user": "User",
-    "settings.level.reseller": "Reseller",
-    "settings.level.admin": "Administrator",
-    "settings.action.set": "Change",
-    "settings.pref.set.title": "Preference",
-    "settings.pref.key": "Preference",
-    "settings.pref.value": "Value",
-    "settings.brand.list.title": "Brand",
-    "settings.brand.set.title": "Brand of a host name",
-    "settings.brand.empty": "No host name carries its own brand; the installation shows the brand of its product",
-    "settings.brand.host": "Host name",
-    "settings.brand.name": "Name",
-    "settings.brand.logo": "Logo (SVG)",
-    "settings.brand.hue": "Hue (0 to 359)",
-    "settings.brand.chroma": "Chroma (0 to 0.4)",
-    "settings.brand.column.host": "Host name",
-    "settings.brand.column.name": "Name",
-    "settings.brand.column.hue": "Hue",
-    "settings.brand.column.chroma": "Chroma",
-    "settings.brand.column.updatedAt": "Updated",
-    "settings.brand.action.create": "New brand",
-    "settings.brand.action.set": "Edit",
-    "settings.brand.action.delete": "Delete",
-    "settings.brand.page.main": "Brand",
-    "settings.error.pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
-    "settings.error.pref_text": "The value must be a short text",
-    "settings.error.pref_lang": "The language {lang} is not served by this installation",
-    "settings.error.pref_tz": "The time zone {tz} is not known",
-    "settings.error.pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
-    "settings.error.pref_columns_many": "At most {max} columns preferences are kept per principal",
-    "settings.error.pref_owner": "The owner has no preferences; it acts over the socket",
-    "settings.error.level": "The setting {key} is at level {level}, above your level {caller}",
-    "settings.error.schema": "The schema of the setting {key} does not compile",
-    "settings.error.not_started": "The settings module has not started",
-    "settings.error.brand_svg": "The logo must be an SVG document without a script element: {reason}",
-    "task.list.title": "Tasks",
-    "task.empty": "No tasks have run yet",
-    "task.column.function": "Function",
-    "task.column.state": "State",
-    "task.column.progress": "Progress",
-    "task.column.createdAt": "Created",
-    "task.column.finishedAt": "Finished",
-    "task.column.accountId": "Account",
-    "task.state.queued": "Queued",
-    "task.state.running": "Running",
-    "task.state.done": "Done",
-    "task.state.failed": "Failed",
-    "task.state.cancelled": "Cancelled",
-    "task.state.interrupted": "Interrupted",
-    "task.action.open": "Open",
-    "task.action.cancel": "Cancel",
-    "task.id": "Task",
-    "task.error.not_running": "The task worker has not started",
-    "task.error.not_found": "The task does not exist",
-    "task.error.not_local": "The task runs on another node and cannot be cancelled from here",
-    "task.error.finished": "The task has already ended as {state}",
-    "task.error.interrupted": "The task was interrupted by a restart",
-    "task.error.cancelled": "The task was cancelled",
-    "task.error.state": "The stored state {state} of task {id} is unknown",
-    "task.error.principal": "The stored principal of task {id} cannot be read",
-    "task.error.no_file": "The task {id} left no file to download",
-    "task.error.log": "The task log at {path} could not be written",
-    "note": {
-      "list": {
-        "title": "Notes"
+    "audit": {
+      "column": {
+        "actorLogin": "Actor",
+        "at": "When",
+        "elapsedMs": "Duration, ms",
+        "errorKey": "Error",
+        "function": "Function",
+        "ip": "Address",
+        "principalId": "Principal id",
+        "principalLogin": "Principal",
+        "requestId": "Request",
+        "status": "Outcome",
+        "subject": "Subject",
+        "via": "Via"
       },
+      "empty": "No calls have been recorded yet",
+      "error": {
+        "not_running": "The audit worker is not running"
+      },
+      "list": {
+        "title": "Audit trail"
+      },
+      "status": {
+        "committed": "Committed",
+        "failed": "Failed"
+      }
+    },
+    "auth": {
+      "error": {
+        "challenge": "The sign-in challenge is no longer valid; sign in again",
+        "code": "The code is wrong",
+        "code_required": "A code is required",
+        "credentials": "The login or the password is wrong",
+        "current_required": "The current password is required",
+        "entropy": "The system gave no randomness",
+        "grant_id": "The stored id {id} of a grant is not a ULID",
+        "grant_not_held": "You cannot grant {key}: you do not hold it yourself",
+        "grant_principal": "The grant {id} names a principal {principal} that cannot be read",
+        "hashing": "The password could not be processed",
+        "http_only": "Signing in is possible over HTTP only",
+        "ip_denied": "Access from your address is not allowed",
+        "ip_rule_action": "The stored action {action} of rule {id} is neither allow nor deny",
+        "ip_rule_level": "The stored level {level} of rule {id} is not on the ladder",
+        "ip_rule_net": "The stored network {net} of rule {id} cannot be read",
+        "key": "The login key is not valid; it may have been used or expired",
+        "key_issuer": "The login key names an issuer that cannot be read",
+        "key_principal": "The login key names a principal that cannot be read",
+        "locked": "Signing in is locked for this login from your address; try again later",
+        "method_unknown": "The login method {method} is not available",
+        "not_below": "The password of a principal at level {level} cannot be set by a caller at level {caller}",
+        "not_delegated": "You are not acting as another principal",
+        "not_started": "The auth module has not started",
+        "password_login": "The password must differ from the login",
+        "password_short": "The password must be at least {min} characters long",
+        "rate_limited": "Too many requests from your address; wait a minute",
+        "redirect": "The landing path must start with a single / and stay inside the installation",
+        "session_account": "The session names an account that cannot be read",
+        "session_actor": "The session names an actor that cannot be read",
+        "session_only": "This call needs a session",
+        "session_principal": "The session names a principal that cannot be read",
+        "su_nested": "You are already acting as another principal; return first",
+        "token_expires_past": "The expiry must lie in the future",
+        "token_level": "The level ceiling {level} must lie between service and your level {caller}",
+        "token_level_unknown": "The stored level {level} of token {id} is not on the ladder",
+        "token_mask": "The mask {mask} is neither a function name nor a prefix ending in .*",
+        "token_net": "The stored network {net} of a token cannot be read",
+        "token_owner": "The owner has no tokens; create one as a stored principal",
+        "token_principal": "The token names a principal that cannot be read",
+        "token_scope": "A token cannot be wider than the scope it is created under",
+        "totp_enrolled": "A second factor is already enrolled; disable it first",
+        "totp_not_enrolled": "No second factor is being set up",
+        "totp_owner": "The owner has no second factor; it signs in over the socket",
+        "totp_principal": "The second factor names a principal that cannot be read",
+        "totp_secret": "The stored second factor cannot be read",
+        "unknown_permission": "The permission {key} is not registered on this installation"
+      },
+      "grant": {
+        "action": {
+          "delete": "Remove",
+          "set": "Grant or deny"
+        },
+        "column": {
+          "accountId": "Account",
+          "granted": "Decision",
+          "key": "Permission",
+          "principalLogin": "Principal"
+        },
+        "empty": "No stored grants: every principal holds the defaults of its level",
+        "granted": "Granted",
+        "granted.false": "Denied",
+        "granted.true": "Granted",
+        "key": "Permission",
+        "list": {
+          "title": "Permission grants"
+        },
+        "principal": "Principal",
+        "set": {
+          "title": "Grant or deny a permission"
+        }
+      },
+      "ip_rule": {
+        "action": "Action",
+        "action.allow": "Allow",
+        "action.create": "New rule",
+        "action.delete": "Delete",
+        "action.deny": "Deny",
+        "cidr": "Network",
+        "column": {
+          "action": "Action",
+          "cidr": "Network",
+          "comment": "Comment",
+          "level": "Applies from level"
+        },
+        "comment": "Comment",
+        "create": {
+          "title": "New IP rule"
+        },
+        "empty": "No IP rules yet",
+        "level": "Applies from level",
+        "list": {
+          "title": "IP rules"
+        }
+      },
+      "key": {
+        "issue": {
+          "title": "Issue a one-time login key"
+        },
+        "key": "Login key",
+        "principal": "Principal",
+        "redeem": {
+          "title": "Sign in with a login key"
+        },
+        "redirect": "Land on",
+        "ttl": "Valid for (seconds)",
+        "url": "Login link"
+      },
+      "login": "Login",
+      "login.state.authenticated": "Signed in",
+      "login.state.totp": "A second factor is required",
+      "login.title": "Sign in",
+      "logout": {
+        "title": "Sign out"
+      },
+      "method": "Login method",
+      "password": "Password",
+      "password.current": "Current password",
+      "password.password": "New password",
+      "password.principal": "Principal",
+      "password.set.title": "Change password",
+      "session": {
+        "action": {
+          "revoke": "Revoke"
+        },
+        "column": {
+          "absoluteUntil": "Expires",
+          "actor": "Actor",
+          "current": "This session",
+          "idleUntil": "Idle until",
+          "ip": "Address",
+          "kind": "Kind",
+          "revokedAt": "Revoked",
+          "userAgent": "Client"
+        },
+        "empty": "No sessions",
+        "kind": {
+          "session": "Session",
+          "su": "Delegated"
+        },
+        "list": {
+          "title": "Sessions"
+        }
+      },
+      "su": {
+        "exit": {
+          "title": "Return to your own session"
+        },
+        "principal": "Principal",
+        "title": "Act as a principal"
+      },
+      "token": {
+        "action": {
+          "create": "New token",
+          "revoke": "Revoke"
+        },
+        "column": {
+          "expiresAt": "Expires",
+          "ipAllow": "Allowed networks",
+          "lastUsedAt": "Last used",
+          "level": "Level ceiling",
+          "name": "Name",
+          "revokedAt": "Revoked",
+          "scope": "Scope"
+        },
+        "create": {
+          "title": "New API token"
+        },
+        "empty": "No API tokens yet",
+        "expiresAt": "Expires",
+        "ipAllow": "Allowed networks",
+        "level": "Level ceiling",
+        "list": {
+          "title": "API tokens"
+        },
+        "name": "Name",
+        "scope": "Scope",
+        "scope.full": "Everything the principal may call",
+        "scope.read_only": "Read only",
+        "token": "Token"
+      },
+      "totp": {
+        "challenge": "Sign-in challenge",
+        "code": "Code",
+        "confirm": {
+          "title": "Confirm the second factor"
+        },
+        "disable": {
+          "title": "Disable the second factor"
+        },
+        "enroll": {
+          "title": "Set up a second factor"
+        },
+        "principal": "Principal",
+        "recoveryCodes": "Recovery codes",
+        "verify": {
+          "title": "Enter the code"
+        }
+      },
+      "unlock": {
+        "title": "Unlock a login"
+      }
+    },
+    "cron": {
+      "error": {
+        "not_leader": "This node does not hold the schedule; the job {id} runs on the leader",
+        "not_running": "The scheduler has not started",
+        "outcome": "The stored outcome {outcome} of the run {run} is unknown",
+        "run_not_found": "The run {run} does not exist",
+        "running": "The job {id} is running; wait for it to finish",
+        "schedule": "The schedule {schedule} of the job {job} does not parse: {reason}",
+        "unknown_job": "No module contributes the job {id}"
+      },
+      "job": {
+        "action": {
+          "run": "Run now"
+        },
+        "column": {
+          "effective": "Effective schedule",
+          "id": "Job",
+          "lastOutcome": "Last outcome",
+          "lastRunAt": "Last run",
+          "module": "Module",
+          "nextRunAt": "Next run",
+          "schedule": "Schedule"
+        },
+        "empty": "No module has contributed a job",
+        "lastOutcome": {
+          "failed": "Failed",
+          "interrupted": "Interrupted",
+          "ok": "Ok",
+          "running": "Running",
+          "skipped": "Skipped"
+        },
+        "list": {
+          "title": "Scheduled jobs"
+        }
+      },
+      "run": {
+        "column": {
+          "error": "Error",
+          "finishedAt": "Finished",
+          "job": "Job",
+          "outcome": "Outcome",
+          "scheduledAt": "Scheduled",
+          "startedAt": "Started"
+        },
+        "empty": "No job has run yet",
+        "list": {
+          "title": "Job runs"
+        },
+        "outcome": {
+          "failed": "Failed",
+          "interrupted": "Interrupted",
+          "ok": "Ok",
+          "running": "Running",
+          "skipped": "Skipped"
+        }
+      }
+    },
+    "notify": {
+      "channel": {
+        "action": {
+          "create": "Add channel",
+          "delete": "Delete",
+          "edit": "Edit",
+          "test": "Send test email"
+        },
+        "column": {
+          "createdAt": "Created",
+          "enabled": "Enabled",
+          "kind": "Kind",
+          "lastError": "Last error",
+          "lastSentAt": "Last sent",
+          "name": "Name"
+        },
+        "email": "Email settings",
+        "empty": "No channel delivers notifications yet",
+        "enabled": "Enabled",
+        "id": "Channel",
+        "kind": "Kind",
+        "kind.email": "Email",
+        "kind.telegram": "Telegram",
+        "kind.webhook": "Webhook",
+        "list": {
+          "title": "Delivery channels"
+        },
+        "name": "Name",
+        "page": {
+          "email": "Email",
+          "main": "Channel"
+        },
+        "set": {
+          "title": "Channel"
+        }
+      },
+      "delivery": {
+        "column": {
+          "attempt": "Attempts",
+          "channel": "Channel",
+          "createdAt": "Created",
+          "error": "Error",
+          "messageKey": "Message",
+          "nextAt": "Next attempt",
+          "sentAt": "Sent",
+          "state": "State"
+        },
+        "empty": "No delivery has been attempted",
+        "list": {
+          "title": "Deliveries"
+        },
+        "state": {
+          "failed": "Failed",
+          "pending": "Pending",
+          "sent": "Sent"
+        }
+      },
+      "delivery_failed": "Mail delivery to the channel {channel} failed",
+      "error": {
+        "account": "The stored account {account} of the problem {id} is not an identifier",
+        "channel_config": "The stored configuration of the channel {id} cannot be read",
+        "channel_email_missing": "An email channel needs its email settings",
+        "channel_gone": "The channel {id} no longer exists",
+        "channel_kind": "The stored kind {kind} of the channel {id} is unknown",
+        "channel_kind_unavailable": "Channels of kind {kind} are not available yet",
+        "email_address": "{value} is not an email address",
+        "email_send": "The mail to {host} was not sent: {reason}",
+        "email_transport": "The mail transport to {host} could not be built: {reason}",
+        "id": "The stored id {id} is not an identifier",
+        "level": "The stored level {level} of the notification {id} is unknown",
+        "message_gone": "The notification {id} no longer exists",
+        "severity": "The stored severity {severity} of the problem {id} is unknown",
+        "template_missing": "No mail template renders {id}",
+        "template_placeholder": "The {part} of the mail template {id} in {lang} carries the placeholder {found}; placeholders are written with single braces",
+        "template_render": "The {part} of the mail template {id} in {lang} did not render: {reason}",
+        "template_syntax": "The {part} of the mail template {id} in {lang} does not parse: {reason}",
+        "template_twice": "The mail template {id} is contributed twice"
+      },
+      "message": {
+        "action": {
+          "clear": "Clear read notifications",
+          "mark_read": "Mark as read"
+        },
+        "column": {
+          "createdAt": "Received",
+          "key": "Message",
+          "level": "Level",
+          "readAt": "Read",
+          "source": "Source",
+          "unread": "State"
+        },
+        "empty": "No notifications",
+        "level": {
+          "error": "Error",
+          "info": "Info",
+          "warning": "Warning"
+        },
+        "list": {
+          "title": "Notifications"
+        },
+        "unread": {
+          "false": "Read",
+          "true": "Unread"
+        }
+      },
+      "problem": {
+        "cleared": "Problem {key} cleared for {subject}",
+        "column": {
+          "accountId": "Account",
+          "clearedAt": "Cleared",
+          "count": "Seen",
+          "key": "Problem",
+          "open": "State",
+          "raisedAt": "Raised",
+          "severity": "Severity",
+          "subject": "Subject"
+        },
+        "empty": "No problem is open",
+        "list": {
+          "title": "Problems"
+        },
+        "open": {
+          "false": "Cleared",
+          "true": "Open"
+        },
+        "raised": "Problem {key} raised for {subject}",
+        "severity": {
+          "critical": "Critical",
+          "warning": "Warning"
+        }
+      },
+      "test": "Test email from the channel {channel}"
+    },
+    "settings": {
+      "action": {
+        "set": "Change"
+      },
+      "brand": {
+        "action": {
+          "create": "New brand",
+          "delete": "Delete",
+          "set": "Edit"
+        },
+        "chroma": "Chroma (0 to 0.4)",
+        "column": {
+          "chroma": "Chroma",
+          "host": "Host name",
+          "hue": "Hue",
+          "name": "Name",
+          "updatedAt": "Updated"
+        },
+        "empty": "No host name carries its own brand; the installation shows the brand of its product",
+        "host": "Host name",
+        "hue": "Hue (0 to 359)",
+        "list": {
+          "title": "Brand"
+        },
+        "logo": "Logo (SVG)",
+        "name": "Name",
+        "page": {
+          "main": "Brand"
+        },
+        "set": {
+          "title": "Brand of a host name"
+        }
+      },
+      "column": {
+        "key": "Key",
+        "level": "Level",
+        "module": "Module",
+        "scope": "Set for",
+        "value": "Value"
+      },
+      "empty": "No settings are defined",
+      "error": {
+        "brand_svg": "The logo must be an SVG document without a script element: {reason}",
+        "level": "The setting {key} is at level {level}, above your level {caller}",
+        "not_started": "The settings module has not started",
+        "pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
+        "pref_columns_many": "At most {max} columns preferences are kept per principal",
+        "pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
+        "pref_lang": "The language {lang} is not served by this installation",
+        "pref_owner": "The owner has no preferences; it acts over the socket",
+        "pref_text": "The value must be a short text",
+        "pref_tz": "The time zone {tz} is not known",
+        "schema": "The schema of the setting {key} does not compile"
+      },
+      "key": "Key",
+      "level": {
+        "admin": "Administrator",
+        "reseller": "Reseller",
+        "user": "User"
+      },
+      "list": {
+        "title": "Settings"
+      },
+      "pref": {
+        "key": "Preference",
+        "set": {
+          "title": "Preference"
+        },
+        "value": "Value"
+      },
+      "set": {
+        "title": "Setting"
+      },
+      "value": "Value"
+    },
+    "task": {
+      "action": {
+        "cancel": "Cancel",
+        "open": "Open"
+      },
+      "column": {
+        "accountId": "Account",
+        "createdAt": "Created",
+        "finishedAt": "Finished",
+        "function": "Function",
+        "progress": "Progress",
+        "state": "State"
+      },
+      "empty": "No tasks have run yet",
+      "error": {
+        "cancelled": "The task was cancelled",
+        "finished": "The task has already ended as {state}",
+        "interrupted": "The task was interrupted by a restart",
+        "log": "The task log at {path} could not be written",
+        "no_file": "The task {id} left no file to download",
+        "not_found": "The task does not exist",
+        "not_local": "The task runs on another node and cannot be cancelled from here",
+        "not_running": "The task worker has not started",
+        "principal": "The stored principal of task {id} cannot be read",
+        "state": "The stored state {state} of task {id} is unknown"
+      },
+      "id": "Task",
+      "list": {
+        "title": "Tasks"
+      },
+      "state": {
+        "cancelled": "Cancelled",
+        "done": "Done",
+        "failed": "Failed",
+        "interrupted": "Interrupted",
+        "queued": "Queued",
+        "running": "Running"
+      }
+    },
+    "note": {
+      "account": "Account",
+      "action": {
+        "create": "New note",
+        "delete": "Delete",
+        "edit": "Edit",
+        "export_task": "Export"
+      },
+      "body": "Body",
+      "column": {
+        "accountId": "Account",
+        "due": "Due",
+        "kind": "Kind",
+        "tags": "Tags",
+        "title": "Title",
+        "updatedAt": "Updated"
+      },
+      "due": "Due",
       "edit": {
         "title": "Note"
       },
-      "import": {
-        "title": "Import notes"
+      "empty": "No notes yet",
+      "error": {
+        "account": "The stored account {account} of a note is not an identifier",
+        "account_suspended": "Notes cannot be changed while the account is suspended",
+        "empty": "There is no line to import",
+        "exists": "A note titled {title} already exists",
+        "export_inline": "The export runs as a task alone",
+        "export_output": "The export file could not be written",
+        "id": "The stored id {id} of a note is not an identifier",
+        "limit": "An account keeps at most {max} notes",
+        "line_too_long": "Line {line} is longer than {max} characters",
+        "locked": "The note {title} is locked and cannot be deleted"
       },
       "export": {
         "title": "Export notes"
       },
-      "tag": {
-        "list": {
-          "title": "Tags"
-        },
-        "empty": "No tags yet",
-        "column": {
-          "tag": "Tag",
-          "count": "Count"
-        }
+      "format": "Format",
+      "format.csv": "CSV",
+      "format.json": "JSON",
+      "import": {
+        "title": "Import notes"
       },
-      "empty": "No notes yet",
-      "title": "Title",
-      "body": "Body",
       "kind": {
         "memo": "Memo",
         "todo": "To do"
       },
-      "tags": "Tags",
-      "due": "Due",
-      "text": "Lines",
-      "format": "Format",
-      "format.csv": "CSV",
-      "format.json": "JSON",
+      "list": {
+        "title": "Notes"
+      },
       "pace": "Pause after each note, ms",
-      "account": "Account",
       "page": {
         "main": "Note",
+        "options": "Options",
         "owner": "Owner",
-        "source": "Source",
-        "options": "Options"
+        "source": "Source"
       },
-      "column": {
-        "title": "Title",
-        "kind": "Kind",
-        "tags": "Tags",
-        "due": "Due",
-        "updatedAt": "Updated",
-        "accountId": "Account"
+      "tag": {
+        "column": {
+          "count": "Count",
+          "tag": "Tag"
+        },
+        "empty": "No tags yet",
+        "list": {
+          "title": "Tags"
+        }
       },
-      "action": {
-        "create": "New note",
-        "edit": "Edit",
-        "delete": "Delete",
-        "export_task": "Export"
+      "tags": "Tags",
+      "text": "Lines",
+      "title": "Title"
+    },
+    "webhook": {
+      "dead_letter": "Webhook deliveries to {name} failed for good",
+      "delivery": {
+        "action": {
+          "retry": "Retry"
+        },
+        "column": {
+          "attempt": "Attempts",
+          "createdAt": "Created",
+          "eventId": "Event",
+          "lastError": "Last error",
+          "lastStatus": "Last status",
+          "nextAt": "Next attempt",
+          "state": "State",
+          "type": "Type"
+        },
+        "empty": "No delivery has been attempted",
+        "list": {
+          "title": "Webhook deliveries"
+        },
+        "state": {
+          "dead": "Dead",
+          "delivered": "Delivered",
+          "failed": "Failed",
+          "pending": "Pending"
+        }
       },
       "error": {
-        "locked": "The note {title} is locked and cannot be deleted",
-        "limit": "An account keeps at most {max} notes",
-        "id": "The stored id {id} of a note is not an identifier",
-        "account": "The stored account {account} of a note is not an identifier",
-        "account_suspended": "Notes cannot be changed while the account is suspended",
-        "exists": "A note titled {title} already exists",
-        "line_too_long": "Line {line} is longer than {max} characters",
-        "empty": "There is no line to import",
-        "export_inline": "The export runs as a task alone",
-        "export_output": "The export file could not be written"
+        "client": "The HTTP client could not be built",
+        "entropy": "The signing secret could not be generated",
+        "event_gone": "The event of the delivery is no longer in the outbox",
+        "id": "The stored id {id} is not an identifier",
+        "mask": "{mask} is not an event mask; write module.* or a dotted event name",
+        "not_retryable": "The delivery {id} is {state}; only a failed or dead delivery can be retried",
+        "secret": "The signing secret could not be opened",
+        "secret_short": "The signing secret is shorter than {min} bytes",
+        "send": "The delivery was not sent",
+        "status": "The target answered a non-2xx status",
+        "subscription_gone": "The subscription of the delivery no longer exists",
+        "url": "{value} is not a web address: {reason}",
+        "url_private": "The URL points at a private or plain target ({reason}: {detail}); enable webhook.private_targets to allow it",
+        "url_unresolved": "The host {host} does not resolve: {reason}"
+      },
+      "private_targets": "Allow webhooks to private targets",
+      "subscription": {
+        "account": "Account",
+        "action": {
+          "create": "Add subscription",
+          "delete": "Delete",
+          "deliveries": "Deliveries",
+          "edit": "Edit"
+        },
+        "column": {
+          "createdAt": "Created",
+          "enabled": "Enabled",
+          "events": "Events",
+          "name": "Name",
+          "url": "URL"
+        },
+        "empty": "No webhook subscription yet",
+        "enabled": "Enabled",
+        "events": "Event masks",
+        "id": "Subscription",
+        "list": {
+          "title": "Webhooks"
+        },
+        "name": "Name",
+        "page": {
+          "main": "Subscription",
+          "owner": "Owner"
+        },
+        "secret": "Signing secret",
+        "set": {
+          "title": "Webhook subscription"
+        },
+        "url": "URL"
       }
     },
-    "webhook.subscription.list.title": "Webhooks",
-    "webhook.subscription.empty": "No webhook subscription yet",
-    "webhook.subscription.set.title": "Webhook subscription",
-    "webhook.subscription.column.name": "Name",
-    "webhook.subscription.column.url": "URL",
-    "webhook.subscription.column.events": "Events",
-    "webhook.subscription.column.enabled": "Enabled",
-    "webhook.subscription.column.createdAt": "Created",
-    "webhook.subscription.action.create": "Add subscription",
-    "webhook.subscription.action.edit": "Edit",
-    "webhook.subscription.action.deliveries": "Deliveries",
-    "webhook.subscription.action.delete": "Delete",
-    "webhook.subscription.id": "Subscription",
-    "webhook.subscription.name": "Name",
-    "webhook.subscription.url": "URL",
-    "webhook.subscription.secret": "Signing secret",
-    "webhook.subscription.events": "Event masks",
-    "webhook.subscription.enabled": "Enabled",
-    "webhook.subscription.account": "Account",
-    "webhook.subscription.page.main": "Subscription",
-    "webhook.subscription.page.owner": "Owner",
-    "webhook.delivery.list.title": "Webhook deliveries",
-    "webhook.delivery.empty": "No delivery has been attempted",
-    "webhook.delivery.column.eventId": "Event",
-    "webhook.delivery.column.type": "Type",
-    "webhook.delivery.column.state": "State",
-    "webhook.delivery.column.attempt": "Attempts",
-    "webhook.delivery.column.nextAt": "Next attempt",
-    "webhook.delivery.column.lastStatus": "Last status",
-    "webhook.delivery.column.lastError": "Last error",
-    "webhook.delivery.column.createdAt": "Created",
-    "webhook.delivery.state.pending": "Pending",
-    "webhook.delivery.state.delivered": "Delivered",
-    "webhook.delivery.state.failed": "Failed",
-    "webhook.delivery.state.dead": "Dead",
-    "webhook.delivery.action.retry": "Retry",
-    "webhook.private_targets": "Allow webhooks to private targets",
-    "webhook.dead_letter": "Webhook deliveries to {name} failed for good",
-    "webhook.error.url": "{value} is not a web address: {reason}",
-    "webhook.error.url_private": "The URL points at a private or plain target ({reason}: {detail}); enable webhook.private_targets to allow it",
-    "webhook.error.url_unresolved": "The host {host} does not resolve: {reason}",
-    "webhook.error.secret_short": "The signing secret is shorter than {min} bytes",
-    "webhook.error.mask": "{mask} is not an event mask; write module.* or a dotted event name",
-    "webhook.error.entropy": "The signing secret could not be generated",
-    "webhook.error.id": "The stored id {id} is not an identifier",
-    "webhook.error.not_retryable": "The delivery {id} is {state}; only a failed or dead delivery can be retried",
-    "webhook.error.subscription_gone": "The subscription of the delivery no longer exists",
-    "webhook.error.event_gone": "The event of the delivery is no longer in the outbox",
-    "webhook.error.secret": "The signing secret could not be opened",
-    "webhook.error.client": "The HTTP client could not be built",
-    "webhook.error.send": "The delivery was not sent",
-    "webhook.error.status": "The target answered a non-2xx status",
     "product": {
       "demo": {
         "brand": "Keel Demo"

@@ -1,29 +1,41 @@
 {
-  "task.list.title": "Задачи",
-  "task.empty": "Задачи ещё не запускались",
-  "task.column.function": "Функция",
-  "task.column.state": "Состояние",
-  "task.column.progress": "Ход выполнения",
-  "task.column.createdAt": "Создана",
-  "task.column.finishedAt": "Завершена",
-  "task.column.accountId": "Аккаунт",
-  "task.state.queued": "В очереди",
-  "task.state.running": "Выполняется",
-  "task.state.done": "Выполнена",
-  "task.state.failed": "Ошибка",
-  "task.state.cancelled": "Отменена",
-  "task.state.interrupted": "Прервана",
-  "task.action.open": "Открыть",
-  "task.action.cancel": "Отменить",
-  "task.id": "Задача",
-  "task.error.not_running": "Обработчик задач не запущен",
-  "task.error.not_found": "Задача не существует",
-  "task.error.not_local": "Задача выполняется на другом узле, отсюда её не отменить",
-  "task.error.finished": "Задача уже завершилась в состоянии {state}",
-  "task.error.interrupted": "Задача была прервана перезапуском",
-  "task.error.cancelled": "Задача отменена",
-  "task.error.state": "Сохранённое состояние {state} задачи {id} неизвестно",
-  "task.error.principal": "Сохранённый субъект задачи {id} не читается",
-  "task.error.no_file": "Задача {id} не оставила файла для скачивания",
-  "task.error.log": "Журнал задачи {path} не записывается"
+  "task": {
+    "action": {
+      "cancel": "Отменить",
+      "open": "Открыть"
+    },
+    "column": {
+      "accountId": "Аккаунт",
+      "createdAt": "Создана",
+      "finishedAt": "Завершена",
+      "function": "Функция",
+      "progress": "Ход выполнения",
+      "state": "Состояние"
+    },
+    "empty": "Задачи ещё не запускались",
+    "error": {
+      "cancelled": "Задача отменена",
+      "finished": "Задача уже завершилась в состоянии {state}",
+      "interrupted": "Задача была прервана перезапуском",
+      "log": "Журнал задачи {path} не записывается",
+      "no_file": "Задача {id} не оставила файла для скачивания",
+      "not_found": "Задача не существует",
+      "not_local": "Задача выполняется на другом узле, отсюда её не отменить",
+      "not_running": "Обработчик задач не запущен",
+      "principal": "Сохранённый субъект задачи {id} не читается",
+      "state": "Сохранённое состояние {state} задачи {id} неизвестно"
+    },
+    "id": "Задача",
+    "list": {
+      "title": "Задачи"
+    },
+    "state": {
+      "cancelled": "Отменена",
+      "done": "Выполнена",
+      "failed": "Ошибка",
+      "interrupted": "Прервана",
+      "queued": "В очереди",
+      "running": "Выполняется"
+    }
+  }
 }

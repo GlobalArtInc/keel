@@ -1,47 +1,77 @@
 {
-  "settings.list.title": "Settings",
-  "settings.set.title": "Setting",
-  "settings.empty": "No settings are defined",
-  "settings.key": "Key",
-  "settings.value": "Value",
-  "settings.column.key": "Key",
-  "settings.column.module": "Module",
-  "settings.column.level": "Level",
-  "settings.column.value": "Value",
-  "settings.column.scope": "Set for",
-  "settings.level.user": "User",
-  "settings.level.reseller": "Reseller",
-  "settings.level.admin": "Administrator",
-  "settings.action.set": "Change",
-  "settings.pref.set.title": "Preference",
-  "settings.pref.key": "Preference",
-  "settings.pref.value": "Value",
-  "settings.brand.list.title": "Brand",
-  "settings.brand.set.title": "Brand of a host name",
-  "settings.brand.empty": "No host name carries its own brand; the installation shows the brand of its product",
-  "settings.brand.host": "Host name",
-  "settings.brand.name": "Name",
-  "settings.brand.logo": "Logo (SVG)",
-  "settings.brand.hue": "Hue (0 to 359)",
-  "settings.brand.chroma": "Chroma (0 to 0.4)",
-  "settings.brand.column.host": "Host name",
-  "settings.brand.column.name": "Name",
-  "settings.brand.column.hue": "Hue",
-  "settings.brand.column.chroma": "Chroma",
-  "settings.brand.column.updatedAt": "Updated",
-  "settings.brand.action.create": "New brand",
-  "settings.brand.action.set": "Edit",
-  "settings.brand.action.delete": "Delete",
-  "settings.brand.page.main": "Brand",
-  "settings.error.pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
-  "settings.error.pref_text": "The value must be a short text",
-  "settings.error.pref_lang": "The language {lang} is not served by this installation",
-  "settings.error.pref_tz": "The time zone {tz} is not known",
-  "settings.error.pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
-  "settings.error.pref_columns_many": "At most {max} columns preferences are kept per principal",
-  "settings.error.pref_owner": "The owner has no preferences; it acts over the socket",
-  "settings.error.level": "The setting {key} is at level {level}, above your level {caller}",
-  "settings.error.schema": "The schema of the setting {key} does not compile",
-  "settings.error.not_started": "The settings module has not started",
-  "settings.error.brand_svg": "The logo must be an SVG document without a script element: {reason}"
+  "settings": {
+    "action": {
+      "set": "Change"
+    },
+    "brand": {
+      "action": {
+        "create": "New brand",
+        "delete": "Delete",
+        "set": "Edit"
+      },
+      "chroma": "Chroma (0 to 0.4)",
+      "column": {
+        "chroma": "Chroma",
+        "host": "Host name",
+        "hue": "Hue",
+        "name": "Name",
+        "updatedAt": "Updated"
+      },
+      "empty": "No host name carries its own brand; the installation shows the brand of its product",
+      "host": "Host name",
+      "hue": "Hue (0 to 359)",
+      "list": {
+        "title": "Brand"
+      },
+      "logo": "Logo (SVG)",
+      "name": "Name",
+      "page": {
+        "main": "Brand"
+      },
+      "set": {
+        "title": "Brand of a host name"
+      }
+    },
+    "column": {
+      "key": "Key",
+      "level": "Level",
+      "module": "Module",
+      "scope": "Set for",
+      "value": "Value"
+    },
+    "empty": "No settings are defined",
+    "error": {
+      "brand_svg": "The logo must be an SVG document without a script element: {reason}",
+      "level": "The setting {key} is at level {level}, above your level {caller}",
+      "not_started": "The settings module has not started",
+      "pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
+      "pref_columns_many": "At most {max} columns preferences are kept per principal",
+      "pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
+      "pref_lang": "The language {lang} is not served by this installation",
+      "pref_owner": "The owner has no preferences; it acts over the socket",
+      "pref_text": "The value must be a short text",
+      "pref_tz": "The time zone {tz} is not known",
+      "schema": "The schema of the setting {key} does not compile"
+    },
+    "key": "Key",
+    "level": {
+      "admin": "Administrator",
+      "reseller": "Reseller",
+      "user": "User"
+    },
+    "list": {
+      "title": "Settings"
+    },
+    "pref": {
+      "key": "Preference",
+      "set": {
+        "title": "Preference"
+      },
+      "value": "Value"
+    },
+    "set": {
+      "title": "Setting"
+    },
+    "value": "Value"
+  }
 }

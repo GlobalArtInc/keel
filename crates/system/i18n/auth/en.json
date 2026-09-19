@@ -1,140 +1,206 @@
 {
-  "auth.login": "Login",
-  "auth.password": "Password",
-  "auth.method": "Login method",
-  "auth.login.title": "Sign in",
-  "auth.login.state.authenticated": "Signed in",
-  "auth.logout.title": "Sign out",
-  "auth.password.set.title": "Change password",
-  "auth.password.principal": "Principal",
-  "auth.password.current": "Current password",
-  "auth.password.password": "New password",
-  "auth.error.credentials": "The login or the password is wrong",
-  "auth.error.current_required": "The current password is required",
-  "auth.error.not_below": "The password of a principal at level {level} cannot be set by a caller at level {caller}",
-  "auth.error.http_only": "Signing in is possible over HTTP only",
-  "auth.error.session_only": "This call needs a session",
-  "auth.error.method_unknown": "The login method {method} is not available",
-  "auth.error.hashing": "The password could not be processed",
-  "auth.error.entropy": "The system gave no randomness",
-  "auth.error.not_started": "The auth module has not started",
-  "auth.error.session_principal": "The session names a principal that cannot be read",
-  "auth.error.session_account": "The session names an account that cannot be read",
-  "auth.token.list.title": "API tokens",
-  "auth.token.create.title": "New API token",
-  "auth.token.empty": "No API tokens yet",
-  "auth.token.name": "Name",
-  "auth.token.level": "Level ceiling",
-  "auth.token.scope": "Scope",
-  "auth.token.scope.full": "Everything the principal may call",
-  "auth.token.scope.read_only": "Read only",
-  "auth.token.ipAllow": "Allowed networks",
-  "auth.token.expiresAt": "Expires",
-  "auth.token.token": "Token",
-  "auth.token.column.name": "Name",
-  "auth.token.column.level": "Level ceiling",
-  "auth.token.column.scope": "Scope",
-  "auth.token.column.ipAllow": "Allowed networks",
-  "auth.token.column.expiresAt": "Expires",
-  "auth.token.column.lastUsedAt": "Last used",
-  "auth.token.column.revokedAt": "Revoked",
-  "auth.token.action.create": "New token",
-  "auth.token.action.revoke": "Revoke",
-  "auth.error.token_owner": "The owner has no tokens; create one as a stored principal",
-  "auth.error.token_level": "The level ceiling {level} must lie between service and your level {caller}",
-  "auth.error.token_mask": "The mask {mask} is neither a function name nor a prefix ending in .*",
-  "auth.error.token_scope": "A token cannot be wider than the scope it is created under",
-  "auth.error.token_expires_past": "The expiry must lie in the future",
-  "auth.error.token_net": "The stored network {net} of a token cannot be read",
-  "auth.error.token_principal": "The token names a principal that cannot be read",
-  "auth.error.token_level_unknown": "The stored level {level} of token {id} is not on the ladder",
-  "auth.login.state.totp": "A second factor is required",
-  "auth.totp.enroll.title": "Set up a second factor",
-  "auth.totp.confirm.title": "Confirm the second factor",
-  "auth.totp.disable.title": "Disable the second factor",
-  "auth.totp.verify.title": "Enter the code",
-  "auth.totp.code": "Code",
-  "auth.totp.challenge": "Sign-in challenge",
-  "auth.totp.principal": "Principal",
-  "auth.totp.recoveryCodes": "Recovery codes",
-  "auth.error.code": "The code is wrong",
-  "auth.error.code_required": "A code is required",
-  "auth.error.challenge": "The sign-in challenge is no longer valid; sign in again",
-  "auth.error.totp_enrolled": "A second factor is already enrolled; disable it first",
-  "auth.error.totp_not_enrolled": "No second factor is being set up",
-  "auth.error.totp_owner": "The owner has no second factor; it signs in over the socket",
-  "auth.error.totp_secret": "The stored second factor cannot be read",
-  "auth.error.totp_principal": "The second factor names a principal that cannot be read",
-  "auth.su.title": "Act as a principal",
-  "auth.su.exit.title": "Return to your own session",
-  "auth.su.principal": "Principal",
-  "auth.error.su_nested": "You are already acting as another principal; return first",
-  "auth.error.not_delegated": "You are not acting as another principal",
-  "auth.key.issue.title": "Issue a one-time login key",
-  "auth.key.redeem.title": "Sign in with a login key",
-  "auth.key.principal": "Principal",
-  "auth.key.ttl": "Valid for (seconds)",
-  "auth.key.redirect": "Land on",
-  "auth.key.key": "Login key",
-  "auth.key.url": "Login link",
-  "auth.error.key": "The login key is not valid; it may have been used or expired",
-  "auth.error.redirect": "The landing path must start with a single / and stay inside the installation",
-  "auth.error.key_principal": "The login key names a principal that cannot be read",
-  "auth.error.key_issuer": "The login key names an issuer that cannot be read",
-  "auth.unlock.title": "Unlock a login",
-  "auth.error.rate_limited": "Too many requests from your address; wait a minute",
-  "auth.error.locked": "Signing in is locked for this login from your address; try again later",
-  "auth.error.ip_denied": "Access from your address is not allowed",
-  "auth.error.password_short": "The password must be at least {min} characters long",
-  "auth.error.password_login": "The password must differ from the login",
-  "auth.error.ip_rule_action": "The stored action {action} of rule {id} is neither allow nor deny",
-  "auth.error.ip_rule_net": "The stored network {net} of rule {id} cannot be read",
-  "auth.error.ip_rule_level": "The stored level {level} of rule {id} is not on the ladder",
-  "auth.error.session_actor": "The session names an actor that cannot be read",
-  "auth.ip_rule.list.title": "IP rules",
-  "auth.ip_rule.create.title": "New IP rule",
-  "auth.ip_rule.empty": "No IP rules yet",
-  "auth.ip_rule.action": "Action",
-  "auth.ip_rule.action.allow": "Allow",
-  "auth.ip_rule.action.deny": "Deny",
-  "auth.ip_rule.cidr": "Network",
-  "auth.ip_rule.level": "Applies from level",
-  "auth.ip_rule.comment": "Comment",
-  "auth.ip_rule.column.action": "Action",
-  "auth.ip_rule.column.cidr": "Network",
-  "auth.ip_rule.column.level": "Applies from level",
-  "auth.ip_rule.column.comment": "Comment",
-  "auth.ip_rule.action.create": "New rule",
-  "auth.ip_rule.action.delete": "Delete",
-  "auth.session.list.title": "Sessions",
-  "auth.session.empty": "No sessions",
-  "auth.session.column.kind": "Kind",
-  "auth.session.column.ip": "Address",
-  "auth.session.column.userAgent": "Client",
-  "auth.session.column.idleUntil": "Idle until",
-  "auth.session.column.absoluteUntil": "Expires",
-  "auth.session.column.actor": "Actor",
-  "auth.session.column.current": "This session",
-  "auth.session.column.revokedAt": "Revoked",
-  "auth.session.kind.session": "Session",
-  "auth.session.kind.su": "Delegated",
-  "auth.session.action.revoke": "Revoke",
-  "auth.grant.list.title": "Permission grants",
-  "auth.grant.set.title": "Grant or deny a permission",
-  "auth.grant.empty": "No stored grants: every principal holds the defaults of its level",
-  "auth.grant.principal": "Principal",
-  "auth.grant.key": "Permission",
-  "auth.grant.granted": "Granted",
-  "auth.grant.granted.true": "Granted",
-  "auth.grant.granted.false": "Denied",
-  "auth.grant.column.principalLogin": "Principal",
-  "auth.grant.column.key": "Permission",
-  "auth.grant.column.granted": "Decision",
-  "auth.grant.column.accountId": "Account",
-  "auth.grant.action.set": "Grant or deny",
-  "auth.grant.action.delete": "Remove",
-  "auth.error.unknown_permission": "The permission {key} is not registered on this installation",
-  "auth.error.grant_not_held": "You cannot grant {key}: you do not hold it yourself",
-  "auth.error.grant_id": "The stored id {id} of a grant is not a ULID",
-  "auth.error.grant_principal": "The grant {id} names a principal {principal} that cannot be read"
+  "auth": {
+    "error": {
+      "challenge": "The sign-in challenge is no longer valid; sign in again",
+      "code": "The code is wrong",
+      "code_required": "A code is required",
+      "credentials": "The login or the password is wrong",
+      "current_required": "The current password is required",
+      "entropy": "The system gave no randomness",
+      "grant_id": "The stored id {id} of a grant is not a ULID",
+      "grant_not_held": "You cannot grant {key}: you do not hold it yourself",
+      "grant_principal": "The grant {id} names a principal {principal} that cannot be read",
+      "hashing": "The password could not be processed",
+      "http_only": "Signing in is possible over HTTP only",
+      "ip_denied": "Access from your address is not allowed",
+      "ip_rule_action": "The stored action {action} of rule {id} is neither allow nor deny",
+      "ip_rule_level": "The stored level {level} of rule {id} is not on the ladder",
+      "ip_rule_net": "The stored network {net} of rule {id} cannot be read",
+      "key": "The login key is not valid; it may have been used or expired",
+      "key_issuer": "The login key names an issuer that cannot be read",
+      "key_principal": "The login key names a principal that cannot be read",
+      "locked": "Signing in is locked for this login from your address; try again later",
+      "method_unknown": "The login method {method} is not available",
+      "not_below": "The password of a principal at level {level} cannot be set by a caller at level {caller}",
+      "not_delegated": "You are not acting as another principal",
+      "not_started": "The auth module has not started",
+      "password_login": "The password must differ from the login",
+      "password_short": "The password must be at least {min} characters long",
+      "rate_limited": "Too many requests from your address; wait a minute",
+      "redirect": "The landing path must start with a single / and stay inside the installation",
+      "session_account": "The session names an account that cannot be read",
+      "session_actor": "The session names an actor that cannot be read",
+      "session_only": "This call needs a session",
+      "session_principal": "The session names a principal that cannot be read",
+      "su_nested": "You are already acting as another principal; return first",
+      "token_expires_past": "The expiry must lie in the future",
+      "token_level": "The level ceiling {level} must lie between service and your level {caller}",
+      "token_level_unknown": "The stored level {level} of token {id} is not on the ladder",
+      "token_mask": "The mask {mask} is neither a function name nor a prefix ending in .*",
+      "token_net": "The stored network {net} of a token cannot be read",
+      "token_owner": "The owner has no tokens; create one as a stored principal",
+      "token_principal": "The token names a principal that cannot be read",
+      "token_scope": "A token cannot be wider than the scope it is created under",
+      "totp_enrolled": "A second factor is already enrolled; disable it first",
+      "totp_not_enrolled": "No second factor is being set up",
+      "totp_owner": "The owner has no second factor; it signs in over the socket",
+      "totp_principal": "The second factor names a principal that cannot be read",
+      "totp_secret": "The stored second factor cannot be read",
+      "unknown_permission": "The permission {key} is not registered on this installation"
+    },
+    "grant": {
+      "action": {
+        "delete": "Remove",
+        "set": "Grant or deny"
+      },
+      "column": {
+        "accountId": "Account",
+        "granted": "Decision",
+        "key": "Permission",
+        "principalLogin": "Principal"
+      },
+      "empty": "No stored grants: every principal holds the defaults of its level",
+      "granted": "Granted",
+      "granted.false": "Denied",
+      "granted.true": "Granted",
+      "key": "Permission",
+      "list": {
+        "title": "Permission grants"
+      },
+      "principal": "Principal",
+      "set": {
+        "title": "Grant or deny a permission"
+      }
+    },
+    "ip_rule": {
+      "action": "Action",
+      "action.allow": "Allow",
+      "action.create": "New rule",
+      "action.delete": "Delete",
+      "action.deny": "Deny",
+      "cidr": "Network",
+      "column": {
+        "action": "Action",
+        "cidr": "Network",
+        "comment": "Comment",
+        "level": "Applies from level"
+      },
+      "comment": "Comment",
+      "create": {
+        "title": "New IP rule"
+      },
+      "empty": "No IP rules yet",
+      "level": "Applies from level",
+      "list": {
+        "title": "IP rules"
+      }
+    },
+    "key": {
+      "issue": {
+        "title": "Issue a one-time login key"
+      },
+      "key": "Login key",
+      "principal": "Principal",
+      "redeem": {
+        "title": "Sign in with a login key"
+      },
+      "redirect": "Land on",
+      "ttl": "Valid for (seconds)",
+      "url": "Login link"
+    },
+    "login": "Login",
+    "login.state.authenticated": "Signed in",
+    "login.state.totp": "A second factor is required",
+    "login.title": "Sign in",
+    "logout": {
+      "title": "Sign out"
+    },
+    "method": "Login method",
+    "password": "Password",
+    "password.current": "Current password",
+    "password.password": "New password",
+    "password.principal": "Principal",
+    "password.set.title": "Change password",
+    "session": {
+      "action": {
+        "revoke": "Revoke"
+      },
+      "column": {
+        "absoluteUntil": "Expires",
+        "actor": "Actor",
+        "current": "This session",
+        "idleUntil": "Idle until",
+        "ip": "Address",
+        "kind": "Kind",
+        "revokedAt": "Revoked",
+        "userAgent": "Client"
+      },
+      "empty": "No sessions",
+      "kind": {
+        "session": "Session",
+        "su": "Delegated"
+      },
+      "list": {
+        "title": "Sessions"
+      }
+    },
+    "su": {
+      "exit": {
+        "title": "Return to your own session"
+      },
+      "principal": "Principal",
+      "title": "Act as a principal"
+    },
+    "token": {
+      "action": {
+        "create": "New token",
+        "revoke": "Revoke"
+      },
+      "column": {
+        "expiresAt": "Expires",
+        "ipAllow": "Allowed networks",
+        "lastUsedAt": "Last used",
+        "level": "Level ceiling",
+        "name": "Name",
+        "revokedAt": "Revoked",
+        "scope": "Scope"
+      },
+      "create": {
+        "title": "New API token"
+      },
+      "empty": "No API tokens yet",
+      "expiresAt": "Expires",
+      "ipAllow": "Allowed networks",
+      "level": "Level ceiling",
+      "list": {
+        "title": "API tokens"
+      },
+      "name": "Name",
+      "scope": "Scope",
+      "scope.full": "Everything the principal may call",
+      "scope.read_only": "Read only",
+      "token": "Token"
+    },
+    "totp": {
+      "challenge": "Sign-in challenge",
+      "code": "Code",
+      "confirm": {
+        "title": "Confirm the second factor"
+      },
+      "disable": {
+        "title": "Disable the second factor"
+      },
+      "enroll": {
+        "title": "Set up a second factor"
+      },
+      "principal": "Principal",
+      "recoveryCodes": "Recovery codes",
+      "verify": {
+        "title": "Enter the code"
+      }
+    },
+    "unlock": {
+      "title": "Unlock a login"
+    }
+  }
 }

@@ -1,951 +1,1163 @@
 {
   "lang": "ru",
   "messages": {
-    "menu": {
-      "system": "Система",
-      "demo": "Демо"
-    },
     "keel": {
-      "brand": "Keel",
-      "id": "Идентификатор",
-      "name": "Название",
-      "title": "Заголовок",
-      "kind": "Тип",
-      "state": "Состояние",
-      "login": "Логин",
-      "role": "Роль",
-      "lang": "Язык",
-      "createdAt": "Создан",
-      "updatedAt": "Обновлён",
-      "column": {
-        "id": "Идентификатор",
-        "name": "Название",
-        "title": "Заголовок",
+      "account": {
+        "action": {
+          "create": "Новый аккаунт",
+          "edit": "Изменить"
+        },
+        "column": {
+          "createdAt": "Создан",
+          "id": "Аккаунт",
+          "kind": "Тип",
+          "origin": "Источник",
+          "parentId": "Родитель",
+          "state": "Состояние"
+        },
+        "create": {
+          "title": "Новый аккаунт"
+        },
+        "empty": "Аккаунтов пока нет",
+        "error": {
+          "kind_reserved": "Тип {kind} зарезервирован за корневым аккаунтом",
+          "parent_cycle": "Аккаунт нельзя перенести под себя или под один из своих аккаунтов",
+          "path_unknown": "В сохранённом пути аккаунта есть сегмент {segment}, который не является ULID",
+          "root_immutable": "Корневой аккаунт нельзя изменить"
+        },
+        "id": "Аккаунт",
         "kind": "Тип",
-        "state": "Состояние",
-        "login": "Логин",
-        "role": "Роль",
-        "lang": "Язык",
-        "createdAt": "Создан",
-        "updatedAt": "Обновлён"
+        "list": {
+          "title": "Аккаунты"
+        },
+        "page": {
+          "main": "Аккаунт"
+        },
+        "parent": "Родительский аккаунт",
+        "state": {
+          "active": "Активен",
+          "deleting": "Удаляется",
+          "suspended": "Приостановлен"
+        },
+        "update": {
+          "title": "Аккаунт"
+        }
       },
       "action": {
-        "create": "Создать",
-        "edit": "Изменить",
-        "delete": "Удалить",
-        "refresh": "Обновить",
-        "export": "Экспорт",
-        "save": "Сохранить",
-        "retry": "Повторить",
-        "done": "{action}: выполнено",
         "back": "Назад",
+        "create": "Создать",
+        "delete": "Удалить",
+        "done": "{action}: выполнено",
+        "edit": "Изменить",
+        "export": "Экспорт",
+        "finish": "Завершить",
         "next": "Далее",
-        "finish": "Завершить"
+        "refresh": "Обновить",
+        "retry": "Повторить",
+        "save": "Сохранить"
+      },
+      "brand": "Keel",
+      "check": {
+        "cidr": "Введите сеть в нотации CIDR",
+        "domain": "Введите доменное имя",
+        "email": "Введите адрес электронной почты",
+        "int": "Введите целое число",
+        "ip": "Введите IP-адрес",
+        "name": "Введите имя: буква, затем буквы, цифры, подчёркивания или дефисы",
+        "path": "Введите абсолютный путь",
+        "port": "Введите порт от 1 до 65535"
+      },
+      "column": {
+        "createdAt": "Создан",
+        "id": "Идентификатор",
+        "kind": "Тип",
+        "lang": "Язык",
+        "login": "Логин",
+        "name": "Название",
+        "role": "Роль",
+        "state": "Состояние",
+        "title": "Заголовок",
+        "updatedAt": "Обновлён"
+      },
+      "confirm": {
+        "count": "Введите {count} для подтверждения",
+        "many": "Продолжить: {action} для {count} элементов?",
+        "one": "Продолжить: {action}?"
+      },
+      "createdAt": "Создан",
+      "error": {
+        "account_not_found": "Аккаунта не существует или он вне вашей области",
+        "actor_not_delegated": "Актор пришёл без делегирования",
+        "body_not_json": "Тело запроса не является JSON",
+        "body_not_multipart": "Тело запроса не multipart/form-data",
+        "body_too_large": "Тело запроса больше {limit} байт",
+        "call_still_shared": "На вызов ещё есть ссылки, когда он должен фиксироваться",
+        "caller_unavailable": "Функцию {function} пока нельзя вызвать: диспетчер не готов",
+        "config_missing": "Секция конфигурации {section} не объявлена",
+        "conflict": "Изменение конфликтует с текущим состоянием",
+        "cross_site": "Запрос пришёл с другого сайта",
+        "download_route": "Функция {function} отдаёт файл; получите его по адресу {route}",
+        "download_stored_inline": "Сохранённая выгрузка пишется только внутри задачи",
+        "enrich_not_object": "Хук модуля {module} на {function} дополнил параметры не объектом",
+        "export_columns": "Колонки {column} нет в списке {function}",
+        "export_output": "Не удалось записать выгрузку",
+        "export_page": "Список {function} ответил страницей, которую выгрузка не может прочитать",
+        "file_encoding": "Файл не является текстом в UTF-8",
+        "file_too_large": "Файл больше {limit} байт",
+        "file_type": "Тип файла {type} не принимается; ожидается один из {types}",
+        "forbidden": "Вам это не разрешено",
+        "forbidden_field": "Поле выше вашего уровня",
+        "frame_unknown": "Кадр не является кадром func, describe или i18n",
+        "function_not_found": "Функции {function} не существует",
+        "group_body": "Групповое изменение принимает ids, fields и mask",
+        "group_read": "Функция {function} не может применить групповое изменение: у неё нет ключа или функции чтения",
+        "hook_timeout": "Хук модуля {module} на {function} не уложился в срок",
+        "idempotency_mismatch": "Тот же ключ идемпотентности использован с другим запросом",
+        "idempotency_race": "Такой же запрос уже обрабатывается; повторите",
+        "internal": "Внутренняя ошибка",
+        "internal_only": "Функция {function} внутренняя; её вызывает только ядро",
+        "invocation_unknown": "Вызов не знает, какую функцию он выполняет",
+        "invoke_unavailable": "Вложенные вызовы здесь недоступны",
+        "invoke_write_outside_transaction": "Функцию записи {function} нельзя вызвать из вызова чтения",
+        "level": "Требуется уровень {level}",
+        "license": "Функция не лицензирована",
+        "limit_exceeded": "Лимит исчерпан",
+        "list": {
+          "filter_value": "Значение {value} не подходит полю",
+          "list_value_op": "Список значений работает только с равенством по {field}",
+          "not_filterable": "Список нельзя фильтровать по {field}",
+          "not_sortable": "Список нельзя сортировать по {field}",
+          "page": "Номер страницы должен быть не меньше 1",
+          "page_size": "Размер страницы должен быть не меньше 1",
+          "unknown_field": "Поля {field} не существует"
+        },
+        "lock_failed": "Блокировку {key} не удалось взять",
+        "lock_unavailable": "Блокировку {key} нельзя взять: база данных не подключена",
+        "masker_unavailable": "Параметры {function} пока нельзя замаскировать: реестры не заморожены",
+        "method_not_allowed": "Функция {function} вызывается методом {allowed}",
+        "multi_field": "Поле {field} нельзя изменять сразу в нескольких строках",
+        "multi_unmasked": "Поле {field} не входит в маску группового изменения",
+        "not_found": "Не найдено",
+        "outbox_row": "Строка {seq} очереди событий содержит нечитаемый {member}",
+        "outbox_seq": "Очередь событий не ответила порядковым номером записанного события",
+        "outbox_unavailable": "Очередь событий пока нельзя читать: диспетчер не подключён",
+        "owned_composite_key": "Функция {function} владеет строкой через составной ключ",
+        "ownership_undeclared": "Функция {function} не объявила ни owned, ни unowned",
+        "part_repeated": "Часть {part} отправлена дважды",
+        "part_unknown": "Часть {part} не соответствует ни одному файловому полю",
+        "peer": "Соседний продукт не ответил",
+        "permission": "Требуется право {permission}",
+        "principal_not_found": "Принципал {login} не существует",
+        "query_not_json": "Параметр {parameter} не является JSON",
+        "query_not_object": "Параметр {parameter} не является объектом JSON",
+        "rate_limited": "Слишком много запросов",
+        "read_call_has_no_outbox": "У вызова чтения нет outbox",
+        "read_call_has_no_transaction": "У вызова чтения нет транзакции",
+        "request": "{message} (запрос {id})",
+        "route_not_found": "Путь {path} не существует",
+        "secret_open": "Запечатанное значение не открывается ключом данных",
+        "secret_seal": "Не удалось запечатать значение ключом данных",
+        "service_missing": "Сервис {service} не предоставлен",
+        "setting_value": "У настройки {key} нет пригодного значения",
+        "spawn_inside_task": "Задача не может запустить себя повторно",
+        "task_checkpoint": "Контрольная точка задачи {task} не соответствует ожидаемой форме",
+        "task_output": "Не удалось открыть вывод задачи в {path}",
+        "tasks_unavailable": "Фоновые задачи недоступны на этой установке",
+        "timeout": "Вызов занял слишком много времени",
+        "token_read_only": "Токен только для чтения, а {function} пишет",
+        "token_scope": "Токен не охватывает {function}",
+        "unauthenticated": "Войдите, чтобы продолжить",
+        "unauthenticated_route": "Маршрут обслуживает вызовы без прослойки аутентификации",
+        "unavailable": "Временно недоступно",
+        "upload_route": "Функция {function} принимает файл; отправьте его как multipart на {route}",
+        "validation": "Запрос некорректен",
+        "write_call_without_transaction": "Вызов записи потерял транзакцию"
+      },
+      "export": {
+        "columns": "Колонки",
+        "format": "Формат",
+        "format.csv": "CSV",
+        "format.json": "JSON",
+        "func": "Список",
+        "query": "Запрос"
+      },
+      "id": "Идентификатор",
+      "kind": "Тип",
+      "lang": "Язык",
+      "level": {
+        "admin": "Администратор",
+        "guest": "Гость",
+        "owner": "Владелец",
+        "reseller": "Реселлер",
+        "service": "Сервис",
+        "user": "Пользователь"
+      },
+      "login": "Логин",
+      "name": "Название",
+      "once": {
+        "title": "Показывается один раз: скопируйте значения сейчас"
       },
       "page": {
         "main": "Основное"
       },
-      "once": {
-        "title": "Показывается один раз: скопируйте значения сейчас"
+      "principal": {
+        "account": "Аккаунт",
+        "action": {
+          "create": "Новый принципал",
+          "edit": "Изменить"
+        },
+        "column": {
+          "accountId": "Аккаунт",
+          "createdAt": "Создан",
+          "lang": "Язык",
+          "level": "Уровень",
+          "login": "Логин",
+          "origin": "Источник",
+          "role": "Роль",
+          "state": "Состояние"
+        },
+        "create": {
+          "title": "Новый принципал"
+        },
+        "empty": "Принципалов пока нет",
+        "error": {
+          "account_unknown": "Сохранённый аккаунт {account} принципала {id} не является ULID",
+          "id_unknown": "Сохранённый идентификатор {id} принципала не является ULID",
+          "level_above_caller": "Уровень {level} выше вашего",
+          "level_account": "Принципал уровня {level} не может состоять в аккаунте типа {kind}",
+          "level_guest": "У принципала не может быть уровня гостя",
+          "level_unknown": "Сохранённый уровень {level} принципала {id} не входит в лестницу",
+          "login_exists": "Принципал с таким логином уже есть"
+        },
+        "lang": "Язык",
+        "level": "Уровень",
+        "list": {
+          "title": "Принципалы"
+        },
+        "login": "Логин",
+        "page": {
+          "main": "Принципал"
+        },
+        "role": "Роль",
+        "state": {
+          "active": "Активен",
+          "suspended": "Приостановлен"
+        },
+        "update": {
+          "title": "Принципал"
+        }
       },
-      "confirm": {
-        "one": "Продолжить: {action}?",
-        "many": "Продолжить: {action} для {count} элементов?",
-        "count": "Введите {count} для подтверждения"
+      "product": {
+        "action": {
+          "disable": "Выключить",
+          "enable": "Включить"
+        },
+        "column": {
+          "enabledAt": "Включён",
+          "enabledBy": "Кем включён",
+          "id": "Продукт",
+          "modules": "Модули",
+          "name": "Название",
+          "state": "Состояние",
+          "version": "Версия"
+        },
+        "empty": "В эту установку не собран ни один продукт",
+        "error": {
+          "stored": "Сохранённый набор продуктов не читается: {reason}",
+          "unknown": "Продукт {id} не входит в эту установку"
+        },
+        "list": {
+          "title": "Продукты"
+        },
+        "state": {
+          "disabled": "Выключен",
+          "enabled": "Включён"
+        }
       },
-      "value": {
-        "true": "Да",
-        "false": "Нет"
-      },
-      "view": {
-        "missing": "Экран {view} относится к продукту {product}, экраны которого не входят в эту оболочку"
+      "role": "Роль",
+      "schema": {
+        "additionalProperties": "Поле не входит в форму",
+        "anyOf": "Значение не подходит",
+        "const": "Значение фиксировано",
+        "enum": "Значение не из списка допустимых",
+        "format": "Значение в неверном формате",
+        "maxItems": "Слишком много элементов",
+        "maxLength": "Значение слишком длинное",
+        "maximum": "Значение слишком велико",
+        "minItems": "Слишком мало элементов",
+        "minLength": "Значение слишком короткое",
+        "minimum": "Значение слишком мало",
+        "oneOf": "Значение не подходит",
+        "pattern": "Значение в неверном формате",
+        "required": "Поле обязательно",
+        "type": "Значение неверного типа",
+        "uniqueItems": "Элементы должны быть уникальными"
       },
       "screen": {
         "unsupported": "Экраны типа {kind} пока не отображаются"
       },
       "shell": {
-        "loading": "Загрузка",
-        "boot_failed": "Установка не ответила; перезагрузите страницу",
-        "login": {
-          "title": "Вход",
-          "login": "Логин",
-          "password": "Пароль",
-          "submit": "Войти",
-          "code": "Код",
-          "code_hint": "Введите код из приложения-аутентификатора или код восстановления",
-          "verify": "Проверить",
-          "key": "Вход по ключу",
-          "key_failed": "Ключ входа не принят",
-          "failed": "Войти не удалось"
-        },
-        "logout": "Выйти",
-        "not_found": {
-          "title": "Страница не найдена",
-          "text": "Адреса {path} в этой установке нет",
-          "home": "На начальную страницу"
+        "act_as": {
+          "empty": "Подходящих принципалов нет",
+          "enter": "Войти",
+          "search": "Поиск по логину",
+          "title": "Действовать от имени принципала"
         },
         "acting_as": {
           "banner": "Вы действуете от имени {login}",
           "exit": "Вернуться в свою сессию"
         },
-        "act_as": {
-          "title": "Действовать от имени принципала",
-          "search": "Поиск по логину",
-          "enter": "Войти",
-          "empty": "Подходящих принципалов нет"
-        },
-        "user": {
-          "language": "Язык",
-          "theme": "Тема",
-          "act_as": "Действовать от имени",
-          "sessions": "Сессии",
-          "tokens": "API-токены",
-          "security": "Безопасность",
-          "logout": "Выйти"
-        },
+        "boot_failed": "Установка не ответила; перезагрузите страницу",
         "language": {
           "en": "Английский",
           "ru": "Русский"
         },
+        "loading": "Загрузка",
+        "login": {
+          "code": "Код",
+          "code_hint": "Введите код из приложения-аутентификатора или код восстановления",
+          "failed": "Войти не удалось",
+          "key": "Вход по ключу",
+          "key_failed": "Ключ входа не принят",
+          "login": "Логин",
+          "password": "Пароль",
+          "submit": "Войти",
+          "title": "Вход",
+          "verify": "Проверить"
+        },
+        "logout": "Выйти",
+        "not_found": {
+          "home": "На начальную страницу",
+          "text": "Адреса {path} в этой установке нет",
+          "title": "Страница не найдена"
+        },
         "rail": {
-          "notifications": "Уведомления",
-          "tasks": "Задачи",
           "help": "Справка",
-          "later": "Появится в следующих выпусках"
+          "later": "Появится в следующих выпусках",
+          "notifications": "Уведомления",
+          "tasks": "Задачи"
         },
         "security": {
-          "title": "Безопасность",
-          "password": "Пароль",
-          "password_hint": "Сменить пароль своей учётной записи",
-          "totp": "Второй фактор",
-          "enrolled": "Второй фактор подключён",
-          "not_enrolled": "Второй фактор не подключён",
-          "enroll": "Подключить",
           "confirm": "Подтвердить",
           "disable": "Отключить",
+          "enroll": "Подключить",
+          "enrolled": "Второй фактор подключён",
+          "not_enrolled": "Второй фактор не подключён",
+          "password": "Пароль",
+          "password_hint": "Сменить пароль своей учётной записи",
+          "recovery": "Коды восстановления",
+          "recovery_hint": "Сохраните эти коды сейчас: они показываются один раз",
           "secret": "Секрет",
           "secret_hint": "Отсканируйте код или введите секрет в приложение-аутентификатор, затем подтвердите кодом",
-          "recovery": "Коды восстановления",
-          "recovery_hint": "Сохраните эти коды сейчас: они показываются один раз"
+          "title": "Безопасность",
+          "totp": "Второй фактор"
         },
         "settings": {
+          "default": "По умолчанию",
           "title": "Настройка {key}",
-          "value": "Значение",
-          "default": "По умолчанию"
+          "value": "Значение"
+        },
+        "user": {
+          "act_as": "Действовать от имени",
+          "language": "Язык",
+          "logout": "Выйти",
+          "security": "Безопасность",
+          "sessions": "Сессии",
+          "theme": "Тема",
+          "tokens": "API-токены"
         }
       },
-      "level": {
-        "guest": "Гость",
-        "service": "Сервис",
-        "user": "Пользователь",
-        "reseller": "Реселлер",
-        "admin": "Администратор",
-        "owner": "Владелец"
+      "state": "Состояние",
+      "title": "Заголовок",
+      "updatedAt": "Обновлён",
+      "value": {
+        "false": "Нет",
+        "true": "Да"
       },
-      "export": {
-        "func": "Список",
-        "query": "Запрос",
-        "columns": "Колонки",
-        "format": "Формат",
-        "format.csv": "CSV",
-        "format.json": "JSON"
-      },
-      "account": {
-        "list": {
-          "title": "Аккаунты"
-        },
-        "create": {
-          "title": "Новый аккаунт"
-        },
-        "update": {
-          "title": "Аккаунт"
-        },
-        "empty": "Аккаунтов пока нет",
-        "id": "Аккаунт",
-        "kind": "Тип",
-        "parent": "Родительский аккаунт",
-        "state": {
-          "active": "Активен",
-          "suspended": "Приостановлен",
-          "deleting": "Удаляется"
-        },
-        "column": {
-          "id": "Аккаунт",
-          "kind": "Тип",
-          "state": "Состояние",
-          "parentId": "Родитель",
-          "createdAt": "Создан",
-          "origin": "Источник"
-        },
-        "action": {
-          "create": "Новый аккаунт",
-          "edit": "Изменить"
-        },
-        "page": {
-          "main": "Аккаунт"
-        },
-        "error": {
-          "kind_reserved": "Тип {kind} зарезервирован за корневым аккаунтом",
-          "root_immutable": "Корневой аккаунт нельзя изменить",
-          "path_unknown": "В сохранённом пути аккаунта есть сегмент {segment}, который не является ULID",
-          "parent_cycle": "Аккаунт нельзя перенести под себя или под один из своих аккаунтов"
-        }
-      },
-      "principal": {
-        "list": {
-          "title": "Принципалы"
-        },
-        "create": {
-          "title": "Новый принципал"
-        },
-        "update": {
-          "title": "Принципал"
-        },
-        "empty": "Принципалов пока нет",
-        "login": "Логин",
-        "level": "Уровень",
-        "role": "Роль",
-        "lang": "Язык",
-        "account": "Аккаунт",
-        "state": {
-          "active": "Активен",
-          "suspended": "Приостановлен"
-        },
-        "column": {
-          "login": "Логин",
-          "level": "Уровень",
-          "role": "Роль",
-          "state": "Состояние",
-          "accountId": "Аккаунт",
-          "lang": "Язык",
-          "createdAt": "Создан",
-          "origin": "Источник"
-        },
-        "action": {
-          "create": "Новый принципал",
-          "edit": "Изменить"
-        },
-        "page": {
-          "main": "Принципал"
-        },
-        "error": {
-          "login_exists": "Принципал с таким логином уже есть",
-          "level_guest": "У принципала не может быть уровня гостя",
-          "level_above_caller": "Уровень {level} выше вашего",
-          "level_account": "Принципал уровня {level} не может состоять в аккаунте типа {kind}",
-          "level_unknown": "Сохранённый уровень {level} принципала {id} не входит в лестницу",
-          "id_unknown": "Сохранённый идентификатор {id} принципала не является ULID",
-          "account_unknown": "Сохранённый аккаунт {account} принципала {id} не является ULID"
-        }
-      },
-      "product": {
-        "list": {
-          "title": "Продукты"
-        },
-        "empty": "В эту установку не собран ни один продукт",
-        "state": {
-          "enabled": "Включён",
-          "disabled": "Выключен"
-        },
-        "column": {
-          "id": "Продукт",
-          "name": "Название",
-          "version": "Версия",
-          "state": "Состояние",
-          "enabledAt": "Включён",
-          "enabledBy": "Кем включён",
-          "modules": "Модули"
-        },
-        "action": {
-          "enable": "Включить",
-          "disable": "Выключить"
-        },
-        "error": {
-          "unknown": "Продукт {id} не входит в эту установку",
-          "stored": "Сохранённый набор продуктов не читается: {reason}"
-        }
-      },
-      "error": {
-        "validation": "Запрос некорректен",
-        "forbidden": "Вам это не разрешено",
-        "forbidden_field": "Поле выше вашего уровня",
-        "unauthenticated": "Войдите, чтобы продолжить",
-        "not_found": "Не найдено",
-        "conflict": "Изменение конфликтует с текущим состоянием",
-        "idempotency_mismatch": "Тот же ключ идемпотентности использован с другим запросом",
-        "idempotency_race": "Такой же запрос уже обрабатывается; повторите",
-        "limit_exceeded": "Лимит исчерпан",
-        "license": "Функция не лицензирована",
-        "rate_limited": "Слишком много запросов",
-        "unavailable": "Временно недоступно",
-        "peer": "Соседний продукт не ответил",
-        "internal": "Внутренняя ошибка",
-        "request": "{message} (запрос {id})",
-        "level": "Требуется уровень {level}",
-        "permission": "Требуется право {permission}",
-        "function_not_found": "Функции {function} не существует",
-        "principal_not_found": "Принципал {login} не существует",
-        "account_not_found": "Аккаунта не существует или он вне вашей области",
-        "timeout": "Вызов занял слишком много времени",
-        "hook_timeout": "Хук модуля {module} на {function} не уложился в срок",
-        "actor_not_delegated": "Актор пришёл без делегирования",
-        "enrich_not_object": "Хук модуля {module} на {function} дополнил параметры не объектом",
-        "invoke_unavailable": "Вложенные вызовы здесь недоступны",
-        "invoke_write_outside_transaction": "Функцию записи {function} нельзя вызвать из вызова чтения",
-        "read_call_has_no_transaction": "У вызова чтения нет транзакции",
-        "read_call_has_no_outbox": "У вызова чтения нет outbox",
-        "write_call_without_transaction": "Вызов записи потерял транзакцию",
-        "call_still_shared": "На вызов ещё есть ссылки, когда он должен фиксироваться",
-        "config_missing": "Секция конфигурации {section} не объявлена",
-        "setting_value": "У настройки {key} нет пригодного значения",
-        "service_missing": "Сервис {service} не предоставлен",
-        "ownership_undeclared": "Функция {function} не объявила ни owned, ни unowned",
-        "owned_composite_key": "Функция {function} владеет строкой через составной ключ",
-        "token_scope": "Токен не охватывает {function}",
-        "token_read_only": "Токен только для чтения, а {function} пишет",
-        "internal_only": "Функция {function} внутренняя; её вызывает только ядро",
-        "cross_site": "Запрос пришёл с другого сайта",
-        "unauthenticated_route": "Маршрут обслуживает вызовы без прослойки аутентификации",
-        "secret_seal": "Не удалось запечатать значение ключом данных",
-        "secret_open": "Запечатанное значение не открывается ключом данных",
-        "method_not_allowed": "Функция {function} вызывается методом {allowed}",
-        "body_too_large": "Тело запроса больше {limit} байт",
-        "body_not_json": "Тело запроса не является JSON",
-        "query_not_json": "Параметр {parameter} не является JSON",
-        "query_not_object": "Параметр {parameter} не является объектом JSON",
-        "route_not_found": "Путь {path} не существует",
-        "frame_unknown": "Кадр не является кадром func, describe или i18n",
-        "caller_unavailable": "Функцию {function} пока нельзя вызвать: диспетчер не готов",
-        "masker_unavailable": "Параметры {function} пока нельзя замаскировать: реестры не заморожены",
-        "lock_unavailable": "Блокировку {key} нельзя взять: база данных не подключена",
-        "lock_failed": "Блокировку {key} не удалось взять",
-        "outbox_unavailable": "Очередь событий пока нельзя читать: диспетчер не подключён",
-        "outbox_seq": "Очередь событий не ответила порядковым номером записанного события",
-        "outbox_row": "Строка {seq} очереди событий содержит нечитаемый {member}",
-        "task_checkpoint": "Контрольная точка задачи {task} не соответствует ожидаемой форме",
-        "task_output": "Не удалось открыть вывод задачи в {path}",
-        "download_route": "Функция {function} отдаёт файл; получите его по адресу {route}",
-        "download_stored_inline": "Сохранённая выгрузка пишется только внутри задачи",
-        "tasks_unavailable": "Фоновые задачи недоступны на этой установке",
-        "spawn_inside_task": "Задача не может запустить себя повторно",
-        "invocation_unknown": "Вызов не знает, какую функцию он выполняет",
-        "export_columns": "Колонки {column} нет в списке {function}",
-        "export_output": "Не удалось записать выгрузку",
-        "export_page": "Список {function} ответил страницей, которую выгрузка не может прочитать",
-        "group_body": "Групповое изменение принимает ids, fields и mask",
-        "group_read": "Функция {function} не может применить групповое изменение: у неё нет ключа или функции чтения",
-        "multi_field": "Поле {field} нельзя изменять сразу в нескольких строках",
-        "multi_unmasked": "Поле {field} не входит в маску группового изменения",
-        "upload_route": "Функция {function} принимает файл; отправьте его как multipart на {route}",
-        "body_not_multipart": "Тело запроса не multipart/form-data",
-        "part_unknown": "Часть {part} не соответствует ни одному файловому полю",
-        "part_repeated": "Часть {part} отправлена дважды",
-        "file_type": "Тип файла {type} не принимается; ожидается один из {types}",
-        "file_too_large": "Файл больше {limit} байт",
-        "file_encoding": "Файл не является текстом в UTF-8",
-        "list": {
-          "page": "Номер страницы должен быть не меньше 1",
-          "page_size": "Размер страницы должен быть не меньше 1",
-          "not_sortable": "Список нельзя сортировать по {field}",
-          "not_filterable": "Список нельзя фильтровать по {field}",
-          "unknown_field": "Поля {field} не существует",
-          "filter_value": "Значение {value} не подходит полю",
-          "list_value_op": "Список значений работает только с равенством по {field}"
-        }
-      },
-      "check": {
-        "domain": "Введите доменное имя",
-        "ip": "Введите IP-адрес",
-        "cidr": "Введите сеть в нотации CIDR",
-        "email": "Введите адрес электронной почты",
-        "int": "Введите целое число",
-        "name": "Введите имя: буква, затем буквы, цифры, подчёркивания или дефисы",
-        "port": "Введите порт от 1 до 65535",
-        "path": "Введите абсолютный путь"
-      },
-      "schema": {
-        "required": "Поле обязательно",
-        "type": "Значение неверного типа",
-        "enum": "Значение не из списка допустимых",
-        "const": "Значение фиксировано",
-        "minimum": "Значение слишком мало",
-        "maximum": "Значение слишком велико",
-        "minLength": "Значение слишком короткое",
-        "maxLength": "Значение слишком длинное",
-        "pattern": "Значение в неверном формате",
-        "format": "Значение в неверном формате",
-        "minItems": "Слишком мало элементов",
-        "maxItems": "Слишком много элементов",
-        "uniqueItems": "Элементы должны быть уникальными",
-        "additionalProperties": "Поле не входит в форму",
-        "anyOf": "Значение не подходит",
-        "oneOf": "Значение не подходит"
+      "view": {
+        "missing": "Экран {view} относится к продукту {product}, экраны которого не входят в эту оболочку"
       }
     },
+    "menu": {
+      "system": "Система",
+      "demo": "Демо"
+    },
     "phx": {
+      "addToFavourites": "Добавить в избранное",
+      "apply": "Применить",
+      "ascending": "По возрастанию",
+      "back": "Назад",
+      "breadcrumb": "Путь",
+      "cancel": "Отмена",
+      "chooseFile": "Выбрать файл",
+      "chooseTime": "Выбрать время",
+      "chroma": "Насыщенность",
+      "clear": "Очистить",
       "close": "Закрыть",
       "closeAll": "Закрыть все",
-      "cancel": "Отмена",
-      "ok": "Ок",
+      "collapse": "Свернуть",
+      "collapseAll": "Свернуть все",
       "confirm": "Подтвердить",
-      "back": "Назад",
-      "more": "Ещё",
-      "search": "Поиск",
-      "clear": "Очистить",
-      "loading": "Загрузка",
-      "total": "Всего",
-      "selected": "Выбрано",
-      "perPage": "На странице",
-      "of": "из",
-      "page": "Страница",
-      "nothingFound": "Ничего не найдено",
-      "nothingMatches": "Ни одна запись не подходит под текущий поиск.",
+      "copied": "Скопировано",
+      "copy": "Копировать",
+      "dark": "Тёмная",
+      "decrease": "Уменьшить",
+      "descending": "По убыванию",
+      "done": "Готово",
+      "dropFilesHere": "Перетащите файлы сюда",
+      "edit": "Изменить",
+      "editPath": "Изменить путь",
+      "expand": "Развернуть",
+      "expandAll": "Развернуть все",
+      "filter": "Фильтр",
+      "generatePassword": "Сгенерировать пароль",
+      "help": "Справка",
+      "hideNotifications": "Скрыть уведомления",
+      "hidePassword": "Скрыть пароль",
+      "hours": "Часы",
+      "hue": "Оттенок",
+      "increase": "Увеличить",
+      "light": "Светлая",
       "loadFailed": "Не удалось загрузить данные",
       "loadFailedText": "Запрос не выполнен. Проверьте соединение и попробуйте снова.",
-      "retry": "Повторить",
-      "showPassword": "Показать пароль",
-      "hidePassword": "Скрыть пароль",
-      "generatePassword": "Сгенерировать пароль",
-      "copy": "Копировать",
-      "copied": "Скопировано",
-      "required": "Обязательно",
-      "collapse": "Свернуть",
-      "expand": "Развернуть",
-      "menu": "Меню",
-      "pin": "Закрепить",
-      "unpin": "Открепить",
-      "unlimited": "Без ограничений",
       "loadMore": "Загрузить ещё",
-      "increase": "Увеличить",
-      "decrease": "Уменьшить",
-      "today": "Сегодня",
-      "previousMonth": "Предыдущий месяц",
-      "nextMonth": "Следующий месяц",
-      "chooseFile": "Выбрать файл",
-      "dropFilesHere": "Перетащите файлы сюда",
-      "removeFile": "Убрать файл",
-      "light": "Светлая",
-      "dark": "Тёмная",
-      "system": "Как в системе",
-      "hue": "Оттенок",
-      "chroma": "Насыщенность",
-      "reset": "Сбросить",
-      "showMore": "Показать больше",
-      "showLess": "Показать меньше",
-      "hideNotifications": "Скрыть уведомления",
-      "showNotifications": "Показать уведомления",
-      "openNotificationCenter": "Открыть центр уведомлений",
+      "loading": "Загрузка",
       "markAllRead": "Отметить все прочитанными",
+      "menu": "Меню",
+      "minutes": "Минуты",
+      "more": "Ещё",
+      "next": "Далее",
+      "nextMonth": "Следующий месяц",
+      "nextPage": "Следующая страница",
       "noNotifications": "Уведомлений нет",
-      "help": "Справка",
-      "passwordStrength": "Надёжность пароля",
-      "passwordWeak": "Слабый",
+      "nothingFound": "Ничего не найдено",
+      "nothingMatches": "Ни одна запись не подходит под текущий поиск.",
+      "of": "из",
+      "ok": "Ок",
+      "openCalendar": "Открыть календарь",
+      "openNotificationCenter": "Открыть центр уведомлений",
+      "page": "Страница",
+      "pagination": "Постраничная навигация",
       "passwordFair": "Средний",
       "passwordGood": "Хороший",
+      "passwordStrength": "Надёжность пароля",
       "passwordStrong": "Надёжный",
-      "apply": "Применить",
-      "filter": "Фильтр",
-      "sort": "Сортировка",
-      "ascending": "По возрастанию",
-      "descending": "По убыванию",
-      "remove": "Убрать",
-      "previousPage": "Предыдущая страница",
-      "nextPage": "Следующая страница",
-      "pagination": "Постраничная навигация",
-      "breadcrumb": "Путь",
-      "up": "Вверх",
-      "editPath": "Изменить путь",
+      "passwordWeak": "Слабый",
       "path": "Путь",
-      "addToFavourites": "Добавить в избранное",
+      "perPage": "На странице",
+      "pin": "Закрепить",
+      "previousMonth": "Предыдущий месяц",
+      "previousPage": "Предыдущая страница",
+      "remove": "Убрать",
+      "removeFile": "Убрать файл",
       "removeFromFavourites": "Убрать из избранного",
-      "edit": "Изменить",
+      "required": "Обязательно",
+      "reset": "Сбросить",
+      "resizeColumn": "Изменить ширину столбца",
+      "retry": "Повторить",
+      "save": "Сохранить",
+      "search": "Поиск",
       "selectAll": "Выбрать все",
       "selectRow": "Выбрать строку",
-      "resizeColumn": "Изменить ширину столбца",
-      "expandAll": "Развернуть все",
-      "collapseAll": "Свернуть все",
-      "openCalendar": "Открыть календарь",
-      "chooseTime": "Выбрать время",
-      "hours": "Часы",
-      "minutes": "Минуты",
-      "yesterday": "Вчера",
-      "next": "Далее",
-      "done": "Готово",
+      "selected": "Выбрано",
+      "showLess": "Показать меньше",
+      "showMore": "Показать больше",
+      "showNotifications": "Показать уведомления",
+      "showPassword": "Показать пароль",
       "skip": "Пропустить",
-      "save": "Сохранить"
+      "sort": "Сортировка",
+      "system": "Как в системе",
+      "today": "Сегодня",
+      "total": "Всего",
+      "unlimited": "Без ограничений",
+      "unpin": "Открепить",
+      "up": "Вверх",
+      "yesterday": "Вчера"
     },
-    "audit.list.title": "Журнал действий",
-    "audit.empty": "Записей ещё нет",
-    "audit.column.at": "Когда",
-    "audit.column.function": "Функция",
-    "audit.column.principalLogin": "Пользователь",
-    "audit.column.principalId": "Идентификатор пользователя",
-    "audit.column.actorLogin": "От имени",
-    "audit.column.via": "Канал",
-    "audit.column.ip": "Адрес",
-    "audit.column.subject": "Объект",
-    "audit.column.status": "Результат",
-    "audit.column.errorKey": "Ошибка",
-    "audit.column.elapsedMs": "Длительность, мс",
-    "audit.column.requestId": "Запрос",
-    "audit.status.committed": "Выполнено",
-    "audit.status.failed": "Ошибка",
-    "audit.error.not_running": "Обработчик журнала не запущен",
-    "auth.login": "Логин",
-    "auth.password": "Пароль",
-    "auth.method": "Способ входа",
-    "auth.login.title": "Вход",
-    "auth.login.state.authenticated": "Вход выполнен",
-    "auth.logout.title": "Выход",
-    "auth.password.set.title": "Смена пароля",
-    "auth.password.principal": "Пользователь",
-    "auth.password.current": "Текущий пароль",
-    "auth.password.password": "Новый пароль",
-    "auth.error.credentials": "Неверный логин или пароль",
-    "auth.error.current_required": "Нужен текущий пароль",
-    "auth.error.not_below": "Пароль пользователя уровня {level} не может задать вызывающий уровня {caller}",
-    "auth.error.http_only": "Вход возможен только по HTTP",
-    "auth.error.session_only": "Для этого вызова нужна сессия",
-    "auth.error.method_unknown": "Способ входа {method} недоступен",
-    "auth.error.hashing": "Не удалось обработать пароль",
-    "auth.error.entropy": "Система не дала случайных данных",
-    "auth.error.not_started": "Модуль auth не запущен",
-    "auth.error.session_principal": "Сессия ссылается на пользователя, которого не удалось прочитать",
-    "auth.error.session_account": "Сессия ссылается на аккаунт, который не удалось прочитать",
-    "auth.token.list.title": "API-токены",
-    "auth.token.create.title": "Новый API-токен",
-    "auth.token.empty": "API-токенов пока нет",
-    "auth.token.name": "Название",
-    "auth.token.level": "Потолок уровня",
-    "auth.token.scope": "Область",
-    "auth.token.scope.full": "Всё, что доступно пользователю",
-    "auth.token.scope.read_only": "Только чтение",
-    "auth.token.ipAllow": "Разрешённые сети",
-    "auth.token.expiresAt": "Истекает",
-    "auth.token.token": "Токен",
-    "auth.token.column.name": "Название",
-    "auth.token.column.level": "Потолок уровня",
-    "auth.token.column.scope": "Область",
-    "auth.token.column.ipAllow": "Разрешённые сети",
-    "auth.token.column.expiresAt": "Истекает",
-    "auth.token.column.lastUsedAt": "Последнее использование",
-    "auth.token.column.revokedAt": "Отозван",
-    "auth.token.action.create": "Новый токен",
-    "auth.token.action.revoke": "Отозвать",
-    "auth.error.token_owner": "У владельца нет токенов; создайте его от имени сохранённого пользователя",
-    "auth.error.token_level": "Потолок уровня {level} должен лежать между service и вашим уровнем {caller}",
-    "auth.error.token_mask": "Маска {mask} не является ни именем функции, ни префиксом с .* на конце",
-    "auth.error.token_scope": "Токен не может быть шире области, в которой он создаётся",
-    "auth.error.token_expires_past": "Срок действия должен лежать в будущем",
-    "auth.error.token_net": "Не удалось прочитать сохранённую сеть {net} токена",
-    "auth.error.token_principal": "Токен ссылается на пользователя, которого не удалось прочитать",
-    "auth.error.token_level_unknown": "Сохранённый уровень {level} токена {id} не входит в лестницу",
-    "auth.login.state.totp": "Нужен второй фактор",
-    "auth.totp.enroll.title": "Подключить второй фактор",
-    "auth.totp.confirm.title": "Подтвердить второй фактор",
-    "auth.totp.disable.title": "Отключить второй фактор",
-    "auth.totp.verify.title": "Введите код",
-    "auth.totp.code": "Код",
-    "auth.totp.challenge": "Запрос входа",
-    "auth.totp.principal": "Пользователь",
-    "auth.totp.recoveryCodes": "Коды восстановления",
-    "auth.error.code": "Неверный код",
-    "auth.error.code_required": "Нужен код",
-    "auth.error.challenge": "Запрос входа больше не действителен; войдите заново",
-    "auth.error.totp_enrolled": "Второй фактор уже подключён; сначала отключите его",
-    "auth.error.totp_not_enrolled": "Второй фактор не подключается",
-    "auth.error.totp_owner": "У владельца нет второго фактора; он входит через сокет",
-    "auth.error.totp_secret": "Не удалось прочитать сохранённый второй фактор",
-    "auth.error.totp_principal": "Второй фактор ссылается на пользователя, которого не удалось прочитать",
-    "auth.su.title": "Войти от имени принципала",
-    "auth.su.exit.title": "Вернуться в свою сессию",
-    "auth.su.principal": "Принципал",
-    "auth.error.su_nested": "Вы уже действуете от имени другого принципала; сначала вернитесь",
-    "auth.error.not_delegated": "Вы не действуете от имени другого принципала",
-    "auth.key.issue.title": "Выпустить одноразовый ключ входа",
-    "auth.key.redeem.title": "Войти по ключу",
-    "auth.key.principal": "Принципал",
-    "auth.key.ttl": "Действует (секунд)",
-    "auth.key.redirect": "Куда перейти",
-    "auth.key.key": "Ключ входа",
-    "auth.key.url": "Ссылка для входа",
-    "auth.error.key": "Ключ входа недействителен: он мог быть использован или истечь",
-    "auth.error.redirect": "Путь перехода должен начинаться с одного / и оставаться внутри установки",
-    "auth.error.key_principal": "Ключ входа ссылается на принципала, которого не удалось прочитать",
-    "auth.error.key_issuer": "Ключ входа ссылается на выпустившего, которого не удалось прочитать",
-    "auth.unlock.title": "Разблокировать логин",
-    "auth.error.rate_limited": "Слишком много запросов с вашего адреса; подождите минуту",
-    "auth.error.locked": "Вход для этого логина с вашего адреса заблокирован; попробуйте позже",
-    "auth.error.ip_denied": "Доступ с вашего адреса запрещён",
-    "auth.error.password_short": "Пароль должен быть не короче {min} символов",
-    "auth.error.password_login": "Пароль должен отличаться от логина",
-    "auth.error.ip_rule_action": "Сохранённое действие {action} правила {id} не является ни allow, ни deny",
-    "auth.error.ip_rule_net": "Сохранённую сеть {net} правила {id} не удалось прочитать",
-    "auth.error.ip_rule_level": "Сохранённый уровень {level} правила {id} отсутствует на лестнице",
-    "auth.error.session_actor": "Сессия ссылается на актёра, которого не удалось прочитать",
-    "auth.ip_rule.list.title": "IP-правила",
-    "auth.ip_rule.create.title": "Новое IP-правило",
-    "auth.ip_rule.empty": "IP-правил пока нет",
-    "auth.ip_rule.action": "Действие",
-    "auth.ip_rule.action.allow": "Разрешить",
-    "auth.ip_rule.action.deny": "Запретить",
-    "auth.ip_rule.cidr": "Сеть",
-    "auth.ip_rule.level": "Действует с уровня",
-    "auth.ip_rule.comment": "Комментарий",
-    "auth.ip_rule.column.action": "Действие",
-    "auth.ip_rule.column.cidr": "Сеть",
-    "auth.ip_rule.column.level": "Действует с уровня",
-    "auth.ip_rule.column.comment": "Комментарий",
-    "auth.ip_rule.action.create": "Новое правило",
-    "auth.ip_rule.action.delete": "Удалить",
-    "auth.session.list.title": "Сессии",
-    "auth.session.empty": "Сессий нет",
-    "auth.session.column.kind": "Вид",
-    "auth.session.column.ip": "Адрес",
-    "auth.session.column.userAgent": "Клиент",
-    "auth.session.column.idleUntil": "Простой до",
-    "auth.session.column.absoluteUntil": "Истекает",
-    "auth.session.column.actor": "Актёр",
-    "auth.session.column.current": "Эта сессия",
-    "auth.session.column.revokedAt": "Отозвана",
-    "auth.session.kind.session": "Сессия",
-    "auth.session.kind.su": "Делегированная",
-    "auth.session.action.revoke": "Отозвать",
-    "auth.grant.list.title": "Права доступа",
-    "auth.grant.set.title": "Выдать или запретить право",
-    "auth.grant.empty": "Сохранённых прав нет: каждый принципал держит права своего уровня по умолчанию",
-    "auth.grant.principal": "Принципал",
-    "auth.grant.key": "Право",
-    "auth.grant.granted": "Выдано",
-    "auth.grant.granted.true": "Выдано",
-    "auth.grant.granted.false": "Запрещено",
-    "auth.grant.column.principalLogin": "Принципал",
-    "auth.grant.column.key": "Право",
-    "auth.grant.column.granted": "Решение",
-    "auth.grant.column.accountId": "Аккаунт",
-    "auth.grant.action.set": "Выдать или запретить",
-    "auth.grant.action.delete": "Убрать",
-    "auth.error.unknown_permission": "Право {key} не зарегистрировано в этой установке",
-    "auth.error.grant_not_held": "Нельзя выдать право {key}: у вас его нет",
-    "auth.error.grant_id": "Сохранённый идентификатор права {id} не является ULID",
-    "auth.error.grant_principal": "Право {id} ссылается на принципала {principal}, которого не удаётся прочитать",
-    "cron.job.list.title": "Задания по расписанию",
-    "cron.job.empty": "Ни один модуль не добавил задание",
-    "cron.job.column.id": "Задание",
-    "cron.job.column.module": "Модуль",
-    "cron.job.column.schedule": "Расписание",
-    "cron.job.column.effective": "Действующее расписание",
-    "cron.job.column.lastRunAt": "Последний запуск",
-    "cron.job.column.lastOutcome": "Последний результат",
-    "cron.job.column.nextRunAt": "Следующий запуск",
-    "cron.job.lastOutcome.running": "Выполняется",
-    "cron.job.lastOutcome.ok": "Успешно",
-    "cron.job.lastOutcome.failed": "Ошибка",
-    "cron.job.lastOutcome.skipped": "Пропущен",
-    "cron.job.lastOutcome.interrupted": "Прерван",
-    "cron.job.action.run": "Запустить сейчас",
-    "cron.run.list.title": "Запуски заданий",
-    "cron.run.empty": "Задания ещё не запускались",
-    "cron.run.column.job": "Задание",
-    "cron.run.column.scheduledAt": "По расписанию",
-    "cron.run.column.startedAt": "Начат",
-    "cron.run.column.finishedAt": "Завершён",
-    "cron.run.column.outcome": "Результат",
-    "cron.run.column.error": "Ошибка",
-    "cron.run.outcome.running": "Выполняется",
-    "cron.run.outcome.ok": "Успешно",
-    "cron.run.outcome.failed": "Ошибка",
-    "cron.run.outcome.skipped": "Пропущен",
-    "cron.run.outcome.interrupted": "Прерван",
-    "cron.error.schedule": "Расписание {schedule} задания {job} не разбирается: {reason}",
-    "cron.error.unknown_job": "Ни один модуль не добавляет задание {id}",
-    "cron.error.running": "Задание {id} выполняется; дождитесь его завершения",
-    "cron.error.not_leader": "Этот узел не ведёт расписание; задание {id} выполняется на ведущем",
-    "cron.error.not_running": "Планировщик не запущен",
-    "cron.error.run_not_found": "Запуск {run} не существует",
-    "cron.error.outcome": "Сохранённый результат {outcome} запуска {run} неизвестен",
-    "notify.problem.list.title": "Проблемы",
-    "notify.problem.empty": "Открытых проблем нет",
-    "notify.problem.column.key": "Проблема",
-    "notify.problem.column.severity": "Серьёзность",
-    "notify.problem.column.subject": "Объект",
-    "notify.problem.column.count": "Замечена",
-    "notify.problem.column.open": "Состояние",
-    "notify.problem.column.raisedAt": "Возникла",
-    "notify.problem.column.clearedAt": "Устранена",
-    "notify.problem.column.accountId": "Аккаунт",
-    "notify.problem.severity.warning": "Предупреждение",
-    "notify.problem.severity.critical": "Критично",
-    "notify.problem.open.true": "Открыта",
-    "notify.problem.open.false": "Устранена",
-    "notify.problem.raised": "Проблема {key} возникла у {subject}",
-    "notify.problem.cleared": "Проблема {key} устранена у {subject}",
-    "notify.message.list.title": "Уведомления",
-    "notify.message.empty": "Уведомлений нет",
-    "notify.message.column.key": "Сообщение",
-    "notify.message.column.level": "Уровень",
-    "notify.message.column.source": "Источник",
-    "notify.message.column.unread": "Состояние",
-    "notify.message.column.createdAt": "Получено",
-    "notify.message.column.readAt": "Прочитано",
-    "notify.message.level.info": "Сведения",
-    "notify.message.level.warning": "Предупреждение",
-    "notify.message.level.error": "Ошибка",
-    "notify.message.unread.true": "Не прочитано",
-    "notify.message.unread.false": "Прочитано",
-    "notify.message.action.mark_read": "Отметить прочитанным",
-    "notify.message.action.clear": "Убрать прочитанные уведомления",
-    "notify.error.severity": "Сохранённая серьёзность {severity} проблемы {id} неизвестна",
-    "notify.error.level": "Сохранённый уровень {level} уведомления {id} неизвестен",
-    "notify.error.id": "Сохранённый идентификатор {id} не является идентификатором",
-    "notify.error.account": "Сохранённый аккаунт {account} проблемы {id} не является идентификатором",
-    "notify.channel.list.title": "Каналы доставки",
-    "notify.channel.empty": "Ни один канал ещё не доставляет уведомления",
-    "notify.channel.set.title": "Канал",
-    "notify.channel.column.name": "Название",
-    "notify.channel.column.kind": "Тип",
-    "notify.channel.column.enabled": "Включён",
-    "notify.channel.column.lastSentAt": "Последняя отправка",
-    "notify.channel.column.lastError": "Последняя ошибка",
-    "notify.channel.column.createdAt": "Создан",
-    "notify.channel.kind.email": "Электронная почта",
-    "notify.channel.kind.telegram": "Telegram",
-    "notify.channel.kind.webhook": "Вебхук",
-    "notify.channel.action.create": "Добавить канал",
-    "notify.channel.action.edit": "Изменить",
-    "notify.channel.action.test": "Отправить проверочное письмо",
-    "notify.channel.action.delete": "Удалить",
-    "notify.channel.id": "Канал",
-    "notify.channel.kind": "Тип",
-    "notify.channel.name": "Название",
-    "notify.channel.enabled": "Включён",
-    "notify.channel.email": "Настройки почты",
-    "notify.channel.page.main": "Канал",
-    "notify.channel.page.email": "Почта",
-    "notify.delivery.list.title": "Доставки",
-    "notify.delivery.empty": "Доставок ещё не было",
-    "notify.delivery.column.channel": "Канал",
-    "notify.delivery.column.messageKey": "Сообщение",
-    "notify.delivery.column.state": "Состояние",
-    "notify.delivery.column.attempt": "Попыток",
-    "notify.delivery.column.nextAt": "Следующая попытка",
-    "notify.delivery.column.error": "Ошибка",
-    "notify.delivery.column.sentAt": "Отправлено",
-    "notify.delivery.column.createdAt": "Создана",
-    "notify.delivery.state.pending": "Ожидает",
-    "notify.delivery.state.sent": "Отправлена",
-    "notify.delivery.state.failed": "Не удалась",
-    "notify.delivery_failed": "Доставка почты через канал {channel} не удалась",
-    "notify.test": "Проверочное письмо из канала {channel}",
-    "notify.error.channel_kind_unavailable": "Каналы типа {kind} пока недоступны",
-    "notify.error.channel_kind": "Сохранённый тип {kind} канала {id} неизвестен",
-    "notify.error.channel_config": "Сохранённые настройки канала {id} не читаются",
-    "notify.error.channel_email_missing": "Почтовому каналу нужны настройки почты",
-    "notify.error.channel_gone": "Канал {id} больше не существует",
-    "notify.error.message_gone": "Уведомление {id} больше не существует",
-    "notify.error.email_address": "{value} не является адресом электронной почты",
-    "notify.error.email_transport": "Не удалось собрать почтовый транспорт к {host}: {reason}",
-    "notify.error.email_send": "Письмо на {host} не отправлено: {reason}",
-    "notify.error.template_twice": "Почтовый шаблон {id} добавлен дважды",
-    "notify.error.template_syntax": "{part} почтового шаблона {id} на языке {lang} не разбирается: {reason}",
-    "notify.error.template_placeholder": "{part} почтового шаблона {id} на языке {lang} содержит подстановку {found}; подстановки пишутся в одиночных фигурных скобках",
-    "notify.error.template_missing": "Ни один почтовый шаблон не отображает {id}",
-    "notify.error.template_render": "{part} почтового шаблона {id} на языке {lang} не отобразился: {reason}",
-    "settings.list.title": "Настройки",
-    "settings.set.title": "Настройка",
-    "settings.empty": "Настройки не определены",
-    "settings.key": "Ключ",
-    "settings.value": "Значение",
-    "settings.column.key": "Ключ",
-    "settings.column.module": "Модуль",
-    "settings.column.level": "Уровень",
-    "settings.column.value": "Значение",
-    "settings.column.scope": "Задано для",
-    "settings.level.user": "Пользователь",
-    "settings.level.reseller": "Реселлер",
-    "settings.level.admin": "Администратор",
-    "settings.action.set": "Изменить",
-    "settings.pref.set.title": "Предпочтение",
-    "settings.pref.key": "Предпочтение",
-    "settings.pref.value": "Значение",
-    "settings.brand.list.title": "Бренд",
-    "settings.brand.set.title": "Бренд для имени хоста",
-    "settings.brand.empty": "Ни у одного имени хоста нет своего бренда; установка показывает бренд продукта",
-    "settings.brand.host": "Имя хоста",
-    "settings.brand.name": "Название",
-    "settings.brand.logo": "Логотип (SVG)",
-    "settings.brand.hue": "Оттенок (от 0 до 359)",
-    "settings.brand.chroma": "Насыщенность (от 0 до 0.4)",
-    "settings.brand.column.host": "Имя хоста",
-    "settings.brand.column.name": "Название",
-    "settings.brand.column.hue": "Оттенок",
-    "settings.brand.column.chroma": "Насыщенность",
-    "settings.brand.column.updatedAt": "Обновлён",
-    "settings.brand.action.create": "Новый бренд",
-    "settings.brand.action.set": "Изменить",
-    "settings.brand.action.delete": "Удалить",
-    "settings.brand.page.main": "Бренд",
-    "settings.error.pref_key": "Предпочтение {key} не входит в lang, tz, theme или columns.<функция>",
-    "settings.error.pref_text": "Значение должно быть коротким текстом",
-    "settings.error.pref_lang": "Язык {lang} не поддерживается этой установкой",
-    "settings.error.pref_tz": "Часовой пояс {tz} неизвестен",
-    "settings.error.pref_columns": "Предпочтение columns — объект, члены которого перечисляют ключи колонок, не более 64 ключей по 64 символа, в пределах 4 КиБ",
-    "settings.error.pref_columns_many": "На принципала хранится не более {max} предпочтений columns",
-    "settings.error.pref_owner": "У владельца нет предпочтений; он действует через сокет",
-    "settings.error.level": "Настройка {key} имеет уровень {level}, выше вашего уровня {caller}",
-    "settings.error.schema": "Схема настройки {key} не компилируется",
-    "settings.error.not_started": "Модуль настроек не запущен",
-    "settings.error.brand_svg": "Логотип должен быть SVG-документом без элемента script: {reason}",
-    "task.list.title": "Задачи",
-    "task.empty": "Задачи ещё не запускались",
-    "task.column.function": "Функция",
-    "task.column.state": "Состояние",
-    "task.column.progress": "Ход выполнения",
-    "task.column.createdAt": "Создана",
-    "task.column.finishedAt": "Завершена",
-    "task.column.accountId": "Аккаунт",
-    "task.state.queued": "В очереди",
-    "task.state.running": "Выполняется",
-    "task.state.done": "Выполнена",
-    "task.state.failed": "Ошибка",
-    "task.state.cancelled": "Отменена",
-    "task.state.interrupted": "Прервана",
-    "task.action.open": "Открыть",
-    "task.action.cancel": "Отменить",
-    "task.id": "Задача",
-    "task.error.not_running": "Обработчик задач не запущен",
-    "task.error.not_found": "Задача не существует",
-    "task.error.not_local": "Задача выполняется на другом узле, отсюда её не отменить",
-    "task.error.finished": "Задача уже завершилась в состоянии {state}",
-    "task.error.interrupted": "Задача была прервана перезапуском",
-    "task.error.cancelled": "Задача отменена",
-    "task.error.state": "Сохранённое состояние {state} задачи {id} неизвестно",
-    "task.error.principal": "Сохранённый субъект задачи {id} не читается",
-    "task.error.no_file": "Задача {id} не оставила файла для скачивания",
-    "task.error.log": "Журнал задачи {path} не записывается",
-    "note": {
-      "list": {
-        "title": "Заметки"
+    "audit": {
+      "column": {
+        "actorLogin": "От имени",
+        "at": "Когда",
+        "elapsedMs": "Длительность, мс",
+        "errorKey": "Ошибка",
+        "function": "Функция",
+        "ip": "Адрес",
+        "principalId": "Идентификатор пользователя",
+        "principalLogin": "Пользователь",
+        "requestId": "Запрос",
+        "status": "Результат",
+        "subject": "Объект",
+        "via": "Канал"
       },
+      "empty": "Записей ещё нет",
+      "error": {
+        "not_running": "Обработчик журнала не запущен"
+      },
+      "list": {
+        "title": "Журнал действий"
+      },
+      "status": {
+        "committed": "Выполнено",
+        "failed": "Ошибка"
+      }
+    },
+    "auth": {
+      "error": {
+        "challenge": "Запрос входа больше не действителен; войдите заново",
+        "code": "Неверный код",
+        "code_required": "Нужен код",
+        "credentials": "Неверный логин или пароль",
+        "current_required": "Нужен текущий пароль",
+        "entropy": "Система не дала случайных данных",
+        "grant_id": "Сохранённый идентификатор права {id} не является ULID",
+        "grant_not_held": "Нельзя выдать право {key}: у вас его нет",
+        "grant_principal": "Право {id} ссылается на принципала {principal}, которого не удаётся прочитать",
+        "hashing": "Не удалось обработать пароль",
+        "http_only": "Вход возможен только по HTTP",
+        "ip_denied": "Доступ с вашего адреса запрещён",
+        "ip_rule_action": "Сохранённое действие {action} правила {id} не является ни allow, ни deny",
+        "ip_rule_level": "Сохранённый уровень {level} правила {id} отсутствует на лестнице",
+        "ip_rule_net": "Сохранённую сеть {net} правила {id} не удалось прочитать",
+        "key": "Ключ входа недействителен: он мог быть использован или истечь",
+        "key_issuer": "Ключ входа ссылается на выпустившего, которого не удалось прочитать",
+        "key_principal": "Ключ входа ссылается на принципала, которого не удалось прочитать",
+        "locked": "Вход для этого логина с вашего адреса заблокирован; попробуйте позже",
+        "method_unknown": "Способ входа {method} недоступен",
+        "not_below": "Пароль пользователя уровня {level} не может задать вызывающий уровня {caller}",
+        "not_delegated": "Вы не действуете от имени другого принципала",
+        "not_started": "Модуль auth не запущен",
+        "password_login": "Пароль должен отличаться от логина",
+        "password_short": "Пароль должен быть не короче {min} символов",
+        "rate_limited": "Слишком много запросов с вашего адреса; подождите минуту",
+        "redirect": "Путь перехода должен начинаться с одного / и оставаться внутри установки",
+        "session_account": "Сессия ссылается на аккаунт, который не удалось прочитать",
+        "session_actor": "Сессия ссылается на актёра, которого не удалось прочитать",
+        "session_only": "Для этого вызова нужна сессия",
+        "session_principal": "Сессия ссылается на пользователя, которого не удалось прочитать",
+        "su_nested": "Вы уже действуете от имени другого принципала; сначала вернитесь",
+        "token_expires_past": "Срок действия должен лежать в будущем",
+        "token_level": "Потолок уровня {level} должен лежать между service и вашим уровнем {caller}",
+        "token_level_unknown": "Сохранённый уровень {level} токена {id} не входит в лестницу",
+        "token_mask": "Маска {mask} не является ни именем функции, ни префиксом с .* на конце",
+        "token_net": "Не удалось прочитать сохранённую сеть {net} токена",
+        "token_owner": "У владельца нет токенов; создайте его от имени сохранённого пользователя",
+        "token_principal": "Токен ссылается на пользователя, которого не удалось прочитать",
+        "token_scope": "Токен не может быть шире области, в которой он создаётся",
+        "totp_enrolled": "Второй фактор уже подключён; сначала отключите его",
+        "totp_not_enrolled": "Второй фактор не подключается",
+        "totp_owner": "У владельца нет второго фактора; он входит через сокет",
+        "totp_principal": "Второй фактор ссылается на пользователя, которого не удалось прочитать",
+        "totp_secret": "Не удалось прочитать сохранённый второй фактор",
+        "unknown_permission": "Право {key} не зарегистрировано в этой установке"
+      },
+      "grant": {
+        "action": {
+          "delete": "Убрать",
+          "set": "Выдать или запретить"
+        },
+        "column": {
+          "accountId": "Аккаунт",
+          "granted": "Решение",
+          "key": "Право",
+          "principalLogin": "Принципал"
+        },
+        "empty": "Сохранённых прав нет: каждый принципал держит права своего уровня по умолчанию",
+        "granted": "Выдано",
+        "granted.false": "Запрещено",
+        "granted.true": "Выдано",
+        "key": "Право",
+        "list": {
+          "title": "Права доступа"
+        },
+        "principal": "Принципал",
+        "set": {
+          "title": "Выдать или запретить право"
+        }
+      },
+      "ip_rule": {
+        "action": "Действие",
+        "action.allow": "Разрешить",
+        "action.create": "Новое правило",
+        "action.delete": "Удалить",
+        "action.deny": "Запретить",
+        "cidr": "Сеть",
+        "column": {
+          "action": "Действие",
+          "cidr": "Сеть",
+          "comment": "Комментарий",
+          "level": "Действует с уровня"
+        },
+        "comment": "Комментарий",
+        "create": {
+          "title": "Новое IP-правило"
+        },
+        "empty": "IP-правил пока нет",
+        "level": "Действует с уровня",
+        "list": {
+          "title": "IP-правила"
+        }
+      },
+      "key": {
+        "issue": {
+          "title": "Выпустить одноразовый ключ входа"
+        },
+        "key": "Ключ входа",
+        "principal": "Принципал",
+        "redeem": {
+          "title": "Войти по ключу"
+        },
+        "redirect": "Куда перейти",
+        "ttl": "Действует (секунд)",
+        "url": "Ссылка для входа"
+      },
+      "login": "Логин",
+      "login.state.authenticated": "Вход выполнен",
+      "login.state.totp": "Нужен второй фактор",
+      "login.title": "Вход",
+      "logout": {
+        "title": "Выход"
+      },
+      "method": "Способ входа",
+      "password": "Пароль",
+      "password.current": "Текущий пароль",
+      "password.password": "Новый пароль",
+      "password.principal": "Пользователь",
+      "password.set.title": "Смена пароля",
+      "session": {
+        "action": {
+          "revoke": "Отозвать"
+        },
+        "column": {
+          "absoluteUntil": "Истекает",
+          "actor": "Актёр",
+          "current": "Эта сессия",
+          "idleUntil": "Простой до",
+          "ip": "Адрес",
+          "kind": "Вид",
+          "revokedAt": "Отозвана",
+          "userAgent": "Клиент"
+        },
+        "empty": "Сессий нет",
+        "kind": {
+          "session": "Сессия",
+          "su": "Делегированная"
+        },
+        "list": {
+          "title": "Сессии"
+        }
+      },
+      "su": {
+        "exit": {
+          "title": "Вернуться в свою сессию"
+        },
+        "principal": "Принципал",
+        "title": "Войти от имени принципала"
+      },
+      "token": {
+        "action": {
+          "create": "Новый токен",
+          "revoke": "Отозвать"
+        },
+        "column": {
+          "expiresAt": "Истекает",
+          "ipAllow": "Разрешённые сети",
+          "lastUsedAt": "Последнее использование",
+          "level": "Потолок уровня",
+          "name": "Название",
+          "revokedAt": "Отозван",
+          "scope": "Область"
+        },
+        "create": {
+          "title": "Новый API-токен"
+        },
+        "empty": "API-токенов пока нет",
+        "expiresAt": "Истекает",
+        "ipAllow": "Разрешённые сети",
+        "level": "Потолок уровня",
+        "list": {
+          "title": "API-токены"
+        },
+        "name": "Название",
+        "scope": "Область",
+        "scope.full": "Всё, что доступно пользователю",
+        "scope.read_only": "Только чтение",
+        "token": "Токен"
+      },
+      "totp": {
+        "challenge": "Запрос входа",
+        "code": "Код",
+        "confirm": {
+          "title": "Подтвердить второй фактор"
+        },
+        "disable": {
+          "title": "Отключить второй фактор"
+        },
+        "enroll": {
+          "title": "Подключить второй фактор"
+        },
+        "principal": "Пользователь",
+        "recoveryCodes": "Коды восстановления",
+        "verify": {
+          "title": "Введите код"
+        }
+      },
+      "unlock": {
+        "title": "Разблокировать логин"
+      }
+    },
+    "cron": {
+      "error": {
+        "not_leader": "Этот узел не ведёт расписание; задание {id} выполняется на ведущем",
+        "not_running": "Планировщик не запущен",
+        "outcome": "Сохранённый результат {outcome} запуска {run} неизвестен",
+        "run_not_found": "Запуск {run} не существует",
+        "running": "Задание {id} выполняется; дождитесь его завершения",
+        "schedule": "Расписание {schedule} задания {job} не разбирается: {reason}",
+        "unknown_job": "Ни один модуль не добавляет задание {id}"
+      },
+      "job": {
+        "action": {
+          "run": "Запустить сейчас"
+        },
+        "column": {
+          "effective": "Действующее расписание",
+          "id": "Задание",
+          "lastOutcome": "Последний результат",
+          "lastRunAt": "Последний запуск",
+          "module": "Модуль",
+          "nextRunAt": "Следующий запуск",
+          "schedule": "Расписание"
+        },
+        "empty": "Ни один модуль не добавил задание",
+        "lastOutcome": {
+          "failed": "Ошибка",
+          "interrupted": "Прерван",
+          "ok": "Успешно",
+          "running": "Выполняется",
+          "skipped": "Пропущен"
+        },
+        "list": {
+          "title": "Задания по расписанию"
+        }
+      },
+      "run": {
+        "column": {
+          "error": "Ошибка",
+          "finishedAt": "Завершён",
+          "job": "Задание",
+          "outcome": "Результат",
+          "scheduledAt": "По расписанию",
+          "startedAt": "Начат"
+        },
+        "empty": "Задания ещё не запускались",
+        "list": {
+          "title": "Запуски заданий"
+        },
+        "outcome": {
+          "failed": "Ошибка",
+          "interrupted": "Прерван",
+          "ok": "Успешно",
+          "running": "Выполняется",
+          "skipped": "Пропущен"
+        }
+      }
+    },
+    "notify": {
+      "channel": {
+        "action": {
+          "create": "Добавить канал",
+          "delete": "Удалить",
+          "edit": "Изменить",
+          "test": "Отправить проверочное письмо"
+        },
+        "column": {
+          "createdAt": "Создан",
+          "enabled": "Включён",
+          "kind": "Тип",
+          "lastError": "Последняя ошибка",
+          "lastSentAt": "Последняя отправка",
+          "name": "Название"
+        },
+        "email": "Настройки почты",
+        "empty": "Ни один канал ещё не доставляет уведомления",
+        "enabled": "Включён",
+        "id": "Канал",
+        "kind": "Тип",
+        "kind.email": "Электронная почта",
+        "kind.telegram": "Telegram",
+        "kind.webhook": "Вебхук",
+        "list": {
+          "title": "Каналы доставки"
+        },
+        "name": "Название",
+        "page": {
+          "email": "Почта",
+          "main": "Канал"
+        },
+        "set": {
+          "title": "Канал"
+        }
+      },
+      "delivery": {
+        "column": {
+          "attempt": "Попыток",
+          "channel": "Канал",
+          "createdAt": "Создана",
+          "error": "Ошибка",
+          "messageKey": "Сообщение",
+          "nextAt": "Следующая попытка",
+          "sentAt": "Отправлено",
+          "state": "Состояние"
+        },
+        "empty": "Доставок ещё не было",
+        "list": {
+          "title": "Доставки"
+        },
+        "state": {
+          "failed": "Не удалась",
+          "pending": "Ожидает",
+          "sent": "Отправлена"
+        }
+      },
+      "delivery_failed": "Доставка почты через канал {channel} не удалась",
+      "error": {
+        "account": "Сохранённый аккаунт {account} проблемы {id} не является идентификатором",
+        "channel_config": "Сохранённые настройки канала {id} не читаются",
+        "channel_email_missing": "Почтовому каналу нужны настройки почты",
+        "channel_gone": "Канал {id} больше не существует",
+        "channel_kind": "Сохранённый тип {kind} канала {id} неизвестен",
+        "channel_kind_unavailable": "Каналы типа {kind} пока недоступны",
+        "email_address": "{value} не является адресом электронной почты",
+        "email_send": "Письмо на {host} не отправлено: {reason}",
+        "email_transport": "Не удалось собрать почтовый транспорт к {host}: {reason}",
+        "id": "Сохранённый идентификатор {id} не является идентификатором",
+        "level": "Сохранённый уровень {level} уведомления {id} неизвестен",
+        "message_gone": "Уведомление {id} больше не существует",
+        "severity": "Сохранённая серьёзность {severity} проблемы {id} неизвестна",
+        "template_missing": "Ни один почтовый шаблон не отображает {id}",
+        "template_placeholder": "{part} почтового шаблона {id} на языке {lang} содержит подстановку {found}; подстановки пишутся в одиночных фигурных скобках",
+        "template_render": "{part} почтового шаблона {id} на языке {lang} не отобразился: {reason}",
+        "template_syntax": "{part} почтового шаблона {id} на языке {lang} не разбирается: {reason}",
+        "template_twice": "Почтовый шаблон {id} добавлен дважды"
+      },
+      "message": {
+        "action": {
+          "clear": "Убрать прочитанные уведомления",
+          "mark_read": "Отметить прочитанным"
+        },
+        "column": {
+          "createdAt": "Получено",
+          "key": "Сообщение",
+          "level": "Уровень",
+          "readAt": "Прочитано",
+          "source": "Источник",
+          "unread": "Состояние"
+        },
+        "empty": "Уведомлений нет",
+        "level": {
+          "error": "Ошибка",
+          "info": "Сведения",
+          "warning": "Предупреждение"
+        },
+        "list": {
+          "title": "Уведомления"
+        },
+        "unread": {
+          "false": "Прочитано",
+          "true": "Не прочитано"
+        }
+      },
+      "problem": {
+        "cleared": "Проблема {key} устранена у {subject}",
+        "column": {
+          "accountId": "Аккаунт",
+          "clearedAt": "Устранена",
+          "count": "Замечена",
+          "key": "Проблема",
+          "open": "Состояние",
+          "raisedAt": "Возникла",
+          "severity": "Серьёзность",
+          "subject": "Объект"
+        },
+        "empty": "Открытых проблем нет",
+        "list": {
+          "title": "Проблемы"
+        },
+        "open": {
+          "false": "Устранена",
+          "true": "Открыта"
+        },
+        "raised": "Проблема {key} возникла у {subject}",
+        "severity": {
+          "critical": "Критично",
+          "warning": "Предупреждение"
+        }
+      },
+      "test": "Проверочное письмо из канала {channel}"
+    },
+    "settings": {
+      "action": {
+        "set": "Изменить"
+      },
+      "brand": {
+        "action": {
+          "create": "Новый бренд",
+          "delete": "Удалить",
+          "set": "Изменить"
+        },
+        "chroma": "Насыщенность (от 0 до 0.4)",
+        "column": {
+          "chroma": "Насыщенность",
+          "host": "Имя хоста",
+          "hue": "Оттенок",
+          "name": "Название",
+          "updatedAt": "Обновлён"
+        },
+        "empty": "Ни у одного имени хоста нет своего бренда; установка показывает бренд продукта",
+        "host": "Имя хоста",
+        "hue": "Оттенок (от 0 до 359)",
+        "list": {
+          "title": "Бренд"
+        },
+        "logo": "Логотип (SVG)",
+        "name": "Название",
+        "page": {
+          "main": "Бренд"
+        },
+        "set": {
+          "title": "Бренд для имени хоста"
+        }
+      },
+      "column": {
+        "key": "Ключ",
+        "level": "Уровень",
+        "module": "Модуль",
+        "scope": "Задано для",
+        "value": "Значение"
+      },
+      "empty": "Настройки не определены",
+      "error": {
+        "brand_svg": "Логотип должен быть SVG-документом без элемента script: {reason}",
+        "level": "Настройка {key} имеет уровень {level}, выше вашего уровня {caller}",
+        "not_started": "Модуль настроек не запущен",
+        "pref_columns": "Предпочтение columns — объект, члены которого перечисляют ключи колонок, не более 64 ключей по 64 символа, в пределах 4 КиБ",
+        "pref_columns_many": "На принципала хранится не более {max} предпочтений columns",
+        "pref_key": "Предпочтение {key} не входит в lang, tz, theme или columns.<функция>",
+        "pref_lang": "Язык {lang} не поддерживается этой установкой",
+        "pref_owner": "У владельца нет предпочтений; он действует через сокет",
+        "pref_text": "Значение должно быть коротким текстом",
+        "pref_tz": "Часовой пояс {tz} неизвестен",
+        "schema": "Схема настройки {key} не компилируется"
+      },
+      "key": "Ключ",
+      "level": {
+        "admin": "Администратор",
+        "reseller": "Реселлер",
+        "user": "Пользователь"
+      },
+      "list": {
+        "title": "Настройки"
+      },
+      "pref": {
+        "key": "Предпочтение",
+        "set": {
+          "title": "Предпочтение"
+        },
+        "value": "Значение"
+      },
+      "set": {
+        "title": "Настройка"
+      },
+      "value": "Значение"
+    },
+    "task": {
+      "action": {
+        "cancel": "Отменить",
+        "open": "Открыть"
+      },
+      "column": {
+        "accountId": "Аккаунт",
+        "createdAt": "Создана",
+        "finishedAt": "Завершена",
+        "function": "Функция",
+        "progress": "Ход выполнения",
+        "state": "Состояние"
+      },
+      "empty": "Задачи ещё не запускались",
+      "error": {
+        "cancelled": "Задача отменена",
+        "finished": "Задача уже завершилась в состоянии {state}",
+        "interrupted": "Задача была прервана перезапуском",
+        "log": "Журнал задачи {path} не записывается",
+        "no_file": "Задача {id} не оставила файла для скачивания",
+        "not_found": "Задача не существует",
+        "not_local": "Задача выполняется на другом узле, отсюда её не отменить",
+        "not_running": "Обработчик задач не запущен",
+        "principal": "Сохранённый субъект задачи {id} не читается",
+        "state": "Сохранённое состояние {state} задачи {id} неизвестно"
+      },
+      "id": "Задача",
+      "list": {
+        "title": "Задачи"
+      },
+      "state": {
+        "cancelled": "Отменена",
+        "done": "Выполнена",
+        "failed": "Ошибка",
+        "interrupted": "Прервана",
+        "queued": "В очереди",
+        "running": "Выполняется"
+      }
+    },
+    "note": {
+      "account": "Аккаунт",
+      "action": {
+        "create": "Новая заметка",
+        "delete": "Удалить",
+        "edit": "Изменить",
+        "export_task": "Экспорт"
+      },
+      "body": "Текст",
+      "column": {
+        "accountId": "Аккаунт",
+        "due": "Срок",
+        "kind": "Вид",
+        "tags": "Теги",
+        "title": "Заголовок",
+        "updatedAt": "Обновлена"
+      },
+      "due": "Срок",
       "edit": {
         "title": "Заметка"
       },
-      "import": {
-        "title": "Импорт заметок"
+      "empty": "Заметок пока нет",
+      "error": {
+        "account": "Сохранённый аккаунт {account} заметки не является идентификатором",
+        "account_suspended": "Заметки нельзя менять, пока аккаунт приостановлен",
+        "empty": "Нет ни одной строки для импорта",
+        "exists": "Заметка с заголовком {title} уже есть",
+        "export_inline": "Экспорт выполняется только как задача",
+        "export_output": "Не удалось записать файл экспорта",
+        "id": "Сохранённый идентификатор {id} заметки не является идентификатором",
+        "limit": "Аккаунт хранит не больше {max} заметок",
+        "line_too_long": "Строка {line} длиннее {max} символов",
+        "locked": "Заметка {title} заблокирована и не может быть удалена"
       },
       "export": {
         "title": "Экспорт заметок"
       },
-      "tag": {
-        "list": {
-          "title": "Теги"
-        },
-        "empty": "Тегов пока нет",
-        "column": {
-          "tag": "Тег",
-          "count": "Количество"
-        }
+      "format": "Формат",
+      "format.csv": "CSV",
+      "format.json": "JSON",
+      "import": {
+        "title": "Импорт заметок"
       },
-      "empty": "Заметок пока нет",
-      "title": "Заголовок",
-      "body": "Текст",
       "kind": {
         "memo": "Заметка",
         "todo": "Задача"
       },
-      "tags": "Теги",
-      "due": "Срок",
-      "text": "Строки",
-      "format": "Формат",
-      "format.csv": "CSV",
-      "format.json": "JSON",
+      "list": {
+        "title": "Заметки"
+      },
       "pace": "Пауза после каждой заметки, мс",
-      "account": "Аккаунт",
       "page": {
         "main": "Заметка",
+        "options": "Параметры",
         "owner": "Владелец",
-        "source": "Источник",
-        "options": "Параметры"
+        "source": "Источник"
       },
-      "column": {
-        "title": "Заголовок",
-        "kind": "Вид",
-        "tags": "Теги",
-        "due": "Срок",
-        "updatedAt": "Обновлена",
-        "accountId": "Аккаунт"
+      "tag": {
+        "column": {
+          "count": "Количество",
+          "tag": "Тег"
+        },
+        "empty": "Тегов пока нет",
+        "list": {
+          "title": "Теги"
+        }
       },
-      "action": {
-        "create": "Новая заметка",
-        "edit": "Изменить",
-        "delete": "Удалить",
-        "export_task": "Экспорт"
+      "tags": "Теги",
+      "text": "Строки",
+      "title": "Заголовок"
+    },
+    "webhook": {
+      "dead_letter": "Доставки вебхуков в {name} окончательно не удались",
+      "delivery": {
+        "action": {
+          "retry": "Повторить"
+        },
+        "column": {
+          "attempt": "Попыток",
+          "createdAt": "Создана",
+          "eventId": "Событие",
+          "lastError": "Последняя ошибка",
+          "lastStatus": "Последний статус",
+          "nextAt": "Следующая попытка",
+          "state": "Состояние",
+          "type": "Тип"
+        },
+        "empty": "Ни одной доставки ещё не было",
+        "list": {
+          "title": "Доставки вебхуков"
+        },
+        "state": {
+          "dead": "Отброшена",
+          "delivered": "Доставлена",
+          "failed": "Ошибка",
+          "pending": "Ожидает"
+        }
       },
       "error": {
-        "locked": "Заметка {title} заблокирована и не может быть удалена",
-        "limit": "Аккаунт хранит не больше {max} заметок",
-        "id": "Сохранённый идентификатор {id} заметки не является идентификатором",
-        "account": "Сохранённый аккаунт {account} заметки не является идентификатором",
-        "account_suspended": "Заметки нельзя менять, пока аккаунт приостановлен",
-        "exists": "Заметка с заголовком {title} уже есть",
-        "line_too_long": "Строка {line} длиннее {max} символов",
-        "empty": "Нет ни одной строки для импорта",
-        "export_inline": "Экспорт выполняется только как задача",
-        "export_output": "Не удалось записать файл экспорта"
+        "client": "Не удалось собрать HTTP-клиент",
+        "entropy": "Не удалось сгенерировать секрет подписи",
+        "event_gone": "События этой доставки больше нет в исходящей очереди",
+        "id": "Сохранённый идентификатор {id} не является идентификатором",
+        "mask": "{mask} не является маской события; укажите module.* или имя события через точку",
+        "not_retryable": "Доставка {id} в состоянии {state}; повторить можно только неудавшуюся или отброшенную доставку",
+        "secret": "Не удалось открыть секрет подписи",
+        "secret_short": "Секрет подписи короче {min} байт",
+        "send": "Доставка не отправлена",
+        "status": "Получатель ответил статусом не 2xx",
+        "subscription_gone": "Подписка этой доставки больше не существует",
+        "url": "{value} не является веб-адресом: {reason}",
+        "url_private": "URL указывает на приватный или незащищённый адрес ({reason}: {detail}); включите webhook.private_targets, чтобы разрешить его",
+        "url_unresolved": "Имя {host} не разрешается: {reason}"
+      },
+      "private_targets": "Разрешить вебхуки на приватные адреса",
+      "subscription": {
+        "account": "Аккаунт",
+        "action": {
+          "create": "Добавить подписку",
+          "delete": "Удалить",
+          "deliveries": "Доставки",
+          "edit": "Изменить"
+        },
+        "column": {
+          "createdAt": "Создана",
+          "enabled": "Включена",
+          "events": "События",
+          "name": "Название",
+          "url": "URL"
+        },
+        "empty": "Подписок на вебхуки пока нет",
+        "enabled": "Включена",
+        "events": "Маски событий",
+        "id": "Подписка",
+        "list": {
+          "title": "Вебхуки"
+        },
+        "name": "Название",
+        "page": {
+          "main": "Подписка",
+          "owner": "Владелец"
+        },
+        "secret": "Секрет подписи",
+        "set": {
+          "title": "Подписка на вебхуки"
+        },
+        "url": "URL"
       }
     },
-    "webhook.subscription.list.title": "Вебхуки",
-    "webhook.subscription.empty": "Подписок на вебхуки пока нет",
-    "webhook.subscription.set.title": "Подписка на вебхуки",
-    "webhook.subscription.column.name": "Название",
-    "webhook.subscription.column.url": "URL",
-    "webhook.subscription.column.events": "События",
-    "webhook.subscription.column.enabled": "Включена",
-    "webhook.subscription.column.createdAt": "Создана",
-    "webhook.subscription.action.create": "Добавить подписку",
-    "webhook.subscription.action.edit": "Изменить",
-    "webhook.subscription.action.deliveries": "Доставки",
-    "webhook.subscription.action.delete": "Удалить",
-    "webhook.subscription.id": "Подписка",
-    "webhook.subscription.name": "Название",
-    "webhook.subscription.url": "URL",
-    "webhook.subscription.secret": "Секрет подписи",
-    "webhook.subscription.events": "Маски событий",
-    "webhook.subscription.enabled": "Включена",
-    "webhook.subscription.account": "Аккаунт",
-    "webhook.subscription.page.main": "Подписка",
-    "webhook.subscription.page.owner": "Владелец",
-    "webhook.delivery.list.title": "Доставки вебхуков",
-    "webhook.delivery.empty": "Ни одной доставки ещё не было",
-    "webhook.delivery.column.eventId": "Событие",
-    "webhook.delivery.column.type": "Тип",
-    "webhook.delivery.column.state": "Состояние",
-    "webhook.delivery.column.attempt": "Попыток",
-    "webhook.delivery.column.nextAt": "Следующая попытка",
-    "webhook.delivery.column.lastStatus": "Последний статус",
-    "webhook.delivery.column.lastError": "Последняя ошибка",
-    "webhook.delivery.column.createdAt": "Создана",
-    "webhook.delivery.state.pending": "Ожидает",
-    "webhook.delivery.state.delivered": "Доставлена",
-    "webhook.delivery.state.failed": "Ошибка",
-    "webhook.delivery.state.dead": "Отброшена",
-    "webhook.delivery.action.retry": "Повторить",
-    "webhook.private_targets": "Разрешить вебхуки на приватные адреса",
-    "webhook.dead_letter": "Доставки вебхуков в {name} окончательно не удались",
-    "webhook.error.url": "{value} не является веб-адресом: {reason}",
-    "webhook.error.url_private": "URL указывает на приватный или незащищённый адрес ({reason}: {detail}); включите webhook.private_targets, чтобы разрешить его",
-    "webhook.error.url_unresolved": "Имя {host} не разрешается: {reason}",
-    "webhook.error.secret_short": "Секрет подписи короче {min} байт",
-    "webhook.error.mask": "{mask} не является маской события; укажите module.* или имя события через точку",
-    "webhook.error.entropy": "Не удалось сгенерировать секрет подписи",
-    "webhook.error.id": "Сохранённый идентификатор {id} не является идентификатором",
-    "webhook.error.not_retryable": "Доставка {id} в состоянии {state}; повторить можно только неудавшуюся или отброшенную доставку",
-    "webhook.error.subscription_gone": "Подписка этой доставки больше не существует",
-    "webhook.error.event_gone": "События этой доставки больше нет в исходящей очереди",
-    "webhook.error.secret": "Не удалось открыть секрет подписи",
-    "webhook.error.client": "Не удалось собрать HTTP-клиент",
-    "webhook.error.send": "Доставка не отправлена",
-    "webhook.error.status": "Получатель ответил статусом не 2xx",
     "product": {
       "demo": {
         "brand": "Keel Демо"

@@ -129,7 +129,7 @@ async fn a1_sets_tz_and_lang_and_boot_and_the_catalogue_follow_while_a2_reads_no
     assert_eq!(catalogue.status, 200, "{}", catalogue.body);
     assert_eq!(catalogue.json()["data"]["lang"], json!("ru"));
     assert_eq!(
-        catalogue.json()["data"]["messages"]["settings.list.title"],
+        catalogue.json()["data"]["messages"]["settings"]["list"]["title"],
         json!("Настройки")
     );
     let listed = http

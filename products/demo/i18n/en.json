@@ -1,10 +1,10 @@
 {
+  "menu": {
+    "demo": "Demo"
+  },
   "product": {
     "demo": {
       "brand": "Keel Demo"
     }
-  },
-  "menu": {
-    "demo": "Demo"
   }
 }

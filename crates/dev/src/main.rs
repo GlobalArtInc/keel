@@ -1,4 +1,5 @@
 mod descriptors;
+mod i18n;
 mod openapi;
 mod types;
 mod views;
@@ -52,6 +53,54 @@ enum Command {
         out: PathBuf,
         #[arg(long)]
         check: bool,
+    },
+    #[command(
+        subcommand,
+        about = "The translation pipeline: the keys of the dump per project, the pull of the projects into the dictionaries and the check for gaps"
+    )]
+    I18n(I18n),
+}
+
+#[derive(Subcommand)]
+enum I18n {
+    #[command(
+        about = "Writes <out>/<project>.<lang>.json, the flat catalogue of every key of the dump placed by the prefixes of the projects file, en from the dump and any other language from the dictionaries under --root"
+    )]
+    Extract {
+        #[arg(long)]
+        dump: PathBuf,
+        #[arg(long, default_value = i18n::PROJECTS_FILE)]
+        projects: PathBuf,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long, default_value = i18n::REQUIRED_LANGUAGE)]
+        lang: String,
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    #[command(
+        about = "Fetches every project of the projects file and writes each language nested by key into the directory its prefix names under <out>"
+    )]
+    Pull {
+        #[arg(long, default_value = i18n::PROJECTS_FILE)]
+        projects: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    #[command(
+        about = "Prints every key the dump requires that the committed dictionaries do not translate per language and exits non-zero on any"
+    )]
+    Missing {
+        #[arg(long)]
+        dump: PathBuf,
+        #[arg(long, default_value = i18n::PROJECTS_FILE)]
+        projects: PathBuf,
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+        #[arg(long, value_delimiter = ',', default_value = "en,ru")]
+        langs: Vec<String>,
     },
 }
 
@@ -110,6 +159,8 @@ enum Error {
     Views(#[from] views::Error),
     #[error(transparent)]
     Openapi(#[from] openapi::Error),
+    #[error(transparent)]
+    I18n(#[from] i18n::Error),
 }
 
 async fn run(command: Command) -> Result<bool, Error> {
@@ -146,6 +197,39 @@ async fn run(command: Command) -> Result<bool, Error> {
             let outcome = openapi::run(&dump, &out, check)?;
             println!("{outcome}");
             Ok(outcome.current())
+        }
+        Command::I18n(I18n::Extract {
+            dump,
+            projects,
+            project,
+            lang,
+            root,
+            out,
+        }) => {
+            let projects = i18n::Projects::load(&projects)?;
+            println!(
+                "{}",
+                i18n::extract(&dump, &projects, project.as_deref(), &lang, &root, &out)?
+            );
+            Ok(true)
+        }
+        Command::I18n(I18n::Pull { projects, out }) => {
+            let projects = i18n::Projects::load(&projects)?;
+            let pull = i18n::Pull::from_env(&projects)?;
+            println!("{}", i18n::pull(&projects, &pull, &out).await?);
+            Ok(true)
+        }
+        Command::I18n(I18n::Missing {
+            dump,
+            projects,
+            root,
+            langs,
+        }) => {
+            let projects = i18n::Projects::load(&projects)?;
+            let missing = i18n::missing(&dump, &projects, &root, &langs)?;
+            print!("{missing}");
+            println!("{}", missing.summary());
+            Ok(missing.green())
         }
     }
 }

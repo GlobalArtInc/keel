@@ -1,89 +1,135 @@
 {
-  "notify.problem.list.title": "Problems",
-  "notify.problem.empty": "No problem is open",
-  "notify.problem.column.key": "Problem",
-  "notify.problem.column.severity": "Severity",
-  "notify.problem.column.subject": "Subject",
-  "notify.problem.column.count": "Seen",
-  "notify.problem.column.open": "State",
-  "notify.problem.column.raisedAt": "Raised",
-  "notify.problem.column.clearedAt": "Cleared",
-  "notify.problem.column.accountId": "Account",
-  "notify.problem.severity.warning": "Warning",
-  "notify.problem.severity.critical": "Critical",
-  "notify.problem.open.true": "Open",
-  "notify.problem.open.false": "Cleared",
-  "notify.problem.raised": "Problem {key} raised for {subject}",
-  "notify.problem.cleared": "Problem {key} cleared for {subject}",
-  "notify.message.list.title": "Notifications",
-  "notify.message.empty": "No notifications",
-  "notify.message.column.key": "Message",
-  "notify.message.column.level": "Level",
-  "notify.message.column.source": "Source",
-  "notify.message.column.unread": "State",
-  "notify.message.column.createdAt": "Received",
-  "notify.message.column.readAt": "Read",
-  "notify.message.level.info": "Info",
-  "notify.message.level.warning": "Warning",
-  "notify.message.level.error": "Error",
-  "notify.message.unread.true": "Unread",
-  "notify.message.unread.false": "Read",
-  "notify.message.action.mark_read": "Mark as read",
-  "notify.message.action.clear": "Clear read notifications",
-  "notify.error.severity": "The stored severity {severity} of the problem {id} is unknown",
-  "notify.error.level": "The stored level {level} of the notification {id} is unknown",
-  "notify.error.id": "The stored id {id} is not an identifier",
-  "notify.error.account": "The stored account {account} of the problem {id} is not an identifier",
-  "notify.channel.list.title": "Delivery channels",
-  "notify.channel.empty": "No channel delivers notifications yet",
-  "notify.channel.set.title": "Channel",
-  "notify.channel.column.name": "Name",
-  "notify.channel.column.kind": "Kind",
-  "notify.channel.column.enabled": "Enabled",
-  "notify.channel.column.lastSentAt": "Last sent",
-  "notify.channel.column.lastError": "Last error",
-  "notify.channel.column.createdAt": "Created",
-  "notify.channel.kind.email": "Email",
-  "notify.channel.kind.telegram": "Telegram",
-  "notify.channel.kind.webhook": "Webhook",
-  "notify.channel.action.create": "Add channel",
-  "notify.channel.action.edit": "Edit",
-  "notify.channel.action.test": "Send test email",
-  "notify.channel.action.delete": "Delete",
-  "notify.channel.id": "Channel",
-  "notify.channel.kind": "Kind",
-  "notify.channel.name": "Name",
-  "notify.channel.enabled": "Enabled",
-  "notify.channel.email": "Email settings",
-  "notify.channel.page.main": "Channel",
-  "notify.channel.page.email": "Email",
-  "notify.delivery.list.title": "Deliveries",
-  "notify.delivery.empty": "No delivery has been attempted",
-  "notify.delivery.column.channel": "Channel",
-  "notify.delivery.column.messageKey": "Message",
-  "notify.delivery.column.state": "State",
-  "notify.delivery.column.attempt": "Attempts",
-  "notify.delivery.column.nextAt": "Next attempt",
-  "notify.delivery.column.error": "Error",
-  "notify.delivery.column.sentAt": "Sent",
-  "notify.delivery.column.createdAt": "Created",
-  "notify.delivery.state.pending": "Pending",
-  "notify.delivery.state.sent": "Sent",
-  "notify.delivery.state.failed": "Failed",
-  "notify.delivery_failed": "Mail delivery to the channel {channel} failed",
-  "notify.test": "Test email from the channel {channel}",
-  "notify.error.channel_kind_unavailable": "Channels of kind {kind} are not available yet",
-  "notify.error.channel_kind": "The stored kind {kind} of the channel {id} is unknown",
-  "notify.error.channel_config": "The stored configuration of the channel {id} cannot be read",
-  "notify.error.channel_email_missing": "An email channel needs its email settings",
-  "notify.error.channel_gone": "The channel {id} no longer exists",
-  "notify.error.message_gone": "The notification {id} no longer exists",
-  "notify.error.email_address": "{value} is not an email address",
-  "notify.error.email_transport": "The mail transport to {host} could not be built: {reason}",
-  "notify.error.email_send": "The mail to {host} was not sent: {reason}",
-  "notify.error.template_twice": "The mail template {id} is contributed twice",
-  "notify.error.template_syntax": "The {part} of the mail template {id} in {lang} does not parse: {reason}",
-  "notify.error.template_placeholder": "The {part} of the mail template {id} in {lang} carries the placeholder {found}; placeholders are written with single braces",
-  "notify.error.template_missing": "No mail template renders {id}",
-  "notify.error.template_render": "The {part} of the mail template {id} in {lang} did not render: {reason}"
+  "notify": {
+    "channel": {
+      "action": {
+        "create": "Add channel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "test": "Send test email"
+      },
+      "column": {
+        "createdAt": "Created",
+        "enabled": "Enabled",
+        "kind": "Kind",
+        "lastError": "Last error",
+        "lastSentAt": "Last sent",
+        "name": "Name"
+      },
+      "email": "Email settings",
+      "empty": "No channel delivers notifications yet",
+      "enabled": "Enabled",
+      "id": "Channel",
+      "kind": "Kind",
+      "kind.email": "Email",
+      "kind.telegram": "Telegram",
+      "kind.webhook": "Webhook",
+      "list": {
+        "title": "Delivery channels"
+      },
+      "name": "Name",
+      "page": {
+        "email": "Email",
+        "main": "Channel"
+      },
+      "set": {
+        "title": "Channel"
+      }
+    },
+    "delivery": {
+      "column": {
+        "attempt": "Attempts",
+        "channel": "Channel",
+        "createdAt": "Created",
+        "error": "Error",
+        "messageKey": "Message",
+        "nextAt": "Next attempt",
+        "sentAt": "Sent",
+        "state": "State"
+      },
+      "empty": "No delivery has been attempted",
+      "list": {
+        "title": "Deliveries"
+      },
+      "state": {
+        "failed": "Failed",
+        "pending": "Pending",
+        "sent": "Sent"
+      }
+    },
+    "delivery_failed": "Mail delivery to the channel {channel} failed",
+    "error": {
+      "account": "The stored account {account} of the problem {id} is not an identifier",
+      "channel_config": "The stored configuration of the channel {id} cannot be read",
+      "channel_email_missing": "An email channel needs its email settings",
+      "channel_gone": "The channel {id} no longer exists",
+      "channel_kind": "The stored kind {kind} of the channel {id} is unknown",
+      "channel_kind_unavailable": "Channels of kind {kind} are not available yet",
+      "email_address": "{value} is not an email address",
+      "email_send": "The mail to {host} was not sent: {reason}",
+      "email_transport": "The mail transport to {host} could not be built: {reason}",
+      "id": "The stored id {id} is not an identifier",
+      "level": "The stored level {level} of the notification {id} is unknown",
+      "message_gone": "The notification {id} no longer exists",
+      "severity": "The stored severity {severity} of the problem {id} is unknown",
+      "template_missing": "No mail template renders {id}",
+      "template_placeholder": "The {part} of the mail template {id} in {lang} carries the placeholder {found}; placeholders are written with single braces",
+      "template_render": "The {part} of the mail template {id} in {lang} did not render: {reason}",
+      "template_syntax": "The {part} of the mail template {id} in {lang} does not parse: {reason}",
+      "template_twice": "The mail template {id} is contributed twice"
+    },
+    "message": {
+      "action": {
+        "clear": "Clear read notifications",
+        "mark_read": "Mark as read"
+      },
+      "column": {
+        "createdAt": "Received",
+        "key": "Message",
+        "level": "Level",
+        "readAt": "Read",
+        "source": "Source",
+        "unread": "State"
+      },
+      "empty": "No notifications",
+      "level": {
+        "error": "Error",
+        "info": "Info",
+        "warning": "Warning"
+      },
+      "list": {
+        "title": "Notifications"
+      },
+      "unread": {
+        "false": "Read",
+        "true": "Unread"
+      }
+    },
+    "problem": {
+      "cleared": "Problem {key} cleared for {subject}",
+      "column": {
+        "accountId": "Account",
+        "clearedAt": "Cleared",
+        "count": "Seen",
+        "key": "Problem",
+        "open": "State",
+        "raisedAt": "Raised",
+        "severity": "Severity",
+        "subject": "Subject"
+      },
+      "empty": "No problem is open",
+      "list": {
+        "title": "Problems"
+      },
+      "open": {
+        "false": "Cleared",
+        "true": "Open"
+      },
+      "raised": "Problem {key} raised for {subject}",
+      "severity": {
+        "critical": "Critical",
+        "warning": "Warning"
+      }
+    },
+    "test": "Test email from the channel {channel}"
+  }
 }

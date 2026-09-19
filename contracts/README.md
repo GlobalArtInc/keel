@@ -26,6 +26,18 @@ The wire contract of the platform, in a form both sides can check against.
   version and the enabling instant name the run and are replaced by fixed placeholders. CI runs
   `keel-dev descriptors check` against it and `keel-dev views share` over it; after reviewing a
   change, `KEEL_UPDATE_DUMP=1 hack/descriptors.sh target/debug/keel` rewrites it.
+- `i18n.json` — the translation projects and where a key lands: the address of the translation
+  service, and per project its name, the environment variable that carries its id
+  (`KEEL_OWNLATE_PROJECT_CORE`, `KEEL_OWNLATE_PROJECT_DEMO`) and the dictionary directories with
+  the key prefixes each holds, a key landing in the directory of its longest prefix.
+  `keel-dev i18n extract --dump contracts/dump --out <dir>` writes the flat `en` catalogue of the
+  admin dump split per project as `<dir>/<project>.en.json`, the files the projects are seeded
+  from, `--lang ru` the `ru` one and `--project <name>` one project alone;
+  `keel-dev i18n pull --out .` fetches the translations map of every project with
+  `KEEL_OWNLATE_TOKEN` (and `KEEL_OWNLATE_URL` when it is not the address recorded here) and
+  rewrites each `<directory>/<lang>.json` nested by key, sorted and pretty-printed, so a pull on a
+  repository in sync changes nothing; `keel-dev i18n missing --dump contracts/dump` compares the
+  keys the dump requires with its `en` and `ru` catalogues and fails CI on any gap.
 - `icons.json` — the sorted names of the icon set the shell renders, written from
   `PHX_ICON_NAMES` of `@globalart/phoenix-ui` by `node tools/icons.mjs`, the second half of
   `pnpm generate` in `frontend/`. The kernel embeds the file and refuses at start a descriptor

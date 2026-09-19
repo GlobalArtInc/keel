@@ -1,0 +1,27 @@
+{
+  "url": "https://api.ownlate.com",
+  "projects": [
+    {
+      "name": "keel-core",
+      "id_env": "KEEL_OWNLATE_PROJECT_CORE",
+      "directories": {
+        "crates/kernel/i18n": ["keel", "phx", "menu.system"],
+        "crates/system/i18n/audit": ["audit"],
+        "crates/system/i18n/auth": ["auth"],
+        "crates/system/i18n/cron": ["cron"],
+        "crates/system/i18n/notify": ["notify"],
+        "crates/system/i18n/settings": ["settings"],
+        "crates/system/i18n/tasks": ["task"],
+        "crates/system/i18n/webhooks": ["webhook"]
+      }
+    },
+    {
+      "name": "keel-demo",
+      "id_env": "KEEL_OWNLATE_PROJECT_DEMO",
+      "directories": {
+        "products/demo/i18n": ["product.demo", "menu.demo"],
+        "products/demo/i18n/note": ["note"]
+      }
+    }
+  ]
+}

@@ -168,6 +168,9 @@ jobs:
       - name: The descriptor dump, the OpenAPI document and the custom-views share against the binary
         run: hack/descriptors.sh target/debug/keel
 
+      - name: Every key the registry emits is translated in en and ru
+        run: cargo run -p keel-dev -- i18n missing --dump contracts/dump
+
       - name: Install chromium for the browser suite
         working-directory: frontend
         run: pnpm exec playwright install chromium

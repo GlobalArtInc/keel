@@ -1,54 +1,80 @@
 {
-  "webhook.subscription.list.title": "Webhooks",
-  "webhook.subscription.empty": "No webhook subscription yet",
-  "webhook.subscription.set.title": "Webhook subscription",
-  "webhook.subscription.column.name": "Name",
-  "webhook.subscription.column.url": "URL",
-  "webhook.subscription.column.events": "Events",
-  "webhook.subscription.column.enabled": "Enabled",
-  "webhook.subscription.column.createdAt": "Created",
-  "webhook.subscription.action.create": "Add subscription",
-  "webhook.subscription.action.edit": "Edit",
-  "webhook.subscription.action.deliveries": "Deliveries",
-  "webhook.subscription.action.delete": "Delete",
-  "webhook.subscription.id": "Subscription",
-  "webhook.subscription.name": "Name",
-  "webhook.subscription.url": "URL",
-  "webhook.subscription.secret": "Signing secret",
-  "webhook.subscription.events": "Event masks",
-  "webhook.subscription.enabled": "Enabled",
-  "webhook.subscription.account": "Account",
-  "webhook.subscription.page.main": "Subscription",
-  "webhook.subscription.page.owner": "Owner",
-  "webhook.delivery.list.title": "Webhook deliveries",
-  "webhook.delivery.empty": "No delivery has been attempted",
-  "webhook.delivery.column.eventId": "Event",
-  "webhook.delivery.column.type": "Type",
-  "webhook.delivery.column.state": "State",
-  "webhook.delivery.column.attempt": "Attempts",
-  "webhook.delivery.column.nextAt": "Next attempt",
-  "webhook.delivery.column.lastStatus": "Last status",
-  "webhook.delivery.column.lastError": "Last error",
-  "webhook.delivery.column.createdAt": "Created",
-  "webhook.delivery.state.pending": "Pending",
-  "webhook.delivery.state.delivered": "Delivered",
-  "webhook.delivery.state.failed": "Failed",
-  "webhook.delivery.state.dead": "Dead",
-  "webhook.delivery.action.retry": "Retry",
-  "webhook.private_targets": "Allow webhooks to private targets",
-  "webhook.dead_letter": "Webhook deliveries to {name} failed for good",
-  "webhook.error.url": "{value} is not a web address: {reason}",
-  "webhook.error.url_private": "The URL points at a private or plain target ({reason}: {detail}); enable webhook.private_targets to allow it",
-  "webhook.error.url_unresolved": "The host {host} does not resolve: {reason}",
-  "webhook.error.secret_short": "The signing secret is shorter than {min} bytes",
-  "webhook.error.mask": "{mask} is not an event mask; write module.* or a dotted event name",
-  "webhook.error.entropy": "The signing secret could not be generated",
-  "webhook.error.id": "The stored id {id} is not an identifier",
-  "webhook.error.not_retryable": "The delivery {id} is {state}; only a failed or dead delivery can be retried",
-  "webhook.error.subscription_gone": "The subscription of the delivery no longer exists",
-  "webhook.error.event_gone": "The event of the delivery is no longer in the outbox",
-  "webhook.error.secret": "The signing secret could not be opened",
-  "webhook.error.client": "The HTTP client could not be built",
-  "webhook.error.send": "The delivery was not sent",
-  "webhook.error.status": "The target answered a non-2xx status"
+  "webhook": {
+    "dead_letter": "Webhook deliveries to {name} failed for good",
+    "delivery": {
+      "action": {
+        "retry": "Retry"
+      },
+      "column": {
+        "attempt": "Attempts",
+        "createdAt": "Created",
+        "eventId": "Event",
+        "lastError": "Last error",
+        "lastStatus": "Last status",
+        "nextAt": "Next attempt",
+        "state": "State",
+        "type": "Type"
+      },
+      "empty": "No delivery has been attempted",
+      "list": {
+        "title": "Webhook deliveries"
+      },
+      "state": {
+        "dead": "Dead",
+        "delivered": "Delivered",
+        "failed": "Failed",
+        "pending": "Pending"
+      }
+    },
+    "error": {
+      "client": "The HTTP client could not be built",
+      "entropy": "The signing secret could not be generated",
+      "event_gone": "The event of the delivery is no longer in the outbox",
+      "id": "The stored id {id} is not an identifier",
+      "mask": "{mask} is not an event mask; write module.* or a dotted event name",
+      "not_retryable": "The delivery {id} is {state}; only a failed or dead delivery can be retried",
+      "secret": "The signing secret could not be opened",
+      "secret_short": "The signing secret is shorter than {min} bytes",
+      "send": "The delivery was not sent",
+      "status": "The target answered a non-2xx status",
+      "subscription_gone": "The subscription of the delivery no longer exists",
+      "url": "{value} is not a web address: {reason}",
+      "url_private": "The URL points at a private or plain target ({reason}: {detail}); enable webhook.private_targets to allow it",
+      "url_unresolved": "The host {host} does not resolve: {reason}"
+    },
+    "private_targets": "Allow webhooks to private targets",
+    "subscription": {
+      "account": "Account",
+      "action": {
+        "create": "Add subscription",
+        "delete": "Delete",
+        "deliveries": "Deliveries",
+        "edit": "Edit"
+      },
+      "column": {
+        "createdAt": "Created",
+        "enabled": "Enabled",
+        "events": "Events",
+        "name": "Name",
+        "url": "URL"
+      },
+      "empty": "No webhook subscription yet",
+      "enabled": "Enabled",
+      "events": "Event masks",
+      "id": "Subscription",
+      "list": {
+        "title": "Webhooks"
+      },
+      "name": "Name",
+      "page": {
+        "main": "Subscription",
+        "owner": "Owner"
+      },
+      "secret": "Signing secret",
+      "set": {
+        "title": "Webhook subscription"
+      },
+      "url": "URL"
+    }
+  }
 }

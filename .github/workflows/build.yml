@@ -16,6 +16,9 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 1
   CARGO_BUILD_JOBS: 6
+  KEEL_OWNLATE_TOKEN: ${{ secrets.KEEL_OWNLATE_TOKEN }}
+  KEEL_OWNLATE_PROJECT_CORE: ${{ vars.KEEL_OWNLATE_PROJECT_CORE }}
+  KEEL_OWNLATE_PROJECT_DEMO: ${{ vars.KEEL_OWNLATE_PROJECT_DEMO }}
 
 jobs:
   linux-musl:
@@ -76,6 +79,12 @@ jobs:
       - name: Build the shell the binary embeds
         working-directory: frontend
         run: pnpm build
+
+      - name: The committed dictionaries match the translation projects
+        if: env.KEEL_OWNLATE_TOKEN != ''
+        run: |
+          cargo run -p keel-dev -- i18n pull --out .
+          git diff --exit-code -- crates/kernel/i18n crates/system/i18n products/demo/i18n
 
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin

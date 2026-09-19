@@ -1,29 +1,41 @@
 {
-  "task.list.title": "Tasks",
-  "task.empty": "No tasks have run yet",
-  "task.column.function": "Function",
-  "task.column.state": "State",
-  "task.column.progress": "Progress",
-  "task.column.createdAt": "Created",
-  "task.column.finishedAt": "Finished",
-  "task.column.accountId": "Account",
-  "task.state.queued": "Queued",
-  "task.state.running": "Running",
-  "task.state.done": "Done",
-  "task.state.failed": "Failed",
-  "task.state.cancelled": "Cancelled",
-  "task.state.interrupted": "Interrupted",
-  "task.action.open": "Open",
-  "task.action.cancel": "Cancel",
-  "task.id": "Task",
-  "task.error.not_running": "The task worker has not started",
-  "task.error.not_found": "The task does not exist",
-  "task.error.not_local": "The task runs on another node and cannot be cancelled from here",
-  "task.error.finished": "The task has already ended as {state}",
-  "task.error.interrupted": "The task was interrupted by a restart",
-  "task.error.cancelled": "The task was cancelled",
-  "task.error.state": "The stored state {state} of task {id} is unknown",
-  "task.error.principal": "The stored principal of task {id} cannot be read",
-  "task.error.no_file": "The task {id} left no file to download",
-  "task.error.log": "The task log at {path} could not be written"
+  "task": {
+    "action": {
+      "cancel": "Cancel",
+      "open": "Open"
+    },
+    "column": {
+      "accountId": "Account",
+      "createdAt": "Created",
+      "finishedAt": "Finished",
+      "function": "Function",
+      "progress": "Progress",
+      "state": "State"
+    },
+    "empty": "No tasks have run yet",
+    "error": {
+      "cancelled": "The task was cancelled",
+      "finished": "The task has already ended as {state}",
+      "interrupted": "The task was interrupted by a restart",
+      "log": "The task log at {path} could not be written",
+      "no_file": "The task {id} left no file to download",
+      "not_found": "The task does not exist",
+      "not_local": "The task runs on another node and cannot be cancelled from here",
+      "not_running": "The task worker has not started",
+      "principal": "The stored principal of task {id} cannot be read",
+      "state": "The stored state {state} of task {id} is unknown"
+    },
+    "id": "Task",
+    "list": {
+      "title": "Tasks"
+    },
+    "state": {
+      "cancelled": "Cancelled",
+      "done": "Done",
+      "failed": "Failed",
+      "interrupted": "Interrupted",
+      "queued": "Queued",
+      "running": "Running"
+    }
+  }
 }

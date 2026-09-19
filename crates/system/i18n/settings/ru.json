@@ -1,47 +1,77 @@
 {
-  "settings.list.title": "Настройки",
-  "settings.set.title": "Настройка",
-  "settings.empty": "Настройки не определены",
-  "settings.key": "Ключ",
-  "settings.value": "Значение",
-  "settings.column.key": "Ключ",
-  "settings.column.module": "Модуль",
-  "settings.column.level": "Уровень",
-  "settings.column.value": "Значение",
-  "settings.column.scope": "Задано для",
-  "settings.level.user": "Пользователь",
-  "settings.level.reseller": "Реселлер",
-  "settings.level.admin": "Администратор",
-  "settings.action.set": "Изменить",
-  "settings.pref.set.title": "Предпочтение",
-  "settings.pref.key": "Предпочтение",
-  "settings.pref.value": "Значение",
-  "settings.brand.list.title": "Бренд",
-  "settings.brand.set.title": "Бренд для имени хоста",
-  "settings.brand.empty": "Ни у одного имени хоста нет своего бренда; установка показывает бренд продукта",
-  "settings.brand.host": "Имя хоста",
-  "settings.brand.name": "Название",
-  "settings.brand.logo": "Логотип (SVG)",
-  "settings.brand.hue": "Оттенок (от 0 до 359)",
-  "settings.brand.chroma": "Насыщенность (от 0 до 0.4)",
-  "settings.brand.column.host": "Имя хоста",
-  "settings.brand.column.name": "Название",
-  "settings.brand.column.hue": "Оттенок",
-  "settings.brand.column.chroma": "Насыщенность",
-  "settings.brand.column.updatedAt": "Обновлён",
-  "settings.brand.action.create": "Новый бренд",
-  "settings.brand.action.set": "Изменить",
-  "settings.brand.action.delete": "Удалить",
-  "settings.brand.page.main": "Бренд",
-  "settings.error.pref_key": "Предпочтение {key} не входит в lang, tz, theme или columns.<функция>",
-  "settings.error.pref_text": "Значение должно быть коротким текстом",
-  "settings.error.pref_lang": "Язык {lang} не поддерживается этой установкой",
-  "settings.error.pref_tz": "Часовой пояс {tz} неизвестен",
-  "settings.error.pref_columns": "Предпочтение columns — объект, члены которого перечисляют ключи колонок, не более 64 ключей по 64 символа, в пределах 4 КиБ",
-  "settings.error.pref_columns_many": "На принципала хранится не более {max} предпочтений columns",
-  "settings.error.pref_owner": "У владельца нет предпочтений; он действует через сокет",
-  "settings.error.level": "Настройка {key} имеет уровень {level}, выше вашего уровня {caller}",
-  "settings.error.schema": "Схема настройки {key} не компилируется",
-  "settings.error.not_started": "Модуль настроек не запущен",
-  "settings.error.brand_svg": "Логотип должен быть SVG-документом без элемента script: {reason}"
+  "settings": {
+    "action": {
+      "set": "Изменить"
+    },
+    "brand": {
+      "action": {
+        "create": "Новый бренд",
+        "delete": "Удалить",
+        "set": "Изменить"
+      },
+      "chroma": "Насыщенность (от 0 до 0.4)",
+      "column": {
+        "chroma": "Насыщенность",
+        "host": "Имя хоста",
+        "hue": "Оттенок",
+        "name": "Название",
+        "updatedAt": "Обновлён"
+      },
+      "empty": "Ни у одного имени хоста нет своего бренда; установка показывает бренд продукта",
+      "host": "Имя хоста",
+      "hue": "Оттенок (от 0 до 359)",
+      "list": {
+        "title": "Бренд"
+      },
+      "logo": "Логотип (SVG)",
+      "name": "Название",
+      "page": {
+        "main": "Бренд"
+      },
+      "set": {
+        "title": "Бренд для имени хоста"
+      }
+    },
+    "column": {
+      "key": "Ключ",
+      "level": "Уровень",
+      "module": "Модуль",
+      "scope": "Задано для",
+      "value": "Значение"
+    },
+    "empty": "Настройки не определены",
+    "error": {
+      "brand_svg": "Логотип должен быть SVG-документом без элемента script: {reason}",
+      "level": "Настройка {key} имеет уровень {level}, выше вашего уровня {caller}",
+      "not_started": "Модуль настроек не запущен",
+      "pref_columns": "Предпочтение columns — объект, члены которого перечисляют ключи колонок, не более 64 ключей по 64 символа, в пределах 4 КиБ",
+      "pref_columns_many": "На принципала хранится не более {max} предпочтений columns",
+      "pref_key": "Предпочтение {key} не входит в lang, tz, theme или columns.<функция>",
+      "pref_lang": "Язык {lang} не поддерживается этой установкой",
+      "pref_owner": "У владельца нет предпочтений; он действует через сокет",
+      "pref_text": "Значение должно быть коротким текстом",
+      "pref_tz": "Часовой пояс {tz} неизвестен",
+      "schema": "Схема настройки {key} не компилируется"
+    },
+    "key": "Ключ",
+    "level": {
+      "admin": "Администратор",
+      "reseller": "Реселлер",
+      "user": "Пользователь"
+    },
+    "list": {
+      "title": "Настройки"
+    },
+    "pref": {
+      "key": "Предпочтение",
+      "set": {
+        "title": "Предпочтение"
+      },
+      "value": "Значение"
+    },
+    "set": {
+      "title": "Настройка"
+    },
+    "value": "Значение"
+  }
 }

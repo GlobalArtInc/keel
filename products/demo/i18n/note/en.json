@@ -1,63 +1,73 @@
 {
   "note": {
-    "list": { "title": "Notes" },
-    "edit": { "title": "Note" },
-    "import": { "title": "Import notes" },
-    "export": { "title": "Export notes" },
-    "tag": {
-      "list": { "title": "Tags" },
-      "empty": "No tags yet",
-      "column": {
-        "tag": "Tag",
-        "count": "Count"
-      }
+    "account": "Account",
+    "action": {
+      "create": "New note",
+      "delete": "Delete",
+      "edit": "Edit",
+      "export_task": "Export"
+    },
+    "body": "Body",
+    "column": {
+      "accountId": "Account",
+      "due": "Due",
+      "kind": "Kind",
+      "tags": "Tags",
+      "title": "Title",
+      "updatedAt": "Updated"
+    },
+    "due": "Due",
+    "edit": {
+      "title": "Note"
     },
     "empty": "No notes yet",
-    "title": "Title",
-    "body": "Body",
+    "error": {
+      "account": "The stored account {account} of a note is not an identifier",
+      "account_suspended": "Notes cannot be changed while the account is suspended",
+      "empty": "There is no line to import",
+      "exists": "A note titled {title} already exists",
+      "export_inline": "The export runs as a task alone",
+      "export_output": "The export file could not be written",
+      "id": "The stored id {id} of a note is not an identifier",
+      "limit": "An account keeps at most {max} notes",
+      "line_too_long": "Line {line} is longer than {max} characters",
+      "locked": "The note {title} is locked and cannot be deleted"
+    },
+    "export": {
+      "title": "Export notes"
+    },
+    "format": "Format",
+    "format.csv": "CSV",
+    "format.json": "JSON",
+    "import": {
+      "title": "Import notes"
+    },
     "kind": {
       "memo": "Memo",
       "todo": "To do"
     },
-    "tags": "Tags",
-    "due": "Due",
-    "text": "Lines",
-    "format": "Format",
-    "format.csv": "CSV",
-    "format.json": "JSON",
+    "list": {
+      "title": "Notes"
+    },
     "pace": "Pause after each note, ms",
-    "account": "Account",
     "page": {
       "main": "Note",
+      "options": "Options",
       "owner": "Owner",
-      "source": "Source",
-      "options": "Options"
+      "source": "Source"
     },
-    "column": {
-      "title": "Title",
-      "kind": "Kind",
-      "tags": "Tags",
-      "due": "Due",
-      "updatedAt": "Updated",
-      "accountId": "Account"
+    "tag": {
+      "column": {
+        "count": "Count",
+        "tag": "Tag"
+      },
+      "empty": "No tags yet",
+      "list": {
+        "title": "Tags"
+      }
     },
-    "action": {
-      "create": "New note",
-      "edit": "Edit",
-      "delete": "Delete",
-      "export_task": "Export"
-    },
-    "error": {
-      "locked": "The note {title} is locked and cannot be deleted",
-      "limit": "An account keeps at most {max} notes",
-      "id": "The stored id {id} of a note is not an identifier",
-      "account": "The stored account {account} of a note is not an identifier",
-      "account_suspended": "Notes cannot be changed while the account is suspended",
-      "exists": "A note titled {title} already exists",
-      "line_too_long": "Line {line} is longer than {max} characters",
-      "empty": "There is no line to import",
-      "export_inline": "The export runs as a task alone",
-      "export_output": "The export file could not be written"
-    }
+    "tags": "Tags",
+    "text": "Lines",
+    "title": "Title"
   }
 }

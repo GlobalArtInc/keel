@@ -1,19 +1,29 @@
 {
-  "audit.list.title": "Журнал действий",
-  "audit.empty": "Записей ещё нет",
-  "audit.column.at": "Когда",
-  "audit.column.function": "Функция",
-  "audit.column.principalLogin": "Пользователь",
-  "audit.column.principalId": "Идентификатор пользователя",
-  "audit.column.actorLogin": "От имени",
-  "audit.column.via": "Канал",
-  "audit.column.ip": "Адрес",
-  "audit.column.subject": "Объект",
-  "audit.column.status": "Результат",
-  "audit.column.errorKey": "Ошибка",
-  "audit.column.elapsedMs": "Длительность, мс",
-  "audit.column.requestId": "Запрос",
-  "audit.status.committed": "Выполнено",
-  "audit.status.failed": "Ошибка",
-  "audit.error.not_running": "Обработчик журнала не запущен"
+  "audit": {
+    "column": {
+      "actorLogin": "От имени",
+      "at": "Когда",
+      "elapsedMs": "Длительность, мс",
+      "errorKey": "Ошибка",
+      "function": "Функция",
+      "ip": "Адрес",
+      "principalId": "Идентификатор пользователя",
+      "principalLogin": "Пользователь",
+      "requestId": "Запрос",
+      "status": "Результат",
+      "subject": "Объект",
+      "via": "Канал"
+    },
+    "empty": "Записей ещё нет",
+    "error": {
+      "not_running": "Обработчик журнала не запущен"
+    },
+    "list": {
+      "title": "Журнал действий"
+    },
+    "status": {
+      "committed": "Выполнено",
+      "failed": "Ошибка"
+    }
+  }
 }
