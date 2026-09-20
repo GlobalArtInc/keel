@@ -68,7 +68,6 @@ export const SECURITY_FUNCTION = TOTP_ENROLL;
 
 export const ACT_AS_ENTRY = 'act_as';
 export const LOGOUT_ENTRY = 'logout';
-export const RAIL_GROUP = 'rail';
 export const USER_SCREENS: Readonly<Record<string, string>> = {
   sessions: SESSIONS_FUNCTION,
   tokens: TOKENS_FUNCTION,
@@ -253,7 +252,7 @@ export class KeelRailComponent {
     const opened = this.drawers.toggle(KeelNotificationCentreComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
-      group: RAIL_GROUP,
+      stack: false,
       data,
     });
     if (opened === null) {
@@ -273,7 +272,7 @@ export class KeelRailComponent {
     const config = {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_TASKS_KEY),
-      group: RAIL_GROUP,
+      stack: false,
       data,
     };
     if (id === null) {
@@ -287,7 +286,7 @@ export class KeelRailComponent {
     this.drawers.toggle(KeelAboutComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_HELP_KEY),
-      group: RAIL_GROUP,
+      stack: false,
     });
   }
 

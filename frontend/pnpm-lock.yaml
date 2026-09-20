@@ -42,8 +42,8 @@ importers:
         specifier: ^5.2.0
         version: 5.3.0
       '@globalart/phoenix-ui':
-        specifier: 0.3.4
-        version: 0.3.4(1a8f5b340420e1a8522f51e307146c5d)
+        specifier: 0.3.5
+        version: 0.3.5(1a8f5b340420e1a8522f51e307146c5d)
       lucide-angular:
         specifier: ^1.0.0
         version: 1.0.0(@angular/common@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))
@@ -180,8 +180,8 @@ importers:
         specifier: ^19.1.0
         version: 19.1.8(@angular/common@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@19.1.8(@angular/animations@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/common@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
       '@globalart/phoenix-ui':
-        specifier: 0.3.4
-        version: 0.3.4(1a8f5b340420e1a8522f51e307146c5d)
+        specifier: 0.3.5
+        version: 0.3.5(1a8f5b340420e1a8522f51e307146c5d)
       '@playwright/test':
         specifier: ^1.62.0
         version: 1.63.0
@@ -210,8 +210,8 @@ importers:
         specifier: workspace:^
         version: link:../../libs/keel
       '@globalart/phoenix-ui':
-        specifier: 0.3.4
-        version: 0.3.4(1a8f5b340420e1a8522f51e307146c5d)
+        specifier: 0.3.5
+        version: 0.3.5(1a8f5b340420e1a8522f51e307146c5d)
       rxjs:
         specifier: ^7.8.0
         version: 7.8.2
@@ -1621,8 +1621,8 @@ packages:
   '@fontsource/ibm-plex-sans@5.3.0':
     resolution: {integrity: sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==}
 
-  '@globalart/phoenix-ui@0.3.4':
-    resolution: {integrity: sha512-oAZ1I1dm92FpmGypmu5HNoxEs+R1+qRvEPV3Mj16r2gXbwKJ4D+jae09B1deajGWSJLL/s0UyA6qIjG3KbSg6A==}
+  '@globalart/phoenix-ui@0.3.5':
+    resolution: {integrity: sha512-gJ8EA6PqbJuDczpBxdXdnAVKVnvu88deS5pKkMWqWcx5RUCQVFuZ+fWFCigH5qt89ayOXAD8leCz4fIsSUuV4Q==}
     peerDependencies:
       '@angular/animations': ^19.0.0
       '@angular/cdk': ^19.0.0
@@ -9380,7 +9380,7 @@ snapshots:
 
   '@fontsource/ibm-plex-sans@5.3.0': {}
 
-  '@globalart/phoenix-ui@0.3.4(1a8f5b340420e1a8522f51e307146c5d)':
+  '@globalart/phoenix-ui@0.3.5(1a8f5b340420e1a8522f51e307146c5d)':
     dependencies:
       '@angular/animations': 19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))
       '@angular/cdk': 19.1.5(@angular/common@19.1.8(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@19.1.8(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)

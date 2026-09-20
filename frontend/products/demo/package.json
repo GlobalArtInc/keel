@@ -13,7 +13,7 @@
     "@angular/common": "^19.1.0",
     "@angular/core": "^19.1.0",
     "@globalart/keel": "workspace:^",
-    "@globalart/phoenix-ui": "0.3.4",
+    "@globalart/phoenix-ui": "0.3.5",
     "rxjs": "^7.8.0"
   },
   "dependencies": {
