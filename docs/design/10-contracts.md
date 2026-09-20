@@ -45,7 +45,8 @@ rule for `PROTOCOL` are stated in [01-overview.md](01-overview.md); `PROTOCOL` i
 ### Endpoint map
 
 The routes this design names. Anything else the installation serves is a raw route under
-`/api/v1/x/<module>/…`, registered by a module with a mandatory guard and an audit event
+`/api/v1/x/<module>/…`: today the kernel's projection of every `download` and `upload` function,
+later a route a module registers with a mandatory guard and an audit event
 ([02-functions.md](02-functions.md)).
 
 | Route | Purpose |
@@ -56,17 +57,28 @@ The routes this design names. Anything else the installation serves is a raw rou
 | `POST /api/v1/call/{func}` | the call; `GET` is accepted for `kind: list \| get` |
 | `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
 | `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
-| `/api/v1/x/<module>/…` | raw routes of modules: upload, download, WebSocket terminal, VNC, the peers pull feed `/api/v1/x/peers/feed?after=seq` |
-| `GET /api/v1/events` | the server-sent event stream (M3); the path is the provisional value the client of M2 opens, for M3 to confirm |
+| `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; later the WebSocket terminal, VNC and the peers pull feed `/api/v1/x/peers/feed?after=seq` |
+| `GET /api/v1/events` | the server-sent event stream, `text/event-stream` with `Cache-Control: no-store`, resumed by `Last-Event-ID` or the query member `after` |
 | `GET /brand/logo.svg`, `GET /brand/<id>/logo.svg` | the effective brand's logo and each compiled-in bundle's, served from the bundle's `assets` or the kernel's own mark, `no-store` ([08-frontend.md](08-frontend.md)) |
 | `/login?key=…` | the page that redeems a one-time login key same-origin ([07-ecosystem.md](07-ecosystem.md)) |
 | everything else | the embedded shell: an asset by name, or `index.html` for a path whose last segment carries no extension the shell build emits ([09-operations.md](09-operations.md)) |
 
-The server-sent event stream carries `task.progress`, `notification`, `data.invalidate` and
-`meta.invalidate`; `Last-Event-ID` is the outbox `seq`, so a reconnecting client catches up from
-where it stopped. Events are filtered by `ScopePolicy` and principal: a user receives
-`data.invalidate` only for its own objects. The peers feed is a separate path, not the browser
-stream. Until M3 serves the stream the route answers `404` and the client's stub stays quiet.
+The server-sent event stream carries `task.progress` (a `TaskProgress` frame: the job id, its
+state, `done`, `total` and a message), `notification` (a `NotificationFrame`: the message row as
+`notify.message.list` shows it), `data.invalidate` (the event in its common shape, `id:` the
+outbox `seq`) and `meta.invalidate` (`{ meta }`, the principal's current metadata version). A
+stream opens with `retry: 3000` and sends a keep-alive comment every fifteen seconds; a draining
+process closes it with a final `retry:` so the browser reconnects to the next process.
+`Last-Event-ID`, or the query member `after` when the header is absent, replays the events after
+that `seq` within a window of the newest 1000 rows of the outbox; an id older than the window,
+ahead of the table or unreadable is answered with one `meta.invalidate` and the stream goes live
+from the newest `seq`, so the client refetches rather than misses something. Events are filtered
+per connection by the account scope of the principal: a `data.invalidate` is sent when the
+event's `subject.accountId` lies within the scope, an event without one reaches admins alone, so
+a user receives `data.invalidate` only for its own objects; a live frame reaches its own
+principal, a reseller whose subtree holds its account and every admin, never another user. A
+guest is answered `401` as an envelope. The per-session cap and the re-check of the credential at
+keep-alive are still to be built. The peers feed is a separate path, not the browser stream.
 
 ### Conventions shared by every shape
 
@@ -217,7 +229,8 @@ The request side follows these rules:
 - A `POST` body is JSON; an empty body is `{}`. A body above the platform's body limit, 1 MiB,
   answers `422 validation` with `keel.error.body_too_large` and the limit in `params`; a body
   that is not JSON answers `keel.error.body_not_json`. The limit is a kernel constant, not a
-  configuration key.
+  configuration key; its one exception is the multipart body of an `upload`, bounded by the sum
+  of its file fields' `maxBytes` plus 64 KiB for the `params` part.
 - A `GET` carries the parameters in the query string, either as one `q` member holding a JSON
   object (`?q={"search":"www","page":1}`) or as `key=value` pairs, where a value that parses as
   JSON is taken as that value and any other value as a string. A `q` that is not JSON or not an
@@ -281,8 +294,9 @@ Where each code originates in the pipeline is tabulated in [02-functions.md](02-
   cross-site post to it is refused exactly like a cookie call. A request is refused as
   `403 forbidden` with `keel.error.cross_site` when `Sec-Fetch-Site` says `cross-site`, or when
   `Origin` is present and its authority differs from the `Host` header, or from the request
-  authority when there is no `Host`; a request that carries neither `Sec-Fetch-Site` nor `Origin`
-  is admitted. This is why the one-time login key is redeemed by a same-origin page at
+  authority when there is no `Host` — from `X-Forwarded-Host` when the peer is a trusted proxy
+  ([09-operations.md](09-operations.md)); a request that carries neither `Sec-Fetch-Site` nor
+  `Origin` is admitted. This is why the one-time login key is redeemed by a same-origin page at
   `/login?key=…` that posts `auth.key.redeem`, instead of the key being accepted on a cross-site
   navigation ([07-ecosystem.md](07-ecosystem.md)).
 - The `__Host-` prefix requires TLS, so the installation listens only on TLS from the first start
@@ -374,9 +388,16 @@ source cannot widen what the caller may see.
 
 Export is generic in the kernel: `keel.export { func, query, columns, format }` streams every page
 through the same `ListSource` with the same scope and strip as the interactive list, so an export
-never contains a column or a row the caller could not see on screen. Above a row threshold the
-call becomes a task whose result is a download ([02-functions.md](02-functions.md),
-`batch_threshold`). The `export` action in a list descriptor names the offered `formats`.
+never contains a column or a row the caller could not see on screen. `func` must name a list the
+caller may call, `columns` an optional subset of the caller's projected columns, `query` loses
+`page` and `pageSize`; `format` is `csv` (RFC 4180, a header row of the translated column
+labels) or `json` (one array), the file named `<func>-<date>.<ext>` in the caller's zone. Above a
+row threshold, `batch_threshold(10000)` on the function read against the total of the first
+page, the call becomes a task through `Call::spawn_self_as_task` and the raw route answers the
+`TaskRef` envelope in place of the stream; the job writes the file to its output and its result
+carries `DownloadRef { download: { function: "task.download", params: { id } } }`, from which
+the shell fetches the file ([02-functions.md](02-functions.md)). The `export` action in a list
+descriptor names the offered `formats`.
 
 ## Form dynamics
 
@@ -388,9 +409,10 @@ block by the builder (`.field("ttl").recompute("dns.zone.recompute")`, `.multi([
 |-----------|---------|----------|
 | `kind: options` | `OptionsQuery { search, scope, limit, cursor }`; `limit` defaults to 20 | `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }`, `value` a string — the source for the remote mode of `phx-select` and for `filter.remote` on columns; the three types live in `keel-types` from M0 because `keel.account.options` needs them |
 | `recompute` | `{ values, changed }` | `{ values: patch, options: { field: [...] }, errors?: fields[] }`; which fields trigger it is declared in `ui`; the helper is registered as `kind: action` in `mode: read` and unowned, since the vocabulary has no kind for a helper without a screen |
-| group editing | `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }` | `ui.multi` lists the fields that may be edited across several rows; above `batch_threshold` the call becomes a task (M3) |
+| group editing | `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }` to the form function itself, told apart from its single-row body by `ids` and the absent key | `GroupResult { updated }`; `ui.multi` lists the fields that may be edited across several rows; the ownership guard admits `ids` element by element, `mask` is checked against `ui.multi` (`keel.error.multi_field` at `mask[i]`) and `fields` against `mask` (`keel.error.multi_unmasked` at `fields.<name>`); inside one transaction every row is read through `ui.read`, the masked fields are laid over it and the form runs per row as a nested invoke, so one failing row rolls the group back; above `batch_threshold` the call becomes a task answering `TaskRef` |
 | `kind: wizard` | `pages[].validate: <func>` validates a step on the server before the next page opens, with the values of the pages so far as its parameters; the helper is a `kind: action` in `mode: read` like `recompute` | `ui.result` after the final step: `redirect · task · download` |
-| `download · upload · stream` | multipart parameters; SSE frames for `stream` | `{ filename, content_type }` for downloads; always behind a guard and an audit event |
+| `result: task` | any call whose screen says `result: task`, or a batch above `batch_threshold` | `TaskRef { task: { id } }` after the guards, strip, validation, idempotency and the `before` hooks ran; the job runs the same function with the enriched parameters under the caller's principal, and its `task.get` result carries `DownloadRef` when the job stored a file |
+| `download · upload · stream` | a `download` takes its parameters as a call does, at `GET` or `POST` on its raw route; an `upload` takes `multipart/form-data` on its raw route: a `params` part with the JSON of the other fields and one part per field whose control is `file`, checked against `x-keel.file { maxBytes, types }` while it is read (`keel.error.file_type`, `keel.error.file_too_large` on the field's path) and placed into the parameters as the text of a string field or as base64 for a field whose schema says `contentEncoding: base64`; SSE frames for `stream` | a `download` streams the body with `Content-Type`, `Content-Disposition` and `Cache-Control: no-store`, `{ filename, contentType }` being its result in the pipeline, or answers `TaskRef` when the handler became a job; an `upload` answers the form's envelope and carries a `Form` block like a `form`; the call route answers `422 keel.error.download_route` or `keel.error.upload_route` naming the raw route, a guest is refused on the raw route before dispatching, and every such call raises the audit event whatever its mode |
 
 `ui.result = task` opens the progress modal driven by `task.progress` events
 ([08-frontend.md](08-frontend.md)). `recompute` returns a patch, not the whole value set, so the
@@ -644,7 +666,7 @@ descriptors are cached under.
                  { "path": "system/tasks", "label": "task.list.title", "func": "task.list", "kind": "list" },
                  { "path": "system/products", "label": "keel.product.list.title", "func": "keel.product.list", "kind": "list", "icon": "package" } ] } ],
   "dashboard": [ { "kind": "stat", "func": "dns.widget.zones" },
-                 { "kind": "list", "func": "problem.list", "limit": 5 } ],
+                 { "kind": "list", "func": "notify.problem.list", "limit": 5 } ],
   "views": ["hosting.file-manager"], "meta": "m-7f3a2c1b9d4e0a62", "problems": { "open": 1, "critical": 0 } }
 ```
 
@@ -657,10 +679,10 @@ descriptors are cached under.
 | `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
 | `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |
 | `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind?, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, absent on the item of a view registered through `r.view`, which has no descriptor, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |
-| `dashboard` | widgets: a `kind` and the function that feeds it; empty until `DashboardWidget` contributions exist |
+| `dashboard` | widgets, `BootWidget { kind, func, limit? }`, one per `DashboardWidget` contribution whose level the principal meets and whose function it may call, in registry order; `list` widgets are rendered, `stat` waits for the dashboard renderer of M5; empty without a contribution, so `/` redirects to the first menu item |
 | `views` | the bespoke views registered with `r.view(...)` whose level and permission the principal meets, in registry order; the shell shows `phx-not-found` for one without a registered component; filled from M2 |
 | `meta` | the metadata version, equal to `X-Keel-Meta-Version`, also served as the response's `ETag` with `private, no-store` and `304` on a matching `If-None-Match`; `principal.totp` and `principal.actor` are not part of the version, so the shell refetches `/boot` without `If-None-Match` after a call that changes the principal's own state, such as a second-factor enrolment |
-| `problems` | counts for the notification rail; `null` until `notify` exists |
+| `problems` | `BootProblems { open, critical }`, the open problems within the principal's account scope, counted through the hidden `ProblemCounter`; `null` without a module providing it |
 
 Labels in `menu`, `brand.name` and `products[].brand.name` are i18n keys resolved by the client
 from the catalogues served under `/api/v1/i18n`. Over the control socket the same payload is

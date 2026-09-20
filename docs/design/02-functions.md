@@ -26,8 +26,11 @@ The frontend, the CLI (`ctl` over the local socket), the external HTTP API, plug
 products are all clients of the same dispatcher and receive the same envelope. There is no second
 code path for any of them: a plugin's `call` frame, a peer's `POST /api/v1/call/{func}` with a
 `kpt_` token and a browser's cookie request enter the same pipeline. The only routes that bypass
-descriptors are the raw routes `/api/v1/x/<module>/…` a module may register for upload, download,
-a WebSocket terminal or VNC; they are allowed only with a mandatory guard and an audit event.
+descriptors are the raw routes `/api/v1/x/<module>/…` for upload, download, a WebSocket terminal
+or VNC; they are allowed only behind authentication and with an audit event. The ones built so
+far are the kernel's projection of the `download` and `upload` kinds, served through the whole
+pipeline; a free-form raw route a module registers itself waits for `panel` in M5
+([05-modules.md](05-modules.md)).
 
 A module registers its functions in `init` through the registrar (`r.function(zone::edit())`);
 the registries are frozen during boot, after every module's `init` and before `start`, and
@@ -53,7 +56,7 @@ are removed) and carries the top-level fields below. The complete example for `d
 | `key`    | Name of the parameter that identifies the owned row (`"id"`); its presence makes the function subject to `OwnedGuard`. |
 | `params` | JSON Schema of the parameters; lists point at `keel://ListQuery` through `$ref`.        |
 | `result` | JSON Schema of the result.                                                               |
-| `ui`     | The screen block; a kind without a screen of its own (`get`, `options`, `download`, `upload`) omits it. A `get` reached through a `link` column or a row action is shown by the object renderer of [08-frontend.md](08-frontend.md) from its result schema, without a `ui` block of its own. |
+| `ui`     | The screen block; a kind without a screen of its own (`get`, `options`, `download`) omits it, while an `upload` carries a `Form` block like a `form`. A `get` reached through a `link` column or a row action is shown by the object renderer of [08-frontend.md](08-frontend.md) from its result schema, without a `ui` block of its own. |
 
 Titles, labels, hints and error messages inside a descriptor are i18n keys, never strings;
 the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.md).
@@ -69,7 +72,7 @@ the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.m
 
    | Namespace | Contents                                          | Guarantee                                                                                  |
    |-----------|---------------------------------------------------|--------------------------------------------------------------------------------------------|
-   | `x-keel`  | `level`, `secret`, `once`, `check` presets, `options` function | Protocol semantics. Part of `keel-types` and `PROTOCOL = 1`; the kernel is obliged to enforce it in the guard and strip stages. |
+   | `x-keel`  | `level`, `secret`, `once`, `check` presets, `options` function, `file { maxBytes, types }` on a field whose control is `file` | Protocol semantics. Part of `keel-types` and `PROTOCOL = 1`; the kernel is obliged to enforce it in the guard and strip stages. |
    | `x-ui`    | `control`, `placeholder`, `help`, `order`, and similar presentation hints such as `generate` | Presentation only. A client that ignores it renders a plainer screen and nothing else breaks. |
 
    `level` says which principal level may see and send the field; `secret` says the value must
@@ -78,7 +81,9 @@ the key convention and the bundle pipeline are in [08-frontend.md](08-frontend.m
    in every stored copy — the record an `Idempotency-Key` replays from and the audit event —
    which is the shape of an API token or a recovery code, shown when it is made and never
    again; `check` names a validation preset the kernel applies on top of the schema; `options`
-   names a `kind: options` function that supplies the field's choices. These five were
+   names a `kind: options` function that supplies the field's choices; `file` fixes the size and
+   the media types of a part of an `upload`, which the kernel checks while reading the part
+   ([10-contracts.md](10-contracts.md)). These attributes were
    deliberately placed outside `x-ui`: the two namespaces carry different guarantees, and
    mixing enforced attributes into a namespace a client may ignore would let that client treat
    them as optional. A standard validator ignores both namespaces alike, which is why the kernel
@@ -96,6 +101,7 @@ What the `ui` block carries, as seen in the two examples in this document set:
 | list        | `title`, `search` (fields), `columns[]` (`key`, `type`, `to`, `sortable`, `primary`, `total`, `map`, `filter` with `options` or `remote`, inline `edit` naming a function, per-column `access`), `actions[]` (`id`, `role`, `screen` or `function`, `icon`, `default`, `params`, `confirm` incl. `destructive` / `items` / `input`, `hidden_if`, `formats`), `row_actions`, `empty` (`title`, `action`), `invalidate_on` (event patterns) |
 | form        | `title`, `read` (the `get` function that supplies current values), `pages[]` with field lists and `show_if`, per-field `readonly_if` / `required_if` / `recompute`, `multi` (fields allowed in group editing) |
 | wizard      | `pages[]`, each with `validate` naming the function that checks the step on the server; `result` after the final step: `redirect`, `task` or `download` |
+| action      | `title`; `result` when the call does not answer inline: `task` opens the progress modal on the `TaskRef` the dispatcher answers ([10-contracts.md](10-contracts.md)) |
 
 A form is therefore a pair: the `get` function named in `ui.read` supplies the values, and the
 form function itself performs the write. Parameters that the screen needs from the URL
@@ -266,7 +272,14 @@ the kernel:
 - validates every descriptor (enum membership, icons against the embedded icon set of
   `contracts/icons.json`, every function, action and permission it names is registered, `ui.read`
   is a `get` and `x-keel.options` an `options` function) and checks that i18n keys exist at least
-  for `en`.
+  for `en`;
+- checks the task rules: a `result: task` function needs a module providing the `TaskRunner`, a
+  function that can become a job — `result: task`, or a `batch_threshold` — carries no `secret`
+  parameter, since a job stores its parameters, the one exception being a form with `ui.multi`
+  and a `batch_threshold`, whose job parameters are `ids`, `fields` and `mask` alone; `ui.multi`
+  names parameters of the form that are neither its key nor `secret`, and a form with `ui.multi`
+  has a key and a `ui.read`; every field whose control is `file` carries `x-keel.file`, and an
+  `upload` carries a `Form` block.
 
 `keel-dev check` adds what needs the source: every function with a `key` is either `.owned()` or
 explicitly `.unowned()`, and module prefixes are respected; the subcommand arrives with the
@@ -457,7 +470,9 @@ the other module provides; direct SQL across module prefixes is forbidden (see
 transaction rolls back, the event never existed; if it commits, delivery is guaranteed at least
 once to everything that reads the outbox: webhooks, peers, notifications, SSE
 (`Last-Event-ID` is the outbox `seq`), plugins with the `observe` right and the `keel.patch.stored`
-mechanism above. Each consumer keeps its own cursor, and retention never discards an event
+mechanism above. `call.emit_about(type, subject, &data)` is the same with an explicit subject
+where the derived one would be wrong ([07-ecosystem.md](07-ecosystem.md)). Each consumer keeps
+its own cursor, and retention never discards an event
 that some consumer has not yet passed. Every event has the same shape across products; the
 delivery mechanics are in [07-ecosystem.md](07-ecosystem.md) and the table in
 [04-storage.md](04-storage.md).
@@ -523,10 +538,12 @@ Per function, declared on the definition:
 | `timeout`         | Upper bound on the call.                                                                       |
 | `max_page_size`   | Cap on `ListQuery.page_size` for lists.                                                        |
 | `default_sort`    | Sort applied when the query carries none.                                                      |
-| `batch_threshold` | A group-edit or batch call with more ids than this is not executed inline: it becomes a task with progress and log. The same rule turns `keel.export` above a row threshold into a task whose result is a download. |
+| `batch_threshold` | A group-edit or batch call with more ids than this is not executed inline: it becomes a task with progress and log, one call and one transaction per chunk, after the ownership guard admitted every id. The same member on `keel.export` is its row threshold: an export of more rows becomes a task whose result carries a `download` ([10-contracts.md](10-contracts.md)). Without a `TaskRunner` in the composition the threshold is inert and the batch runs inline. |
 
 Globally: the body limit on a request, a platform constant of 1 MiB rather than a configuration
-key, and `sse_max_clients` on concurrent event streams.
+key, whose one exception is the multipart body of an `upload`, bounded by the sum of its file
+fields' `maxBytes` plus 64 KiB for the `params` part; and `sse_max_clients` on concurrent event
+streams, still to be built beside the per-session cap of the stream.
 
 ### Error codes by stage
 

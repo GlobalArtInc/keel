@@ -1,9 +1,9 @@
 # Plan
 
 This document orders the work: the milestones M0 to M8 with their scope and exit criteria, the
-breakdowns of M0, M1 and M2 into PR-sized steps, the working rules of the repository, and the M0,
-M1 and M2 exit checklists. The design itself lives in `design/`; this document only says in which
-order it is built and how each step is shown to be done. Nothing here carries a date or a
+breakdowns of M0, M1, M2 and M3 into PR-sized steps, the working rules of the repository, and the
+M0, M1, M2 and M3 exit checklists. The design itself lives in `design/`; this document only says in
+which order it is built and how each step is shown to be done. Nothing here carries a date or a
 duration.
 
 ## Milestones
@@ -167,6 +167,11 @@ Scope:
   deploy account, the route.
 - The first dependency rehearsal: `bin/keel` built with the `dns` module crates pulled from a
   git tag instead of the workspace.
+- The two items M3 left undone, recorded in its exit checklist: `keel.account.delete` as a task
+  walking the `AccountLifecycle` contributions with `keel.account.suspend` and `resume`, which
+  `dns` is the first to need for its `on_delete`; and the per-session cap of the event stream
+  with `SSE_MAX_CLIENTS`, the credential re-check at keep-alive and the `events` group of the
+  conformance suite.
 
 Done when:
 
@@ -187,8 +192,12 @@ Scope:
 - `license`: Ed25519 lease listing products and editions, trial, grace and read-only
   degradation, monotonic time; a product the lease does not list cannot be enabled.
 - `stats`.
-- Renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`.
+- Renderers `report`, `dashboard` in full (`stat` widgets and the widget order in preferences,
+  the `list` slice having arrived with M3), `tree`, `master-detail`, `stream`.
 - phoenix-ui batch 3: code editor, log view, key-value field, transfer list.
+- Password reset through `notify`, moved here from M3 together with an address per principal
+  that no table of the design carries yet and a delivery to one recipient the channels of M3 do
+  not make; `panel` is the first product whose users reach the panel without an operator at hand.
 - The bundle `panel`: `hosting-users`, `hosting-web` (nginx, php-fpm), `hosting-mail`,
   `hosting-db`, `hosting-ftp`, `hosting-ssl` (ACME), `hosting-backup`, `hosting-services`;
   `dns-local` and `dns-peer` as the two sides of its bridge to `dns`; the file manager and the
@@ -396,7 +405,8 @@ first implementation. The `Secret` type. `keel_sdk::system`, `#[doc(hidden)]`, w
 **Touches.** `crates/sdk/`, `crates/sdk-probe/`, `hack/check-deps.sh`.
 
 **Out of scope.** Proc-macros and a derive for `ui`; `HostExecutor` (it lives in
-`keel_host::api`); `LimitDef` and `check_limit` (M4); `AccountLifecycle` (M3); the contribution
+`keel_host::api`); `LimitDef` and `check_limit` (M4); `AccountLifecycle` (planned for M3, left
+undone there, see the M3 exit checklist); the contribution
 types owned by system modules (`SettingDef`, `CronJob`, and the rest of the `pub mod api` list);
 plugin-facing types.
 
@@ -438,7 +448,7 @@ step 10 that had been planned to do it.
 **Touches.** `crates/kernel/` (config, storage, migrations), `crates/kernel/migrations/`.
 
 **Out of scope.** Running module migrations (step 5), the pre-update dump, `schema prune`,
-`ConfigSection` (M1), `tls` and `trusted_proxies` beyond parsing (M3), backups (M4).
+`ConfigSection` (M1), `tls` and `trusted_proxies` beyond parsing (M3, done by step 9), backups (M4).
 
 **Acceptance.**
 
@@ -510,7 +520,8 @@ audit event, list execution).
 
 **Out of scope.** The `audit` module (M1) — only the in-process event exists; outbox delivery
 (M3, M6); the token scope guard (M1); the feature guard (M4); `check_limit` (M4); the batch
-threshold turning a call into a task, `keel.export` and rate limiting (M3).
+threshold turning a call into a task, `keel.export` and rate limiting (M3, done by steps 2a, 7b
+and M1 step 5a).
 
 **Acceptance.**
 
@@ -553,7 +564,8 @@ from the kernel migration of step 4, so that the M6 functions land additively.
 **Out of scope.** `keel.account.upsert` and `keel.principal.upsert` by `(origin, external_id)`
 and the `keel.account.*` / `keel.principal.*` events through the outbox (M6, where the design
 places them); `keel.account.delete` as an action that runs as a task walking
-`AccountLifecycle`, and `suspend` / `resume` (M3, when `tasks` exists); `keel.setup.admin`
+`AccountLifecycle`, and `suspend` / `resume` (planned as M3 step 2b, left undone there, see the M3
+exit checklist); `keel.setup.admin`
 (M4, with `install.sh` and the one-time key); N:M membership (`keel_membership`); limits (M4).
 
 **Acceptance.**
@@ -733,8 +745,9 @@ constants, schema name, enabled set in the loader, i18n, menu, boot, meta-versio
 `keel.product.*`), `crates/keel/` (reading the enabled set), `contracts/fixtures/`.
 
 **Out of scope.** `ManifestPatch` and white-label by hostname (`settings`, M2); dashboard
-widgets, problems and license state (M3, M5); custom views in `views` (M2); OwnLate export at
-build time and `keel-dev i18n missing` in CI (deferred from M2 to M3); the icon check against
+widgets, problems and license state (M3 step 4a, M5); custom views in `views` (M2); OwnLate export
+at build time and `keel-dev i18n missing` in CI (deferred from M2 to M3, done by M3 step 10); the
+icon check against
 `contracts/icons.json` (M2 step 11c); the lease check
 in `keel.product.enable` (M5); the restart after enable or disable, `--switch-remote` and the
 kernel learning the carried set from a running installation (M4); `bridges` (M5).
@@ -909,12 +922,12 @@ Five remarks apply to the whole breakdown.
 - Anything a system module needs from the kernel that the public SDK does not expose goes into the
   hidden, semver-exempt `keel_sdk::system`, and the kernel implements it. Each step names the
   additions it makes there; the kernel keeps importing none of the modules.
-- The installation listens on plain HTTP until TLS arrives in M3, while the session cookie is
-  `__Host-keel_session` and carries `Secure` from its first version, as the design fixes. The
-  clients of M1 — the testkit, `hack/prove-binary.sh`, `keel-conformance` — keep and return the
-  cookie themselves; a browser is not a client before M2.
-- There is no `trusted_proxies` before M3, so the client address of a request is the peer address of
-  its TCP connection, which the HTTP transport starts recording in step 1a.
+- The installation listens on plain HTTP until TLS arrives in M3 (done by M3 step 9b), while the
+  session cookie is `__Host-keel_session` and carries `Secure` from its first version, as the
+  design fixes. The clients of M1 — the testkit, `hack/prove-binary.sh`, `keel-conformance` — keep
+  and return the cookie themselves; a browser is not a client before M2.
+- There is no `trusted_proxies` before M3 (done by M3 step 9c), so the client address of a request
+  is the peer address of its TCP connection, which the HTTP transport starts recording in step 1a.
 - Rate limits, lockouts and second-factor attempts are counted in the process's memory, not in a
   table: a failed `auth.login` is a failed call whose transaction rolls back, so a counter the
   handler wrote would vanish with it, and a background writer arrives with `tasks` in M3. The
@@ -1465,7 +1478,8 @@ counters of the whole-breakdown remark.
 lockout pair and the counters).
 
 **Out of scope.** The setting definitions (step 5b) and their resolution (step 6a); request limits
-beyond guest calls and `sse_max_clients` (M3); geo rules; persistence of counters (M3).
+beyond guest calls and `sse_max_clients` (M3 step 6b, left undone there); geo rules; persistence
+of counters (no milestone fixes it).
 
 **Acceptance.**
 
@@ -1652,7 +1666,8 @@ rule in `list.rs`, `PreferenceSource` under `system`), `crates/kernel/src/dispat
 day-boundary check), `docs/design/10-contracts.md` (the day-boundary sentence).
 
 **Out of scope.** The `widgets` preference, the widget order of the design, which arrives with the
-`DashboardWidget` contributions and the `dashboard` block of `/boot` (M3, as M0 step 10 says); the
+`DashboardWidget` contributions and the `dashboard` block of `/boot` (the contributions in M3 step
+4a, the order with the dashboard renderer of M5); the
 preference screens of the shell (M2).
 
 **Acceptance.**
@@ -1772,7 +1787,7 @@ note of M0 step 1), `docs/design/05-modules.md` (the testkit paragraph).
 **Goal.** `crates/conformance` (package `keel-conformance`, a binary), a black-box client of the
 started binary typed with `keel-types` and nothing else of the workspace, on `reqwest` with rustls;
 it keeps the session cookie itself, because a standards-following cookie store does not return a
-`Secure` cookie over the plain HTTP the binary listens on until M3. It takes `--url`, the
+`Secure` cookie over the plain HTTP the binary listened on until M3 step 9b. It takes `--url`, the
 credentials of an admin, and the login of a user in another account, prints one line per check and
 exits non-zero on any failure. The skeleton checks: `/healthz` and `/readyz` bodies; `/api/v1/boot`
 as a guest (`principal: null`, the platform group only, `meta` equal to the `ETag`, `304` on
@@ -1889,7 +1904,8 @@ Seven remarks apply to the whole breakdown.
   design system, so the four gaps of batch 1 close in step 5, which lives in the globalart monorepo;
   step 6a is its first consumer and starts with the pin.
 - The frontend is a browser client of the M1 kernel, which listens on plain HTTP until TLS arrives
-  in M3, while the session cookie is `__Host-keel_session` with `Secure`. A browser accepts such a
+  in M3 (done by M3 step 9b, which retired the localhost rule of this remark), while the session
+  cookie is `__Host-keel_session` with `Secure`. A browser accepts such a
   cookie on plain HTTP from `localhost` and `127.0.0.1` alone, which is where Playwright,
   `hack/e2e.sh` and the demo through an SSH port forward run; any other plain-HTTP origin gets no
   session before M3, and the plan says so rather than weakening the cookie. The client sends no CSRF
@@ -2129,32 +2145,31 @@ value emits `metaChanged`, on which `KeelDescriptors` drops its cache and the sh
 valid, emits `unauthenticated` once per burst, which the shell of step 8b turns into the login
 route; every other error envelope is returned as it is, a function's own `401` such as
 `auth.error.credentials` and `403` `keel.error.cross_site` included, since the browser and the
-kernel own that check. Retries are the design's rule: a call
-that carries an idempotency key is retried once on a network failure without a response, a call
-without one never. `KeelBoot.load()` fetches `GET /api/v1/boot` and keeps the payload as signals —
-`principal`, `products`, `brand`, `menu`, `views`, `features`, `meta` — sending `If-None-Match` only
-for a refetch inside one page life; `KeelDescriptors.get(func)` fetches
-`GET /api/v1/functions/{func}` and `list()` the index, cached in memory under the meta version;
-`KeelI18n.load(lang)` fetches `GET /api/v1/i18n?lang=` and exposes `t(key, params)` through the
-helpers of `/meta`, the catalogue's `ETag` kept for the same refetch rule. `KeelAuth` wraps the
-login functions of `crates/system/src/auth` by their real shapes: `login({ login, password })`
-answers `{ state: "authenticated", principal }` or `{ state: "totp", challenge }`,
-`verifyTotp({ challenge, code })`, `redeemKey({ key })` answering
-`{ redirect, principal, issuedBy }`, `logout()`, `su({ principal })` and `suExit()`, each followed
-by a boot reload. The list adapter is `listFetch(func, scope)` answering a `PhxDataTableFetch<Row>`:
-it maps `PhxDataTableQuery { page, pageSize, search, sort, filters }` onto `ListQuery { page,
-pageSize, search, sort: { key, dir }, filters: [{ key, value }], scope }`, drops the table's
-`offset` and `limit`, which are derived, calls the function and maps `Page { data, total, totals }`
-onto `{ data, total }`, keeping `totals` on a companion signal for the footer; it posts, since `GET`
-is permitted for lists and not required. `KeelDates` converts the wire's RFC 3339 through the
-principal's `tz` from `/boot` with `Intl.DateTimeFormat` and produces the bare `YYYY-MM-DD` of a
-date filter in that zone, the client side of the day-boundary rule of M1. In-flight calls are
-counted into `PhxGlobalProgressService`. The event stream is a stub, since the kernel serves none
-before M3: `KeelEvents.subscribe()` opens an `EventSource` on the path the token `KEEL_EVENTS_PATH`
-names, `/api/v1/events` as the plan's provisional value for M3 to confirm, with credentials,
-dispatches frames by type into `taskProgress$`, `notification$`, `dataInvalidate$` and
-`metaInvalidate$`, reconnects with a backoff doubling from one second to thirty and relies on the
-browser to resend `Last-Event-ID`; against the M1 kernel the route answers `404`, the stub stays
+kernel own that check. Retries are the design's rule: a call that carries an idempotency key is
+retried once on a network failure without a response, a call without one never. `KeelBoot.load()`
+fetches `GET /api/v1/boot` and keeps the payload as signals — `principal`, `products`, `brand`,
+`menu`, `views`, `features`, `meta` — sending `If-None-Match` only for a refetch inside one page
+life; `KeelDescriptors.get(func)` fetches `GET /api/v1/functions/{func}` and `list()` the index,
+cached in memory under the meta version; `KeelI18n.load(lang)` fetches `GET /api/v1/i18n?lang=` and
+exposes `t(key, params)` through the helpers of `/meta`, the catalogue's `ETag` kept for the same
+refetch rule. `KeelAuth` wraps the login functions of `crates/system/src/auth` by their real shapes:
+`login({ login, password })` answers `{ state: "authenticated", principal }` or `{ state: "totp",
+challenge }`, `verifyTotp({ challenge, code })`, `redeemKey({ key })` answering `{ redirect,
+principal, issuedBy }`, `logout()`, `su({ principal })` and `suExit()`, each followed by a boot
+reload. The list adapter is `listFetch(func, scope)` answering a `PhxDataTableFetch<Row>`: it maps
+`PhxDataTableQuery { page, pageSize, search, sort, filters }` onto `ListQuery { page, pageSize,
+search, sort: { key, dir }, filters: [{ key, value }], scope }`, drops the table's `offset` and
+`limit`, which are derived, calls the function and maps `Page { data, total, totals }` onto `{ data,
+total }`, keeping `totals` on a companion signal for the footer; it posts, since `GET` is permitted
+for lists and not required. `KeelDates` converts the wire's RFC 3339 through the principal's `tz`
+from `/boot` with `Intl.DateTimeFormat` and produces the bare `YYYY-MM-DD` of a date filter in that
+zone, the client side of the day-boundary rule of M1. In-flight calls are counted into
+`PhxGlobalProgressService`. The event stream is a stub, since the kernel serves none before M3 (the
+real subscription is M3 step 12): `KeelEvents.subscribe()` opens an `EventSource` on the path the
+token `KEEL_EVENTS_PATH` names, `/api/v1/events` as the plan's provisional value for M3 to confirm,
+with credentials, dispatches frames by type into `taskProgress$`, `notification$`, `dataInvalidate$`
+and `metaInvalidate$`, reconnects with a backoff doubling from one second to thirty and relies on
+the browser to resend `Last-Event-ID`; against the M1 kernel the route answers `404`, the stub stays
 quiet at backoff pace and reports `closed`, and the list renderer of step 7d is written against
 these streams now so that M3 changes the kernel alone. `@globalart/keel/testing` gains its first
 member here: `KeelMockClient`, the `KeelClient` over handed fixtures — a `boot` payload,
@@ -2170,10 +2185,11 @@ and its spec. Kernel routes consumed: `GET /api/v1/boot`, `GET /api/v1/functions
 `/api/v1/events`.
 
 **Out of scope.** `keel.export` and the export button (the kernel gains the function with the row
-threshold in M3, where the scope line names them, and step 12 records the deferral against the
-`/client` row of the design); a real event stream, the progress modal and the notification centre
-(M3); the login route and what the shell does on `unauthenticated` (step 8b); a browser session on a
-`Bearer` token; the dump loader of the mock client and the principal fixtures (step 11d).
+threshold in M3, where the scope line names them, done by M3 steps 7b and 14a, and step 12 records
+the deferral against the `/client` row of the design); a real event stream, the progress modal and
+the notification centre (M3); the login route and what the shell does on `unauthenticated` (step
+8b); a browser session on a `Bearer` token; the dump loader of the mock client and the principal
+fixtures (step 11d).
 
 **Acceptance.**
 
@@ -2233,8 +2249,9 @@ publishes to `npm-hosted`, where a version is published once.
 library; the tag `phoenix-ui-v0.2.0`. In Keel: nothing; the pin is the first commit of step 6a.
 
 **Out of scope.** Batch 2 (`phx-datetime-field`, `select` and `number` in `PhxCellEditService`,
-`columnOrder`; M3) and batch 3 (M5); any Keel logic in phoenix-ui — the link between selection and
-bulk actions, remote options from a descriptor and validation stay in `@globalart/keel`.
+`columnOrder`; M3 step 11, shipped as `0.3.1`) and batch 3 (M5); any Keel logic in phoenix-ui — the
+link between selection and bulk actions, remote options from a descriptor and validation stay in
+`@globalart/keel`.
 
 **Acceptance.**
 
@@ -2298,8 +2315,8 @@ widget is not fixed by the design and is left to the first product widget.
 
 **Out of scope.** Remote options, recompute, server errors, submit and the `once` panel (step 6b);
 group editing through `ui.multi` and the `{ ids, fields, mask }` request, whose kernel side lands
-with `batch_threshold` in M3, where the scope line names it; the wizard container and navigation
-(step 7e); the object screen (step 7c); a widget of a product.
+with `batch_threshold` in M3, where the scope line names it (done by M3 steps 8a and 14b); the
+wizard container and navigation (step 7e); the object screen (step 7c); a widget of a product.
 
 **Acceptance.**
 
@@ -2514,8 +2531,9 @@ reloads on a matching mask.
 `phx-page-header`, `phx-data-table`, `phx-column-filter`, `phx-selection-bar`, `PhxCellEditService`,
 `PhxTabsService`, `phx-empty`.
 
-**Out of scope.** The export button and `keel.export` (M3, as step 4 says); column order and
-visibility in `settings_pref` (M3, with `columnOrder` of batch 2); the `report`, `dashboard`,
+**Out of scope.** The export button and `keel.export` (M3, as step 4 says; done by M3 step 14a);
+column order and the cell editor in `settings_pref` (M3, with `columnOrder` of batch 2; done by M3
+step 14a); the `report`, `dashboard`,
 `tree`, `master-detail` and `stream` renderers (M5); the wizard renderer and the demo's view library
 (step 7e).
 
@@ -2656,9 +2674,9 @@ replaced at the root after bootstrap.
 routes consumed: `/api/v1/boot`, `/api/v1/i18n`, `/api/v1/call/auth.*`. phoenix-ui: `phx-layout`,
 `phx-sidebar-item`, `phx-logon`, `phx-not-found`, `PHX_LABELS` provided by the bridge.
 
-**Out of scope.** The layout, the sidebar rule, the rail and the user menu (step 8c);
-the settings value form and the security page (step 8d); the notification centre, tasks, problems
-and badges (M3); the `/brand/logo.svg` route and white-label (step 9b); `keel-dev i18n pull` and
+**Out of scope.** The layout, the sidebar rule, the rail and the user menu (step 8c); the settings
+value form and the security page (step 8d); the notification centre, tasks, problems and badges (M3,
+done by step 13); the `/brand/logo.svg` route and white-label (step 9b); `keel-dev i18n pull` and
 `missing`, which need the OwnLate projects for Keel that do not exist yet — they land in M3, where
 the scope line names them with the projects for the core and `demo`, and the freeze's `en` check and
 the `ru` fallback stand until then, which step 12 records against the M0 note that pointed at M2;
@@ -2682,29 +2700,28 @@ loading a product's chunk on its first route (with the module-to-product map, la
 replacing the bare layout of step 8b. After boot the shell feeds `hue` and `chroma` of `/boot.brand`
 to `PhxThemeService`, shows the brand through `phx-brand-logo` with the `logo` path when the brand
 carries one and the translated `name` otherwise, and builds `phx-layout`, `phx-sidebar` and
-`phx-rail` from `menu`: with one product enabled the sidebar shows that product's
-groups followed by the platform group `system`; with several, a `phx-sidebar-group` heading per
-product in the order of `/boot.products`, each with its groups and the platform group last, a
-heading without a visible item omitted; with none, the platform brand and the platform group alone.
-Items are `phx-sidebar-item` with the icon, `t(label)` and the route `/f/<func>`; a `badge.problem`
-stays hidden until `problems` exists. The level label follows the design's rule:
-`product.<id>.level.<level>` while one product is enabled, `keel.level.<level>` otherwise. A
-`phx-banner` in the page area above the screen names the actor's login while `principal.actor` is
-set and offers `auth.su.exit` — `phx-topbar` is the phone chrome `phx-layout` renders itself and
-has no slot the shell could fill; the rail carries the disabled placeholders for notifications,
-tasks and help until M3 and the user menu on `phx-user-menu`: the login and level, the language
-switch between the languages the catalogue serves, `en` and `ru`, writing
-`settings.pref.set { key: "lang", value }` and reloading the catalogue in place; the theme switch,
-`light`, `dark` and `system`, writing
-`settings.pref.set { key: "theme" }` and `PhxThemeService`; "Act as", a dialog searching
-`keel.principal.list` by login and posting `auth.su { principal }`, shown while `auth.su` is in the
-descriptor index; the links to Sessions, Tokens and Security; and Log out. The system screens are
-the descriptors that exist, rendered by steps 7c and 7d through the menu: accounts
-(`keel.account.*`), principals (`keel.principal.*`), products (`keel.product.list` with its
-confirmed row actions `enable` and `disable`), settings (`settings.list`), audit (`audit.list`,
-`audit.get` as the object screen), sessions, tokens, IP rules and grants (the `auth` nodes of step
-8a), and notes (`note.*` under the demo group). A language switch reloads the catalogue in place,
-which the live labels bridge of step 8b follows without being re-provided.
+`phx-rail` from `menu`: with one product enabled the sidebar shows that product's groups followed by
+the platform group `system`; with several, a `phx-sidebar-group` heading per product in the order of
+`/boot.products`, each with its groups and the platform group last, a heading without a visible item
+omitted; with none, the platform brand and the platform group alone. Items are `phx-sidebar-item`
+with the icon, `t(label)` and the route `/f/<func>`; a `badge.problem` stays hidden until `problems`
+exists. The level label follows the design's rule: `product.<id>.level.<level>` while one product is
+enabled, `keel.level.<level>` otherwise. A `phx-banner` in the page area above the screen names the
+actor's login while `principal.actor` is set and offers `auth.su.exit` — `phx-topbar` is the phone
+chrome `phx-layout` renders itself and has no slot the shell could fill; the rail carries the
+disabled placeholders for notifications, tasks and help until M3 (alive since M3 step 13) and the
+user menu on `phx-user-menu`: the login and level, the language switch between the languages the
+catalogue serves, `en` and `ru`, writing `settings.pref.set { key: "lang", value }` and reloading
+the catalogue in place; the theme switch, `light`, `dark` and `system`, writing `settings.pref.set {
+key: "theme" }` and `PhxThemeService`; "Act as", a dialog searching `keel.principal.list` by login
+and posting `auth.su { principal }`, shown while `auth.su` is in the descriptor index; the links to
+Sessions, Tokens and Security; and Log out. The system screens are the descriptors that exist,
+rendered by steps 7c and 7d through the menu: accounts (`keel.account.*`), principals
+(`keel.principal.*`), products (`keel.product.list` with its confirmed row actions `enable` and
+`disable`), settings (`settings.list`), audit (`audit.list`, `audit.get` as the object screen),
+sessions, tokens, IP rules and grants (the `auth` nodes of step 8a), and notes (`note.*` under the
+demo group). A language switch reloads the catalogue in place, which the live labels bridge of step
+8b follows without being re-provided.
 
 **Touches.** `frontend/libs/keel/shell/src/` (`layout/`, `rail/`, `shell.ts`, specs). Kernel routes
 consumed: `/api/v1/call/settings.pref.*`, `/api/v1/call/auth.su`, `/api/v1/call/auth.su.exit`,
@@ -3006,9 +3023,9 @@ and `crates/kernel/src/products.rs` (`modules` on the product rows, its snapshot
 (`modules`), `.github/workflows/ci.yml` (`hack/descriptors.sh` in the job `check` after
 `hack/conformance.sh`).
 
-**Out of scope.** `keel-dev i18n` (M3, step 8b's note); a dump at the `owner` level, which no HTTP
-client reaches; `keel-dev check`, `new-module`, `new-product`, `migrate create` and `docs` (the
-milestones that need them).
+**Out of scope.** `keel-dev i18n` (M3 step 10, step 8b's note); a dump at the `owner` level, which
+no HTTP client reaches; `keel-dev check`, `new-module`, `new-product`, `migrate create` and `docs`
+(the milestones that need them).
 
 **Acceptance.**
 
@@ -3325,7 +3342,8 @@ Eight remarks apply to the whole breakdown.
   of M1 is accepted from any origin, which retires the localhost rule the M1 and M2 breakdowns
   recorded.
 - The frontend keeps its six entry points. `@globalart/phoenix-ui` stays at `0.2.2` until step 11
-  ships batch 2 as `0.3.0`, which step 14a pins as its first commit, being its first consumer; steps
+  ships batch 2 as `0.3.0`, then `0.3.1` (the time picker commits once), which step 14a pins as its
+  first commit, being its first consumer; steps
   12, 13a and 13b build on `0.2.2`, whose `phx-progress-modal`, `phx-drawer` and
   `phx-notification-center` already exist. The three disabled rail placeholders of M2 come alive in
   step 13, as the rail sentence of the design says of M3: tasks in step 13a, notifications and help
@@ -4777,6 +4795,9 @@ repository.
 
 ### 11. phoenix-ui batch 2 in the globalart monorepo and its Nexus release
 
+Done in another repository: batch 2 shipped as `@globalart/phoenix-ui@0.3.0` and then `0.3.1`,
+which fixes the time picker so it commits once; step 14a pins `0.3.1`.
+
 **Goal.** The M3 row of the phoenix-ui batch table of
 [design/08-frontend.md](design/08-frontend.md), made in `platform/frontend/libs/phoenix-ui` of the
 globalart monorepo under its conventions, as batch 1 was in M2, and released as
@@ -4984,10 +5005,10 @@ preference (M5, where step 15 moves the settings sentence that placed the order 
   card and in the centre, the notes item of `alice`'s sidebar carries the badge `1`, and the help
   item opens the about drawer naming the platform version.
 
-### 14a. the phoenix-ui 0.3.0 pin, the export button, column order and the cell editor
+### 14a. the phoenix-ui 0.3.1 pin, the export button, column order and the cell editor
 
 **Goal.** The first consumers of batch 2, opening with the pin: `frontend/libs/keel/package.json`
-and `frontend/package.json` name `@globalart/phoenix-ui` `0.3.0`, the batch of step 11, and
+and `frontend/package.json` name `@globalart/phoenix-ui` `0.3.1`, the batch of step 11, and
 `pnpm-lock.yaml` follows, the one Keel-side change of step 11, as the first commit. The export
 button of the list renderer, the `/client` row of the design: the `export` action of a list, hidden
 while `keel.export` is absent from the descriptor index since M2, becomes a toolbar `phx-dropdown`
@@ -5012,7 +5033,7 @@ stream renderers (M5).
 
 **Acceptance.**
 
-- `pnpm install --frozen-lockfile` resolves `@globalart/phoenix-ui@0.3.0` from Nexus and `pnpm
+- `pnpm install --frozen-lockfile` resolves `@globalart/phoenix-ui@0.3.1` from Nexus and `pnpm
   build` is green on it.
 - `export.spec.ts` with `KeelMockClient`: "the export dropdown lists the formats and posts
   keel.export with the table's query and the visible columns in order"; "a TaskRef answer opens the
@@ -5161,12 +5182,14 @@ mismatch the pass reveals. `README.md` follows the code: the M3 row set to done,
 with `i18n missing`, the layout table with `crates/dev/src/i18n`, and the https addresses.
 `hack/check-docs.sh` carries the list of M3 names — `TaskRunner`, `TaskHandle`, `Caller`,
 `LiveEvents`, `AdvisoryLock`, `OutboxSubscriber`, `ProblemCounter`, `CronJob`, `ProblemSource`,
-`MailTemplate`, `DashboardWidget`, `AccountLifecycle`, `Download`, `DownloadOutcome`, `FileAttrs`,
-`emit_about`, `spawn_self_as_task`, `SSE_MAX_CLIENTS`, `trusted_proxies`, `KeelEvents`, `KeelTasks`,
-`KeelProblems`, `KeelMultiFormComponent` — and asserts each is found under `docs/design/` and under
-`crates/` or `frontend/libs/keel`, that every Rust test the M3 checklist cites is defined, every
-`*.spec.ts` it cites exists, every command it cites exists, and that the README's check list, "How
-we work" and `ci.yml` agree. `@globalart/keel` is published to Nexus at the closing commit's version
+`MailTemplate`, `DashboardWidget`, `Download`, `DownloadOutcome`, `FileAttrs`, `emit_about`,
+`spawn_self_as_task`, `trusted_proxies`, `KeelEvents`, `KeelTasks`, `KeelProblems`,
+`KeelMultiFormComponent` — and asserts each is found under `docs/design/` and under `crates/` or
+`frontend/libs/keel` (`AccountLifecycle` and `SSE_MAX_CLIENTS` stay out of the list until step 2b
+and 6b land, because the check demands each name under `crates/` or `frontend/libs/keel`), that
+every Rust test the M3 checklist cites is defined, every `*.spec.ts` it cites exists, every command
+it cites exists, and that the README's check list, "How we work" and `ci.yml` agree.
+`@globalart/keel` is published to Nexus at the closing commit's version
 by `publish-npm.yml` through `workflow_dispatch`. The demo machine is updated by hand: the musl
 artifact of the closing commit's `build.yml` run is unpacked into `/opt/keel/versions/<version>` on
 `keel-demo`, `bin/current` is switched, `keel.service` is restarted, the first start generates the
@@ -5201,8 +5224,9 @@ anything of M4.
   `a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_test_email`,
   `frontend/e2e/notifications.spec.ts` and the catcher check of `hack/e2e.sh`); and
   `data.invalidate` for own objects alone
-  (`a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admin_receives_every_one`,
-  the `events` check of `hack/conformance.sh`, `frontend/e2e/events.spec.ts`).
+  (`a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admin_receives_every_one`
+  and `frontend/e2e/events.spec.ts`; the `events` group of the conformance suite is left to step 6b,
+  recorded unticked in the checklist).
 - `hack/check-docs.sh` is green in CI with the M3 names and the new specs; the README's check list,
   "How we work" and `ci.yml` agree, `i18n missing` and the fourteen-set matrix included.
 - `@globalart/keel` at the closing commit's version answers `pnpm view` against Nexus with the six
@@ -5218,25 +5242,31 @@ anything of M4.
   1.0; a product's crates may move to their own repository after M7 and are pulled into the
   `keel` build as dependencies ([design/01-overview.md](design/01-overview.md)).
 - One task is one PR-sized change; a task is not split across branches.
-- Verify with the same commands CI runs before pushing, in CI's order, which the README lists.
-  The job `check`: `cargo fmt --all --check`; in `frontend/`, `pnpm install --frozen-lockfile`
-  and `pnpm build`, since `cargo build -p keel-bin` embeds `frontend/dist/shell`; then
-  `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the
-  Postgres server `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p
-  keel-testkit` against the container the testkit starts,
-  `cargo run -p keel-dev -- types --out contracts/schema --check`, `cargo test -p keel-bin
-  --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`,
-  `hack/check-install.sh target/debug/keel`, `hack/conformance.sh target/debug/keel`,
-  `hack/descriptors.sh target/debug/keel`, `pnpm exec playwright install chromium`
-  once and `hack/e2e.sh target/debug/keel`, then `hack/check-test-databases.sh`,
-  `hack/check-deps.sh` and `hack/check-docs.sh`. The job `frontend`, in `frontend/`:
-  `pnpm install --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`,
-  `pnpm lint`, `pnpm format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`,
-  `pnpm exec http-server storybook-static --port 6006 --silent &`,
-  `pnpm exec wait-on http://127.0.0.1:6006/index.json` and `pnpm test-storybook`,
-  `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish --dry-run --no-git-checks`.
-  The job `system` runs the `keel-system` matrix, and the Build workflow the musl release with
-  its size check.
+- Verify with the same commands CI runs before pushing, in CI's order, which the README lists. The
+  job `check`: `cargo fmt --all --check`; in `frontend/`, `pnpm install --frozen-lockfile` and `pnpm
+  build`, since `cargo build -p keel-bin` embeds `frontend/dist/shell`; then `cargo clippy
+  --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the Postgres server
+  `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit` against
+  the container the testkit starts, `cargo run -p keel-dev -- types --out contracts/schema --check`,
+  `cargo test -p keel-bin --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh
+  target/debug/keel`, `hack/check-install.sh target/debug/keel`, `hack/conformance.sh
+  target/debug/keel`, `hack/descriptors.sh target/debug/keel`, `cargo run -p keel-dev -- i18n
+  missing --dump contracts/dump`, `pnpm exec playwright install chromium` once and `hack/e2e.sh
+  target/debug/keel`, then `hack/check-test-databases.sh`, `hack/check-deps.sh` and
+  `hack/check-docs.sh`; the scripts that start the binary speak https to it with the certificate it
+  generates under the site's data directory. The job `frontend`, in `frontend/`: `pnpm install
+  --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`, `pnpm lint`, `pnpm
+  format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`, `pnpm exec http-server
+  storybook-static --port 6006 --silent &`, `pnpm exec wait-on http://127.0.0.1:6006/index.json` and
+  `pnpm test-storybook`, `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish
+  --dry-run --no-git-checks`. The job `system` runs the `keel-system` matrix, `cargo clippy` and
+  `cargo test -p keel-system --no-default-features --features <set>` over fourteen sets — each of
+  the seven modules alone, the crate without each of the M1 modules and without `tasks` in turn, and
+  the three nested prefixes `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against
+  Postgres and the mail catcher, and the Build workflow the musl release with its size check, after
+  `keel-dev i18n pull` when the translation token is present.
+- A gap in `ru` is a red build: `keel-dev i18n missing` runs in the job `check` after
+  `hack/descriptors.sh`, and the dictionaries are the per-language source between pulls.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
 - No comments in code. Explanations go into the commit message or into `docs/`; the only
   exception is a link to an RFC next to the code that implements it.
@@ -5569,3 +5599,279 @@ once it holds, the `keel-demo` ones with the date-free note "confirmed by hand o
       password reset over `keel ctl auth.password.set` when no longer at hand — walked the notes
       list, the form, the wizard and the tag cloud, and switched to `ru` — operator-run; to be
       ticked with the note "confirmed by hand on keel-demo".
+
+## M3 exit checklist
+
+Every ticked item below is checked by CI on `main` — the tests of the workspace, the fourteen-set
+`keel-system` matrix against Postgres and the mail catcher, the build of `keel-bin` with and
+without the `demo` feature after `pnpm build`, `hack/prove-binary.sh`, `hack/check-install.sh`,
+`hack/conformance.sh`, `hack/descriptors.sh`, `keel-dev i18n missing` and `hack/e2e.sh` against
+the built binary over https, the job `frontend` with Jest, the static Storybook and its runner,
+and `hack/check-docs.sh` over this checklist. The items left unticked are run by the operator on
+`keel-demo`, by the owner in a browser, by `publish-npm.yml` and in the translation service; each
+is ticked once it holds, the `keel-demo` ones with the date-free note "confirmed by hand on
+keel-demo". Two items of the M3 scope were planned and left undone; they are listed last, unticked,
+so the milestone that needs them picks them up.
+
+- [x] `note.export` runs as a task, and its progress and log are visible in the browser and in `ctl
+      task.get`:
+      `note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_checkpoint_after_each` and
+      `note_export_ends_with_exported_and_a_download_that_task_download_streams_as_the_callers_csv`
+      in `products/demo/tests/demo/tasks.rs`; the task entrance of the dispatcher in
+      `a_ui_result_task_function_answers_a_task_ref_and_its_handler_runs_in_the_worker`,
+      `a_job_run_by_the_worker_does_not_spawn_a_second_job`,
+      `a_within_hook_vetoes_inside_the_job_and_an_idempotency_key_replays_the_task_ref`,
+      `a_composition_with_a_ui_result_task_function_and_no_runner_fails_freeze_naming_the_function`
+      and `a_secret_field_on_a_ui_result_task_function_fails_freeze` in
+      `crates/kernel/tests/kernel/tasks.rs`; the worker in
+      `a_spawned_job_runs_under_the_stored_principal_and_records_progress_steps_and_log_lines`,
+      `task_progress_frames_of_a_job_arrive_on_the_owners_stream_in_order`,
+      `jobs_of_two_classes_run_concurrently_while_jobs_of_one_class_run_in_order`,
+      `two_kernels_on_one_database_run_one_worker_and_the_second_takes_over_when_the_first_stops`,
+      `task_get_shows_the_last_step_the_log_tail_and_task_cancel_ends_a_paced_job_cancelled`,
+      `task_get_masks_the_secret_fields_of_the_parameters_while_the_job_ran_them_raw` and
+      `the_task_descriptors_match_their_snapshots_and_the_menu_carries_the_node` in
+      `crates/system/tests/system/tasks.rs`; `ctl task.get` reading `done`, `4/4`, the download and
+      one `exported <title>` line per note in `hack/prove-binary.sh target/debug/keel`; the browser
+      in `frontend/e2e/tasks.spec.ts` ("alice exports the notes through the progress modal", "the
+      paced export shows the titles, opens the details and cancels", "the paced export runs to the
+      end and the drawer lists the jobs") through `hack/e2e.sh target/debug/keel`; the modal and the
+      drawer under Jest in `frontend/libs/keel/renderer/src/tasks.spec.ts` ("a TaskRef answer opens
+      the progress modal, frames drive value and status, cancel posts task.cancel and done hands
+      back to the opener", "a result with a download member fetches the download route and hands the
+      blob to the browser", "a failed frame shows the error and the request id", "a modal without
+      frames polls task.get") and `frontend/libs/keel/shell/src/task-drawer.spec.ts`.
+- [x] Cancellation works: `note_export_is_cancelled_between_two_notes_when_paced` in
+      `products/demo/tests/demo/tasks.rs`,
+      `a_cancelled_job_stops_at_its_next_checkpoint_and_ends_cancelled` in
+      `crates/system/tests/system/tasks.rs`, and "the paced export shows the titles, opens the
+      details and cancels" in `frontend/e2e/tasks.spec.ts`.
+- [x] A task with a checkpoint survives a restart:
+      `note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_writes_no_note_twice`
+      in `products/demo/tests/demo/tasks.rs`,
+      `a_job_running_at_stop_is_interrupted_and_a_resumable_one_restarts_from_its_checkpoint` and
+      `stop_lets_a_running_job_reach_its_checkpoint_and_leaves_queued_jobs_for_the_next_start` in
+      `crates/system/tests/system/tasks.rs`; the CI counterpart of `systemctl restart` in
+      `hack/prove-binary.sh target/debug/keel`, which stops `serve` with `SIGTERM` during a paced
+      `note.export`, reads the `interrupted` row with its checkpoint, starts `serve` again and
+      reads `done` from `task.get` with every note written once in the log tail and in the export
+      file. The `systemctl restart` itself on `keel-demo` is part of the operator-run item below.
+- [x] A cron job raises a problem, the problem is visible on the dashboard and reaches an SMTP
+      catcher as an email in the end-to-end test:
+      `an_overdue_todo_raises_note_overdue_for_its_account_after_the_poll_and_a_done_one_clears_it`
+      in `products/demo/tests/demo/problems.rs`;
+      `a_raised_problem_reaches_the_mail_catcher_and_the_test_button_sends_a_test_email` in
+      `crates/system/tests/system/notify_mail.rs` against the mail catcher of `KEEL_TEST_SMTP_URL`;
+      the registry, the poll job and the counters in
+      `raise_is_idempotent_by_key_and_subject_and_clear_closes_the_problem_once`,
+      `a_source_polled_by_the_cron_job_raises_what_it_reports_and_clears_what_it_stops_reporting`,
+      `a_raised_problem_notifies_the_admins_once_counts_in_boot_and_feeds_the_dashboard_widget`,
+      `an_account_scoped_problem_reaches_the_accounts_principals_and_shows_in_their_boot_counts`,
+      `a_notification_frame_arrives_on_the_recipients_stream_when_a_message_is_written` and
+      `notify_message_create_is_refused_over_http_and_the_socket_and_runs_through_the_caller` in
+      `crates/system/tests/system/notify.rs`; the channels and the ladder in
+      `a_message_becomes_a_delivery_per_channel_within_a_second_and_the_cursor_survives_a_restart`,
+      `a_refused_smtp_connection_follows_the_ladder_and_the_fifth_failure_raises_notify_delivery_failed`
+      and
+      `an_unimplemented_channel_kind_is_refused_on_kind_and_the_email_password_is_sealed_and_masked`
+      in `crates/system/tests/system/notify_channels.rs`; the scheduler in
+      `a_job_runs_when_the_clock_passes_its_next_occurrence_and_records_an_ok_run`,
+      `a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded_skipped`,
+      `two_kernels_on_one_database_elect_one_leader_and_the_other_takes_over_after_a_stop`,
+      `a_cron_overrides_entry_replaces_the_contributed_schedule_and_an_unparsable_one_is_ignored`
+      and `cron_job_run_starts_a_job_now_and_answers_conflict_while_it_runs` in
+      `crates/system/tests/system/cron.rs`;
+      `dashboard_widgets_and_problem_counts_come_from_the_contributions_and_stay_empty_without_them`
+      in `crates/kernel/tests/kernel/boot.rs`; the end-to-end walk in `hack/e2e.sh
+      target/debug/keel`, which creates the email channel to the catcher, an overdue todo and runs
+      `ctl cron.job.run id=notify.problems.poll`, checks that the catcher lists the mail whose
+      subject names `note.overdue` from and to the channel's addresses, and runs
+      `frontend/e2e/notifications.spec.ts` ("root sees the problem on the dashboard and in the
+      centre", "the notes item of alice carries the badge and the help item opens the about drawer
+      with the version"); the centre, the badges and the home under Jest in
+      `frontend/libs/keel/shell/src/notifications.spec.ts` and
+      `frontend/libs/keel/shell/src/home.spec.ts`.
+- [x] A user receives `data.invalidate` only for their own objects:
+      `a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admin_receives_every_one`,
+      `a_reconnect_replays_after_last_event_id_and_an_id_outside_the_window_gets_meta_invalidate`,
+      `the_after_query_member_is_read_like_the_header`,
+      `a_guest_is_refused_and_a_bearer_token_gets_a_stream`,
+      `live_frames_reach_the_addressed_principal_and_the_admins`,
+      `live_frames_of_an_account_reach_its_reseller_and_not_a_user_of_another_account` and
+      `every_open_stream_closes_when_the_runtime_drains_so_stop_returns_within_a_second` in
+      `crates/kernel/tests/kernel/events.rs`; the subject of an event in
+      `note_saved_names_the_notes_account_as_its_subject` in `products/demo/tests/demo/note.rs`; the
+      browser in `frontend/e2e/events.spec.ts` ("an edit over the API reaches the open list of its
+      account alone"); the client in `frontend/libs/keel/client/src/events.spec.ts` ("the
+      subscription opens with credentials after a boot with a principal and closes on logout",
+      "frames are dispatched by type and typed, and an unparsable one is dropped and counted", "the
+      last event id is kept and a self-made reconnect passes it as after", "meta.invalidate emits
+      metaChanged, drops the descriptor cache and refetches boot once"). The conformance suite has
+      no `events` group: the stream is covered by the kernel tests and the browser suite, and the
+      group joins the suite with the per-session cap listed below.
+- [x] The outbox is read through one seam in commit order:
+      `outbox_subscriber_answers_events_after_a_seq_with_the_instance_id_and_wakes_a_waiter_on_commit`
+      and
+      `a_transaction_writing_an_event_waits_for_the_earlier_writer_to_commit_so_after_never_skips_a_row`
+      in `crates/kernel/tests/kernel/outbox.rs`; the webhooks consumer in
+      `a_subscription_receives_a_signed_delivery_for_a_matching_event_and_the_signature_verifies`,
+      `an_event_outside_the_masks_or_outside_the_subscribers_scope_creates_no_delivery`,
+      `a_subscription_placed_in_another_account_receives_that_accounts_events_alone`,
+      `a_failed_delivery_follows_the_ladder_and_its_fifth_failure_is_a_problem_a_retry_clears`,
+      `the_consumer_resumes_from_its_cursor_after_a_restart`,
+      `a_private_or_plain_url_is_refused_on_url_unless_webhook_private_targets_is_set`,
+      `the_sender_connects_to_the_address_it_checked_and_not_to_one_the_name_answers_later`,
+      `the_sender_follows_no_redirect` and
+      `a_short_secret_is_refused_on_secret_and_a_generated_one_is_32_bytes` in
+      `crates/system/tests/system/webhooks.rs`,
+      `a_subscription_secret_is_answered_once_sealed_at_rest_and_masked_in_audit` in
+      `crates/system/tests/system/webhooks_secret.rs`, and the `webhook` group of the conformance
+      suite, which subscribes over the wire, receives a signed delivery on a listener of its own and
+      verifies `X-Keel-Signature` within the window, through `hack/conformance.sh
+      target/debug/keel`.
+- [x] `keel.export` with the row threshold, the `download` kind and the export button:
+      `an_export_streams_every_page_under_the_screens_scope_and_strip_with_translated_headers`,
+      `an_export_above_the_row_threshold_answers_a_task_ref_and_writes_the_file_inside_the_job` and
+      `keel_export_of_a_function_the_caller_may_not_call_is_not_found` in
+      `crates/kernel/tests/kernel/export.rs`;
+      `a_download_is_served_and_audited_on_its_raw_route_and_refused_on_the_call_route_and_the_socket`
+      in `crates/kernel/tests/kernel/download.rs`;
+      `a_jobs_stored_file_ends_in_a_download_ref_that_task_download_serves`,
+      `task_download_of_another_accounts_job_or_of_a_job_without_a_file_is_not_found` and
+      `an_export_job_above_the_threshold_ends_in_a_download_ref_that_task_download_serves` in
+      `crates/system/tests/system/tasks_download.rs`; the `export` group of the conformance suite
+      and the export of `note.list` as `root` and as `alice` in `hack/prove-binary.sh
+      target/debug/keel`; the dropdown in `frontend/libs/keel/renderer/src/export.spec.ts` ("the
+      export dropdown lists the formats and posts keel.export with the table’s query and the visible
+      columns in order", "a TaskRef answer opens the progress modal and a file answer is handed to
+      the browser") and "the export button downloads a csv whose header row names the visible
+      columns" in `frontend/e2e/notes.spec.ts`.
+- [x] Group editing through `ui.multi`, the batch threshold and the multi-row form:
+      `a_group_edit_merges_the_masked_fields_over_ui_read_into_every_row_inside_one_transaction`,
+      `a_mask_outside_ui_multi_or_a_field_outside_the_mask_answers_422_on_the_offending_path`,
+      `a_group_edit_with_one_foreign_id_is_not_found_and_changes_nothing`,
+      `a_group_edit_above_the_threshold_becomes_a_job_of_chunks` and
+      `ui_multi_naming_the_key_a_secret_or_an_unknown_field_fails_freeze` in
+      `crates/kernel/tests/kernel/group.rs`;
+      `a_batch_above_the_threshold_becomes_a_job_of_chunks_and_one_at_the_threshold_runs_inline` and
+      `a_batch_with_one_foreign_id_is_not_found_before_any_job_is_spawned` in
+      `crates/kernel/tests/kernel/tasks.rs`;
+      `note_delete_above_ten_ids_becomes_a_task_that_deletes_in_chunks_of_ten` in
+      `products/demo/tests/demo/tasks.rs` and
+      `note_edit_as_a_group_sets_kind_due_and_tags_of_the_selected_notes_and_becomes_a_task_above_ten`
+      in `products/demo/tests/demo/note.rs`; the form in
+      `frontend/libs/keel/renderer/src/multi-form.spec.ts` ("the selection bar offers edit when the
+      form has ui.multi and the modal posts ids, fields and mask for the toggled fields alone", "a
+      422 on mask lands on its row and a GroupResult reloads the table") and "two selected notes are
+      edited as a group to kind todo with a due date" in `frontend/e2e/notes.spec.ts`; column order
+      and the cell editor in `frontend/libs/keel/renderer/src/columns.spec.ts`.
+- [x] The `upload` kind over the raw route and the brand logo as its first upload:
+      `a_multipart_upload_on_its_raw_route_lands_the_file_in_the_parameters_and_the_audit_record`,
+      `a_part_above_max_bytes_or_of_another_type_or_not_utf8_is_refused_on_the_field`,
+      `a_control_file_field_without_x_keel_file_fails_freeze`,
+      `the_call_route_refuses_an_upload_and_the_socket_takes_the_field_inline_under_max_bytes`,
+      `a_cross_site_multipart_post_is_refused_403` and `an_upload_descriptor_carries_its_form_block`
+      in `crates/kernel/tests/kernel/upload.rs`;
+      `a_plain_svg_logo_is_served_for_its_host_and_an_unsafe_one_is_refused_naming_the_reason` and
+      `settings_brand_set_no_longer_takes_a_logo_and_leaves_a_stored_one_in_place` in
+      `crates/system/tests/system/settings_brand.rs`;
+      `the_demo_logo_is_filled_with_the_platform_palette` in `products/demo/src/lib.rs`; the logo
+      upload over `ctl` in `hack/prove-binary.sh target/debug/keel`; the file control and the
+      multipart submit in `frontend/libs/keel/forms/src/field.component.spec.ts` and
+      `frontend/libs/keel/forms/src/submit.spec.ts`, the upload in
+      `frontend/libs/keel/client/src/client.spec.ts`, the scoped labels in
+      `frontend/libs/keel/shell/src/labels.spec.ts`, and "the white-label screen says white-label by
+      host name, hue and chroma say from the product when empty, an uploaded svg logo shows after a
+      reload and a scripted one is refused on the field" in `frontend/e2e/system.spec.ts`. The SVG
+      hardening of step 8c beyond the script check (DTD, namespaces, `animate`, event attributes,
+      style urls) is not built and waits for the first product that takes a logo from a customer.
+- [x] TLS from the first start and `trusted_proxies`:
+      `bind_tls_serves_healthz_to_a_client_trusting_the_certificate_and_refuses_one_that_does_not`
+      and `bind_tls_stops_within_its_grace_with_a_stream_open` in
+      `crates/kernel/tests/kernel/tls.rs`;
+      `the_runtime_listens_on_tls_alone_and_a_plain_request_gets_no_http_answer` in
+      `crates/keel/tests/runtime.rs`; the fingerprint in the log and no key in it in
+      `the_binary_enables_demo_serves_and_answers_ctl_and_http_with_the_envelope` in
+      `bin/keel/tests/binary.rs`;
+      `x_forwarded_for_is_honoured_from_a_trusted_proxy_alone_and_the_rightmost_untrusted_entry_wins`,
+      `a_same_site_post_is_admitted_by_the_forwarded_host_behind_a_trusted_proxy_alone` and
+      `a_malformed_forwarded_for_or_host_falls_back_to_the_peer_and_the_host_header` in
+      `crates/kernel/tests/kernel/http.rs`,
+      `x_forwarded_host_from_a_trusted_proxy_selects_the_brand_patch` in
+      `crates/system/tests/system/settings_brand.rs`; every script of `hack/` speaking https with
+      the generated certificate, the installer's `--cacert` wait and its report asserted by
+      `hack/check-install.sh target/debug/keel`, and the browser suite pinning the certificate's
+      SPKI hash in `hack/e2e.sh target/debug/keel`.
+- [x] The OwnLate projects are recorded and `keel-dev i18n` holds the dictionaries:
+      `extract_derives_the_keys_of_a_dump_by_the_key_table_and_keeps_its_explicit_ones`,
+      `missing_reports_a_key_absent_from_ru_and_accepts_a_derived_key_the_shared_fallback_satisfies`,
+      `pull_splits_a_release_by_prefix_into_the_dictionaries_and_leaves_a_synced_tree_unchanged`,
+      `pull_fetches_the_translations_map_of_every_project_with_the_token_and_writes_the_dictionaries`
+      and `the_pull_is_resolved_from_the_environment_and_masks_its_token` in `crates/dev/src/i18n/`;
+      `cargo run -p keel-dev -- i18n missing --dump contracts/dump` green in the job `check` over
+      the 883 keys of `en` and `ru`; `contracts/i18n.json` naming the projects `keel-core` and
+      `keel-demo` with their directories and prefixes.
+- [x] `@globalart/phoenix-ui` is pinned at `0.3.1`, batch 2, in `frontend/package.json`,
+      `frontend/libs/keel/package.json` and `frontend/products/demo/package.json`, resolved by
+      `pnpm install --frozen-lockfile` from Nexus; the first consumers are the export dropdown, the
+      column order, the cell editor and the multi-row form above.
+- [x] The frontend job is green: `pnpm install --frozen-lockfile`, `pnpm generate` followed by
+      `git diff --exit-code`, `pnpm lint`, `pnpm format`, `pnpm test` (63 suites, 297 tests),
+      `pnpm build`, `pnpm build-storybook`, `pnpm test-storybook` (6 story files, 27 stories),
+      `node tools/stamp.mjs` and `pnpm publish --dry-run --no-git-checks` against Nexus; the
+      custom-views share from `hack/descriptors.sh target/debug/keel` is `demo 1/9` and
+      `composition 3/83`, `frontend/apps/shell/views.json` unchanged since M2.
+- [x] `cargo fmt --all --check` is green.
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` is green.
+- [x] `cargo test --workspace` is green against Postgres, `env -u KEEL_TEST_DATABASE_URL cargo test
+      -p keel-testkit` against the container, `cargo test -p keel-bin --no-default-features` without
+      the demo, `cargo test -p keel-system --no-default-features --features <set>` for each of the
+      fourteen sets of the matrix
+      (`tasks_alone_boots_with_its_tables_holds_its_lock_and_answers_task_list_on_the_socket`,
+      `cron_alone_boots_with_its_table_holds_its_lock_and_answers_cron_job_list_on_the_socket`,
+      `notify_alone_boots_with_its_tables_its_poll_job_and_answers_its_lists_on_the_socket` and
+      `webhooks_alone_boots_with_its_tables_and_answers_its_lists_on_the_socket` for the modules
+      alone), and `hack/check-test-databases.sh` finds no database left behind.
+- [x] `hack/check-deps.sh` is green: the demo depends on `keel-system` for `notify::api` and
+      `task` through the facade alone, next to the M0, M1 and M2 rules.
+- [x] `hack/check-docs.sh` is green: every M3 name it carries is found under `docs/design/` and
+      under `crates/` or `frontend/libs/keel`, every Rust test this checklist cites is defined,
+      every `*.spec.ts` it cites exists under `frontend/`, every command it cites exists, and the
+      README's check lists, the "How we work" section and `ci.yml` agree, `i18n missing` and the
+      fourteen-set matrix included.
+- [ ] The OwnLate projects `keel-core` and `keel-demo` exist in the translation service, seeded
+      from `keel-dev i18n extract`, their ids set as the repository variables
+      `KEEL_OWNLATE_PROJECT_CORE` and `KEEL_OWNLATE_PROJECT_DEMO` and the token as the secret
+      `KEEL_OWNLATE_TOKEN`, after which the Build workflow's `keel-dev i18n pull` leaves the
+      committed dictionaries unchanged — operator-run; until then the dictionaries are edited in
+      the repository and `i18n missing` holds them complete.
+- [ ] `@globalart/keel` at the closing commit's version is published to Nexus by `publish-npm.yml`
+      through `workflow_dispatch`, after which the `exports` of the published package, read from
+      Nexus with pnpm's `view`, name the six entry points and the nested `testing/playwright` —
+      operator-run; the dry run above is CI's rehearsal.
+- [ ] On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's
+      version, the first start generated the certificate under `/var/lib/keel/tls` and logged its
+      fingerprint, and `/readyz` answers `ready` over https with that certificate, after the musl
+      artifact of the closing commit's Build run was unpacked into `/opt/keel/versions/<version>`,
+      `bin/current` switched and `keel.service` restarted; a paced `note.export` interrupted by
+      `systemctl restart keel` finishes with every note written once — operator-run; to be ticked
+      with the note "confirmed by hand on keel-demo". The gateway in front of the host speaks TLS
+      to the listener through its backend policy.
+- [ ] The owner has opened `https://<host>:<port>/` of `keel-demo` directly, accepted the
+      certificate by its fingerprint, logged in, run `note.export` and watched the modal and the
+      drawer, opened the notification centre, the dashboard and the about drawer, uploaded a logo
+      for the machine's host name, and confirmed the notes item badge after
+      `keel ctl cron.job.run id=notify.problems.poll` — operator-run; to be ticked with the note
+      "confirmed by hand on keel-demo".
+- [ ] Left undone in M3, planned as step 2b: `keel.account.delete` as a task walking the
+      `AccountLifecycle` contributions with a checkpoint per module, `keel.account.suspend` and
+      `keel.account.resume`; `notify` and `webhooks` expose `drop_account` in the shape of an
+      `on_delete` handler, tested by `deleting_an_account_drops_its_messages_and_problems` in
+      `crates/system/tests/system/notify.rs` and
+      `deleting_an_account_drops_its_subscriptions_and_deliveries` in
+      `crates/system/tests/system/webhooks.rs`, and the contribution wires them when the step
+      lands, with the first milestone that needs an account deleted.
+- [ ] Left undone in M3, planned as step 6b: the per-session cap of the event stream and the
+      platform constant `SSE_MAX_CLIENTS`, the re-check of the credential at keep-alive,
+      `meta.invalidate` on a permission change and the `events` group of the conformance suite;
+      the replay window, the scope filter and `Last-Event-ID` of step 6a stand as built.

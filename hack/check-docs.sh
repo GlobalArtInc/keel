@@ -46,6 +46,30 @@ M2_NAMES = {
     "KeelMockClient": "export class KeelMockClient",
 }
 
+M3_NAMES = {
+    "TaskRunner": "pub trait TaskRunner",
+    "TaskHandle": "pub struct TaskHandle",
+    "Caller": "pub trait Caller",
+    "LiveEvents": "pub trait LiveEvents",
+    "AdvisoryLock": "pub trait AdvisoryLock",
+    "OutboxSubscriber": "pub trait OutboxSubscriber",
+    "ProblemCounter": "pub trait ProblemCounter",
+    "CronJob": "pub struct CronJob",
+    "ProblemSource": "pub struct ProblemSource",
+    "MailTemplate": "pub struct MailTemplate",
+    "DashboardWidget": "pub struct DashboardWidget",
+    "Download": "pub struct Download {",
+    "DownloadOutcome": "pub enum DownloadOutcome",
+    "FileAttrs": "pub struct FileAttrs",
+    "emit_about": "pub fn emit_about",
+    "spawn_self_as_task": "pub async fn spawn_self_as_task",
+    "trusted_proxies": "trusted_proxies",
+    "KeelEvents": "export class KeelEvents",
+    "KeelTasks": "export class KeelTasks",
+    "KeelProblems": "export class KeelProblems",
+    "KeelMultiFormComponent": "export class KeelMultiFormComponent",
+}
+
 CODE_ROOTS = {"crates": ["crates"], "crates/ or frontend/libs/keel": ["crates", "frontend/libs/keel"]}
 
 
@@ -72,6 +96,7 @@ def check_names(milestone, names, roots_label):
 
 check_names("M1", M1_NAMES, "crates")
 check_names("M2", M2_NAMES, "crates/ or frontend/libs/keel")
+check_names("M3", M3_NAMES, "crates/ or frontend/libs/keel")
 
 
 def section(text, heading):
@@ -163,6 +188,7 @@ def check_checklist(milestone, test_roots):
 
 check_checklist("M1", ["crates", "products"])
 check_checklist("M2", ["crates", "products", "bin"])
+check_checklist("M3", ["crates", "products", "bin"])
 
 with open("README.md") as handle:
     readme = handle.read()

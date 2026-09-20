@@ -99,8 +99,13 @@ held on a pinned connection for the whole migration step of a boot (kernel catal
 the modules), `keelledg` is the per-catalogue lock sqlmig takes underneath for the kernel ledger,
 `keelschm` is the transaction lock around the creation of the schema `keel`, and `keelinst`
 the transaction lock around the first-start rows of `keel_kv` and around every write of the
-enabled product set by `keel product enable|disable`. Advisory locks are scoped to a database;
-the installation's keys are the only Keel keys in `keel`.
+enabled product set by `keel product enable|disable`, `keeltask` is the session lock the task
+worker holds while it is the leader, `keelcron` the session lock of the cron leader, and
+`keeloutb` the transaction lock the dispatcher takes before the first outbox row of a call, so
+that the transactions that write events commit in `seq` order. A module holds a session lock
+through the hidden `AdvisoryLock` seam of the SDK, `take(key)` answering a guard on a pinned
+connection that releases the lock when dropped; a module never calls `pg_advisory_lock` itself.
+Advisory locks are scoped to a database; the installation's keys are the only Keel keys in `keel`.
 
 ## Identifiers, time and JSON
 
@@ -117,7 +122,7 @@ the installation's keys are the only Keel keys in `keel`.
 
 Migrations are run by sqlmig 0.2 as it is; the migrator is not extended. Each module embeds its
 own migrations directory and keeps its own ledger table `keel_migration_<module>`
-(`keel_migration_auth`, `keel_migration_tasks`); sqlmig already accepts the ledger table name as a
+(`keel_migration_auth`, `keel_migration_task`); sqlmig already accepts the ledger table name as a
 parameter, which is why one ledger per module needs no change in the migrator. The name is fixed
 when the module's static is built, `migrator::embed!(...).table("keel_migration_dns")`, so the
 module names its own ledger and the loader verifies at start that it is `keel_migration_<id>`,
@@ -311,9 +316,15 @@ event shape in [07-ecosystem.md](07-ecosystem.md)), `at timestamptz`, `actor_jso
 `subject_json jsonb`, `data_json jsonb`, `created_at timestamptz`.
 
 A row is inserted inside the transaction of the call that produced the event, so an event exists
-exactly when its change is committed. Delivery to webhooks, peer products and notifications reads
-the outbox at least once. Every consumer keeps its own cursor over `seq`; retention never discards
-a row that some consumer has not yet delivered. `seq` is also the `Last-Event-ID` of the SSE
+exactly when its change is committed. `seq` is an identity value assigned at insert; before its
+first insert the dispatcher takes the transaction lock `keeloutb`, so the transactions that write
+events commit in `seq` order and a consumer that has read past a `seq` has seen every row below
+it. Delivery to webhooks, peer products and notifications reads the outbox at least once, through
+the kernel's hidden `OutboxSubscriber` — `after(seq, limit)` for the rows past a cursor and
+`latest()` for the highest committed `seq` — never by SQL on the table. Every consumer keeps its
+own cursor over `seq` (`notify_cursor`, `webhook_cursor`, the browser stream's in memory per
+connection); retention never discards a row that some consumer has not yet delivered, and nothing
+discards a row before the operator plane of M4. `seq` is also the `Last-Event-ID` of the SSE
 stream, which lets a client catch up after a reconnect ([08-frontend.md](08-frontend.md)). Event
 shapes are in [07-ecosystem.md](07-ecosystem.md).
 

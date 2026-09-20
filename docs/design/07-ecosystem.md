@@ -270,15 +270,22 @@ the pull feed:
 
 `module` names the module that emitted the event; together with the prefix of `type` and
 `instanceId` it identifies the source. An installation carries several products, so an event names
-no product.
+no product. `subject` names the row the event is about, and is what the webhook consumer and the
+browser stream scope an event by: a handler names it through `call.emit_about(type, subject,
+&data)`; a plain `call.emit` gets a subject the dispatcher derives — `kind` is the function name
+without its verb, `id` the key parameter when it is a single id, `accountId` the account the
+handler last resolved through `resolve_account`, the caller's account when it resolved none — and
+a call whose key is not a single id, a create or a batch over `ids`, gets no derived subject, so
+its events reach admins alone unless the handler names one.
 
 There are two ways for an event to reach a peer.
 
 **Webhooks.** The `webhooks` module is the single owner of outbound deliveries, for peers and for
 user integrations alike; the subscription for a peer is created at pairing, a user-level
 subscription is created from the UI, and the signature format is the same. A delivery is signed
-with HMAC-SHA256 over the timestamp and the body using the link's secret; the sketched acceptance
-window for the timestamp is ±300 s:
+with HMAC-SHA256 over the timestamp and the body using the link's secret; the acceptance window
+for the timestamp is ±300 s, `t` being the time of the attempt so a retry carries a new signature,
+and the check compares in constant time:
 
 ```
 POST https://bill.example/api/v1/x/peers/hook
@@ -289,9 +296,10 @@ X-Keel-Signature: t=1757671200,v1=<hmac_sha256(secret, t + "." + body)>
 
 Failed deliveries are retried at 1m, 5m, 30m, 2h and 12h; after the last attempt the delivery is
 dead-lettered and surfaced as a problem in the `notify` registry ([05-modules.md](05-modules.md)).
-The subscription and delivery state live in the webhooks module's own tables; a subscription is
-sketched as `(url, secret, events, account_id?)` and a delivery log with `attempt`, `next_at`,
-`status` and `last_error`.
+The subscription and delivery state live in the webhooks module's own tables,
+`webhook_subscription` (`url`, the sealed `secret`, the event masks, `account_id`, `enabled`) and
+`webhook_delivery` with `attempt`, `next_at`, `status` and `last_error`; `X-Keel-Peer` joins the
+headers at pairing in M6, a user subscription carries `X-Keel-Event-Id` and `X-Keel-Signature`.
 
 **Pull feed.** An instance behind NAT, which cannot receive a webhook, reads the same outbox from
 the other side:
@@ -303,8 +311,8 @@ GET /api/v1/x/peers/feed?after=8812&types=dns.zone.*&limit=500
 
 `after` is the outbox `seq`; the consumer stores the last `seq` it processed and asks for what
 follows. The feed lives on its own path so that it is not confused with the browser event
-stream, which is filtered per principal and resumed by `Last-Event-ID`
-([08-frontend.md](08-frontend.md)); the design does not name the path of the browser stream.
+stream at `GET /api/v1/events`, which is filtered per principal and resumed by `Last-Event-ID`
+([08-frontend.md](08-frontend.md), [10-contracts.md](10-contracts.md)).
 
 **Inbox.** Whichever way an event arrives, the receiver deduplicates it by event `id` in
 `peer_inbox(event_id, peer_id, received_at, processed_at)`: an insert that conflicts is ignored, the

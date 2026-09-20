@@ -50,7 +50,7 @@ cross-bumping six to eight separate npm packages. The whole library is released 
 | Entry point                | Contents                                                          | Angular |
 |----------------------------|-------------------------------------------------------------------|---------|
 | `@globalart/keel/meta`     | wire types, condition interpreter, client-side validation         | no      |
-| `@globalart/keel/client`   | `call()`, list adapter, export (M3), SSE, auth and idempotency, dates | yes  |
+| `@globalart/keel/client`   | `call()`, list adapter, download and upload, SSE, notifications and problems, auth and idempotency, dates | yes  |
 | `@globalart/keel/forms`    | schema + `ui` to a reactive form; pages, conditions, wizard       | yes     |
 | `@globalart/keel/renderer` | renderers by `kind`, the object renderer; view registry with generic fallback | yes |
 | `@globalart/keel/shell`    | `bootstrapKeel()`, layout, navigation, login, theme, system screens | yes   |
@@ -96,16 +96,32 @@ The HTTP and SSE client.
   `PhxDataTableFetch`. `ListQuery` and `Page` are one type for every `kind: list` and coincide with
   the contract of `phx-data-table`: `page`, `pageSize`, `search`, a single `sort`, `filters[]` with
   `key`, `op`, `value`, and `scope`; the response carries `data`, `total` and optional `totals`.
-- Export. `role: export` on a list is a toolbar button in the renderer; the client calls the generic
-  `keel.export { func, query, columns, format }`, which streams every page through the same
-  `ListSource` with the same scoping and stripping as the list itself. Above the row threshold the
-  server turns the export into a task whose result is a download. `keel.export` and the row
-  threshold arrive with M3, as its scope line names them; until then the button stays hidden,
-  since the function is absent from the descriptor index.
-- SSE. One event stream with the events `task.progress`, `notification`, `data.invalidate` and
-  `meta.invalidate`. `Last-Event-ID` is the outbox sequence number, so a reconnect catches up
-  without a gap. The server filters the stream by `ScopePolicy` and principal: a `user` receives
-  `data.invalidate` only for objects of their own account.
+- Export. `role: export` on a list is a toolbar dropdown of the action's `formats` in the
+  renderer, `csv` when it names none; the client posts the generic `keel.export { func, query,
+  columns, format }` to its raw route through `download(func, params)`, with the table's current
+  search, sort, filters and scope as the query and the visible columns in their order. A file is
+  handed to the browser; a `TaskRef` envelope on the raw route, the server's answer above the row
+  threshold, opens the progress modal, whose result carries the `download` the client then
+  fetches; an error envelope becomes a toast. A composition without `keel.export` hides the
+  button, since the function is absent from the descriptor index. `upload(func, params, files)`
+  posts the multipart body of an `upload` function to its raw route, a `params` part and one part
+  per file field, with the `Idempotency-Key` in the header ([10-contracts.md](10-contracts.md)).
+- SSE. `KeelEvents` opens `GET /api/v1/events` with credentials once `/boot` answers a principal,
+  closes it when the boot loses one and reopens it when the principal changes, so the stream
+  always belongs to the principal the shell shows. The four frames — `task.progress`,
+  `notification`, `data.invalidate`, `meta.invalidate` — are typed from the wire types and a
+  frame that does not parse is dropped and counted. The last event id is kept from every frame;
+  the browser resends it as `Last-Event-ID` on its own reconnects, and a reconnect the client
+  makes after a closed stream, with a doubling backoff, opens `?after=<id>`, which the server
+  reads like the header. `meta.invalidate` drops the descriptor cache and revalidates `/boot`
+  with `If-None-Match`, the same path a changed `X-Keel-Meta-Version` takes; `data.invalidate`
+  reaches the lists through `invalidations()`, debounced at 250 ms so a burst of frames on one
+  list is one refetch. The server filters the stream by the principal's account scope: a `user`
+  receives `data.invalidate` only for objects of their own account.
+- Notifications and problems. `KeelNotifications` keeps the messages and the unread count over
+  `notify.message.list`, prepends `notification` frames and marks through `notify.message.mark`;
+  `KeelProblems` keeps the open problems by key over `notify.problem.list`, refreshed on a
+  `notify.problem.*` invalidation, from which the sidebar fills its badges.
 - Authentication and safety. A `401` with `keel.error.unauthenticated`, the transport's answer
   when no credential is valid, sends the shell to the login route with the screen it came from;
   a `401` a function answers on its own, such as `auth.error.credentials` for a wrong current
@@ -175,8 +191,19 @@ components, with the schema deciding what the descriptor leaves open:
   the same way.
 - Group editing. `ui.multi([...])` lists the fields allowed for editing several rows at once; the
   request is `{ ids: [], fields: { ttl: 300 }, mask: ["ttl"] }`. Above `batch_threshold` the call
-  becomes a task. `ui.multi` lands in M3 with `batch_threshold`, as the M3 scope line names it;
-  the M2 form edits one row.
+  becomes a task. The multi-row form of `/renderer`, `KeelMultiFormComponent`, is opened from the
+  selection bar when the list's edit action names a form with a non-empty `ui.multi`: one row
+  per field with a toggle that is the mask and the field's own control, built from the descriptor
+  with its pages and field conditions stripped; a `422` at `mask[i]` lands on the i-th masked
+  field, at `fields.<name>` on its field, a `TaskRef` opens the progress modal and a
+  `GroupResult` closes the modal, toasts the count and reloads the table.
+- File control. `control: file` renders `phx-file-field` with `accept` from `x-keel.file.types`
+  and `maxSize` from `maxBytes`; a form whose descriptor is of kind `upload` submits through the
+  client's `upload`, the envelope handled as a submit's.
+- Scoped labels. A nullable number field says "from the product" when empty through the
+  convention `<module>.<entity>.<field>.empty`: the field component provides `PHX_LABELS` at its
+  element injector with `unlimited` replaced by that key when the catalogue has it, by
+  `phx.unlimited` otherwise.
 - Wizard. A `kind: wizard` function walks its `pages`; `pages[].validate: <func>` checks a step on
   the server before the next one opens, and `ui.result` after the last step is `redirect`, `task`
   or `download`. The form model of the wizard is this entry point's; the step container, next and
@@ -198,22 +225,26 @@ are layouts chosen by the descriptor's `ui` block, not kinds of their own.
 | Milestone | Renderers                                                                    |
 |-----------|------------------------------------------------------------------------------|
 | M2        | `list`, `form`, `action`, `wizard`, `tabs`, and the object renderer of a `get` reached through a link or a row action |
-| M5        | `report`, `dashboard`, `tree`, `master-detail`, `stream`                     |
+| M3        | the `list`-widget slice of `dashboard`: the home screen at `/` renders one card per `list` widget of `/boot.dashboard` with the first rows of the list renderer in a compact mode and a link to the screen, a route without a function, so it counts for neither `views.json` nor the custom-views share; the multi-row form; the progress modal following a `TaskRef` |
+| M5        | `report`, `dashboard` in full (`stat` widgets, widget order), `tree`, `master-detail`, `stream` |
 
 The list renderer composes `phx-page-header`, `phx-data-table`, the selection bar, row actions,
-child screens and export (M3, with `keel.export`) from the `ui` block: `search` fields; `columns`
-with a `type` from the closed enum that maps explicitly onto `PhxColumn.type`, `sortable`,
-`primary`, `total`, `status` maps, `filter` with static options or a remote options function, and
-inline `edit` through the toggle the table renders today and `PhxCellEditService` for select and
-number cells from M3; `actions` with a `role` from `new`, `edit`, `delete`, `group`, `button`,
-`child`, `external`, `export`, `upload`, `download`, `refresh`, `confirm` (plain or
-`{ destructive, items, input }`), `hidden_if`, `default`; `row_actions`; an `empty` state with its
-action; `invalidate_on` patterns that trigger a refetch when a matching `data.invalidate` event
-arrives. Column access is not decided in the browser: the descriptor is already projected under
-the principal by the server, so a column or action above the caller's level never reaches the
-renderer. A list opened with a `search` screen parameter takes it as the search text of its
-table and keeps it out of the scope, which is how a custom view opens a list narrowed to a value;
-the name is reserved for lists, being the member of `ListQuery` a scope key never carries.
+child screens and export (with `keel.export`) from the `ui` block: `search` fields; `columns` with a
+`type` from the closed enum that maps explicitly onto `PhxColumn.type`, `sortable`, `primary`,
+`total`, `status` maps, `filter` with static options or a remote options function, and inline `edit`
+through the toggle the table renders and the cell editor of phoenix-ui for `status` (a select over
+the filter options and the map keys), `number` and `text` cells, the other types with `edit` staying
+read-only; the column order is bound to the preference `columns.<function>`, read through
+`settings.pref.get` at load and written on a header drag as `{ order: [...] }`, a composition
+without `settings.pref.*` keeping the declared order; `actions` with a `role` from `new`, `edit`,
+`delete`, `group`, `button`, `child`, `external`, `export`, `upload`, `download`, `refresh`,
+`confirm` (plain or `{ destructive, items, input }`), `hidden_if`, `default`; `row_actions`; an
+`empty` state with its action; `invalidate_on` patterns that trigger a refetch when a matching
+`data.invalidate` event arrives. Column access is not decided in the browser: the descriptor is
+already projected under the principal by the server, so a column or action above the caller's level
+never reaches the renderer. A list opened with a `search` screen parameter takes it as the search
+text of its table and keeps it out of the scope, which is how a custom view opens a list narrowed to
+a value; the name is reserved for lists, being the member of `ListQuery` a scope key never carries.
 
 The column mapping is `COLUMN_TYPES` in `columns.ts`: `text`, `number`, `link`, `status` and
 `toggle` map onto the `PhxColumn.type` of the same name; `date` onto `date`, formatted in UTC so
@@ -235,8 +266,15 @@ The report renderer maps `bands` to `phx-list-table` and diagrams to `phx-chart`
 renderer lays widgets out on `phx-widget-grid` with the order kept in user preferences; the stream
 renderer shows a log arriving over SSE.
 
-Function results are handled uniformly: `ui.result = task` opens the progress modal driven by
-`task.progress` events (M3), `redirect` navigates, `download` hands the file to the browser.
+Function results are handled uniformly: a `TaskRef` answered by an action, a form or a wizard
+opens the progress modal, `keel-progress` over `phx-progress-modal`, driven by the `task.progress`
+frames of the job through `KeelTasks.follow`, with `done/total` as its value and the frame's
+message translated as its status; cancel posts `task.cancel`, done fetches the job through
+`task.get` and hands the result back to the opener, a result carrying `download` fetches the raw
+route and hands the file to the browser, failed shows the error with the request id on a toast, a
+modal that misses frames for five seconds polls `task.get`, and a details button hands the job to
+the task drawer without giving up the follow; `redirect` navigates, `download` hands the file to
+the browser.
 
 `provideKeelViews([{ func, component }])` registers a component for a function name; anything not
 registered falls back to the generic renderer for its `kind`. The registry is a first-class
@@ -266,7 +304,8 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   enabled product, in the order of `/boot.products`, with that product's groups under it and
   the platform group last; a heading with no visible item is not shown. With none, the shell
   shows the platform brand and the platform group only. `phx-layout` and `phx-sidebar` are
-  built from `menu`; a `badge` on a menu item is bound to a problem key. A product's heading and a
+  built from `menu`; a `badge` on a menu item is bound to a problem key and shows the count of
+  open problems with that key from `KeelProblems`. A product's heading and a
   group's label are the one heading primitive phoenix-ui has, the eyebrow of `phx-sidebar-group`,
   nested one inside the other. The level label is `product.<id>.level.<level>` while one product
   is enabled and `keel.level.<level>` otherwise, a product key without a translation falling back
@@ -276,8 +315,19 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   and reloading the catalogue in place; the theme switch on `phx-theme-settings`, writing
   `settings.pref.set { key: "theme" }`; "Act as", a dialog searching `keel.principal.list` by login
   and posting `auth.su`, offered while `auth.su` is in the descriptor index; the links to the
-  sessions, tokens and security screens; and the logout. Notifications, tasks and help are
-  disabled placeholders until M3.
+  sessions, tokens and security screens; and the logout. The three items are alive: tasks
+  carries the count of queued and running jobs and opens the task drawer, `keel-task-drawer` over
+  `phx-drawer`, listing the recent jobs of `task.list`, a job opening its detail with the prop
+  list, the progress bar, the log tail and cancel while it runs; notifications carries the
+  unread count and opens the notification centre, `phx-notification-center` over
+  `notify.message.list` and the `notification` frames, with a problems section for a principal
+  who may list problems, a selected message marked read and a message naming a problem key
+  opening `notify.problem.list` searching it; help opens the about drawer over `/boot.keel` and
+  `/boot.products`, the smallest target before the support screen of `panel` in M5. An item
+  whose function the descriptor index lacks is disabled.
+- The home screen at `/` renders the widgets `/boot.dashboard` names, one `phx-widget-card` per
+  `list` widget with the first rows of the list renderer and a link to its screen; without a
+  widget `/` redirects to the first menu item.
 - A banner is shown while the session runs as somebody else: `su` (a separate session with `actor`
   filled in, see [03-access.md](03-access.md)) or on-behalf from a neighbouring product. It lives
   in the page area above the screen, where it shows on every width, and offers `auth.su.exit`;
@@ -317,13 +367,16 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   version. Without the principal in the key, `su` in the same browser would show another
   principal's menu.
 - Screens of the system modules ship in the shell: settings, accounts, permissions, tasks,
-  scheduler, notifications, problems, audit, logs, license, updates, backups, plugins, peers,
+  scheduler, notifications, problems, channels, webhooks, audit, logs, license, updates, backups,
+  plugins, peers,
   products (enabling and disabling bundles, from the `keel.product.*` descriptors), brand and
   support. Every installation has them, without writing any UI: every screen of a system module
   that exists as a descriptor is rendered generically, reached from the menu nodes the modules
   register — the kernel's `system/accounts`, `system/principals` and `system/products`, the
   `auth` nodes `system/sessions`, `system/tokens`, `system/ip-rules` and `system/grants`,
-  `system/settings` and `system/brand` of `settings`, `system/audit` of `audit`. The shell adds a
+  `system/settings` and `system/brand` of `settings`, `system/audit` of `audit`, `system/tasks`
+  of `tasks`, `system/cron` of `cron`, `system/problems` and `system/channels` of `notify`,
+  `system/webhooks` of `webhooks`. The shell adds a
   screen of its own only where a descriptor cannot say it, and registers it through
   `provideKeelViews` like a product's view, listed in `frontend/apps/shell/views.json` and counted
   in the custom-views share: the settings value form, which replaces the generic form of
@@ -332,8 +385,10 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   `auth.totp.enroll`, with the caller's own password change and the second-factor enrolment — the
   `otpauth://` URI as a QR drawn inline, the secret, the confirmation code and the recovery codes
   shown the one time they arrive.
-- From M3 the shell consumes SSE: the progress modal, the notification centre, scope-filtered
-  `data.invalidate`, and catch-up by `Last-Event-ID`.
+- The shell consumes the event stream: the progress modal, the task drawer and the notification
+  centre above, scope-filtered `data.invalidate` through the lists, and catch-up by
+  `Last-Event-ID`; the shell arms `KeelEvents` once and the client binds the stream to the
+  principal of `/boot`.
 
 ### `/testing`
 
@@ -501,6 +556,7 @@ a manual list.
 | `<module>.<entity>.column.<key>`      | column header; derived for every column, with `<key>` the wire name (`createdAt`) |
 | `<module>.<entity>.<column>.<value>`  | label of a filter option or status value of a column; derived for every value in `filter.options` and `map` |
 | `<module>.<entity>.<field>.hint`, `.placeholder` | field hint and placeholder; the schema names them explicitly in `x-ui.help` and `x-ui.placeholder`, and only a named key is checked |
+| `<module>.<entity>.<field>.empty`   | the label a nullable number field shows for its null in place of `phx.unlimited`; optional, read by the field component, which provides a scoped `PHX_LABELS` with `unlimited` replaced when the catalogue has the key |
 | `<patching module>.<entity>.<field>`  | label of a field another module added by a descriptor patch (`storing.item.sync` for a patch of `base.item.edit` by `storing`); a module never writes keys under another module's prefix |
 | `menu.<group>`                        | menu group label, declared by a bundle or the platform; `menu.system` is the kernel's |
 | `product.<id>.brand`                  | brand name of a product, the `name` of its manifest |
@@ -557,14 +613,20 @@ user's language lives in `settings_pref`. The products screen of the shell is th
 its own; a product's logo is served at `/brand/<id>/logo.svg` from the asset its `Brand.logo`
 names.
 
-Translations are managed in OwnLate: one project for the core (system modules, the frontend
-runtime, the `phx.*` keys) and one project per product. `keel-dev i18n pull` pulls every
-first-party project into the one build at build time, and the bundles are compiled into the
-binary, because the server Keel is installed on may have no outbound access and cannot fetch
-translations at runtime. `keel-dev i18n missing` compares the keys of the registry with the
-bundles and fails CI on any key without a translation. The OwnLate projects and both subcommands
-arrive with M3; until then the dictionaries are edited in the repository and the freeze's `en`
-check and the modules' own tests hold `ru` to `en`.
+Translations are managed in OwnLate: one project for the core (the kernel, the system modules,
+the frontend runtime, the `phx.*` keys) and one project per product, recorded in
+`contracts/i18n.json` with the dictionary directories and the key prefixes each project holds.
+`keel-dev i18n pull` fetches every first-party project and rewrites the committed dictionaries,
+`<directory>/<lang>.json` nested by key and sorted, so the pull of a synced tree changes nothing;
+the Build workflow runs it before the build when the service token is present and fails on a
+difference, and the bundles are compiled into the binary, because the server Keel is installed
+on may have no outbound access and cannot fetch translations at runtime. `keel-dev i18n missing`
+derives every key the descriptors of the dump emit by the table above, adds the menu labels, the
+product names and every leaf of `en`, and fails CI on any key the committed dictionaries do not
+translate in a served language, a derived key satisfied by its own entry or by `keel.<tail>`;
+`keel-dev i18n extract` writes the catalogue of the dump split per project, the file that seeds
+a project. The dictionaries in the repository are the per-language source, edited there between
+pulls; the freeze's `en` check catches a key without any entry.
 
 `phx.*` is the namespace reserved for `PHX_LABELS`: the labels phoenix-ui components render
 themselves (table chrome, pagination, dialogs) come through the same bundles and are bridged into
@@ -577,7 +639,7 @@ The full plan is in [../plan.md](../plan.md); the frontend-relevant parts are:
 | Milestone | Frontend scope                                                                      |
 |-----------|-------------------------------------------------------------------------------------|
 | M2        | entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action, wizard, tabs, the object renderer), `/shell` with the one shell application (`/boot.products`, the brand rule, product headings, the settings value form and the security page as its own views), `/testing` with the `/boot` fixtures, the dump loader, the Storybook decorator and the Playwright harness; `rust-embed` in `bin/keel`; Storybook with fixtures; phoenix-ui batch 1; the OwnLate to `PHX_LABELS` bridge; publication of `@globalart/keel` to Nexus |
-| M3        | SSE in the shell (progress modal, notification centre, scope filter, `Last-Event-ID`); `ui.result = task`; phoenix-ui batch 2 |
+| M3        | the real event stream in `/client` with `data.invalidate` through the lists; the progress modal, the task drawer, the notification centre, the about drawer and the home screen in `/shell`; the export dropdown, column order, the cell editor and the multi-row form in `/renderer`; the file control, the upload submit and the scoped labels in `/forms`; download and upload in `/client`; phoenix-ui batch 2 pinned at `0.3.1`; the OwnLate projects with `keel-dev i18n pull`, `missing` and `extract` |
 | M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3; the file manager and configuration editor of `panel` as custom views in `frontend/products/panel` |
 
 M2 is done when the `demo` bundle, enabled on the `keel` binary, is driven entirely from the

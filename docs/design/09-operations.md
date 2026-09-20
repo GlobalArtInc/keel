@@ -126,7 +126,7 @@ One installation per host; nothing is namespaced by product:
 | `/var/lib/keel/tls/`        | self-signed or operator-supplied certificate and key              |
 | `/var/lib/keel/backups/`    | backup archives and the pre-update dump                           |
 | `/var/lib/keel/plugins/`    | installed plugins                                                 |
-| `/var/lib/keel/tasks/`      | task logs, one file per task                                      |
+| `/var/lib/keel/tasks/`      | task logs and output files, `<id>.log` and `<id>.out` per task    |
 | `/run/keel/core.sock`       | control socket of the kernel (`ctl`)                              |
 | `/run/keel/agent.sock`      | host agent socket                                                 |
 | database `keel`             | all tables of every enabled product, in the host's Postgres       |
@@ -244,7 +244,8 @@ container (see above), then performs, in order:
    ([06-host.md](06-host.md)).
 5. The directories listed above.
 6. The systemd units.
-7. A self-signed TLS certificate generated with rcgen.
+7. Nothing for TLS: the binary generates the self-signed pair itself at first start, and the
+   installer reads its fingerprint from the journal and prints it.
 8. `keel product enable <id>` for each requested product, run as `keel` against the fresh
    database before the first start; the kernel migrations run there.
 
@@ -265,11 +266,12 @@ product's modules migrate before the port opens.
 The installer lives under `deploy/` ahead of M4, in the subset the current binary supports:
 the clean-host and container checks, Postgres from the distribution, the role and the
 database, the unix user, the directories, `keel.service`, the enabled products and the first
-administrator created over the control socket in place of the setup link. Signature
-verification, TLS, the privileged unit, the update path-unit and `keel.setup.admin` join it
-with the milestones that build them, and `deploy/README.md` names what is missing at any
-time. Until the kernel speaks `sd_notify`, the shipped unit is `Type=simple` without
-`WatchdogSec` and the installer waits for `/readyz`.
+administrator created over the control socket in place of the setup link; it waits for `/readyz`
+over https with the generated certificate and prints the https address, the certificate path and
+the fingerprint. Signature verification, the privileged unit, the update path-unit and
+`keel.setup.admin` join it with the milestones that build them, and `deploy/README.md` names
+what is missing at any time. Until the kernel speaks `sd_notify`, the shipped unit is
+`Type=simple` without `WatchdogSec` and the installer waits for `/readyz`.
 
 The M4 acceptance test for this section is: on a clean Debian or Ubuntu,
 `curl | sh -s -- --product dns` installs Keel with `dns` enabled, and no process except the
@@ -278,17 +280,34 @@ that sees both products ([../plan.md](../plan.md)).
 
 ## TLS
 
-Keel listens on TLS from its very first start. The session cookie carries the `__Host-`
-prefix ([03-access.md](03-access.md)), and a browser does not store such a cookie for a plain
-HTTP origin — a first visit over plain HTTP by IP address would leave the operator unable to log
-in. The plain port therefore serves nothing but a redirect. The operator can supply a certificate
-and key or request one through ACME with a button in the settings; `trusted_proxies` makes the
-installation usable behind a reverse proxy. A certificate that is about to expire raises a problem
-([05-modules.md](05-modules.md)). The self-signed certificate and `trusted_proxies` arrive with
-M3; until then the installation listens on plain HTTP, the cookie carries `Secure` from its first
-version, the clients of M1 keep and return it themselves, and a browser accepts it on plain HTTP
-from `localhost` and `127.0.0.1` alone — the SSH port forward to `http://localhost:1500/` is how
-the panel of the demo machine is opened before M3.
+Keel listens on TLS from its very first start. The session cookie carries the `__Host-` prefix
+([03-access.md](03-access.md)), and a browser does not store such a cookie for a plain HTTP origin —
+a first visit over plain HTTP by IP address would leave the operator unable to log in. There is no
+plain listener and no redirect port: a plain request to the TLS port gets no HTTP answer, so a
+browser reports a protocol error instead of showing a login page whose cookie it would refuse, and a
+second port would be one more thing to open and to explain. The pair is the one `tls.cert` and
+`tls.key` name in `config.yaml`, or the one the binary generates at first start under
+`<data_dir>/tls` (`cert.pem`, `key.pem` with mode `0600` in a `0700` directory) with rcgen: an ECDSA
+P-256 key and a certificate valid for ten years whose subject alternative names are the host name,
+`localhost`, `127.0.0.1`, `::1`, the addresses the host name resolves to and the listen address when
+it is neither unspecified nor loopback; a browser reaching the host by another address gets a name
+warning. Each file is written to a temporary name and renamed into place, so a reader polling
+`/readyz` never sees a partial file. A pair under the data directory that does not parse is
+replaced; an operator's pair that does not parse, or one file of it without the other, fails the
+start naming the file. The certificate's SHA-256 fingerprint is logged at every start, so the
+operator accepting the certificate in a browser knows it is the right one. The operator can supply a
+certificate and key or, from M4, request one through ACME with a button in the settings; a
+certificate that is about to expire raises a problem ([05-modules.md](05-modules.md)).
+
+`trusted_proxies` makes the installation usable behind a reverse proxy: a list of CIDRs (a bare
+address standing for its `/32` or `/128`, a bad entry failing the start naming it). When the
+peer address lies inside one of them, the client address is the rightmost `X-Forwarded-For` entry
+that is not itself a trusted proxy, and the authority for the brand patch, `/boot` and the
+`Origin` comparison of the cross-site check comes from `X-Forwarded-Host` when it is a single
+`host[:port]`; the peer address and the `Host` header stand otherwise, an entry of
+`X-Forwarded-For` that is not a bare IP address leaves the peer address, and a malformed header
+is logged at debug level. The IP rules, the lockout and the audit record follow through the
+client address the transport resolved.
 
 ## Configuration
 
@@ -323,7 +342,9 @@ warning, so that the section of a disabled product stays valid. A misspelt key i
 a message naming the file and the key. An empty file is the same as no file. The default listen
 port of the installation is open ([11-decisions.md](11-decisions.md)); the value above is only an
 example, and M0 keeps the provisional default `127.0.0.1:1500` while the port is undecided. The
-body limit of a request is a kernel constant, 1 MiB, not a key of this file. The runtime binds
+body limit of a request is a kernel constant, 1 MiB, not a key of this file; the multipart body
+of an `upload` is bounded by its file fields instead ([10-contracts.md](10-contracts.md)). The
+runtime binds
 the listener before the kernel boots and attaches the dispatcher after it, so `/healthz` answers
 `{ "status": "ok" }` from the first moment, `/readyz` reports `migrating` (and later `draining`,
 or `database` when `SELECT 1` fails) with `503` until it reports `ready`, and `/api/v1/*`

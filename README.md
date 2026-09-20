@@ -11,15 +11,15 @@ database per host; one binary `keel` per host with the frontend embedded.
 
 ## Status
 
-The design is in `docs/design/`, the order of work in `docs/plan.md`. M0, M1 and M2 are built;
-the milestones after them are designed, not yet built.
+The design is in `docs/design/`, the order of work in `docs/plan.md`. M0, M1, M2 and M3 are
+built; the milestones after them are designed, not yet built.
 
 | Milestone | Scope | State |
 |---|---|---|
 | M0 | Walking skeleton: types, SDK, kernel, dispatcher, storage, control socket, `demo` bundle | done: the binary `keel` serves the `keel` module and the `demo` bundle over HTTP and the control socket, with every check of the M0 exit checklist in `docs/plan.md` green |
 | M1 | Identity, access and audit: `auth`, `settings`, `audit`, conformance skeleton | done: the binary composes `auth`, `settings` and `audit`; login, tokens, TOTP, `su`, login keys, IP rules, rate limit, lockout, settings, preferences and the audit trail are served over HTTP and the control socket, `keel-conformance` is green against the built binary, and every check of the M1 exit checklist in `docs/plan.md` is green |
 | M2 | Frontend runtime `@globalart/keel` and the host agent spike | done: the binary embeds the shell and serves it beside the API; `@globalart/keel` with its six entry points and the nested `testing/playwright` renders the `demo` bundle's list, form, wizard and custom view from descriptors alone and switches `en` and `ru`; `publish-npm.yml` publishes it to Nexus from the closing commit; the host spike `bin/spike` created an OS user and a vhost through its root agent and rolled an invalid template back on `keel-demo`; the musl binary with the frontend is 19.8 MB against the 40 MB cap; every CI-run item of the M2 exit checklist in `docs/plan.md` is green, and the three operator-run items are ticked by hand on `keel-demo` after the push |
-| M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | |
+| M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | done: the binary composes `tasks`, `cron`, `notify` and `webhooks`; `note.export` runs as a task with progress, log, cancellation and a checkpoint that survives a restart, watched in the browser through the progress modal and the task drawer; a cron job raises a problem that reaches the dashboard, the notification centre and the mail catcher; the event stream at `/api/v1/events` carries `data.invalidate` scoped to the principal's account; `keel.export`, group editing through `ui.multi`, the `upload` kind with the brand logo as its first upload, TLS with a generated certificate and `trusted_proxies` are served; `@globalart/keel` pins phoenix-ui 0.3.1 and `keel-dev i18n missing` holds `en` and `ru` complete; every CI-run item of the M3 exit checklist in `docs/plan.md` is green, and the operator-run items are ticked by hand on `keel-demo` after the push; `keel.account.delete` as a task and the per-session cap of the stream were left undone and are named in the checklist |
 | M4 | Operator plane, `keel-host`, KeelDNS alpha | |
 | M5 | KeelPanel, `license`, `stats`, report and dashboard renderers | |
 | M6 | Products working together: `peers`, events, services, `keel-client` | |
@@ -30,8 +30,8 @@ the milestones after them are designed, not yet built.
 
 ```
 crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-testkit, keel-conformance,
-             keel (the facade), keel-dev (crates/dev: types, descriptors, views share, openapi),
-             keel-host, ... (from M0)
+             keel (the facade), keel-dev (crates/dev: types, descriptors, views share, openapi,
+             and crates/dev/src/i18n with extract, missing and pull), keel-host, ... (from M0)
 products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
 bin/keel/    keel-bin — the binary keel: the composition of every module and every bundle of
              the workspace; the only crate that depends on product crates. Its cargo feature
@@ -48,7 +48,8 @@ frontend/    pnpm workspace (node 24, pnpm 11, Angular 19): libs/keel is @global
              generators, theme boot, brotli, stamp)
 contracts/   golden fixtures, the kernel's descriptor snapshots, the JSON Schema of keel-types
              (schema/), the projected contract of the binary per level (dump/), the phoenix
-             icon set (icons.json) and the generated openapi.json; protocol.md comes later
+             icon set (icons.json), the generated openapi.json and the translation projects
+             (i18n.json); protocol.md comes later
 deploy/      install.sh, uninstall.sh, the systemd unit and the sample config, with a README
              of what the installer does today and what waits for M4
 docs/        design and plan
@@ -84,6 +85,7 @@ hack/prove-binary.sh target/debug/keel
 hack/check-install.sh target/debug/keel
 hack/conformance.sh target/debug/keel
 hack/descriptors.sh target/debug/keel
+cargo run -p keel-dev -- i18n missing --dump contracts/dump
 pnpm exec playwright install chromium
 hack/e2e.sh target/debug/keel
 hack/check-test-databases.sh
@@ -111,30 +113,37 @@ pnpm publish --dry-run --no-git-checks
 ```
 
 `pnpm generate` writes what the repository commits and `git diff --exit-code` holds current: the
-TypeScript wire types from `contracts/schema/`, `contracts/icons.json` from the phoenix icon set
-and the `KEEL_BOOT` fixtures of `@globalart/keel/testing`. `hack/descriptors.sh` starts the built
-binary on a fresh database, checks `contracts/dump/` against its answers per level, checks
-`contracts/openapi.json` against the dump and prints the custom-views share per product and for
-the composition, failing above 20 %; `KEEL_UPDATE_DUMP=1` rewrites the dump and the document
-after a reviewed change. `hack/e2e.sh` prepares a site the same way, with an admin, a reseller
-and a user, and runs the Playwright suite of `frontend/e2e/` against it; the traces of a failed
-run are kept as a CI artifact. `hack/check-install.sh` checks the installer under `deploy/`:
-`bash -n` and shellcheck over the scripts, `--help` printing the usage, every subcommand and flag
-they call found in the built binary's `--help`, every function they call defined in the
-workspace, and the sample config parsing. `hack/check-docs.sh` holds the documents to the code:
-the names M1 and M2 introduced are found under `docs/design/` and under `crates/` or
-`frontend/libs/keel`, every Rust test, Jest and Playwright spec and command the M1 and M2 exit
-checklists of `docs/plan.md` cite exists, and the lists above, the "How we work" section of the
-plan and `ci.yml` name the same commands. CI ends with `cargo-semver-checks` against the facade
-crate `keel`, and a second job runs the `keel-system` matrix, `cargo clippy` and `cargo test -p
-keel-system --no-default-features --features <set>` for each module alone (`auth`, `settings`,
-`audit`) and for the crate without each in turn (`settings,audit`, `auth,audit`,
-`auth,settings`); every integration test of the crate is a module of the one test binary
-`tests/system/main.rs`, gated with `#[cfg(feature = ...)]` on the modules it needs, so a test is
-skipped when they are off. The Build workflow builds the musl release of the binary with the
-frontend, fails when it reaches 40 MB and uploads it with the host spike as artifacts;
-`publish-npm.yml` publishes `@globalart/keel` to Nexus on a `keel-v*` tag or by hand, stamped
-with the binary's version.
+TypeScript wire types from `contracts/schema/`, `contracts/icons.json` from the phoenix icon set and
+the `KEEL_BOOT` fixtures of `@globalart/keel/testing`. `hack/descriptors.sh` starts the built binary
+on a fresh database, checks `contracts/dump/` against its answers per level, checks
+`contracts/openapi.json` against the dump and prints the custom-views share per product and for the
+composition, failing above 20 %; `KEEL_UPDATE_DUMP=1` rewrites the dump and the document after a
+reviewed change. `cargo run -p keel-dev -- i18n missing --dump contracts/dump` derives every key the
+descriptors of the dump emit and fails on one the committed dictionaries do not translate in `en` or
+`ru`. `hack/e2e.sh` prepares a site the same way, with an admin, a reseller and a user, an email
+channel to a mail catcher (`KEEL_TEST_SMTP_URL` and `KEEL_TEST_SMTP_API`, or a container the script
+starts through podman or docker) and an overdue todo whose problem the poll job raises, and runs the
+Playwright suite of `frontend/e2e/` against it; the traces of a failed run are kept as a CI
+artifact. Every script that starts the binary speaks https to it with the certificate the binary
+generates under the site's data directory. `hack/check-install.sh` checks the installer under
+`deploy/`: `bash -n` and shellcheck over the scripts, `--help` printing the usage, every subcommand
+and flag they call found in the built binary's `--help`, every function they call defined in the
+workspace, and the sample config parsing. `hack/check-docs.sh` holds the documents to the code: the
+names M1, M2 and M3 introduced are found under `docs/design/` and under `crates/` or
+`frontend/libs/keel`, every Rust test, Jest and Playwright spec and command the M1, M2 and M3 exit
+checklists of `docs/plan.md` cite exists, and the lists above, the "How we work" section of the plan
+and `ci.yml` name the same commands. CI ends with `cargo-semver-checks` against the facade crate
+`keel`, and a second job runs the `keel-system` matrix, `cargo clippy` and `cargo test -p
+keel-system --no-default-features --features <set>` over fourteen sets: each of the seven modules
+alone (`auth`, `settings`, `audit`, `tasks`, `cron`, `notify`, `webhooks`), the crate without each
+of `auth`, `settings`, `audit` and `tasks` in turn, and the nested prefixes
+`auth,settings,audit,tasks`, `…,cron` and `…,cron,notify`, against Postgres and the mail catcher;
+every integration test of the crate is a module of the one test binary `tests/system/main.rs`, gated
+with `#[cfg(feature = ...)]` on the modules it needs, so a test is skipped when they are off. The
+Build workflow builds the musl release of the binary with the frontend, fails when it reaches 40 MB
+and uploads it with the host spike as artifacts, after `keel-dev i18n pull` has refreshed the
+dictionaries when the translation token is present; `publish-npm.yml` publishes `@globalart/keel` to
+Nexus on a `keel-v*` tag or by hand, stamped with the binary's version.
 
 ### Running by hand
 
@@ -190,4 +199,4 @@ of the kernel under `contracts/fixtures/descriptors/` are refreshed with
 - `docs/design/09-operations.md` — delivery, systemd, updates, backups, support
 - `docs/design/10-contracts.md` — wire contracts with examples
 - `docs/design/11-decisions.md` — decisions, alternatives, risks, open questions
-- `docs/plan.md` — milestones, the M0, M1 and M2 work breakdowns and their exit checklists
+- `docs/plan.md` — milestones, the M0, M1, M2 and M3 work breakdowns and their exit checklists

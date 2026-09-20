@@ -144,7 +144,11 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 - SSE streams, `r.stream("dns.zone.log", handler)`.
 - Raw routes under `/api/v1/x/<module>/…`, only with a mandatory `Guard` and an audit event.
   They exist for upload, download, the WebSocket terminal and VNC, not as a second way to expose
-  functions.
+  functions. The raw routes built so far are the kernel's own projection: a function of kind
+  `download` or `upload` registered with `r.function` is served at `/api/v1/x/<module>/<name>`,
+  `<name>` being the function name without its module prefix, behind authentication and through
+  the full pipeline with its audit event; a free-form raw route a module registers itself,
+  `r.raw`, waits for the terminal and VNC of `panel` in M5.
 - Custom views, `r.view("hosting.file-manager", ViewSpec { access, menu, needs })`: a screen
   without a descriptor but with access rules for the menu and features; the registrar checks the
   module prefix of the name and refuses a second view or function under it, and `menu`, an
@@ -176,7 +180,9 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   `ctx.contributions::<T>()` for the typed bag, `ctx.require::<dyn Trait>()` for services,
   `ctx.config::<T>()` for the module's own `ConfigSection`. The public context carries no
   database handle; a system module that needs one outside a call, the `audit` worker being the
-  first, reads it through the hidden `ContextExt::db()` of `keel_sdk::system`.
+  first, reads it through the hidden `ContextExt::db()` of `keel_sdk::system`, and one that keeps
+  files, the task output and the uploads, reads the data directory through `ContextExt::data_dir()`
+  next to it.
 - Services, `r.provide::<dyn Trait>(Arc::new(...))`, consumed elsewhere with
   `call.require::<dyn Trait>()`. Which module provides an implementation is decided by the
   enabled set: `hosting-web` declares `DnsProvider`, and the panel bundle's bridge loads
@@ -247,13 +253,18 @@ contribution is consumed.
 The SDK is an interface, not an implementation: it knows nothing of axum, the Postgres pool or
 cookies; even `ctx.spawn` hands the task to a spawner the kernel implements, so the SDK carries no
 runtime. What module code sees is `ModuleDef`, `Registrar`, `Context` and `Call<P>` with `params()`,
-`principal()`, `tx()`, `invoke`, `emit`, `after_commit`, `require::<dyn Trait>()`, `check_limit`,
-`extra` (values of patched fields), `setting::<T>(key)`, `config::<T>()` and `tz()`; `Principal`,
-`Account` and `Level`; `KeelError` with an i18n key, an optional field and a source; `ListQuery`,
-`Page` and `ListSource`, with `fetch_page` for a module source that narrows its own query;
-`MenuNode`; `Secret`; `Id`; the `Owned` trait with `scope_by_account`, `resolve_account`,
-`LimitDef` and `AccountLifecycle`; `SettingDef`, `SettingsSource` and `ConfigSection`;
-`ProductManifest` with `Brand`, `MenuGroup`, `LevelLabels` and `Edition`; and the `Clock`
+`principal()`, `tx()`, `invoke`, `emit`, `emit_about` (the event with an explicit subject,
+[07-ecosystem.md](07-ecosystem.md)), `after_commit`, `require::<dyn Trait>()`, `check_limit`,
+`extra` (values of patched fields), `setting::<T>(key)`, `config::<T>()`, `tz()`, `task()` (the
+`TaskHandle` of a call running as a job, `None` otherwise) and `spawn_self_as_task()` (the call
+re-entered as a job, answering its `TaskRef`); `Principal`, `Account` and `Level`; `KeelError`
+with an i18n key, an optional field and a source; `ListQuery`, `Page` and `ListSource`, with
+`fetch_page` for a module source that narrows its own query; `MenuNode`; `Secret`; `Id`; the
+`Owned` trait with `scope_by_account`, `resolve_account`, `LimitDef` and `AccountLifecycle`;
+`SettingDef`, `SettingsSource` and `ConfigSection`; `ProductManifest` with `Brand`, `MenuGroup`,
+`LevelLabels` and `Edition`; `Download` and `DownloadOutcome` for the handler of a `download`
+function and `keel_sdk::multipart` with `FileAttrs` for the file fields of an `upload`;
+`DashboardWidget`, the contribution behind `/boot.dashboard`; and the `Clock`
 service, `call.require::<dyn Clock>()`, from which the dispatcher, the `keel` module and every
 module stamp times, so that a test can freeze it. The crates the surface is expressed in,
 `chrono` and `chrono-tz` among them, are re-exported under their own names. The function builder
@@ -277,8 +288,10 @@ example SSO in place of `auth`, or a different `notify` for billing.
 Hooks needed only by system modules — `Authenticator` with `Client`, `Authenticated` and
 `SessionChange`, `PrincipalSource`, `AccountSource`, `SecretCipher`, `SecondFactorSource`,
 `PreferenceSource`, `LanguageSource`, `PermissionSource` with `PermissionCatalogue`,
-`ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, and later
-`TransportRegistry`, `StorageSnapshot` and `OutboxSubscriber` — live in `keel_sdk::system`,
+`ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, `TaskRunner`
+with `TaskSpec` and `TaskSink`, `Caller` with `CallerOptions`, `LiveEvents` with `Frame`,
+`AdvisoryLock` with `LockGuard`, `ProblemCounter`, `OutboxSubscriber`, and later
+`TransportRegistry` and `StorageSnapshot` — live in `keel_sdk::system`,
 marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
 authentication, the transports, backup and the outbox consumers plug in; a product module has no
 reason to touch them. The public `keel-sdk` is frozen at 1.0 (M7); until then only
@@ -300,20 +313,29 @@ without `Set-Cookie`. `PrincipalSource { by_id, by_login }` is the kernel's look
 scope, so that `auth` resolves logins and session rows to principals without SQL on a kernel
 table.
 
-The kernel provides its own hidden services under the name of the platform before the
-requirements of the modules are checked at freeze, so a module may `r.require` one at `init` and
-a module providing one of them is reported as a second provider rather than replacing the
-kernel: `PrincipalSource`; `AccountSource { ancestry }`, the chain from an account up to the
-root read from `keel_account.path`; `SecretCipher { seal, open }` over the data key the kernel
-opens from `keel_kv.secret_key`, whose sealed form is the same JSON text as the wrapped key, so a
-`TEXT` column holds nothing the key does not unlock and a composition without a key provides no
-cipher; and `LanguageSource`, the languages the frozen catalogue serves. A module provides the
-others: `SecondFactorSource { enrolled }` from `auth`, from which `GET /api/v1/boot` fills
-`principal.totp`, `false` for a guest, for the owner and while none is provided;
-`PreferenceSource { preferences }` from `settings`, from which the HTTP transport resolves once
-per request the language it overlays on the principal and the zone it hands to `Call::tz()`; and
-`AuditSink { record }` from `audit`, fed the `AuditEvent` of every write call. `ContextExt::db()`
-is the pool handle a module reads outside any call, the `audit` worker being its first consumer.
+The kernel provides its own hidden services under the name of the platform before the requirements
+of the modules are checked at freeze, so a module may `r.require` one at `init` and a module
+providing one of them is reported as a second provider rather than replacing the kernel:
+`PrincipalSource`; `AccountSource { ancestry }`, the chain from an account up to the root read from
+`keel_account.path`; `SecretCipher { seal, open }` over the data key the kernel opens from
+`keel_kv.secret_key`, whose sealed form is the same JSON text as the wrapped key, so a `TEXT` column
+holds nothing the key does not unlock and a composition without a key provides no cipher;
+`LanguageSource`, the languages the frozen catalogue serves; `Caller { call }`, the dispatcher
+entered outside a request with an explicit principal, through which a module runs an internal
+function of its own or a job's call, so the outbox and the audit trail see it as any call;
+`LiveEvents { publish }`, the in-memory bus of the frames the event stream carries beside the
+outbox, `task.progress` and `notification` among them; `AdvisoryLock { take }`, the session lock on
+a pinned connection; and `OutboxSubscriber { after, latest }`, the only reader of `keel_outbox`
+([04-storage.md](04-storage.md)). `PrincipalSource` also answers `at_or_above(level)` and
+`of_account(account)`, the recipient lookups of `notify`. A module provides the others: `TaskRunner
+{ spawn, progress, log, checkpoint, cancel, state }` from `tasks`, behind which the dispatcher turns
+a call into a job; `ProblemCounter { counts }` from `notify`, from which `GET /api/v1/boot` fills
+`problems`; `SecondFactorSource { enrolled }` from `auth`, from which `GET /api/v1/boot` fills
+`principal.totp`, `false` for a guest, for the owner and while none is provided; `PreferenceSource {
+preferences }` from `settings`, from which the HTTP transport resolves once per request the language
+it overlays on the principal and the zone it hands to `Call::tz()`; and `AuditSink { record }` from
+`audit`, fed the `AuditEvent` of every write call. `ContextExt::db()` is the pool handle a module
+reads outside any call, the `audit` worker being its first consumer.
 
 ## Versioning
 
@@ -374,9 +396,14 @@ agent and fixture bundles joined by a bridge arrive with the milestones that nee
 `descriptors check --url --dir` diffs the committed directory against the binary; `views share
 --dump --frontend` prints the custom-views share per product and for the composition and exits
 non-zero above 20 % ([08-frontend.md](08-frontend.md)); `openapi --dump --out [--check]` writes
-`contracts/openapi.json` from the admin dump ([10-contracts.md](10-contracts.md)). What follows:
-`new-module` and `new-product` (a bundle lib crate), `migrate create`, `i18n extract | pull |
-missing` (M3), `check` and `docs`. `check` lints prefixes, foreign keys, imports, `.owned()` /
+`contracts/openapi.json` from the admin dump ([10-contracts.md](10-contracts.md)); `i18n extract
+--dump --out [--projects] [--project] [--lang]` writes the flat catalogue of the admin dump split
+per translation project of `contracts/i18n.json`, `i18n missing --dump [--langs]` derives every
+key the descriptors emit by the key table of [08-frontend.md](08-frontend.md) and prints the ones
+the committed dictionaries do not translate, and `i18n pull --out` rewrites the dictionaries from
+the translation service ([08-frontend.md](08-frontend.md)). What follows: `new-module` and
+`new-product` (a bundle lib crate), `migrate create`, `check` and `docs`. `check` lints prefixes,
+foreign keys, imports, `.owned()` /
 `.unowned()` on every function with a key, additivity of migrations, `ldd` cleanliness of the
 binary, that every module crate under `products/` is named by its bundle, and that the facade
 depends on no product crate. `docs` generates the catalogue of functions, permissions, events and
@@ -468,10 +495,11 @@ function attribute ([06-host.md](06-host.md)).
   `allow | deny` rows per CIDR applying to callers at or above their level, enforced by a module
   guard that never checks a call without a client address — the socket — which is how an
   operator undoes a rule that locked the browser out. Password reset through `notify` arrives
-  with M3.
+  with `panel` in M5, together with an address per principal that no table of this design
+  carries yet and a delivery to one recipient the channels of M3 do not make.
 - Rate limits, lockouts and second-factor attempts are counted in the process's memory, not in
   a table: a failed `auth.login` is a failed call whose transaction rolls back, so a counter the
-  handler wrote would vanish with it, and a background writer arrives with `tasks` in M3. The
+  handler wrote would vanish with it, and no background writer has been worth a table yet. The
   counters live in instances the module's `init` creates, are timed by the kernel's `Clock`
   read at each check, and evict entries whose window has passed, so a map is bounded by the
   distinct keys of one window; a restart clears them, while IP rules, revocations and login keys
@@ -496,11 +524,10 @@ function attribute ([06-host.md](06-host.md)).
   ([07-ecosystem.md](07-ecosystem.md)).
 - M1 scope: argon2id, opaque sessions, `__Host-` cookie with CSRF checks, Bearer, TOTP, tokens
   with scope and IP restrictions, `su`, login keys, IP rules, rate limit, session management,
-  password policy, lockout. Until TLS arrives in M3 the installation listens on plain HTTP and
-  the clients of M1 — the testkit, `hack/prove-binary.sh`, `keel-conformance` — keep and return
-  the `Secure` cookie themselves; a browser accepts such a cookie on plain HTTP from `localhost`
-  and `127.0.0.1` alone, which is where the browser suite and the demo through an SSH port
-  forward run until M3 ([08-frontend.md](08-frontend.md)).
+  password policy, lockout. Since M3 the installation listens on TLS alone
+  ([09-operations.md](09-operations.md)), so the `Secure` cookie is accepted from any origin; the
+  clients of the repository — the testkit, the scripts of `hack/`, `keel-conformance`, the browser
+  suite — speak https with the generated certificate.
 
 ### settings
 
@@ -516,8 +543,9 @@ function attribute ([06-host.md](06-host.md)).
 - `settings_pref` holds per-principal preferences, read and written by `settings.pref.get` and
   `settings.pref.set { key, value }` on the caller's own row: `lang` (a language the catalogue
   carries), `tz` (a zone name the `chrono-tz` table knows), `theme` and `columns.<function>`
-  (column order and visibility); the widget order arrives with the `DashboardWidget`
-  contributions (M3). The HTTP transport reads them once per request through the hidden
+  (column order and visibility, the shell writing `{ order: [...] }` on a header drag); the
+  widget order arrives with the dashboard renderer of M5. The HTTP transport reads them once per
+  request through the hidden
   `PreferenceSource`: the language is overlaid on the principal, the zone reaches `Call::tz()`
   and `/boot`; `keel_principal.lang` stays the fallback and what `keel.principal.*` edit.
 - Values inherit from admin to reseller: a key resolves to the nearest value up the account
@@ -526,9 +554,11 @@ function attribute ([06-host.md](06-host.md)).
 - White-label by hostname through `ManifestSource`: `settings_brand` holds one row per host
   (`host`, `name`, `logo`, `hue`, `chroma`, `updated_at`, `updated_by`), edited by the
   admin-level unowned functions `settings.brand.list`, `settings.brand.get`, `settings.brand.set`
-  and `settings.brand.delete` behind the menu node `system/brand`; the host is stored in lower
-  case under the `domain` check, `hue` and `chroma` carry their ranges in the schema, and the logo
-  is refused unless it parses as an SVG document without a script element. The patch of the
+  and `settings.brand.delete` behind the menu node `system/brand`, which says white-label by host
+  name; the host is stored in lower case under the `domain` check, `hue` and `chroma` carry
+  their ranges in the schema and say "from the product" when empty, and the logo is an upload,
+  `settings.brand.logo { host, logo }` of kind `upload` taking one `image/svg+xml` file of up to
+  64 KiB, refused unless it parses as an SVG document without a script element. The patch of the
   request's `Host`, without its port, goes out in `GET /api/v1/boot` and `/brand/logo.svg`
   ([10-contracts.md](10-contracts.md)). The module's menu nodes are `system/settings` and
   `system/brand`.
@@ -563,33 +593,100 @@ function attribute ([06-host.md](06-host.md)).
 
 ### tasks and cron
 
-- A persistent queue with worker classes; progress, log, cancellation and checkpoints. Jobs
-  found running at start are marked `interrupted`, and only resumable ones are restarted. The
-  queue drains before an update.
+- A persistent queue with worker classes; progress, log, cancellation and checkpoints. `task_job`
+  holds one row per job (function, masked params, the principal it runs as, class, state,
+  progress, checkpoint, error, the stored file of a `download` result) and `task_step` one row
+  per progress report or checkpoint; the log is `<data_dir>/tasks/<id>.log`. The module provides
+  the hidden `TaskRunner`, behind which the dispatcher turns a call into a job, and requires the
+  kernel's `Caller`, `AdvisoryLock` and `LiveEvents`. The worker is single per installation on
+  the session lock `keeltask`, runs jobs of distinct classes concurrently and jobs of one class in
+  creation order, and claims a queued row with a conditional update. Jobs found running when a
+  worker takes the lock are requeued with their checkpoint when resumable and marked
+  `interrupted` otherwise; `stop` drains, no queued job starts, a running job sees
+  `is_cancelled()` at its next checkpoint and what still runs after the grace is `interrupted`,
+  so the next start resumes it. Cancellation is cooperative: `task.cancel` flags a running job
+  and ends a queued one at once.
+- Functions: `task.list`, owned under `task.read`, `task.get` with the prop list, the progress,
+  the log tail and the checkpoint, `task.cancel` under `task.manage`, and `task.download`, the
+  `download` function that serves a job's stored file to its owner; the menu node `system/tasks`.
 - `ui.result = task` opens the progress modal in the frontend; progress travels as the
-  `task.progress` SSE event ([08-frontend.md](08-frontend.md)).
+  `task.progress` SSE event ([08-frontend.md](08-frontend.md)), a `TaskProgress` frame the
+  worker publishes on `LiveEvents` for every report and state change.
 - A batch above `batch_threshold` becomes a task; so does `keel.export` above its row threshold,
   with a `download` result; `keel.account.delete` runs as a task with a checkpoint
   ([02-functions.md](02-functions.md), [03-access.md](03-access.md)).
-- Cron leadership and the single task worker are held through `pg_advisory_lock`
-  ([04-storage.md](04-storage.md)); task logs live under `/var/lib/keel/tasks/`.
-- `cron` runs `CronJob` contributions and the `cron` sections of plugin manifests.
+- Cron leadership and the single task worker are held through `pg_advisory_lock`, the session
+  locks `keelcron` and `keeltask` taken through the hidden `AdvisoryLock`
+  ([04-storage.md](04-storage.md)).
+- `cron` runs `CronJob` contributions — `CronJob::new(id, schedule, handler)` in `cron::api`, a
+  five-field expression, the handler taking a `JobRun` that invokes functions as the owner — and,
+  from M7, the `cron` sections of plugin manifests. The leader ticks every second against the
+  kernel's `Clock`; an occurrence that arrives while the previous run has not finished is
+  recorded `skipped`, and a clock that jumps past several occurrences runs the job once. Every run
+  is a `cron_run` row (`job`, `scheduled_at`, `started_at`, `finished_at`, `outcome` among
+  `running`, `ok`, `failed`, `skipped`, `interrupted`, `error`). The setting `cron.overrides`, an
+  object from job id to schedule at admin level, changes a job's schedule without a build.
+  Functions, all admin-level and unowned: `cron.job.list` over the contributions joined with
+  their last run, `cron.job.run { id }` starting a job now, `cron.run.list`; the menu node
+  `system/cron`.
 
 ### notify
 
-- `notify_problem` with idempotent `raise` and `clear`; sources include disk, TLS, license,
-  migrations, the outbox and nodes. Open problems appear on the dashboard, as menu badges and in
-  the counters of `GET /api/v1/boot`.
-- Channels: email over lettre, telegram, webhook; delivery goes through the outbox.
-- Templates are minijinja, taken from `MailTemplate` contributions.
-- In-app notifications reach the shell as the `notification` SSE event.
+- `notify_problem` with idempotent `raise` and `clear` over the open `(key, subject)` pair;
+  sources include disk, TLS, license, migrations, the outbox and nodes. Every row and every event
+  is written by the dispatcher: `notify.problem.raise`, `notify.problem.clear` and
+  `notify.message.create` are internal functions the registry runs through the hidden `Caller`,
+  wrapped by `Problems` and `Notifier` of `notify::api`, so the row and its event
+  (`notify.problem.raised`, `notify.problem.cleared`, `notify.message.created`) commit together. A
+  raised problem notifies the admins, an account-scoped one the account's principals as well,
+  resolved through the `at_or_above` and `of_account` lookups of `PrincipalSource`. The poll job
+  `notify.problems.poll`, a `CronJob` on every minute, runs the `ProblemSource` contributions
+  and raises and clears what they report. Open problems appear on the dashboard through the
+  module's `DashboardWidget` over `notify.problem.list`, as menu badges through `badge.problem`,
+  and in the `problems` counters of `GET /api/v1/boot` through the hidden `ProblemCounter` the
+  module provides.
+- Functions: `notify.problem.list` and `notify.problem.get` (unowned, a problem without an
+  account visible to admins alone), `notify.message.list`, `notify.message.mark` and
+  `notify.message.clear` on the caller's own rows, `notify.channel.list`, `.get`, `.set`,
+  `.delete` and `.test`, `notify.delivery.list`; the menu nodes `system/problems` and
+  `system/channels`.
+- Channels: the kinds `email`, `telegram` and `webhook` are declared; `email` over lettre is the
+  one implemented, the other two refused on `kind` until their milestone. A channel row's
+  password is sealed through `SecretCipher` and never leaves the row. Delivery goes through the
+  outbox: the consumer with the cursor `notify_cursor` reads the `notify.message.created` events
+  through `OutboxSubscriber` and creates one `notify_delivery` per enabled channel; the sender
+  retries on the ladder 1m, 5m, 30m, 2h, 12h and raises `notify.delivery_failed` for the channel
+  after the last rung. `notify.channel.test` sends a test message to the caller on that channel
+  alone.
+- Templates are minijinja, taken from `MailTemplate` contributions, a template's id being the
+  message key it renders; the module ships `notify.problem.raised`, `notify.problem.cleared` and
+  `notify.test` in `en` and `ru`, compiled at start.
+- In-app notifications reach the shell as the `notification` SSE event, a `NotificationFrame`
+  published on `LiveEvents` after commit.
 
 ### webhooks
 
-- One module serves both peers and user integrations.
-- Signatures are HMAC-SHA256; retries at 1m, 5m, 30m, 2h and 12h; a dead letter is raised as a
-  problem.
-- Delivery reads the outbox at-least-once with its own cursor ([02-functions.md](02-functions.md)).
+- One module serves both peers and user integrations; it requires `notify` for its dead letter.
+  `webhook_subscription` holds the url, the sealed secret, the event masks (the rule of
+  `invalidate_on`) and the account a subscription listens to; `webhook_delivery` one row per
+  (subscription, event), `pending`, `delivered`, `failed` or `dead`, with the event type copied
+  onto the row so the list shows it without the outbox.
+- Functions under `webhook.manage`: `webhook.subscription.list`, `.get`, `.set`, `.delete` and
+  `.toggle`, `webhook.delivery.list`, `.get` and `.retry`; the menu node `system/webhooks`. The
+  secret rule: a secret is shown once, at creation, chosen by the caller or generated; an empty
+  secret counts as absent; the stored one is sealed and never answered again.
+- Signatures are HMAC-SHA256 ([07-ecosystem.md](07-ecosystem.md)); retries at 1m, 5m, 30m, 2h
+  and 12h; the sixth failure marks the delivery `dead` and raises `webhook.dead_letter` for the
+  subscription as a problem, cleared by a retry that delivers.
+- The installation's own network is guarded by the setting `webhook.private_targets` (admin
+  level, `false` by default): while it is off, `webhook.subscription.set` refuses on `url` a
+  scheme other than `https`, an IP literal and a host that resolves to a loopback, link-local,
+  private, unique-local or unspecified address, and the sender resolves the name again at send
+  time, fails the attempt when any answer is private and pins the checked addresses on the
+  request, so a rebinding name reaches nothing.
+- Delivery reads the outbox at-least-once with its own cursor, `webhook_cursor`, through
+  `OutboxSubscriber`, one delivery per enabled subscription whose masks match the event type and
+  whose scope admits the event's subject ([02-functions.md](02-functions.md)).
 
 ### license
 

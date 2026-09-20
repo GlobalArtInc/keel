@@ -328,7 +328,7 @@ rewrites the `path` of its whole subtree. The union of the enabled bundles' `acc
 not yet enforced on create: at M0 any identifier other than `system` is accepted, and the check
 arrives with the first bundle that declares a kind other than `user`. `AccountLifecycle`'s
 `on_rename` and the `keel.account.renamed` event presume a name the table does not carry; which
-column they act on is decided when the lifecycle is built (M3).
+column they act on is decided when the lifecycle is built.
 
 ## Principals
 
@@ -516,7 +516,10 @@ r.contribute(AccountLifecycle { on_delete: Some(lifecycle::drop_zones), ..Defaul
 
 The handlers are `on_suspend`, `on_resume`, `on_delete` and `on_rename`. For each state change
 the kernel invokes the matching handler in every module that contributed one and emits the
-matching event.
+matching event. The contribution, `keel.account.delete`, `suspend` and `resume` are not built
+yet: M3 planned them and left them undone, so the step moves to the first milestone that needs
+them ([../plan.md](../plan.md)); until then `keel_system::notify` and `keel_system::webhooks`
+expose `drop_account` with the shape of an `on_delete` handler, tested directly.
 
 `keel.account.delete` is an action whose result is a task:
 

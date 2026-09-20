@@ -14,7 +14,9 @@ script does today.
 - A build of the binary for the host's architecture: the file
   `keel-<sha>-x86_64-linux-musl.tar.zst` from the Build workflow of the repository, or a bare
   `keel` binary.
-- Network access to the distribution's package mirror when Postgres is not installed yet.
+- Network access to the distribution's package mirror when Postgres is not installed yet, and
+  when `curl` is missing: the installer installs `curl` and `ca-certificates` right after the
+  confirmation, since it waits for readiness over https.
 
 ## Getting the files to the host
 
@@ -98,14 +100,21 @@ non-zero.
    `deploy/systemd/` when the release does not carry it, and enables it.
 9. As user `keel`: `keel migrate`, `keel product enable <id>` for each product, `keel migrate`
    again so that the products' migrations are applied before the first start.
-10. Starts the unit and waits up to 90 s for `GET /readyz` to answer `200`
-    (`KEEL_INSTALL_READY_TIMEOUT` changes the limit). A unit that stops or a timeout prints the
-    tail of the journal.
+10. Starts the unit and waits up to 90 s for `GET /readyz` over https to answer `200`, with
+    `--cacert /var/lib/keel/tls/cert.pem`, the certificate the binary generates at its first
+    start; a missing certificate counts as not ready (`KEEL_INSTALL_READY_TIMEOUT` changes the
+    limit). A unit that stops or a timeout prints the tail of the journal.
 11. Creates the first administrator over the control socket:
     `keel ctl keel.principal.create login=<admin> level=admin account=<root account>`, then
     `keel ctl auth.password.set principal=<id> password=<generated>` with a 24-character random
     password.
-12. Prints what was installed, the credentials and the commands to check the service.
+12. Prints what was installed, the https address, the certificate path and its SHA-256
+    fingerprint read from the journal (through `openssl` when the journal has none), the
+    credentials and the commands to check the service. When `listen` is `0.0.0.0` or `::` the
+    printed address is the first interface address, which the certificate does not name, so the
+    report lists the names the certificate carries — the host name, `localhost` and the loopback
+    addresses — warns that a browser reaching the host by another address gets a name warning
+    too, and pins the API example to the host name with `--resolve`.
 
 On a failure after the host was changed the unit is stopped, disabled and removed and
 `/opt/keel` is deleted; `/etc/keel`, `/var/lib/keel`, the unix user and the database are left in
@@ -121,10 +130,10 @@ call and is masked in the audit trail.
 These parts of the operator plane are designed but not built; the installer does not pretend
 they exist:
 
-- TLS. The listener is plain HTTP and the session cookie carries `Secure`, which a browser
-  accepts on plain HTTP from `localhost` and `127.0.0.1` alone; the panel of a remote host is
-  therefore opened through an SSH port forward (see "After the installation"). The self-signed
-  certificate and `trusted_proxies` arrive with M3.
+- TLS beyond the generated pair. The listener speaks TLS alone with the self-signed certificate
+  the binary writes under `/var/lib/keel/tls/` at first start, or with the pair `tls.cert` and
+  `tls.key` of `config.yaml` name; ACME, the expiry problem and the certificate button of the
+  settings arrive with M4. The installer generates nothing for TLS itself.
 - The privileged agent: `keel-privileged.service`, `agent.yaml` and the host catalogue arrive
   with M4; the M2 spike `bin/spike` proved the mechanism on `keel-demo` with its own unit and
   policy and was removed again by `hack/spike-vm.sh --cleanup`. Nothing runs as root after the
@@ -164,12 +173,12 @@ lists there. The kernel starts without the file, and an empty file is the same a
 
 | Key | Default | Meaning |
 |---|---|---|
-| `listen` | `127.0.0.1:1500` | address and port of the HTTP listener; the port is provisional until the design fixes it |
+| `listen` | `127.0.0.1:1500` | address and port of the TLS listener; the port is provisional until the design fixes it |
 | `socket` | `/run/keel/core.sock` | control socket `keel ctl` talks to; admitted for the unix user `keel` alone |
 | `data_dir` | `/var/lib/keel` | `secret.key`, `instance.id` and everything the kernel stores outside the database |
 | `database` | `postgres:///keel?host=/run/postgresql` | connection URL; peer authentication on the unix socket, or a TCP URL with `${KEEL_DB_PASS}` substituted from the environment |
-| `tls` | `{ cert: "", key: "", acme: "" }` | parsed and kept; TLS itself arrives with M3 |
-| `trusted_proxies` | `[]` | parsed and kept; used from M3 |
+| `tls` | `{ cert: "", key: "", acme: "" }` | `cert` and `key` name an operator's PEM pair, both or neither; empty means the pair the binary generates under `<data_dir>/tls` at first start; `acme` is refused until M4 |
+| `trusted_proxies` | `[]` | CIDRs of reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Host` the kernel believes; a bare address stands for its `/32` or `/128` |
 | `log` | `{ level: info, format: json }` | `tracing` level and output format; `json` lines go to the journal under systemd, `text` is for a terminal |
 
 Unknown top-level keys are sections for modules (`ConfigSection`); a section no loaded module
@@ -183,27 +192,27 @@ systemctl status keel
 journalctl -u keel -f
 runuser -u keel -- keel ctl keel.account.list --out table
 runuser -u keel -- keel product list
-curl -sS http://127.0.0.1:1500/readyz
+curl -sS --cacert /var/lib/keel/tls/cert.pem https://127.0.0.1:1500/readyz
+journalctl -u keel --no-pager -o cat | grep -oE '([0-9A-F]{2}:){31}[0-9A-F]{2}' | tail -n 1
 ```
 
 `keel ctl` must run as the unix user `keel`: the control socket admits that uid alone, root
 included in the refusal.
 
-The URL the installer prints serves the panel, the embedded shell of M2, next to the API. Until
-TLS arrives in M3 the listener is plain HTTP and the session cookie carries `Secure`, which a
-browser accepts on plain HTTP from `localhost` and `127.0.0.1` alone, so from another machine the
-panel is opened through an SSH port forward to the host's listener and the address the forward
-gives it:
+The URL the installer prints serves the panel, the embedded shell, next to the API, over TLS
+with the generated certificate. The browser warns once about the self-signed certificate; the
+fingerprint the installer printed, the same the journal logs at every start, tells the operator
+it is the right one, and the certificate names the host name, `localhost` and the loopback
+addresses, so a host reached by another address gets a name warning as well. A `listen` of
+`127.0.0.1:1500` is reached from another machine through an SSH port forward,
+`ssh -L 1500:127.0.0.1:1500 root@host` and then `https://localhost:1500/`; a `listen` of
+`0.0.0.0:1500` is opened directly at `https://<host name>:1500/`. Behind a reverse proxy,
+`trusted_proxies` in `config.yaml` lists the proxy addresses, and the proxy speaks TLS to the
+listener with the certificate or its own trust. The login the installer printed signs the
+administrator in; the same login over the API:
 
 ```
-ssh -L 1500:127.0.0.1:1500 root@host
-```
-
-then `http://localhost:1500/` in the browser, where the login the installer printed signs the
-administrator in. The same login over the API:
-
-```
-curl -sS -X POST http://127.0.0.1:1500/api/v1/call/auth.login \
+curl -sS --cacert /var/lib/keel/tls/cert.pem -X POST https://127.0.0.1:1500/api/v1/call/auth.login \
   -H 'Content-Type: application/json' \
   -d '{"login":"admin","password":"<printed by the installer>"}'
 ```
