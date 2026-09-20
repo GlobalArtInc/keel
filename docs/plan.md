@@ -5839,7 +5839,7 @@ so the milestone that needs them picks them up.
       every `*.spec.ts` it cites exists under `frontend/`, every command it cites exists, and the
       README's check lists, the "How we work" section and `ci.yml` agree, `i18n missing` and the
       fourteen-set matrix included.
-- [ ] The OwnLate projects `keel-core` and `keel-demo` exist in the translation service, seeded
+- [x] The OwnLate projects `keel-core` and `keel-demo` exist in the translation service, seeded
       from `keel-dev i18n extract`, their ids set as the repository variables
       `KEEL_OWNLATE_PROJECT_CORE` and `KEEL_OWNLATE_PROJECT_DEMO` and the token as the secret
       `KEEL_OWNLATE_TOKEN`, after which the Build workflow's `keel-dev i18n pull` leaves the
