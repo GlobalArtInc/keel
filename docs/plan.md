@@ -5845,11 +5845,11 @@ so the milestone that needs them picks them up.
       `KEEL_OWNLATE_TOKEN`, after which the Build workflow's `keel-dev i18n pull` leaves the
       committed dictionaries unchanged — operator-run; until then the dictionaries are edited in
       the repository and `i18n missing` holds them complete.
-- [ ] `@globalart/keel` at the closing commit's version is published to Nexus by `publish-npm.yml`
+- [x] `@globalart/keel` at the closing commit's version is published to Nexus by `publish-npm.yml`
       through `workflow_dispatch`, after which the `exports` of the published package, read from
       Nexus with pnpm's `view`, name the six entry points and the nested `testing/playwright` —
       operator-run; the dry run above is CI's rehearsal.
-- [ ] On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's
+- [x] On `keel-demo`, `keel --version` under `/opt/keel/bin/current` names the closing commit's
       version, the first start generated the certificate under `/var/lib/keel/tls` and logged its
       fingerprint, and `/readyz` answers `ready` over https with that certificate, after the musl
       artifact of the closing commit's Build run was unpacked into `/opt/keel/versions/<version>`,
