@@ -13,6 +13,7 @@ import {
   MESSAGE_LIST,
   MESSAGE_MARK,
   PROBLEM_LIST,
+  TASK_LIST,
   type Note,
   type Problem,
 } from '@globalart/keel/client';
@@ -265,6 +266,21 @@ describe('the notification centre', () => {
     item()?.click();
     await settle(harness);
     expect(element.ownerDocument.querySelectorAll('keel-notification-centre')).toHaveLength(1);
+  });
+
+  it('the rail keeps one panel: opening the tasks closes the centre', async () => {
+    const mock = client([...ALL, descriptor(TASK_LIST, 'list')]);
+    mock.answer(TASK_LIST, pageEnvelope([]));
+    const { harness, element } = await render(mock);
+    element.querySelector<HTMLElement>('phx-rail-item[data-rail="notifications"] button')?.click();
+    await settle(harness);
+    expect(centre(element)).not.toBeNull();
+    element.querySelector<HTMLElement>('phx-rail-item[data-rail="tasks"] button')?.click();
+    await settle(harness);
+    await new Promise((done) => setTimeout(done, 350));
+    expect(centre(element)).toBeNull();
+    expect(element.ownerDocument.querySelectorAll('phx-drawer')).toHaveLength(1);
+    expect(element.ownerDocument.querySelector('keel-task-drawer')).not.toBeNull();
   });
 
   it('a notification frame prepends a message', async () => {

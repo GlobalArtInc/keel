@@ -257,6 +257,7 @@ export class KeelRailComponent {
       void this.problems.refresh();
     }
     const data: NotificationCentreData = { problems: this.mayProblems() };
+    this.closeRailDrawers();
     this.notificationsDrawer = this.drawers.open(KeelNotificationCentreComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
@@ -269,6 +270,7 @@ export class KeelRailComponent {
       return;
     }
     const data: TaskDrawerData = { id };
+    this.closeRailDrawers();
     this.tasksDrawer = this.drawers.open(KeelTaskDrawerComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_TASKS_KEY),
@@ -280,6 +282,7 @@ export class KeelRailComponent {
     if (this.closeIfOnTop(this.aboutDrawer)) {
       return;
     }
+    this.closeRailDrawers();
     this.aboutDrawer = this.drawers.open(KeelAboutComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_HELP_KEY),
@@ -292,6 +295,14 @@ export class KeelRailComponent {
     }
     drawer.close();
     return true;
+  }
+
+  private closeRailDrawers(): void {
+    for (const drawer of [this.notificationsDrawer, this.tasksDrawer, this.aboutDrawer]) {
+      if (drawer?.isOpen) {
+        drawer.close();
+      }
+    }
   }
 
   async switchLanguage(lang: string | null): Promise<void> {
