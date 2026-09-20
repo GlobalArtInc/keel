@@ -20,7 +20,6 @@ import { unreachable } from '@globalart/keel/forms';
 import type { Envelope, Id } from '@globalart/keel/meta';
 import { KeelTasks, describeError } from '@globalart/keel/renderer';
 import {
-  PhxDrawerRef,
   PhxDrawerService,
   PhxDropdownComponent,
   PhxModalService,
@@ -69,6 +68,7 @@ export const SECURITY_FUNCTION = TOTP_ENROLL;
 
 export const ACT_AS_ENTRY = 'act_as';
 export const LOGOUT_ENTRY = 'logout';
+export const RAIL_GROUP = 'rail';
 export const USER_SCREENS: Readonly<Record<string, string>> = {
   sessions: SESSIONS_FUNCTION,
   tokens: TOKENS_FUNCTION,
@@ -171,9 +171,6 @@ export class KeelRailComponent {
   private readonly toasts = inject(PhxToastService);
   private readonly modals = inject(PhxModalService);
   private readonly drawers = inject(PhxDrawerService);
-  private notificationsDrawer: PhxDrawerRef | null = null;
-  private tasksDrawer: PhxDrawerRef | null = null;
-  private aboutDrawer: PhxDrawerRef | null = null;
   private readonly router = inject(Router);
   private readonly mayNotify = signal(false);
   private readonly mayTask = signal(false);
@@ -249,60 +246,49 @@ export class KeelRailComponent {
   }
 
   openNotifications(): void {
-    if (!this.notifiable() || this.closeIfOnTop(this.notificationsDrawer)) {
+    if (!this.notifiable()) {
+      return;
+    }
+    const data: NotificationCentreData = { problems: this.mayProblems() };
+    const opened = this.drawers.toggle(KeelNotificationCentreComponent, {
+      width: DRAWER_WIDTH,
+      label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
+      group: RAIL_GROUP,
+      data,
+    });
+    if (opened === null) {
       return;
     }
     void this.notifications.refresh();
     if (this.mayProblems()) {
       void this.problems.refresh();
     }
-    const data: NotificationCentreData = { problems: this.mayProblems() };
-    this.closeRailDrawers();
-    this.notificationsDrawer = this.drawers.open(KeelNotificationCentreComponent, {
-      width: DRAWER_WIDTH,
-      label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
-      data,
-    });
   }
 
   openTasks(id: Id | null): void {
-    if (!this.taskable() || (id === null && this.closeIfOnTop(this.tasksDrawer))) {
+    if (!this.taskable()) {
       return;
     }
     const data: TaskDrawerData = { id };
-    this.closeRailDrawers();
-    this.tasksDrawer = this.drawers.open(KeelTaskDrawerComponent, {
+    const config = {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_TASKS_KEY),
+      group: RAIL_GROUP,
       data,
-    });
+    };
+    if (id === null) {
+      this.drawers.toggle(KeelTaskDrawerComponent, config);
+    } else {
+      this.drawers.open(KeelTaskDrawerComponent, config);
+    }
   }
 
   openAbout(): void {
-    if (this.closeIfOnTop(this.aboutDrawer)) {
-      return;
-    }
-    this.closeRailDrawers();
-    this.aboutDrawer = this.drawers.open(KeelAboutComponent, {
+    this.drawers.toggle(KeelAboutComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_HELP_KEY),
+      group: RAIL_GROUP,
     });
-  }
-
-  private closeIfOnTop(drawer: PhxDrawerRef | null): boolean {
-    if (drawer === null || !drawer.isOpen || this.drawers.top !== drawer) {
-      return false;
-    }
-    drawer.close();
-    return true;
-  }
-
-  private closeRailDrawers(): void {
-    for (const drawer of [this.notificationsDrawer, this.tasksDrawer, this.aboutDrawer]) {
-      if (drawer?.isOpen) {
-        drawer.close();
-      }
-    }
   }
 
   async switchLanguage(lang: string | null): Promise<void> {
