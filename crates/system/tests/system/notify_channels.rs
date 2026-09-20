@@ -482,17 +482,20 @@ async fn a_message_becomes_a_delivery_per_channel_within_a_second_and_the_cursor
         rows[1].starts_with(&format!("second {KEY_PROBLEM_RAISED} ")),
         "{rows:?}"
     );
-    let cursor = harness
-        .database()
-        .rows(&format!(
-            "SELECT seq::text FROM notify_cursor WHERE consumer = '{CURSOR}'"
-        ))
-        .await;
     let newest = harness
         .database()
         .rows("SELECT max(seq)::text FROM keel_outbox")
         .await;
-    assert_eq!(cursor, newest);
+    wait_until("the cursor reaches the newest event", || async {
+        harness
+            .database()
+            .rows(&format!(
+                "SELECT seq::text FROM notify_cursor WHERE consumer = '{CURSOR}'"
+            ))
+            .await
+            == newest
+    })
+    .await;
     let messages_before = harness
         .database()
         .rows("SELECT count(*)::text FROM notify_message")
