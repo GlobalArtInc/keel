@@ -20,6 +20,7 @@ import { unreachable } from '@globalart/keel/forms';
 import type { Envelope, Id } from '@globalart/keel/meta';
 import { KeelTasks, describeError } from '@globalart/keel/renderer';
 import {
+  PhxDrawerRef,
   PhxDrawerService,
   PhxDropdownComponent,
   PhxModalService,
@@ -170,6 +171,9 @@ export class KeelRailComponent {
   private readonly toasts = inject(PhxToastService);
   private readonly modals = inject(PhxModalService);
   private readonly drawers = inject(PhxDrawerService);
+  private notificationsDrawer: PhxDrawerRef | null = null;
+  private tasksDrawer: PhxDrawerRef | null = null;
+  private aboutDrawer: PhxDrawerRef | null = null;
   private readonly router = inject(Router);
   private readonly mayNotify = signal(false);
   private readonly mayTask = signal(false);
@@ -245,7 +249,7 @@ export class KeelRailComponent {
   }
 
   openNotifications(): void {
-    if (!this.notifiable()) {
+    if (!this.notifiable() || this.closeIfOnTop(this.notificationsDrawer)) {
       return;
     }
     void this.notifications.refresh();
@@ -253,7 +257,7 @@ export class KeelRailComponent {
       void this.problems.refresh();
     }
     const data: NotificationCentreData = { problems: this.mayProblems() };
-    this.drawers.open(KeelNotificationCentreComponent, {
+    this.notificationsDrawer = this.drawers.open(KeelNotificationCentreComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_NOTIFICATIONS_KEY),
       data,
@@ -261,11 +265,11 @@ export class KeelRailComponent {
   }
 
   openTasks(id: Id | null): void {
-    if (!this.taskable()) {
+    if (!this.taskable() || (id === null && this.closeIfOnTop(this.tasksDrawer))) {
       return;
     }
     const data: TaskDrawerData = { id };
-    this.drawers.open(KeelTaskDrawerComponent, {
+    this.tasksDrawer = this.drawers.open(KeelTaskDrawerComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_TASKS_KEY),
       data,
@@ -273,10 +277,21 @@ export class KeelRailComponent {
   }
 
   openAbout(): void {
-    this.drawers.open(KeelAboutComponent, {
+    if (this.closeIfOnTop(this.aboutDrawer)) {
+      return;
+    }
+    this.aboutDrawer = this.drawers.open(KeelAboutComponent, {
       width: DRAWER_WIDTH,
       label: this.i18n.t(RAIL_HELP_KEY),
     });
+  }
+
+  private closeIfOnTop(drawer: PhxDrawerRef | null): boolean {
+    if (drawer === null || !drawer.isOpen || this.drawers.top !== drawer) {
+      return false;
+    }
+    drawer.close();
+    return true;
   }
 
   async switchLanguage(lang: string | null): Promise<void> {

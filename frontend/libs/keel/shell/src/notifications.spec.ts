@@ -250,6 +250,23 @@ describe('the notification centre', () => {
     expect(TestBed.inject(Router).url).toBe(`/f/${PROBLEM_LIST}?search=dns.zone.expiring`);
   });
 
+  it('the rail item toggles the centre: a second press closes it and a third opens it again', async () => {
+    const mock = client(ALL);
+    const { harness, element } = await render(mock);
+    const item = (): HTMLElement | null =>
+      element.querySelector<HTMLElement>('phx-rail-item[data-rail="notifications"] button');
+    item()?.click();
+    await settle(harness);
+    expect(centre(element)).not.toBeNull();
+    item()?.click();
+    await settle(harness);
+    await new Promise((done) => setTimeout(done, 350));
+    expect(centre(element)).toBeNull();
+    item()?.click();
+    await settle(harness);
+    expect(element.ownerDocument.querySelectorAll('keel-notification-centre')).toHaveLength(1);
+  });
+
   it('a notification frame prepends a message', async () => {
     const mock = client(ALL);
     const { harness, element, stream } = await render(mock);
