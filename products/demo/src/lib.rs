@@ -76,4 +76,20 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn the_demo_logo_is_filled_with_the_platform_palette() {
+        let svg = std::str::from_utf8(MANIFEST.logo().expect("the logo asset").bytes)
+            .expect("an SVG document");
+        let fills: Vec<&str> = svg
+            .split("fill=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .filter(|fill| !fill.eq_ignore_ascii_case("#ffffff"))
+            .collect();
+        assert!(!fills.is_empty());
+        assert!(fills.iter().all(|fill| *fill == PLATFORM_FILL), "{fills:?}");
+    }
+
+    const PLATFORM_FILL: &str = "#315fcf";
 }

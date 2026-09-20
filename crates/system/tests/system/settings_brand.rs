@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 
 use keel_sdk::prelude::*;
 use keel_system::{auth, settings};
-use keel_testkit::{Answer, ErrorCode, Harness, Reply, TestHttp, Who, tokio};
+use keel_testkit::{Answer, ErrorCode, Harness, Reply, TestHttp, UploadPart, Who, tokio};
 
 const DEMO_LOGO: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"3\" fill=\"#1f9d6a\"/></svg>";
 const PANEL_LOGO: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 8 8\"><rect width=\"8\" height=\"8\" fill=\"#c41e3a\"/></svg>";
 const SCRIPTED_LOGO: &str =
     "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>";
 const HOST: &str = "panel.example";
+const LOGO_ROUTE: &str = "/api/v1/x/settings/brand.logo";
 
 static DEMO_BUNDLE: ProductManifest = ProductManifest {
     id: "demo",
@@ -104,17 +105,26 @@ async fn a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_h
         .call(
             Who::Admin,
             "settings.brand.set",
-            json!({ "host": "Panel.Example", "name": "Panel Example", "logo": PANEL_LOGO, "hue": 350, "chroma": 0.2 }),
+            json!({ "host": "Panel.Example", "name": "Panel Example", "hue": 350, "chroma": 0.2 }),
         )
         .await;
     let row = data(&set);
     assert_eq!(row["host"], json!(HOST));
     assert_eq!(row["name"], json!("Panel Example"));
-    assert_eq!(row["logo"], json!(PANEL_LOGO));
+    assert_eq!(row["logo"], Value::Null);
     assert_eq!(row["hue"], json!(350));
     assert_eq!(row["chroma"], json!(0.2));
     assert_eq!(row["updatedAt"], json!("2026-09-14T10:00:00Z"));
     assert_eq!(row["updatedBy"], json!(harness.principal(Who::Admin).id));
+    let uploaded = harness
+        .call(
+            Who::Admin,
+            "settings.brand.logo",
+            json!({ "host": "Panel.Example", "logo": PANEL_LOGO }),
+        )
+        .await;
+    assert_eq!(data(&uploaded)["logo"], json!(PANEL_LOGO));
+    assert_eq!(data(&uploaded)["name"], json!("Panel Example"));
 
     let patched = with_host(&http, "/api/v1/boot", "panel.example:1500").await;
     assert_eq!(
@@ -172,7 +182,7 @@ async fn a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_h
     let scripted = harness
         .call(
             Who::Admin,
-            "settings.brand.set",
+            "settings.brand.logo",
             json!({ "host": HOST, "logo": SCRIPTED_LOGO }),
         )
         .await;
@@ -180,7 +190,7 @@ async fn a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_h
     let broken = harness
         .call(
             Who::Admin,
-            "settings.brand.set",
+            "settings.brand.logo",
             json!({ "host": HOST, "logo": "<svg><circle>" }),
         )
         .await;
@@ -301,6 +311,104 @@ async fn a_brand_patch_for_a_host_changes_boot_and_the_effective_logo_for_that_h
     harness.finish().await;
 }
 
+fn svg_part(bytes: &[u8]) -> UploadPart<'_> {
+    UploadPart::new("logo", "logo.svg", "image/svg+xml", bytes)
+}
+
+#[tokio::test]
+async fn a_plain_svg_logo_is_served_for_its_host_and_an_unsafe_one_is_refused_naming_the_reason() {
+    let harness = boot().await;
+    let http = harness.http().await;
+    let plain = http
+        .upload(
+            Who::Admin,
+            LOGO_ROUTE,
+            &json!({ "host": "Panel.Example" }),
+            &[svg_part(PANEL_LOGO.as_bytes())],
+        )
+        .await;
+    assert_eq!(plain.status, 200, "{}", plain.body);
+    assert_eq!(plain.json()["data"]["host"], json!(HOST));
+    assert_svg(
+        &with_host(&http, "/brand/logo.svg", "panel.example:1500").await,
+        PANEL_LOGO,
+        "the uploaded logo",
+    );
+    let listed = harness
+        .call(Who::Admin, "settings.brand.list", json!({}))
+        .await;
+    assert_eq!(data(&listed)["data"][0]["logo"], json!(true));
+
+    let scripted = http
+        .upload(
+            Who::Admin,
+            LOGO_ROUTE,
+            &json!({ "host": HOST }),
+            &[svg_part(SCRIPTED_LOGO.as_bytes())],
+        )
+        .await;
+    assert_eq!(scripted.status, 422, "{}", scripted.body);
+    let field = &scripted.json()["error"]["fields"][0];
+    assert_eq!(field["path"], json!("logo"));
+    assert_eq!(field["key"], json!("settings.error.brand_svg"));
+    assert_eq!(field["params"]["reason"], json!("a script element"));
+
+    let png = http
+        .upload(
+            Who::Admin,
+            LOGO_ROUTE,
+            &json!({ "host": HOST }),
+            &[UploadPart::new("logo", "logo.png", "image/png", b"\x89PNG")],
+        )
+        .await;
+    assert_eq!(png.status, 422, "{}", png.body);
+    assert_eq!(
+        png.json()["error"]["fields"][0]["key"],
+        json!("keel.error.file_type")
+    );
+    assert_svg(
+        &with_host(&http, "/brand/logo.svg", "panel.example:1500").await,
+        PANEL_LOGO,
+        "after the refusals",
+    );
+    http.stop().await.expect("the server stops");
+}
+
+#[tokio::test]
+async fn settings_brand_set_no_longer_takes_a_logo_and_leaves_a_stored_one_in_place() {
+    let harness = boot().await;
+    let uploaded = harness
+        .call(
+            Who::Admin,
+            "settings.brand.logo",
+            json!({ "host": HOST, "logo": PANEL_LOGO }),
+        )
+        .await;
+    assert_eq!(data(&uploaded)["logo"], json!(PANEL_LOGO));
+    let renamed = harness
+        .call(
+            Who::Admin,
+            "settings.brand.set",
+            json!({ "host": HOST, "name": "Panel Example", "hue": 20 }),
+        )
+        .await;
+    assert_eq!(data(&renamed)["name"], json!("Panel Example"));
+    assert_eq!(data(&renamed)["logo"], json!(PANEL_LOGO));
+    let with_logo = harness
+        .call(
+            Who::Admin,
+            "settings.brand.set",
+            json!({ "host": HOST, "hue": 20, "logo": DEMO_LOGO }),
+        )
+        .await;
+    assert_eq!(data(&with_logo)["logo"], json!(PANEL_LOGO));
+    let got = harness
+        .call(Who::Admin, "settings.brand.get", json!({ "host": HOST }))
+        .await;
+    assert_eq!(data(&got)["logo"], json!(PANEL_LOGO));
+    assert_eq!(data(&got)["hue"], json!(20));
+}
+
 #[tokio::test]
 async fn the_brand_descriptors_match_their_snapshots() {
     let harness = boot().await;
@@ -318,6 +426,7 @@ async fn the_brand_descriptors_match_their_snapshots() {
                 "settings.brand.delete",
                 "settings.brand.get",
                 "settings.brand.list",
+                "settings.brand.logo",
                 "settings.brand.set",
             ]
         };
@@ -335,10 +444,18 @@ async fn x_forwarded_host_from_a_trusted_proxy_selects_the_brand_patch() {
         .call(
             Who::Admin,
             "settings.brand.set",
-            json!({ "host": HOST, "name": "Panel Example", "logo": PANEL_LOGO, "hue": 350 }),
+            json!({ "host": HOST, "name": "Panel Example", "hue": 350 }),
         )
         .await;
     assert!(set.data().is_some(), "{:?}", set.error());
+    let logo = harness
+        .call(
+            Who::Admin,
+            "settings.brand.logo",
+            json!({ "host": HOST, "logo": PANEL_LOGO }),
+        )
+        .await;
+    assert!(logo.data().is_some(), "{:?}", logo.error());
     let upstream = [("host", "upstream.internal:1500")];
     let forwarded = [
         ("host", "upstream.internal:1500"),

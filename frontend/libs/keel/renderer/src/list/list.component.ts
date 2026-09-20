@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
   computed,
   effect,
   inject,
   input,
+  linkedSignal,
   signal,
   untracked,
 } from '@angular/core';
@@ -20,11 +22,22 @@ import {
   type KeelListFetch,
 } from '@globalart/keel/client';
 import { RemoteOptions, newIdempotencyKey, unreachable } from '@globalart/keel/forms';
-import type { Action, Column, Descriptor, Envelope, InlineEdit } from '@globalart/keel/meta';
+import type {
+  Action,
+  Column,
+  Descriptor,
+  Envelope,
+  ExportFormat,
+  InlineEdit,
+} from '@globalart/keel/meta';
 import {
   PhxButtonComponent,
   PhxDataTableComponent,
+  PhxDropdownComponent,
+  PhxDropdownItemComponent,
+  PhxDropdownTriggerDirective,
   PhxListTableComponent,
+  PhxModalService,
   PhxPageHeaderComponent,
   PhxSelectionBarComponent,
   PhxTableCellDirective,
@@ -33,12 +46,14 @@ import {
   type PhxButtonAppearance,
   type PhxCellChange,
   type PhxColumn,
+  type PhxColumnFilter,
   type PhxDataTablePage,
   type PhxIconName,
   type PhxRowAction,
   type PhxRowActionEvent,
   type PhxRowEvent,
   type PhxSelectionAction,
+  type PhxSort,
 } from '@globalart/phoenix-ui';
 import {
   Subject,
@@ -53,9 +68,10 @@ import {
   switchMap,
   type Observable,
 } from 'rxjs';
-import { KeelActionRunner, keyOf, labelKeyOf, substitute, type Row } from '../action/runner';
+import { KeelActionRunner, idsOf, keyOf, labelKeyOf, substitute, type Row } from '../action/runner';
 import { columnsOf, totalsOf, type ColumnTotal } from '../columns';
 import { describeError } from '../messages';
+import { MULTI_TITLE_KEY, isMultiForm, openMultiForm } from '../multi/multi-form.component';
 import { KeelNavigation } from '../navigation';
 import {
   EXPORT_FUNCTION,
@@ -71,7 +87,9 @@ import {
   toolbarActionsOf,
   type RowScope,
 } from './actions';
+import { KeelExports, exportQueryOf, formatKeyOf, formatsOf } from './export';
 import { invalidations } from './invalidate';
+import { KeelColumnOrders, reordered } from './order';
 import { scopeOf, searchOf } from './scope';
 
 export interface ReadonlyToggle {
@@ -91,6 +109,9 @@ const COMPACT_LOADING: CompactRows = { phase: 'loading' };
   imports: [
     PhxPageHeaderComponent,
     PhxButtonComponent,
+    PhxDropdownComponent,
+    PhxDropdownItemComponent,
+    PhxDropdownTriggerDirective,
     PhxSelectionBarComponent,
     PhxDataTableComponent,
     PhxListTableComponent,
@@ -115,16 +136,40 @@ const COMPACT_LOADING: CompactRows = { phase: 'loading' };
     } @else {
       <phx-page-header [title]="title()">
         @for (action of toolbar(); track action.id) {
-          <button
-            phxActions
-            [phxButton]="appearanceOf(action)"
-            type="button"
-            [icon]="iconOf(action)"
-            [attr.data-action]="action.id"
-            (click)="run(action)"
-          >
-            {{ labelOf(action) }}
-          </button>
+          @if (action.role === 'export') {
+            <button
+              phxActions
+              [phxButton]="appearanceOf(action)"
+              type="button"
+              [icon]="iconOf(action)"
+              [attr.data-action]="action.id"
+              [phxDropdownTrigger]="formats"
+              [disabled]="exporting()"
+            >
+              {{ labelOf(action) }}
+            </button>
+            <phx-dropdown #formats menu align="end" [label]="labelOf(action)">
+              @for (format of formatsOf(action); track format) {
+                <phx-dropdown-item
+                  [attr.data-format]="format"
+                  (select)="formats.select(); export(action, format)"
+                >
+                  {{ formatLabel(format) }}
+                </phx-dropdown-item>
+              }
+            </phx-dropdown>
+          } @else {
+            <button
+              phxActions
+              [phxButton]="appearanceOf(action)"
+              type="button"
+              [icon]="iconOf(action)"
+              [attr.data-action]="action.id"
+              (click)="run(action)"
+            >
+              {{ labelOf(action) }}
+            </button>
+          }
         }
       </phx-page-header>
       <phx-selection-bar
@@ -140,7 +185,11 @@ const COMPACT_LOADING: CompactRows = { phase: 'loading' };
           [rowKey]="key()"
           [label]="title()"
           [searchable]="searchable()"
-          [search]="search()"
+          [(search)]="tableSearch"
+          [(sort)]="tableSort"
+          [(filters)]="tableFilters"
+          [columnOrder]="order()"
+          (columnOrderChange)="reorder($event)"
           [selectable]="selectable()"
           [selection]="selection()"
           (selectionChange)="selection.set($event)"
@@ -211,6 +260,10 @@ export class KeelListComponent {
   private readonly runner = inject(KeelActionRunner);
   private readonly navigation = inject(KeelNavigation);
   private readonly toasts = inject(PhxToastService);
+  private readonly modals = inject(PhxModalService);
+  private readonly injector = inject(Injector);
+  private readonly exports = inject(KeelExports);
+  private readonly orders = inject(KeelColumnOrders);
   private readonly remotes = signal<ReadonlyMap<string, RemoteOptions>>(new Map());
   private readonly refreshes = new Subject<void>();
   private readonly known = new Map<RowKey, Row>();
@@ -228,6 +281,11 @@ export class KeelListComponent {
   });
   readonly scope = computed(() => scopeOf(this.params()));
   readonly search = computed(() => searchOf(this.params()));
+  readonly tableSearch = linkedSignal(() => this.search());
+  readonly tableSort = signal<PhxSort | null>(null);
+  readonly tableFilters = signal<PhxColumnFilter[]>([]);
+  readonly order = signal<string[] | null>(null);
+  readonly exporting = signal(false);
   readonly fetch = computed<KeelListFetch<Row>>(() =>
     listFetch<Row>(this.descriptor().name, this.scope(), this.client),
   );
@@ -258,6 +316,20 @@ export class KeelListComponent {
     ),
     { initialValue: false },
   );
+  readonly multiForm = toSignal(
+    toObservable(this.descriptor).pipe(
+      switchMap((descriptor) => {
+        const screen = editActionOf(descriptor)?.screen ?? null;
+        return screen === null
+          ? of<Descriptor | null>(null)
+          : from(this.descriptors.get(screen)).pipe(
+              map((form) => (isMultiForm(form) ? form : null)),
+              catchError(() => of<Descriptor | null>(null)),
+            );
+      }),
+    ),
+    { initialValue: null },
+  );
   readonly columns = computed<PhxColumn<Row>[]>(() => {
     const remotes = this.remotes();
     return columnsOf(this.descriptor(), {
@@ -285,9 +357,14 @@ export class KeelListComponent {
     ),
   );
   readonly bulkActions = computed(() => bulkActionsOf(this.descriptor()));
-  readonly selectable = computed(() => this.bulkActions().length > 0);
-  readonly bulk = computed<PhxSelectionAction[]>(() =>
-    this.bulkActions().map((action) => {
+  readonly multiEdit = computed(() =>
+    this.multiForm() === null ? null : editActionOf(this.descriptor()),
+  );
+  readonly selectable = computed(() => this.bulkActions().length > 0 || this.multiEdit() !== null);
+  readonly bulk = computed<PhxSelectionAction[]>(() => {
+    const edit = this.multiEdit();
+    const actions = edit === null ? this.bulkActions() : [edit, ...this.bulkActions()];
+    return actions.map((action) => {
       const item: PhxSelectionAction = {
         id: action.id,
         label: this.labelOf(action),
@@ -298,8 +375,8 @@ export class KeelListComponent {
         item.icon = icon;
       }
       return item;
-    }),
-  );
+    });
+  });
   readonly rowActions = computed<PhxRowAction<Row>[]>(() => {
     const scope = this.rowScope();
     return rowActionsOf(this.descriptor()).map((action) => ({
@@ -352,6 +429,65 @@ export class KeelListComponent {
         this.clearSelection();
       });
     });
+    effect(() => {
+      const name = this.descriptor().name;
+      untracked(() => {
+        this.tableSort.set(null);
+        this.tableFilters.set([]);
+        void this.loadOrder(name);
+      });
+    });
+  }
+
+  protected formatsOf(action: Action): readonly ExportFormat[] {
+    return formatsOf(action);
+  }
+
+  protected formatLabel(format: ExportFormat): string {
+    return this.i18n.t(formatKeyOf(format));
+  }
+
+  visibleColumns(): string[] {
+    const declared = this.columns().map((column) => column.key);
+    const order = this.order();
+    return order === null ? declared : reordered(declared, order);
+  }
+
+  async export(action: Action, format: ExportFormat): Promise<void> {
+    if (this.exporting()) {
+      return;
+    }
+    this.exporting.set(true);
+    try {
+      await this.exports.run(
+        {
+          func: this.descriptor().name,
+          query: exportQueryOf(
+            { search: this.tableSearch(), sort: this.tableSort(), filters: this.tableFilters() },
+            this.scope(),
+          ),
+          columns: this.visibleColumns(),
+          format,
+        },
+        this.labelOf(action),
+      );
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
+  protected reorder(order: string[] | null): void {
+    this.order.set(order);
+    if (order !== null) {
+      void this.orders.save(this.descriptor().name, order);
+    }
+  }
+
+  private async loadOrder(name: string): Promise<void> {
+    const stored = await this.orders.load(name);
+    if (this.descriptor().name === name) {
+      this.order.set(stored);
+    }
   }
 
   labelOf(action: Action): string {
@@ -431,8 +567,30 @@ export class KeelListComponent {
 
   protected runBulk(item: PhxSelectionAction): void {
     const action = actionOf(this.descriptor(), item.id);
-    if (action !== null) {
-      this.run(action, this.selectedRows());
+    if (action === null) {
+      return;
+    }
+    if (action === this.multiEdit()) {
+      void this.editSelected();
+      return;
+    }
+    this.run(action, this.selectedRows());
+  }
+
+  async editSelected(): Promise<void> {
+    const form = this.multiForm();
+    if (form === null) {
+      return;
+    }
+    const ids = idsOf(this.descriptor(), this.selectedRows());
+    const outcome = await openMultiForm(this.modals, this.injector, {
+      descriptor: form,
+      ids,
+      title: this.i18n.t(MULTI_TITLE_KEY, { count: ids.length }),
+    });
+    if (outcome !== undefined) {
+      this.clearSelection();
+      this.refresh();
     }
   }
 
@@ -521,4 +679,12 @@ export class KeelListComponent {
     }
     return opened;
   }
+}
+
+function editActionOf(descriptor: Descriptor): Action | null {
+  return (
+    (descriptor.ui?.actions ?? []).find(
+      (action) => action.role === 'edit' && (action.screen ?? null) !== null,
+    ) ?? null
+  );
 }

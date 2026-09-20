@@ -22,6 +22,8 @@ import {
 } from 'rxjs';
 import { CONTENT_DISPOSITION, downloadUrl, filenameOf, type DownloadResult } from './download';
 import { tracked } from './progress';
+import { isTaskRef } from './tasks';
+import { JSON_TYPE, multipartOf, uploadUrl, type UploadFiles } from './upload';
 
 export const API_PREFIX = '/api/v1';
 export const REQUEST_ID_HEADER = 'X-Keel-Request-Id';
@@ -32,6 +34,7 @@ export const LANG_PARAM = 'lang';
 export const UNAUTHENTICATED_KEY = 'keel.error.unauthenticated';
 
 const IF_NONE_MATCH = 'If-None-Match';
+const CONTENT_TYPE = 'Content-Type';
 const ETAG = 'ETag';
 const AUTHORIZATION = 'Authorization';
 const UNAUTHENTICATED = 401;
@@ -76,6 +79,13 @@ export abstract class KeelClient {
   ): Observable<Envelope<T>>;
 
   abstract download(func: string, params?: unknown): Observable<DownloadResult>;
+
+  abstract upload<T = unknown>(
+    func: string,
+    params: unknown,
+    files: UploadFiles,
+    options?: CallOptions,
+  ): Observable<Envelope<T>>;
 
   abstract boot(etag?: string | null): Observable<Fetched<Boot> | null>;
 
@@ -194,15 +204,31 @@ export class KeelHttpClient extends KeelClient {
     return this.http
       .post(downloadUrl(func), params ?? {}, { observe: 'response', responseType: 'blob' })
       .pipe(
-        map((response): DownloadResult => {
-          this.observe(response.headers, response.status);
-          return {
-            ok: true,
-            file: {
-              blob: bodyOf(response),
-              filename: filenameOf(response.headers.get(CONTENT_DISPOSITION)),
-            },
-          };
+        switchMap((response): Observable<DownloadResult> => {
+          const blob = bodyOf(response);
+          if (!isJson(response.headers.get(CONTENT_TYPE))) {
+            this.observe(response.headers, response.status);
+            return of<DownloadResult>({
+              ok: true,
+              file: { blob, filename: filenameOf(response.headers.get(CONTENT_DISPOSITION)) },
+            });
+          }
+          return from(blob.text()).pipe(
+            map((text): DownloadResult => {
+              const body = parsed(text);
+              this.observe(response.headers, response.status, body);
+              if (!isEnvelope(body)) {
+                throw new TypeError(`${func} answered JSON other than a call envelope`);
+              }
+              if (!body.ok) {
+                return { ok: false, error: body.error };
+              }
+              if (!isTaskRef(body.data)) {
+                throw new TypeError(`${func} answered an envelope without a task`);
+              }
+              return { ok: true, task: body.data };
+            }),
+          );
         }),
         catchError((error: unknown) => {
           if (!(error instanceof HttpErrorResponse) || !(error.error instanceof Blob)) {
@@ -217,6 +243,31 @@ export class KeelHttpClient extends KeelClient {
                 : throwError(() => error);
             }),
           );
+        }),
+        tracked(this.progress),
+      );
+  }
+
+  upload<T = unknown>(
+    func: string,
+    params: unknown,
+    files: UploadFiles,
+    options: CallOptions = {},
+  ): Observable<Envelope<T>> {
+    return this.http
+      .post<Envelope<T>>(uploadUrl(func), multipartOf(params, files), {
+        headers: callHeaders(options),
+        observe: 'response',
+      })
+      .pipe(
+        map((response) =>
+          this.settle<T>(response.headers, response.status, bodyOf(response), func),
+        ),
+        catchError((error: unknown) => {
+          if (error instanceof HttpErrorResponse && isEnvelope(error.error)) {
+            return of(this.settle<T>(error.headers, error.status, error.error, func));
+          }
+          return throwError(() => error);
         }),
         tracked(this.progress),
       );
@@ -343,4 +394,8 @@ export class KeelHttpClient extends KeelClient {
       this.metaChanges.next(version);
     }
   }
+}
+
+function isJson(contentType: string | null): boolean {
+  return contentType !== null && contentType.split(';')[0].trim().toLowerCase() === JSON_TYPE;
 }

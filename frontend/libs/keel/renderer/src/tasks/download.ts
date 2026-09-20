@@ -38,10 +38,10 @@ export class KeelDownloads {
     const result = await firstValueFrom(this.client.download(link.function, link.params)).catch(
       (error: unknown): DownloadResult => ({ ok: false, error: unreachable(error) }),
     );
-    if (result.ok) {
-      handToBrowser(result.file, this.document);
-    } else {
+    if (!result.ok) {
       this.toasts.danger(describeError(this.i18n, result.error), { title });
+    } else if ('file' in result) {
+      handToBrowser(result.file, this.document);
     }
     return result;
   }

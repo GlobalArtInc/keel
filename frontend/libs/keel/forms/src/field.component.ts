@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  forwardRef,
   inject,
   input,
   signal,
@@ -16,8 +17,9 @@ import {
   ValueChangeEvent,
 } from '@angular/forms';
 import { KeelI18n } from '@globalart/keel/client';
-import type { FieldError } from '@globalart/keel/meta';
+import { lookup, type FieldError } from '@globalart/keel/meta';
 import {
+  PHX_LABELS,
   PhxCodeFieldComponent,
   PhxDateFieldComponent,
   PhxFieldErrorComponent,
@@ -36,6 +38,7 @@ import {
   PhxToggleComponent,
   type PhxColumn,
   type PhxDateValue,
+  type PhxLabels,
   type PhxSelectOption,
   type PhxSwitcherOption,
 } from '@globalart/phoenix-ui';
@@ -52,6 +55,9 @@ interface ControlState {
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const EMPTY_SUFFIX = '.empty';
+const UNLIMITED_KEY = 'phx.unlimited';
 
 @Component({
   selector: 'keel-field',
@@ -185,6 +191,8 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
           <phx-file-field
             [formControl]="control()"
             [label]="label()"
+            [accept]="accept()"
+            [maxSize]="maxSize()"
             [required]="required()"
             [hint]="hint()"
             [error]="error()"
@@ -236,6 +244,13 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
       display: block;
     }
   `,
+  providers: [
+    {
+      provide: PHX_LABELS,
+      useFactory: (host: KeelFieldComponent): PhxLabels => host.labels,
+      deps: [forwardRef(() => KeelFieldComponent)],
+    },
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class KeelFieldComponent {
@@ -244,7 +259,18 @@ export class KeelFieldComponent {
   protected readonly mirror = new FormControl<number | null>(null);
 
   private readonly i18n = inject(KeelI18n);
+  private readonly parentLabels = inject(PHX_LABELS, { skipSelf: true });
   private readonly version = signal(0);
+
+  readonly emptyLabel = computed(() => {
+    const messages = this.i18n.messages();
+    return (
+      lookup(messages, `${this.field().labelKey}${EMPTY_SUFFIX}`) ??
+      lookup(messages, UNLIMITED_KEY) ??
+      this.parentLabels.unlimited
+    );
+  });
+  readonly labels: PhxLabels = scopedLabels(this.parentLabels, this.emptyLabel);
 
   protected readonly control = computed(() => this.field().control);
   protected readonly mapping = computed(() => this.field().mapping);
@@ -306,6 +332,13 @@ export class KeelFieldComponent {
       this.choice(value),
     );
   });
+  protected readonly accept = computed(() => {
+    const types = member(this.mapping(), 'phx-file-field')?.accept ?? [];
+    return types.length === 0 ? null : types.join(',');
+  });
+  protected readonly maxSize = computed(
+    () => member(this.mapping(), 'phx-file-field')?.maxSize ?? null,
+  );
   protected readonly min = computed(() => this.numeric()?.min ?? null);
   protected readonly max = computed(() => this.numeric()?.max ?? null);
   protected readonly step = computed(() => this.numeric()?.step ?? 1);
@@ -414,4 +447,11 @@ function formatIsoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function scopedLabels(parent: PhxLabels, unlimited: () => string): PhxLabels {
+  return Object.defineProperty({ ...parent }, 'unlimited', {
+    enumerable: true,
+    get: unlimited,
+  });
 }

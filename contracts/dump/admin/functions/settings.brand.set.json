@@ -27,16 +27,6 @@
         ],
         "maxLength": 120
       },
-      "logo": {
-        "type": [
-          "string",
-          "null"
-        ],
-        "maxLength": 65536,
-        "x-ui": {
-          "control": "code"
-        }
-      },
       "hue": {
         "type": [
           "integer",
@@ -61,7 +51,7 @@
     ]
   },
   "result": {
-    "title": "BrandRow",
+    "title": "Brand",
     "type": "object",
     "properties": {
       "host": {
@@ -116,7 +106,6 @@
         "fields": [
           "host",
           "name",
-          "logo",
           "hue",
           "chroma"
         ]

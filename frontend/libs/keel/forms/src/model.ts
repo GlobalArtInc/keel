@@ -134,11 +134,15 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
     const visible = computed(() => holds(showIf, site.context(), true));
     const fields: FormField[] = [];
     for (const name of declared.fields ?? []) {
-      if (name === key || seen.has(name) || !Object.hasOwn(properties, name)) {
+      if (seen.has(name) || !Object.hasOwn(properties, name)) {
         continue;
       }
       seen.add(name);
-      fields.push(buildField(name, visible, site));
+      const field = buildField(name, visible, site);
+      if (name === key && isEmptyValue(field.control.value) && !isEmptyValue(screenParams[name])) {
+        field.control.setValue(screenParams[name], { emitEvent: false });
+      }
+      fields.push(field);
     }
     pages.push({
       id: declared.id,

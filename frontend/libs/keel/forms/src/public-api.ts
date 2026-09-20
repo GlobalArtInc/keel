@@ -19,6 +19,7 @@ export {
   fieldValidator,
   findingsOf,
   isEmptyValue,
+  isFileList,
   validateField,
 } from './validators';
 export type { FieldRule } from './validators';
@@ -32,7 +33,16 @@ export { RECOMPUTE_DEBOUNCE_MS, applyAnswer, bindRecompute, recomputeFields } fr
 export type { RecomputeAnswer, RecomputeRequest } from './recompute';
 export { applyCallError, applyFieldErrors, clearFieldErrors, fieldOf, rootOf } from './errors';
 export type { FieldFallback } from './errors';
-export { bodyOf, markAllTouched, newIdempotencyKey, submitForm, unreachable } from './submit';
+export {
+  bodyOf,
+  filesOf,
+  isFileField,
+  isUpload,
+  markAllTouched,
+  newIdempotencyKey,
+  submitForm,
+  unreachable,
+} from './submit';
 export type { Saved } from './submit';
 export { loadForm, loadValues } from './load';
 export type { LoadOptions } from './load';

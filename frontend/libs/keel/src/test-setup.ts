@@ -26,6 +26,12 @@ if (typeof globalThis.ResizeObserver !== 'function') {
   globalThis.ResizeObserver = IdleResizeObserver;
 }
 
+if (typeof globalThis.CSS === 'undefined') {
+  Object.defineProperty(globalThis, 'CSS', {
+    value: { escape: (text: string) => text.replace(/[^\w-]/g, (char) => `\\${char}`) },
+  });
+}
+
 if (typeof Blob.prototype.text !== 'function') {
   Blob.prototype.text = function text(this: Blob): Promise<string> {
     return new Promise((resolve, reject) => {

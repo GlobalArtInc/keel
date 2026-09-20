@@ -15,8 +15,10 @@ const MESSAGES = {
       'value.off': 'Switched off',
       page: { main: 'Main' },
     },
+    brand: { hue: 'Hue', 'hue.empty': 'From the product', chroma: 'Chroma' },
   },
   keel: { schema: { required: 'Required' } },
+  phx: { unlimited: 'No limit' },
 };
 
 const COMPONENT: Record<Control, string> = {
@@ -60,6 +62,26 @@ function fieldOf(
   const field = buildForm(descriptorWith(property, required), { values }).field('value');
   if (field === undefined) {
     throw new Error('the synthetic descriptor has no field value');
+  }
+  return field;
+}
+
+function brandFieldOf(name: string): FormField {
+  const descriptor: Descriptor = {
+    ...descriptorWith({}),
+    name: 'demo.brand.set',
+    params: {
+      type: 'object',
+      properties: {
+        hue: { type: ['integer', 'null'], minimum: 0, maximum: 359 },
+        chroma: { type: ['number', 'null'], minimum: 0, maximum: 0.4 },
+      },
+    },
+    ui: { title: 'demo.brand.set.title', pages: [{ id: 'main', fields: ['hue', 'chroma'] }] },
+  };
+  const field = buildForm(descriptor).field(name);
+  if (field === undefined) {
+    throw new Error(`the brand descriptor has no field ${name}`);
   }
   return field;
 }
@@ -172,7 +194,7 @@ describe('keel-field', () => {
 
     field.control.setValue(null);
     fixture.detectChanges();
-    expect(number.value).toBe('Unlimited');
+    expect(number.value).toBe('No limit');
     expect(slider?.disabled).toBe(true);
   });
 
@@ -217,6 +239,57 @@ describe('keel-field', () => {
     TestBed.resetTestingModule();
     const plain = await render(fieldOf({ type: 'string', 'x-keel': { secret: true } }));
     expect(element(plain).querySelector('phx-password [icon="dices"]')).toBeNull();
+  });
+
+  it('control file renders phx-file-field with accept and maxSize from x-keel.file', async () => {
+    const field = fieldOf({
+      type: 'string',
+      'x-ui': { control: 'file' },
+      'x-keel': { file: { maxBytes: 65536, types: ['image/svg+xml', 'image/png'] } },
+    });
+    expect(field.mapping).toEqual({
+      component: 'phx-file-field',
+      accept: ['image/svg+xml', 'image/png'],
+      maxSize: 65536,
+      preset: null,
+    });
+    const fixture = await render(field);
+    const file = element(fixture).querySelector('phx-file-field');
+    expect(file).not.toBeNull();
+    const input = element(fixture).querySelector<HTMLInputElement>(
+      'phx-file-field input[type=file]',
+    );
+    expect(input?.getAttribute('accept')).toBe('image/svg+xml,image/png');
+    expect(fixture.componentInstance['maxSize']()).toBe(65536);
+    TestBed.resetTestingModule();
+
+    const bare = fieldOf({ type: 'string', 'x-ui': { control: 'file' } });
+    expect(bare.mapping).toEqual({
+      component: 'phx-file-field',
+      accept: [],
+      maxSize: null,
+      preset: null,
+    });
+    const plain = await render(bare);
+    expect(
+      element(plain)
+        .querySelector<HTMLInputElement>('phx-file-field input[type=file]')
+        ?.getAttribute('accept'),
+    ).toBeNull();
+  });
+
+  it('a nullable number shows the field\u2019s .empty label through the scoped PHX_LABELS when the catalogue has it and phx.unlimited otherwise', async () => {
+    const hue = await render(brandFieldOf('hue'));
+    const number = element(hue).querySelector<HTMLInputElement>('phx-number-field input');
+    expect(number?.value).toBe('From the product');
+    expect(hue.componentInstance.labels.unlimited).toBe('From the product');
+    expect(hue.componentInstance.labels.cancel).toBe('Cancel');
+    TestBed.resetTestingModule();
+
+    const chroma = await render(brandFieldOf('chroma'));
+    const plain = element(chroma).querySelector<HTMLInputElement>('phx-number-field input');
+    expect(plain?.value).toBe('No limit');
+    expect(chroma.componentInstance.labels.unlimited).toBe('No limit');
   });
 
   it('a readonly field renders its control disabled', async () => {

@@ -54,7 +54,7 @@ pub mod brand {
     #[serde(crate = "keel_sdk::serde", rename_all = "camelCase")]
     #[schemars(
         crate = "keel_sdk::schemars",
-        rename = "BrandRow",
+        rename = "Brand",
         rename_all = "camelCase"
     )]
     pub struct Model {

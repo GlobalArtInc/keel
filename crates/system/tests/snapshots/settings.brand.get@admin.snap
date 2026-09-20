@@ -28,7 +28,7 @@ info:
     ]
   },
   "result": {
-    "title": "BrandRow",
+    "title": "Brand",
     "type": "object",
     "properties": {
       "host": {

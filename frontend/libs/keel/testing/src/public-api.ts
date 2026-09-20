@@ -1,5 +1,11 @@
 export { KeelMockClient } from './mock-client';
-export type { CannedAnswer, KeelMockFixtures, RecordedCall, RecordedDownload } from './mock-client';
+export type {
+  CannedAnswer,
+  KeelMockFixtures,
+  RecordedCall,
+  RecordedDownload,
+  RecordedUpload,
+} from './mock-client';
 export {
   BOOT_FILE,
   DUMP_LANG,

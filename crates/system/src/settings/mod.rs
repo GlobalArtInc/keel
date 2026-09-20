@@ -16,7 +16,7 @@ use store::Store;
 pub use functions::{PERMISSION_MANAGE as MANAGE, PERMISSION_READ as READ, SettingRow, scope_of};
 pub use pref::{LANG as PREF_LANG, THEME as PREF_THEME, TZ as PREF_TZ};
 
-pub const FUNCTIONS: [&str; 9] = [
+pub const FUNCTIONS: [&str; 10] = [
     "settings.list",
     "settings.get",
     "settings.set",
@@ -26,6 +26,7 @@ pub const FUNCTIONS: [&str; 9] = [
     "settings.brand.get",
     "settings.brand.set",
     "settings.brand.delete",
+    "settings.brand.logo",
 ];
 pub const MENU_PATH: &str = "system/settings";
 pub const BRAND_MENU_PATH: &str = "system/brand";
@@ -58,6 +59,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(brand::functions::get())
         .function(brand::functions::set())
         .function(brand::functions::delete())
+        .function(brand::functions::logo())
         .permission(READ, &[Level::Reseller])
         .permission(MANAGE, &[Level::Reseller])
         .menu(
@@ -112,6 +114,12 @@ mod tests {
                 (
                     "settings.brand.delete",
                     Kind::Action,
+                    Mode::Write,
+                    Level::Admin
+                ),
+                (
+                    "settings.brand.logo",
+                    Kind::Upload,
                     Mode::Write,
                     Level::Admin
                 ),

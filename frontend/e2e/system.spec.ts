@@ -11,6 +11,7 @@ const SCREENS: readonly SystemScreen[] = [
   { label: 'Principals', func: 'keel.principal.list' },
   { label: 'Products', func: 'keel.product.list' },
   { label: 'Settings', func: 'settings.list' },
+  { label: 'White-label by host name', func: 'settings.brand.list' },
   { label: 'Tasks', func: 'task.list' },
   { label: 'Scheduled jobs', func: 'cron.job.list' },
   { label: 'Webhooks', func: 'webhook.subscription.list' },
@@ -21,6 +22,11 @@ const SCREENS: readonly SystemScreen[] = [
 ];
 
 const MIN_LENGTH_KEY = 'auth.password.min_length';
+const BRAND_HOST = 'panel.example';
+const BRAND_LIST = '/f/settings.brand.list';
+const PLAIN_LOGO =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#315fcf"/></svg>';
+const SCRIPTED_LOGO = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
 const MIN_LENGTH = '10';
 const TOKEN_NAME = 'browser suite';
 const TOKEN_PREFIX = 'kat_';
@@ -32,6 +38,15 @@ function field(scope: Locator | Page, label: string): Locator {
 
 function rows(page: Page): Locator {
   return page.locator('phx-list-table .body [role="row"]');
+}
+
+async function saved(page: Page, func: string, save: () => Promise<void>): Promise<void> {
+  const answered = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/v1/call/${func}`) && response.request().method() === 'POST',
+  );
+  await save();
+  expect((await answered).ok()).toBe(true);
 }
 
 async function search(page: Page, text: string): Promise<void> {
@@ -75,6 +90,82 @@ keelTest.describe('system', () => {
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).first().locator('[data-column="value"]')).toHaveText(MIN_LENGTH);
   });
+
+  keelTest(
+    'the white-label screen says white-label by host name, hue and chroma say from the product when empty, an uploaded svg logo shows after a reload and a scripted one is refused on the field',
+    async ({ page, keel }) => {
+      await keel.asAdmin();
+      await page
+        .locator('phx-sidebar')
+        .getByRole('link', { name: 'White-label by host name' })
+        .click();
+      await expect(page).toHaveURL(new RegExp(`${BRAND_LIST.replaceAll('.', '\\.')}$`));
+      const list = page.locator('keel-list[data-list="settings.brand.list"]');
+      await expect(list.getByRole('heading', { level: 1 })).toHaveText('White-label by host name');
+      await list.locator('[data-action="create"]').click();
+
+      const form = page.locator('keel-form[data-form="settings.brand.set"]');
+      await expect(form).toBeVisible();
+      await expect(form.getByRole('heading', { level: 1 })).toHaveText(
+        'White-label of a host name',
+      );
+      await expect(field(form, 'Hue (0 to 359)').getByRole('textbox')).toHaveValue(
+        'From the product',
+      );
+      await expect(field(form, 'Chroma (0 to 0.4)').getByRole('textbox')).toHaveValue(
+        'From the product',
+      );
+      await field(form, 'Host name').getByRole('textbox').fill(BRAND_HOST);
+      await saved(page, 'settings.brand.set', () => form.locator('button.save').click());
+      await page.goto(BRAND_LIST);
+      await search(page, BRAND_HOST);
+      await expect(rows(page)).toHaveCount(1);
+      await expect(rows(page).first().locator('[data-column="logo"] phx-icon')).toHaveAttribute(
+        'aria-label',
+        'No',
+      );
+
+      await rows(page).first().locator('.cell_actions button').click();
+      await page.getByRole('menuitem', { name: 'Logo' }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`/f/settings\\.brand\\.logo\\?host=${BRAND_HOST.replaceAll('.', '\\.')}$`),
+      );
+      const upload = page.locator('keel-form[data-form="settings.brand.logo"][data-mode="edit"]');
+      await expect(upload).toBeVisible();
+      await expect(field(upload, 'Host name').getByRole('textbox')).toHaveValue(BRAND_HOST);
+      await expect(field(upload, 'Host name').getByRole('textbox')).toBeDisabled();
+      const picker = upload.locator('input[type="file"]');
+      await expect(picker).toHaveAttribute('accept', 'image/svg+xml');
+      await picker.setInputFiles({
+        name: 'scripted.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(SCRIPTED_LOGO),
+      });
+      await upload.locator('button.save').click();
+      await expect(field(upload, 'Logo (SVG)').locator('phx-field-error')).toContainText('script');
+
+      await picker.setInputFiles({
+        name: 'logo.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(PLAIN_LOGO),
+      });
+      const answered = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/api/v1/x/settings/brand.logo') &&
+          response.request().method() === 'POST',
+      );
+      await upload.locator('button.save').click();
+      expect((await answered).ok()).toBe(true);
+      await page.goto(BRAND_LIST);
+      await page.reload();
+      await search(page, BRAND_HOST);
+      await expect(rows(page)).toHaveCount(1);
+      await expect(rows(page).first().locator('[data-column="logo"] phx-icon')).toHaveAttribute(
+        'aria-label',
+        'Yes',
+      );
+    },
+  );
 
   keelTest('root creates a token whose plaintext is shown once', async ({ page, keel }) => {
     await keel.asAdmin();

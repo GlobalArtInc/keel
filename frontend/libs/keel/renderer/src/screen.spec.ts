@@ -146,6 +146,50 @@ describe('keel-screen', () => {
     expect(element.querySelector('.body .row a.link')?.textContent).toBe('a.org');
   });
 
+  it('an upload descriptor renders the form screen with the key parameter as a field', async () => {
+    const upload: Descriptor = {
+      ...EDIT,
+      name: 'dns.zone.import',
+      kind: 'upload',
+      key: 'name',
+      params: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          file: {
+            type: 'string',
+            'x-keel': { file: { maxBytes: 1024, types: ['text/plain'] } },
+            'x-ui': { control: 'file' },
+          },
+        },
+        required: ['name', 'file'],
+      },
+      ui: {
+        title: 'dns.zone.import.title',
+        pages: [{ id: 'main', fields: ['name', 'file'] }],
+        fields: { name: { readonly_if: { eq: ['$mode', 'edit'] } } },
+      },
+    };
+    const client = new KeelMockClient({
+      boot: BOOT,
+      descriptors: [upload],
+      catalogue: { lang: 'en', messages: MESSAGES },
+    });
+    const fixture = await render('dns.zone.import', client, { name: 'a.org' });
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.getAttribute('data-phase')).toBe('screen');
+    const form = element.querySelector('keel-form');
+    expect(form?.getAttribute('data-form')).toBe('dns.zone.import');
+    expect(form?.getAttribute('data-mode')).toBe('edit');
+    const name = element.querySelector<HTMLInputElement>('phx-input input');
+    expect(name?.value).toBe('a.org');
+    expect(name?.disabled).toBe(true);
+    expect(element.querySelector('phx-file-field input[type=file]')?.getAttribute('accept')).toBe(
+      'text/plain',
+    );
+    expect(client.calls).toHaveLength(0);
+  });
+
   it('a kind without a renderer yet shows phx-not-found naming the kind', async () => {
     const client = new KeelMockClient({
       boot: BOOT,

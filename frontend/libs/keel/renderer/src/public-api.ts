@@ -67,10 +67,12 @@ export { KeelDownloads } from './tasks/download';
 export { TASK_DETAILS_KEY } from './tasks/progress.component';
 export type { ScreenTarget } from './navigation';
 export {
+  CELL_EDIT_TYPES,
   COLUMN_TYPES,
   DAY_FORMAT,
   MOMENT_FORMAT,
   TONES,
+  cellEditOf,
   columnLabel,
   columnsOf,
   flagOf,
@@ -108,5 +110,36 @@ export {
 export { SEARCH_PARAM, scopeOf, searchOf } from './list/scope';
 export { KeelListComponent } from './list/list.component';
 export type { CompactRows, ReadonlyToggle } from './list/list.component';
+export {
+  DEFAULT_FORMATS,
+  FORMAT_KEY_PREFIX,
+  KeelExports,
+  exportQueryOf,
+  formatKeyOf,
+  formatsOf,
+} from './list/export';
+export type { ExportOutcome, ExportRequest, TableState } from './list/export';
+export {
+  COLUMNS_PREFIX,
+  KeelColumnOrders,
+  ORDER_MEMBER,
+  PREF_GET,
+  PREF_SET,
+  columnsKeyOf,
+  orderOf,
+  reordered,
+} from './list/order';
+export {
+  KeelMultiFormComponent,
+  MULTI_TITLE_KEY,
+  groupBodyOf,
+  groupPathOf,
+  isGroupResult,
+  isMultiForm,
+  multiDescriptorOf,
+  multiNamesOf,
+  openMultiForm,
+} from './multi/multi-form.component';
+export type { GroupBody, MultiFormRequest, MultiOutcome } from './multi/multi-form.component';
 
 export const KEEL_RENDERER_VERSION = '0.1.0';

@@ -29,7 +29,7 @@ export type ControlMapping = { preset: Check | null } & (
     }
   | { component: 'phx-date-field' }
   | { component: 'phx-time-field' }
-  | { component: 'phx-file-field' }
+  | { component: 'phx-file-field'; accept: string[]; maxSize: number | null }
   | { component: 'phx-list-field'; columns: string[] }
   | { component: 'phx-code-field' }
   | { component: 'phx-tags-field' }
@@ -85,7 +85,12 @@ export function mapControl(field: FieldSchema): ControlMapping {
     case 'time':
       return { component: 'phx-time-field', preset };
     case 'file':
-      return { component: 'phx-file-field', preset };
+      return {
+        component: 'phx-file-field',
+        accept: field.keel.file?.types ?? [],
+        maxSize: field.keel.file?.maxBytes ?? null,
+        preset,
+      };
     case 'list':
       return { component: 'phx-list-field', columns: columnsOf(field), preset };
     case 'code':

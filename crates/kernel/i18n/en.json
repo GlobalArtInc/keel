@@ -336,6 +336,14 @@
         "verify": "Verify"
       },
       "logout": "Log out",
+      "multi": {
+        "cancel": "Cancel",
+        "change": "Change",
+        "none": "Switch on at least one field to change",
+        "save": "Save",
+        "title": "Edit {count} rows",
+        "updated": "{count} rows updated"
+      },
       "not_found": {
         "home": "Go to the start page",
         "text": "The address {path} does not exist in this installation",
@@ -493,6 +501,7 @@
     "skip": "Skip",
     "sort": "Sort",
     "system": "System",
+    "time": "Time",
     "today": "Today",
     "total": "Total",
     "unlimited": "Unlimited",

@@ -8,7 +8,7 @@ use keel_sdk::{Db, Result};
 
 use super::entity::brand;
 
-pub use svg::check_svg;
+use svg::check_svg;
 
 pub const HUE_MAX: u16 = 359;
 pub const CHROMA_MAX: f64 = 0.4;

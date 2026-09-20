@@ -1,11 +1,19 @@
-import type { KeelClient } from '@globalart/keel/client';
+import type { KeelClient, UploadFiles } from '@globalart/keel/client';
 import type { CallError, Envelope } from '@globalart/keel/meta';
 import { firstValueFrom } from 'rxjs';
 import { applyCallError, clearFieldErrors } from './errors';
 import type { FormField, KeelForm } from './model';
-import { isEmptyValue } from './validators';
+import { isEmptyValue, isFileList } from './validators';
 
 export type Saved<T = unknown> = Extract<Envelope<T>, { ok: true }>;
+
+export function isFileField(field: FormField): boolean {
+  return field.mapping.component === 'phx-file-field';
+}
+
+export function isUpload(form: KeelForm): boolean {
+  return form.descriptor.kind === 'upload';
+}
 
 export function bodyOf(
   form: KeelForm,
@@ -16,8 +24,9 @@ export function bodyOf(
   if (form.key !== null && !isEmptyValue(raw[form.key])) {
     body[form.key] = raw[form.key];
   }
+  const upload = isUpload(form);
   for (const field of fields) {
-    if (!field.visible()) {
+    if (!field.visible() || (upload && isFileField(field))) {
       continue;
     }
     const value = raw[field.name];
@@ -25,6 +34,18 @@ export function bodyOf(
     body[field.name] = blank ? null : (value ?? null);
   }
   return body;
+}
+
+export function filesOf(form: KeelForm, fields: readonly FormField[] = form.fields): UploadFiles {
+  const files: Record<string, File[]> = {};
+  for (const field of fields) {
+    if (!field.visible() || !isFileField(field)) {
+      continue;
+    }
+    const value = field.control.value;
+    files[field.name] = isFileList(value) ? value : [];
+  }
+  return files;
 }
 
 // https://www.rfc-editor.org/rfc/rfc9562#section-5.4
@@ -59,7 +80,9 @@ export async function submitForm<T = unknown>(
     return null;
   }
   const envelope = await firstValueFrom(
-    client.call<T>(form.name, bodyOf(form), { idempotencyKey }),
+    isUpload(form)
+      ? client.upload<T>(form.name, bodyOf(form), filesOf(form), { idempotencyKey })
+      : client.call<T>(form.name, bodyOf(form), { idempotencyKey }),
   ).catch((error: unknown): Envelope<T> => ({ ok: false, error: unreachable(error) }));
   if (!envelope.ok) {
     applyCallError(form, envelope.error);

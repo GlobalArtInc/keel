@@ -20,9 +20,16 @@ export function isEmptyValue(value: unknown): boolean {
   );
 }
 
+export function isFileList(value: unknown): value is File[] {
+  return Array.isArray(value) && value.length > 0 && value.every((entry) => entry instanceof File);
+}
+
 export function validateField(rule: FieldRule, value: unknown): FieldError[] {
   if (isEmptyValue(value)) {
     return rule.required() ? [requiredFinding(rule.name)] : [];
+  }
+  if (isFileList(value)) {
+    return [];
   }
   const wrapper = {
     type: 'object',

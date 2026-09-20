@@ -11,6 +11,7 @@ import {
 } from '@globalart/keel/meta';
 import type {
   PhxColumn,
+  PhxColumnEdit,
   PhxColumnFilterOption,
   PhxColumnType,
   PhxIconValue,
@@ -38,6 +39,8 @@ export const TONES: Readonly<Record<Tone, PhxTableStatus>> = {
   info: 'info',
   neutral: 'default',
 };
+
+export const CELL_EDIT_TYPES: readonly ColumnType[] = ['status', 'number', 'text'];
 
 export const DAY_FORMAT: Intl.DateTimeFormatOptions = { dateStyle: 'medium' };
 export const MOMENT_FORMAT: Intl.DateTimeFormatOptions = {
@@ -113,7 +116,38 @@ export function toColumn(
         ? filter.options.map((value) => staticOption(prefix, column.key, value, scope.messages))
         : (scope.choices(filter.remote) ?? []).map(remoteOption);
   }
+  const edit = cellEditOf(column, prefix, scope.messages);
+  if (edit !== null) {
+    mapped.editable = true;
+    mapped.edit = edit;
+  }
   return mapped;
+}
+
+export function cellEditOf(
+  column: Column,
+  prefix: string,
+  messages: Messages,
+): PhxColumnEdit | null {
+  if (!column.edit || !CELL_EDIT_TYPES.includes(column.type)) {
+    return null;
+  }
+  if (column.type !== 'status') {
+    return {};
+  }
+  const values = new Set<string>();
+  const filter = column.filter ?? null;
+  if (filter !== null && 'options' in filter) {
+    for (const value of filter.options) {
+      values.add(value);
+    }
+  }
+  for (const value of Object.keys(column.map ?? {})) {
+    values.add(value);
+  }
+  return {
+    options: [...values].map((value) => staticOption(prefix, column.key, value, messages)),
+  };
 }
 
 export function totalsOf(

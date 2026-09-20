@@ -402,6 +402,7 @@ async fn the_settings_descriptors_match_their_snapshots() {
                 "settings.brand.delete",
                 "settings.brand.get",
                 "settings.brand.list",
+                "settings.brand.logo",
                 "settings.brand.set",
                 "settings.get",
                 "settings.list",

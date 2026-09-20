@@ -428,14 +428,18 @@ check "GET /brand/demo/logo.svg is 200" http_is "$site/logo-demo.svg" 200 GET /b
 check "the demo's logo route answers the same SVG" cmp -s "$site/logo-demo.svg" products/demo/brand/logo.svg
 check "GET /brand/nothing/logo.svg is 404" http_is "$site/logo-nothing.json" 404 GET /brand/nothing/logo.svg
 check "an unknown product's logo answers not_found" json_is "$site/logo-nothing.json" 'doc["ok"] is False and doc["error"]["key"] == "keel.error.not_found"'
-check "ctl settings.brand.set for panel.example" keel_ok "$site/brand-set.json" ctl settings.brand.set host=panel.example name="Panel Example" hue=350 chroma=0.2 logo="$(cat crates/kernel/assets/keel.svg)"
-check "settings.brand.set answers the row" json_is "$site/brand-set.json" 'doc["ok"] is True and doc["data"]["host"] == "panel.example" and doc["data"]["hue"] == 350'
+check "ctl settings.brand.set for panel.example" keel_ok "$site/brand-set.json" ctl settings.brand.set host=panel.example name="Panel Example" hue=350 chroma=0.2
+check "settings.brand.set answers the row without a logo" json_is "$site/brand-set.json" 'doc["ok"] is True and doc["data"]["host"] == "panel.example" and doc["data"]["hue"] == 350 and doc["data"]["logo"] is None'
+check "ctl settings.brand.logo uploads the logo of panel.example" keel_ok "$site/brand-logo.json" ctl settings.brand.logo host=panel.example logo="$(cat crates/kernel/assets/keel.svg)"
+check "settings.brand.logo answers the row with the logo" json_is "$site/brand-logo.json" 'doc["ok"] is True and doc["data"]["host"] == "panel.example" and doc["data"]["logo"].startswith("<svg")'
+check "settings.brand.list flags the logo" keel_ok "$site/brand-list.json" ctl settings.brand.list
+check "the brand row carries logo true" json_is "$site/brand-list.json" 'doc["ok"] is True and [row["logo"] for row in doc["data"]["data"] if row["host"] == "panel.example"] == [True]'
 check "GET /api/v1/boot for panel.example is 200" http_is "$site/boot-brand.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
 check "boot for panel.example carries the patched brand" json_is "$site/boot-brand.json" 'doc["brand"] == {"name": "Panel Example", "logo": "/brand/logo.svg", "hue": 350, "chroma": 0.2}'
 check "boot for another host keeps the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand"'
 check "GET /brand/logo.svg for panel.example is 200" http_is "$site/logo-brand.svg" 200 GET /brand/logo.svg '' '' 'Host: panel.example'
 check "the effective logo for panel.example is the patched SVG" stdout_is "$site/logo-brand.svg" "$(cat crates/kernel/assets/keel.svg)"
-check "ctl settings.brand.set with a script element is refused" keel_fails "$site/brand-script.json" ctl settings.brand.set host=panel.example logo='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+check "ctl settings.brand.logo with a script element is refused" keel_fails "$site/brand-script.json" ctl settings.brand.logo host=panel.example logo='<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
 check "the scripted logo answers 422 on logo" json_is "$site/brand-script.json" 'doc["ok"] is False and doc["error"]["code"] == "validation" and doc["error"]["fields"][0]["path"] == "logo" and doc["error"]["fields"][0]["key"] == "settings.error.brand_svg"'
 check "ctl settings.brand.delete for panel.example" keel_ok "$site/brand-delete.json" ctl settings.brand.delete host=panel.example
 check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 'doc["ok"] is True and doc["data"] == {"deleted": True}'

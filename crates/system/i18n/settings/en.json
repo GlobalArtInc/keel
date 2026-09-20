@@ -5,31 +5,36 @@
     },
     "brand": {
       "action": {
-        "create": "New brand",
+        "create": "New white-label",
         "delete": "Delete",
+        "logo": "Logo",
         "set": "Edit"
       },
       "chroma": "Chroma (0 to 0.4)",
+      "chroma.empty": "From the product",
       "column": {
         "chroma": "Chroma",
         "host": "Host name",
         "hue": "Hue",
+        "logo": "Logo",
         "name": "Name",
         "updatedAt": "Updated"
       },
-      "empty": "No host name carries its own brand; the installation shows the brand of its product",
+      "empty": "No host name carries its own white-label; the installation shows the brand of its product",
       "host": "Host name",
       "hue": "Hue (0 to 359)",
+      "hue.empty": "From the product",
       "list": {
-        "title": "Brand"
+        "title": "White-label by host name"
       },
       "logo": "Logo (SVG)",
+      "logo.title": "Logo of a host name",
       "name": "Name",
       "page": {
-        "main": "Brand"
+        "main": "White-label"
       },
       "set": {
-        "title": "Brand of a host name"
+        "title": "White-label of a host name"
       }
     },
     "column": {

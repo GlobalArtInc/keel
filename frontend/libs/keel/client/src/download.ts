@@ -1,4 +1,4 @@
-import type { CallError } from '@globalart/keel/meta';
+import type { CallError, TaskRef } from '@globalart/keel/meta';
 
 export const RAW_PREFIX = '/api/v1/x';
 export const CONTENT_DISPOSITION = 'Content-Disposition';
@@ -8,7 +8,10 @@ export interface DownloadedFile {
   filename: string | null;
 }
 
-export type DownloadResult = { ok: true; file: DownloadedFile } | { ok: false; error: CallError };
+export type DownloadResult =
+  | { ok: true; file: DownloadedFile }
+  | { ok: true; task: TaskRef }
+  | { ok: false; error: CallError };
 
 export function downloadUrl(func: string): string {
   const dot = func.indexOf('.');

@@ -5922,7 +5922,7 @@
                       "const": true
                     },
                     "data": {
-                      "title": "BrandRow",
+                      "title": "Brand",
                       "type": "object",
                       "properties": {
                         "host": {
@@ -6068,6 +6068,137 @@
         }
       }
     },
+    "/api/v1/call/settings.brand.logo": {
+      "post": {
+        "operationId": "settings.brand.logo",
+        "tags": [
+          "settings"
+        ],
+        "x-keel": {
+          "kind": "upload",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "BrandLogo",
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253,
+                    "x-keel": {
+                      "check": "domain"
+                    }
+                  },
+                  "logo": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                    "x-keel": {
+                      "file": {
+                        "maxBytes": 65536,
+                        "types": [
+                          "image/svg+xml"
+                        ]
+                      }
+                    },
+                    "x-ui": {
+                      "control": "file"
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "logo"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Brand",
+                      "type": "object",
+                      "properties": {
+                        "host": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "logo": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "hue": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "format": "int32"
+                        },
+                        "chroma": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "format": "double"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedBy": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "host",
+                        "updatedAt",
+                        "updatedBy"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/settings.brand.set": {
       "post": {
         "operationId": "settings.brand.set",
@@ -6103,16 +6234,6 @@
                       "null"
                     ],
                     "maxLength": 120
-                  },
-                  "logo": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "maxLength": 65536,
-                    "x-ui": {
-                      "control": "code"
-                    }
                   },
                   "hue": {
                     "type": [
@@ -6152,7 +6273,7 @@
                       "const": true
                     },
                     "data": {
-                      "title": "BrandRow",
+                      "title": "Brand",
                       "type": "object",
                       "properties": {
                         "host": {
@@ -8260,10 +8381,7 @@
             ]
           },
           "logo": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "boolean"
           },
           "hue": {
             "type": [
@@ -8289,6 +8407,7 @@
         },
         "required": [
           "host",
+          "logo",
           "updatedAt",
           "updatedBy"
         ]

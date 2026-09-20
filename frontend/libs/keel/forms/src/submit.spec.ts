@@ -1,11 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { KeelCallError, KeelClient, KeelI18n } from '@globalart/keel/client';
+import {
+  KeelCallError,
+  KeelClient,
+  KeelI18n,
+  PARAMS_PART,
+  multipartOf,
+} from '@globalart/keel/client';
 import {
   KeelFormComponent,
   bodyOf,
   buildForm,
+  filesOf,
   findingsOf,
   loadForm,
   loadValues,
@@ -52,6 +59,34 @@ const TOKEN_CREATE: Descriptor = {
     $defs: { Id: { type: 'string' } },
   },
   ui: { title: 'auth.token.create.title', pages: [{ id: 'main', fields: ['name'] }] },
+};
+
+const BRAND_LOGO: Descriptor = {
+  keel: 1,
+  name: 'settings.brand.logo',
+  module: 'settings',
+  kind: 'upload',
+  mode: 'write',
+  access: { level: 'admin' },
+  key: 'host',
+  params: {
+    type: 'object',
+    properties: {
+      host: { type: 'string' },
+      logo: {
+        type: 'string',
+        'x-keel': { file: { maxBytes: 65536, types: ['image/svg+xml'] } },
+        'x-ui': { control: 'file' },
+      },
+    },
+    required: ['host', 'logo'],
+  },
+  result: { type: 'object' },
+  ui: {
+    title: 'settings.brand.logo.title',
+    pages: [{ id: 'main', fields: ['host', 'logo'] }],
+    fields: { host: { readonly_if: { eq: ['$mode', 'edit'] } } },
+  },
 };
 
 const MESSAGES = {
@@ -136,6 +171,44 @@ describe('submit', () => {
       master_ips: ['10.0.0.1'],
       tsig_key: null,
     });
+    form.destroy();
+  });
+
+  it('an upload descriptor submits multipart with a params part and one part per file field and the idempotency header', async () => {
+    const client = new KeelMockClient({ answers: { 'settings.brand.logo': ENVELOPE_200 } });
+    const form = buildForm(BRAND_LOGO, { client, params: { host: 'panel.example' } });
+    expect(form.mode).toBe('edit');
+    const host = form.field('host');
+    expect(host?.control.value).toBe('panel.example');
+    expect(host?.readonly()).toBe(true);
+    expect(buildForm(BRAND_LOGO, { client }).field('host')?.readonly()).toBe(false);
+    expect(buildForm(EDIT, { client }).field('id')).toBeUndefined();
+    const svg = new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], 'logo.svg', {
+      type: 'image/svg+xml',
+    });
+    form.group.controls['logo'].setValue([svg]);
+    expect(bodyOf(form)).toEqual({ host: 'panel.example' });
+    expect(filesOf(form)).toEqual({ logo: [svg] });
+
+    const saved = await form.submit();
+    expect(saved?.ok).toBe(true);
+    expect(client.calls.map((call) => call.func)).toEqual(['settings.brand.logo']);
+    expect(client.uploads).toHaveLength(1);
+    expect(client.uploads[0].params).toEqual({ host: 'panel.example' });
+    expect(client.uploads[0].files).toEqual({ logo: [svg] });
+    expect(client.uploads[0].options.idempotencyKey).toMatch(UUID);
+
+    const body = multipartOf({ host: 'panel.example' }, { logo: [svg] });
+    const parts = [...body.entries()];
+    expect(parts.map(([name]) => name)).toEqual([PARAMS_PART, 'logo']);
+    const params = parts[0][1];
+    expect(params).toBeInstanceOf(Blob);
+    expect(await (params as Blob).text()).toBe('{"host":"panel.example"}');
+    expect((params as Blob).type).toBe('application/json');
+    const part = parts[1][1];
+    expect(part).toBeInstanceOf(File);
+    expect((part as File).name).toBe('logo.svg');
+    expect((part as File).type).toBe('image/svg+xml');
     form.destroy();
   });
 

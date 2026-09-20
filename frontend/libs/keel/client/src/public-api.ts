@@ -66,6 +66,8 @@ export type {
 export { tracked } from './progress';
 export { RAW_PREFIX, downloadUrl, filenameOf } from './download';
 export type { DownloadResult, DownloadedFile } from './download';
+export { JSON_TYPE, PARAMS_PART, multipartOf, uploadUrl } from './upload';
+export type { UploadFiles } from './upload';
 export {
   ACTIVE_STATES,
   TASK_CANCEL,

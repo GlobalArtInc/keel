@@ -7,6 +7,7 @@ import {
   type Catalogue,
   type DownloadResult,
   type Fetched,
+  type UploadFiles,
 } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
 import { Observable, Subject, of, throwError } from 'rxjs';
@@ -32,9 +33,17 @@ export interface RecordedDownload {
   params: unknown;
 }
 
+export interface RecordedUpload {
+  func: string;
+  params: unknown;
+  files: UploadFiles;
+  options: CallOptions;
+}
+
 export class KeelMockClient extends KeelClient {
   readonly calls: RecordedCall[] = [];
   readonly downloads: RecordedDownload[] = [];
+  readonly uploads: RecordedUpload[] = [];
   private readonly answers = new Map<string, Envelope[]>();
   private readonly files = new Map<string, DownloadResult>();
   private readonly requestId = signal<string | null>(null);
@@ -120,6 +129,16 @@ export class KeelMockClient extends KeelClient {
       throw new Error(`no canned file for ${func}`);
     }
     return of(result);
+  }
+
+  upload<T = unknown>(
+    func: string,
+    params: unknown,
+    files: UploadFiles,
+    options: CallOptions = {},
+  ): Observable<Envelope<T>> {
+    this.uploads.push({ func, params, files, options });
+    return this.call<T>(func, params, options);
   }
 
   boot(): Observable<Fetched<Boot> | null> {

@@ -89,6 +89,10 @@ pub fn list() -> FunctionDef {
                     .params([("format", "csv")])
                     .icon("download"),
             )
+            .action(
+                Action::new("export", ActionRole::Export)
+                    .formats([ExportFormat::Csv, ExportFormat::Json]),
+            )
             .row_actions(["edit", "delete"])
             .empty("note.empty", Some("create"))
             .invalidate_on(["note.*"]))

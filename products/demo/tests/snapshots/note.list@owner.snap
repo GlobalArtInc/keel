@@ -187,6 +187,14 @@ info:
         "params": {
           "format": "csv"
         }
+      },
+      {
+        "id": "export",
+        "role": "export",
+        "formats": [
+          "csv",
+          "json"
+        ]
       }
     ],
     "row_actions": [

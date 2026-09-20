@@ -214,6 +214,82 @@ keelTest.describe('notes', () => {
     await expect(rows(page)).toHaveCount(1 + IMPORTED.length);
   });
 
+  keelTest(
+    'two selected notes are edited as a group to kind todo with a due date',
+    async ({ page, keel }) => {
+      await keel.asUser();
+      await page.goto(NOTE_LIST);
+      await expect(rows(page)).toHaveCount(1 + IMPORTED.length);
+      for (const title of IMPORTED.slice(0, 2)) {
+        const row = rows(page).filter({
+          has: page.locator(`[data-column="title"]`, { hasText: title }),
+        });
+        await row.locator('.cell_check label').click();
+        await expect(row).toHaveAttribute('aria-selected', 'true');
+      }
+      const bar = page.locator('phx-selection-bar [role="toolbar"]');
+      await expect(bar).toContainText('2');
+      await bar.getByRole('button', { name: 'Edit', exact: true }).click();
+
+      const modal = page.getByRole('dialog', { name: 'Edit 2 rows' });
+      await expect(modal).toBeVisible();
+      const form = modal.locator('keel-multi-form[data-count="2"]');
+      await expect(form.locator('[data-multi]')).toHaveCount(3);
+      const save = form.locator('button.save');
+      await expect(save).toBeDisabled();
+      await form.locator('[data-multi="kind"] phx-toggle .control').click();
+      await expect(form.getByRole('switch', { name: 'Change: Kind' })).toBeChecked();
+      await field(form, 'Kind').getByRole('combobox').click();
+      await page.getByRole('option', { name: KIND_LABELS.todo, exact: true }).click();
+      await form.locator('[data-multi="due"] phx-toggle .control').click();
+      await expect(form.getByRole('switch', { name: 'Change: Due' })).toBeChecked();
+      const due = field(form, 'Due').getByRole('textbox');
+      await due.fill(dueAhead());
+      await due.press('Tab');
+      await expect(due).toHaveValue(dueAhead());
+      await saved(page, 'note.edit', () => save.click());
+      await expect(modal).toHaveCount(0);
+      await expect(page.locator('phx-toast')).toContainText('2 rows updated');
+
+      for (const title of IMPORTED.slice(0, 2)) {
+        const row = rows(page).filter({
+          has: page.locator(`[data-column="title"]`, { hasText: title }),
+        });
+        await expect(row.locator('[data-column="kind"]')).toHaveText(KIND_LABELS.todo);
+        await expect(row.locator('[data-column="due"]')).not.toBeEmpty();
+      }
+      const untouched = rows(page).filter({
+        has: page.locator(`[data-column="title"]`, { hasText: IMPORTED[2] }),
+      });
+      await expect(untouched.locator('[data-column="kind"]')).toHaveText(KIND_LABELS.memo);
+    },
+  );
+
+  keelTest(
+    'the export button downloads a csv whose header row names the visible columns',
+    async ({ page, keel }) => {
+      await keel.asUser();
+      await page.goto(NOTE_LIST);
+      await expect(rows(page)).toHaveCount(1 + IMPORTED.length);
+      const list = page.locator('keel-list[data-list="note.list"]');
+      await list.locator('button[data-action="export"]').click();
+      const menu = page.getByRole('menu', { name: 'Export' });
+      await expect(menu.getByRole('menuitem')).toHaveText(['CSV', 'JSON']);
+      const pending = page.waitForEvent('download');
+      await menu.getByRole('menuitem', { name: 'CSV' }).click();
+      const download = await pending;
+      expect(download.suggestedFilename()).toMatch(/\.csv$/);
+      const stream = await download.createReadStream();
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const [header, ...lines] = Buffer.concat(chunks).toString('utf8').trim().split(/\r?\n/);
+      expect(header).toBe('Title,Kind,Tags,Due,Updated');
+      expect(lines).toHaveLength(1 + IMPORTED.length);
+    },
+  );
+
   keelTest('the tag cloud shows the tags of the notes', async ({ page, keel }) => {
     await keel.asUser();
     await page.goto(TAG_LIST);

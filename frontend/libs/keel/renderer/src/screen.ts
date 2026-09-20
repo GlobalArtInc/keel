@@ -168,6 +168,14 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
               (closed)="closed.emit()"
             />
           }
+          @case ('upload') {
+            <keel-form-screen
+              [descriptor]="descriptor()"
+              [params]="typedParams()"
+              (saved)="done.emit($event)"
+              (closed)="closed.emit()"
+            />
+          }
           @case ('get') {
             <keel-object [descriptor]="descriptor()" [params]="typedParams()" />
           }

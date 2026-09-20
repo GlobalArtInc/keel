@@ -220,9 +220,11 @@ describe('KeelHttpClient', () => {
     });
     const result = await pending;
     expect(result.ok).toBe(true);
-    if (result.ok) {
+    if (result.ok && 'file' in result) {
       expect(result.file.filename).toBe('notes.csv');
       expect(await result.file.blob.text()).toBe('a,b\n');
+    } else {
+      throw new Error('a file was expected');
     }
     expect(client.lastRequestId()).toBe('req-dl');
 
@@ -240,6 +242,43 @@ describe('KeelHttpClient', () => {
       ok: false,
       error: { code: 'forbidden', key: 'keel.error.forbidden', requestId: 'req-no' },
     });
+  });
+
+  it('a download answered as a JSON envelope yields the task reference, and upload posts multipart with the idempotency header', async () => {
+    const { client, http } = harness();
+    const pending = firstValueFrom(client.download('keel.export', { func: 'note.list' }));
+    http.expectOne({ method: 'POST', url: '/api/v1/x/keel/export' }).flush(
+      new Blob(
+        [JSON.stringify({ ok: true, data: { task: { id: 't9' } }, meta: { requestId: 'r' } })],
+        {
+          type: 'application/json',
+        },
+      ),
+      { headers: { 'Content-Type': 'application/json; charset=utf-8' } },
+    );
+    expect(await pending).toEqual({ ok: true, task: { task: { id: 't9' } } });
+
+    const file = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' });
+    const uploaded = firstValueFrom(
+      client.upload(
+        'settings.brand.logo',
+        { host: 'panel.example' },
+        { logo: [file] },
+        {
+          idempotencyKey: 'key-1',
+        },
+      ),
+    );
+    const request = http.expectOne({ method: 'POST', url: '/api/v1/x/settings/brand.logo' });
+    expect(request.request.headers.get('Idempotency-Key')).toBe('key-1');
+    const body = request.request.body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect([...body.keys()]).toEqual(['params', 'logo']);
+    expect(await (body.get('params') as Blob).text()).toBe('{"host":"panel.example"}');
+    expect((body.get('logo') as File).name).toBe('logo.svg');
+    request.flush(OK, { headers: { 'X-Keel-Request-Id': 'req-up' } });
+    expect((await uploaded).ok).toBe(true);
+    expect(client.lastRequestId()).toBe('req-up');
   });
 
   it('an answer that is not an envelope is an error rather than a result', async () => {

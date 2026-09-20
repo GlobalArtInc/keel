@@ -58,10 +58,7 @@ info:
             ]
           },
           "logo": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "boolean"
           },
           "hue": {
             "type": [
@@ -87,6 +84,7 @@ info:
         },
         "required": [
           "host",
+          "logo",
           "updatedAt",
           "updatedBy"
         ]
@@ -110,6 +108,10 @@ info:
         "key": "name",
         "type": "text",
         "sortable": true
+      },
+      {
+        "key": "logo",
+        "type": "boolean"
       },
       {
         "key": "hue",
@@ -143,6 +145,15 @@ info:
         }
       },
       {
+        "id": "logo",
+        "role": "upload",
+        "screen": "settings.brand.logo",
+        "icon": "image",
+        "params": {
+          "host": "$id"
+        }
+      },
+      {
         "id": "delete",
         "role": "button",
         "function": "settings.brand.delete",
@@ -154,6 +165,7 @@ info:
     ],
     "row_actions": [
       "set",
+      "logo",
       "delete"
     ],
     "empty": {
