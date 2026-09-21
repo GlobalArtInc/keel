@@ -162,6 +162,11 @@ jobs:
       - name: The installer against the binary
         run: hack/check-install.sh target/debug/keel
 
+      - name: The release workflow against a directory
+        env:
+          KEEL_RELEASE_KEY: ${{ secrets.KEEL_RELEASE_KEY }}
+        run: hack/check-release.sh target/debug/keel
+
       - name: Conformance against the binary
         run: hack/conformance.sh target/debug/keel
 

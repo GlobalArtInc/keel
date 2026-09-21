@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'keel-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 1
+  CARGO_BUILD_JOBS: 6
+  KEEL_OWNLATE_TOKEN: ${{ secrets.KEEL_OWNLATE_TOKEN }}
+  KEEL_OWNLATE_PROJECT_CORE: ${{ vars.KEEL_OWNLATE_PROJECT_CORE }}
+  KEEL_OWNLATE_PROJECT_DEMO: ${{ vars.KEEL_OWNLATE_PROJECT_DEMO }}
+
+jobs:
+  release:
+    name: keel ${{ github.ref_name }} to the channel
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch the tag with its annotation
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]; then
+            echo "$GITHUB_REF_NAME is not an annotated tag; the release notes are its annotation" >&2
+            exit 1
+          fi
+
+      - name: Put cargo on the path
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Link the runner's build directory
+        run: |
+          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
+          mkdir -p "$dir"
+          rm -rf target
+          ln -sfn "$dir" target
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Cache the cargo download directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-musl-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-musl-
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install the frontend dependencies
+        working-directory: frontend
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the shell the binary embeds
+        working-directory: frontend
+        run: pnpm build
+
+      - name: The committed dictionaries match the translation projects
+        if: env.KEEL_OWNLATE_TOKEN != ''
+        run: |
+          cargo run -p keel-dev -- i18n pull --out .
+          git diff --exit-code -- crates/kernel/i18n crates/system/i18n products/demo/i18n
+
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin
+
+      - name: The binary is static
+        run: |
+          file target/x86_64-unknown-linux-musl/release/keel
+          if ldd target/x86_64-unknown-linux-musl/release/keel 2>&1 | grep -q '=>'; then
+            echo "the binary links shared libraries" >&2
+            exit 1
+          fi
+
+      - name: The binary carries the version of the tag
+        run: |
+          printed=$(target/x86_64-unknown-linux-musl/release/keel --version)
+          expected="keel ${GITHUB_REF_NAME#keel-v}"
+          if [ "$printed" != "$expected" ]; then
+            echo "the binary prints \"$printed\" but the tag names \"$expected\"; bump the workspace version first" >&2
+            exit 1
+          fi
+
+      - name: The binary with the demo bundle and the frontend is under 40 MB
+        run: |
+          size=$(stat -c %s target/x86_64-unknown-linux-musl/release/keel)
+          mb=$(awk -v bytes="$size" 'BEGIN { printf "%.1f", bytes / 1000000 }')
+          echo "keel with the demo bundle and the frontend: $size bytes ($mb MB)"
+          if [ "$size" -ge 40000000 ]; then
+            echo "the binary is 40 MB or larger" >&2
+            exit 1
+          fi
+
+      - name: Sign, upload and read back the release
+        env:
+          KEEL_RELEASE_KEY: ${{ secrets.KEEL_RELEASE_KEY }}
+          KEEL_RELEASE_NEXUS_PASSWORD: ${{ secrets.KEEL_RELEASE_NEXUS_PASSWORD }}
+        run: python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel

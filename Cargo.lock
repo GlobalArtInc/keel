@@ -2344,6 +2344,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "sha2 0.11.0",
  "tempfile",
  "thiserror",
