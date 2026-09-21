@@ -19,8 +19,8 @@ use std::sync::{Arc, OnceLock};
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
 use keel_sdk::system::{
-    Authenticator, PermissionCatalogue, PermissionSource, PrincipalSource, SecondFactorSource,
-    SecretCipher,
+    Authenticator, PasswordStore, PermissionCatalogue, PermissionSource, PrincipalSource,
+    SecondFactorSource, SecretCipher,
 };
 
 use api::{Lockout, LoginMethod, RateLimit};
@@ -109,6 +109,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .require::<dyn SettingsSource>()
         .require::<dyn PermissionCatalogue>()
         .provide::<dyn SecondFactorSource>(Arc::new(totp::SecondFactor))
+        .provide::<dyn PasswordStore>(passwords.clone())
         .provide::<dyn PermissionSource>(Arc::new(Grants))
         .provide::<RateLimit>(rate_limit.clone())
         .provide::<Lockout>(lockout.clone())
@@ -182,7 +183,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         let clock = ctx.require::<dyn Clock>()?;
         let principals = ctx.require::<dyn PrincipalSource>()?;
         let settings = ctx.require::<dyn SettingsSource>()?;
-        passwords.attach(principals.clone());
+        passwords.attach(principals.clone(), settings.clone(), clock.clone());
         authenticator.attach(clock, principals, settings);
         let methods: Vec<Arc<dyn LoginMethod>> = ctx
             .contributions::<Arc<dyn LoginMethod>>()

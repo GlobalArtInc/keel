@@ -7,6 +7,7 @@ LIB=/var/lib/keel
 RUN=/run/keel
 UNIT_DIR=/etc/systemd/system
 UNITS=(keel.service keel-privileged.service keel-update.path keel-update.service)
+SOCKETS=("$RUN/agent.sock" "$RUN/core.sock")
 LINK=/usr/local/bin/keel
 PG_SOCKET_DIR=/run/postgresql
 
@@ -20,9 +21,11 @@ usage() {
 usage: uninstall.sh [--purge [--keep-backups]] [--yes]
 
 Without --purge: stops and disables keel.service, keel-privileged.service,
-keel-update.path and keel-update.service, removes the units, $LINK and $OPT.
-The configuration in $ETC, the data in $LIB, the unix user keel and the
-Postgres database keel stay in place.
+keel-update.path and keel-update.service, removes the units, the sockets
+$RUN/agent.sock and $RUN/core.sock they left behind, $LINK and $OPT.
+The configuration in $ETC (config.yaml and the host agent policy agent.yaml),
+the data in $LIB, the unix user keel and the Postgres database keel stay in
+place.
 
 With --purge: also removes $ETC, $LIB, $RUN, the unix user and group keel,
 and drops the database keel and the role keel from the Postgres server on
@@ -129,6 +132,13 @@ remove_service() {
   if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
   fi
+  local socket
+  for socket in "${SOCKETS[@]}"; do
+    if [ -S "$socket" ] || [ -e "$socket" ]; then
+      rm -f "$socket"
+      say "removed $socket"
+    fi
+  done
 }
 
 remove_binary() {

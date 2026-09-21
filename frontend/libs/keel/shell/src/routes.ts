@@ -6,6 +6,7 @@ import {
   KeelStartup,
   LOGIN_PATH,
   LOGOUT_PATH,
+  SETUP_PATH,
   keelGuard,
   keelHome,
   keelLogout,
@@ -13,6 +14,7 @@ import {
 } from './guard';
 import { KeelHomeComponent } from './home/home.component';
 import { KeelLoginComponent } from './login/login.component';
+import { KeelSetupComponent } from './login/setup.component';
 import { KeelNotFoundComponent } from './not-found';
 import { KeelProducts } from './products';
 import { KeelLayoutComponent } from './layout/layout.component';
@@ -31,6 +33,7 @@ export function keelRoutes(): Routes {
   const views = provideKeelShellViews();
   return [
     { path: LOGIN_PATH, component: KeelLoginComponent, canActivate: [keelReady] },
+    { path: SETUP_PATH, component: KeelSetupComponent, canActivate: [keelReady] },
     { path: LOGOUT_PATH, canActivate: [keelLogout], children: [] },
     {
       path: '',

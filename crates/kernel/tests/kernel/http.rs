@@ -611,7 +611,13 @@ async fn functions_as_a_guest_list_only_guest_level_functions() {
     assert!(descriptors.is_array(), "{descriptors}");
     assert_eq!(
         names(descriptors),
-        ["probe.client", "probe.cookie", "probe.fail", "probe.ping"]
+        [
+            "keel.setup.admin",
+            "probe.client",
+            "probe.cookie",
+            "probe.fail",
+            "probe.ping"
+        ]
     );
     for descriptor in descriptors.as_array().unwrap() {
         assert_eq!(descriptor["access"]["level"], json!("guest"));
@@ -1281,7 +1287,7 @@ async fn without_an_authenticator_every_credential_is_refused_and_a_bare_request
     );
     let bare = bench.get("/api/v1/functions", None).await;
     assert_eq!(bare.status, StatusCode::OK, "{}", bare.body);
-    assert!(bare.body.as_array().unwrap().is_empty(), "{}", bare.body);
+    assert_eq!(names(&bare.body), ["keel.setup.admin"], "{}", bare.body);
     bench.finish().await;
 }
 

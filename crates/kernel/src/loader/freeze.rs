@@ -33,7 +33,7 @@ use crate::dispatcher::guards::RegisteredPermissions;
 use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
 use crate::doctor;
-use crate::keel::{StoredAccounts, StoredPrincipals};
+use crate::keel::{SetupHandle, StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
@@ -546,6 +546,7 @@ impl Freezer {
         services.provide::<backup::Handle>(self.backups.clone());
         services.provide(Arc::new(doctor::Handle::new()));
         services.provide(Arc::new(restart::Handle::new(graph.clock().now())));
+        services.provide(Arc::new(SetupHandle::new()));
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())

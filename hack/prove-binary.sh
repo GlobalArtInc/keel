@@ -491,6 +491,26 @@ check "product list shows demo enabled" stdout_has_line "$site/list.out" "$(prin
 start_serve demo
 check "the unclaimed host section is logged and ignored" unclaimed_section_logged host
 
+echo "--- the setup link of a start without an administrator"
+setup_link=$(grep -oE "https://127\.0\.0\.1:$port/setup\?key=kok_[0-9a-f]{64}" "$serve_log" | head -n 1) || true
+check "the start logs the setup link with a kok_ key of thirty-two bytes" test -n "$setup_link"
+setup_key=${setup_link##*key=}
+check "POST keel.setup.admin with a wrong key is 401" http_is "$site/setup-wrong.json" 401 POST /api/v1/call/keel.setup.admin "{\"key\":\"${setup_key%?}\",\"login\":\"first\",\"password\":\"correct-horse-battery\"}"
+check "the wrong key answers keel.setup.error.key" json_is "$site/setup-wrong.json" 'doc["ok"] is False and doc["error"]["code"] == "unauthenticated" and doc["error"]["key"] == "keel.setup.error.key"'
+check "POST keel.setup.admin with a short password is 422" http_is "$site/setup-short.json" 422 POST /api/v1/call/keel.setup.admin "{\"key\":\"$setup_key\",\"login\":\"first\",\"password\":\"short\"}"
+check "the short password answers auth.error.password_short and keeps the key" json_is "$site/setup-short.json" 'doc["ok"] is False and doc["error"]["fields"][0]["path"] == "password" and doc["error"]["fields"][0]["key"] == "auth.error.password_short"'
+check "POST keel.setup.admin with the key creates the first administrator" http_is "$site/setup.json" 200 POST /api/v1/call/keel.setup.admin "{\"key\":\"$setup_key\",\"login\":\"first\",\"password\":\"correct-horse-battery\"}"
+check "keel.setup.admin answers the login and an id without opening a session" json_is "$site/setup.json" 'doc["ok"] is True and doc["data"]["login"] == "first" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"]) and doc["meta"].get("principal") is None'
+check "the setup opens no session" test -z "$(header_of "$site/setup.json.headers" set-cookie)"
+check "POST keel.setup.admin again is 404" http_is "$site/setup-again.json" 404 POST /api/v1/call/keel.setup.admin "{\"key\":\"$setup_key\",\"login\":\"second\",\"password\":\"correct-horse-battery\"}"
+check "the second call answers function_not_found" json_is "$site/setup-again.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found" and doc["error"]["key"] == "keel.error.function_not_found" and doc["error"]["params"]["function"] == "keel.setup.admin"'
+check "POST /api/v1/call/auth.login as first is 200" http_is "$site/login-first.json" 200 POST /api/v1/call/auth.login '{"login":"first","password":"correct-horse-battery"}'
+first_cookie=$(session_cookie_of "$site/login-first.json.headers") || fail "auth.login sets the session cookie for first"
+check "GET /api/v1/boot as first is 200" http_is "$site/boot-first.json" 200 GET /api/v1/boot '' "$first_cookie"
+check "boot names first as an admin of the root account" json_is "$site/boot-first.json" 'doc["principal"]["login"] == "first" and doc["principal"]["level"] == "admin"'
+check "ctl keel.principal.list finds first as an admin of the root account" keel_ok "$site/principal-first.json" ctl keel.principal.list search=first --out json
+check "the setup administrator is stored in the root account with the owner role" json_is "$site/principal-first.json" 'doc["ok"] is True and [(row["login"], row["level"], row["accountId"], row["role"]) for row in doc["data"]["data"]] == [("first", "admin", "00000000000000000000000000", "owner")]'
+
 check "ctl keel.account.create kind=user" keel_ok "$site/account.json" ctl keel.account.create kind=user
 check "keel.account.create answers ok with an id" json_is "$site/account.json" 'doc["ok"] is True and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
 check "GET /healthz is 200" http_is "$site/healthz.json" 200 GET /healthz
@@ -883,6 +903,7 @@ audit_sql() {
 }
 check "the stopped worker left no audit event unwritten" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.ip_rule.create'")" = "1"
 check "the audit trail records the switches over the socket, the restarts they requested and the refused bundle" sql_is "SELECT string_agg(function || ':' || via || ':' || status || ':' || coalesce(params_redacted->>'id', params_redacted->>'reason'), ' ' ORDER BY at) FROM keel.audit_call WHERE function IN ('keel.product.disable', 'keel.product.enable', 'keel.restart')" "keel.product.disable:socket:committed:demo keel.restart:internal:committed:product disable demo keel.product.disable:socket:committed:demo keel.product.enable:socket:committed:demo keel.restart:internal:committed:product enable demo keel.product.enable:socket:committed:demo keel.product.enable:socket:failed:nothing"
+check "the setup calls are guest rows with the key and the password masked" sql_is "SELECT string_agg(status || ':' || coalesce(error_key, '-') || ':' || coalesce(params_redacted->>'key', 'null') || ':' || coalesce(params_redacted->>'password', 'null') || ':' || coalesce(params_redacted->>'login', 'null'), ' ' ORDER BY at) FROM keel.audit_call WHERE function = 'keel.setup.admin' AND principal_id IS NULL" "failed:keel.setup.error.key:***:***:first failed:keel.error.validation:***:***:first committed:-:***:***:first failed:keel.error.function_not_found:***:***:second"
 check "the failed login is a failed row with the password masked" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'failed' AND error_key = 'auth.error.credentials' AND principal_id IS NULL AND account_id = '$root_account' AND params_redacted->>'password' = '***' AND params_redacted->>'login' = 'alice'")" = "5"
 check "the committed logins mask the password the same way" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'committed' AND params_redacted->>'password' <> '***'")" = "0"
 check "auth.password.set records the masked password" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.password.set' AND params_redacted->>'password' <> '***'")" = "0"
@@ -901,6 +922,7 @@ echo "--- run 2: no bundle enabled"
 check "product disable demo" keel_ok "$site/disable.out" product disable demo
 check "product disable demo prints demo: disabled" stdout_is "$site/disable.out" "demo: disabled"
 start_serve bare
+check "a start with an administrator logs no setup link" test -z "$(grep -oE '/setup\?key=kok_' "$serve_log" || true)"
 check "GET /brand/logo.svg without a product is 200" http_is "$site/logo-bare.svg" 200 GET /brand/logo.svg
 check "the effective logo without a product is the kernel's mark" cmp -s "$site/logo-bare.svg" crates/kernel/assets/keel.svg
 check "GET /brand/demo/logo.svg of the disabled bundle is 200" http_is "$site/logo-demo-bare.svg" 200 GET /brand/demo/logo.svg

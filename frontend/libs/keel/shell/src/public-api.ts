@@ -10,6 +10,7 @@ export {
   LOGIN_PATH,
   LOGOUT_PATH,
   RETURN_TO,
+  SETUP_PATH,
   authRoute,
   firstSegment,
   hasDashboard,
@@ -39,6 +40,20 @@ export {
   LOGIN_VERIFY_KEY,
 } from './login/login.component';
 export type { LoginNotice, LoginStep } from './login/login.component';
+export {
+  KeelSetupComponent,
+  SETUP_DONE_KEY,
+  SETUP_FAILED_KEY,
+  SETUP_INTRO_KEY,
+  SETUP_LOGIN_KEY,
+  SETUP_NO_KEY_KEY,
+  SETUP_PASSWORD_KEY,
+  SETUP_SIGNING_IN_KEY,
+  SETUP_SUBMIT_KEY,
+  SETUP_TITLE_KEY,
+  SETUP_TO_LOGIN_KEY,
+} from './login/setup.component';
+export type { SetupNotice, SetupStage } from './login/setup.component';
 export {
   LABELS_PREFIX,
   LABEL_NAMES,

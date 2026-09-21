@@ -25,6 +25,7 @@ export {
   AUTH_SU,
   AUTH_SU_EXIT,
   AUTH_TOTP_VERIFY,
+  KEEL_SETUP_ADMIN,
   KeelAuth,
 } from './auth';
 export type {
@@ -34,6 +35,8 @@ export type {
   LoginParams,
   Redeemed,
   RedeemKeyParams,
+  SetupAdminParams,
+  SetupCreated,
   SuParams,
   VerifyTotpParams,
 } from './auth';

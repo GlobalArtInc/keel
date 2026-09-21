@@ -179,7 +179,7 @@ fn is_dns_name(name: &str) -> bool {
         })
 }
 
-fn host_name() -> Option<String> {
+pub fn host_name() -> Option<String> {
     hostname::get()
         .ok()
         .and_then(|name| name.into_string().ok())

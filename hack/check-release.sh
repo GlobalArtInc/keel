@@ -146,6 +146,7 @@ archive="keel-$version-x86_64-linux-musl.tar.zst"
 beta_archive="keel-$beta-x86_64-linux-musl.tar.zst"
 expected=$(printf '%s\n' \
   "beta/manifest.json" \
+  "install.sh" \
   "stable/manifest.json" \
   "versions/$beta/$beta_archive" \
   "versions/$beta/$beta_archive.sha256" \
@@ -153,12 +154,16 @@ expected=$(printf '%s\n' \
   "versions/$version/$archive" \
   "versions/$version/$archive.sha256" \
   "versions/$version/manifest.json" | sort)
-check "the two dry runs leave the layout of the design and nothing else" test "$(cd "$out" && find . -type f | sed 's|^\./||' | sort)" = "$expected"
+check "the two dry runs leave the layout of the design plus install.sh at the root and nothing else" test "$(cd "$out" && find . -type f | sed 's|^\./||' | sort)" = "$expected"
 check "stable/manifest.json is the manifest of $version" cmp -s "$out/stable/manifest.json" "$out/versions/$version/manifest.json"
 check "beta/manifest.json is the manifest of $beta" cmp -s "$out/beta/manifest.json" "$out/versions/$beta/manifest.json"
-for object in "versions/$version/$archive" "versions/$version/$archive.sha256" "versions/$version/manifest.json" "stable/manifest.json"; do
+for object in "versions/$version/$archive" "versions/$version/$archive.sha256" "versions/$version/manifest.json" "stable/manifest.json" "install.sh"; do
   check "the dry run names the PUT of $object" grep -qF "a publish would PUT https://nexus.globalart.hu/repository/keel-releases/keel/$object" "$tmp/stable.log"
 done
+published_key=$(sed -nE "s/^RELEASE_KEY='(.*)'$/\1/p" "$out/install.sh")
+check "the published install.sh carries the committed release key" test "$published_key" = "$(head -n 1 crates/release/keys/release.pub)"
+check "the published install.sh differs from deploy/install.sh in the key line alone" cmp -s <(grep -v '^RELEASE_KEY=' deploy/install.sh) <(grep -v '^RELEASE_KEY=' "$out/install.sh")
+check "the published install.sh parses" bash -n "$out/install.sh"
 
 if payload=$(verify "$out/versions/$version/manifest.json"); then
   echo "ok: keel-release verify accepts versions/$version/manifest.json"
@@ -182,6 +187,9 @@ fi
 listing=$(zstd -d -c "$out/versions/$version/$archive" | tar -tvf -)
 check "the archive carries keel at its root as an executable" grep -qE '^-rwxr-xr-x .* keel$' <<<"$listing"
 check "the archive carries config-sample.yaml" grep -qE ' config-sample.yaml$' <<<"$listing"
+check "the archive carries deploy/install.sh as an executable" grep -qE '^-rwxr-xr-x .* deploy/install.sh$' <<<"$listing"
+check "the archive carries deploy/uninstall.sh as an executable" grep -qE '^-rwxr-xr-x .* deploy/uninstall.sh$' <<<"$listing"
+check "the archive carries the policy template deploy/agent.yaml" grep -qE '^-rw-r--r-- .* deploy/agent.yaml$' <<<"$listing"
 for unit in "${units[@]}"; do
   check "the archive carries deploy/systemd/$unit" grep -qE " deploy/systemd/$unit\$" <<<"$listing"
 done
@@ -190,6 +198,8 @@ check "the archive carries no setuid, setgid or sticky bit" test -z "$(grep -E '
 mkdir -p "$tmp/unpacked"
 zstd -d -c "$out/versions/$version/$archive" | tar -x -C "$tmp/unpacked"
 check "the unpacked keel prints the version of the tag" test "$("$tmp/unpacked/keel" --version)" = "keel $version"
+check "the unpacked install.sh is the published one" cmp -s "$tmp/unpacked/deploy/install.sh" "$out/install.sh"
+check "the unpacked agent.yaml is the repository's template" cmp -s "$tmp/unpacked/deploy/agent.yaml" deploy/agent.yaml
 
 tree=$tmp/tree
 mkdir -p "$tree/opt/versions/$version" "$tree/opt/bin" "$tree/units" "$tree/stub"

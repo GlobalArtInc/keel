@@ -29,6 +29,11 @@ PASSWORD_VARIABLE = "KEEL_RELEASE_NEXUS_PASSWORD"
 CHANNEL_FILE = ROOT / "crates" / "release" / "channel.json"
 UNIT_DIR = ROOT / "deploy" / "systemd"
 CONFIG_SAMPLE = ROOT / "deploy" / "config-sample.yaml"
+DEPLOY_DIR = ROOT / "deploy"
+RELEASE_KEY_FILE = ROOT / "crates" / "release" / "keys" / "release.pub"
+INSTALLER = "install.sh"
+DEPLOY_FILES = {"agent.yaml": 0o644, "uninstall.sh": 0o755}
+KEY_LINE = re.compile(r"^RELEASE_KEY='[^']*'$", re.MULTILINE)
 KEEL_RELEASE = ["cargo", "run", "-q", "-p", "keel-release", "--"]
 IDENTIFIER = r"(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
 SEMVER = re.compile(
@@ -143,7 +148,25 @@ def units_of(unit_dir: Path) -> list[Path]:
     return units
 
 
-def package(binary: Path, unit_dir: Path, config_sample: Path, out: Path, level: int) -> None:
+def embedded_installer(deploy_dir: Path, key_file: Path) -> bytes:
+    key = key_file.read_text().splitlines()
+    if not key or not key[0].startswith("ed25519 "):
+        raise Failure(f"{key_file} does not start with an ed25519 public key line")
+    script = (deploy_dir / INSTALLER).read_text()
+    if len(KEY_LINE.findall(script)) != 1:
+        raise Failure(f"{deploy_dir / INSTALLER} does not carry exactly one RELEASE_KEY line")
+    return KEY_LINE.sub(f"RELEASE_KEY='{key[0]}'", script).encode()
+
+
+def package(
+    binary: Path,
+    unit_dir: Path,
+    config_sample: Path,
+    deploy_dir: Path,
+    installer: bytes,
+    out: Path,
+    level: int,
+) -> None:
     mtime = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
 
     def entry(
@@ -162,11 +185,20 @@ def package(binary: Path, unit_dir: Path, config_sample: Path, out: Path, level:
         with source.open("rb") as handle:
             tar.addfile(entry(name, mode, size=source.stat().st_size), handle)
 
+    def add_bytes(tar: tarfile.TarFile, data: bytes, name: str, mode: int) -> None:
+        tar.addfile(entry(name, mode, size=len(data)), io.BytesIO(data))
+
+    for name in DEPLOY_FILES:
+        if not (deploy_dir / name).is_file():
+            raise Failure(f"{deploy_dir / name} is not a file")
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         add_file(tar, binary, "keel", 0o755)
         add_file(tar, config_sample, "config-sample.yaml", 0o644)
         tar.addfile(entry("deploy", 0o755, tarfile.DIRTYPE))
+        add_bytes(tar, installer, f"deploy/{INSTALLER}", 0o755)
+        for name, mode in sorted(DEPLOY_FILES.items()):
+            add_file(tar, deploy_dir / name, f"deploy/{name}", mode)
         tar.addfile(entry("deploy/systemd", 0o755, tarfile.DIRTYPE))
         for unit in units_of(unit_dir):
             add_file(tar, unit, f"deploy/systemd/{unit.name}", 0o644)
@@ -379,11 +411,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="hack/release.py",
         description=(
-            "Publish a release of keel on its channel: package the binary with the unit files "
+            "Publish a release of keel on its channel: package the binary with the unit files, "
+            "the policy template and the installer carrying the public release key "
             f"as versions/<ver>/keel-<ver>-{ARCHIVE_TARGET}.tar.zst, write its .sha256, sign the "
-            "manifest with keel-release, upload the four objects to the raw repository and read "
-            f"them back through {CHANNEL_URL} when that name answers. A tag with a pre-release "
-            "suffix lands on the beta channel, any other on stable."
+            "manifest with keel-release, upload the four objects and install.sh to the raw "
+            f"repository and read them back through {CHANNEL_URL} when that name answers. A tag "
+            "with a pre-release suffix lands on the beta channel, any other on stable."
         ),
     )
     add = parser.add_argument
@@ -413,6 +446,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         default=CONFIG_SAMPLE,
         help="the sample configuration the archive carries",
+    )
+    add(
+        "--deploy-dir",
+        type=Path,
+        default=DEPLOY_DIR,
+        help="the directory of install.sh, uninstall.sh and agent.yaml the archive carries",
+    )
+    add(
+        "--release-key-file",
+        type=Path,
+        default=RELEASE_KEY_FILE,
+        help="the public release key embedded into install.sh",
     )
     add("--keel-release", type=Path, help="a built keel-release binary instead of cargo run")
     add("--zstd-level", type=int, default=19, help="the zstd compression level of the archive")
@@ -463,6 +508,11 @@ def main(argv: list[str]) -> int:
         raise Failure(f"{args.binary} is not a file")
     if not args.config_sample.is_file():
         raise Failure(f"{args.config_sample} is not a file")
+    if not (args.deploy_dir / INSTALLER).is_file():
+        raise Failure(f"{args.deploy_dir / INSTALLER} is not a file")
+    if not args.release_key_file.is_file():
+        raise Failure(f"{args.release_key_file} is not a file")
+    installer = embedded_installer(args.deploy_dir, args.release_key_file)
     notes = args.notes_file.read_text() if args.notes_file is not None else tag_notes(args.tag)
     tool = Tool([str(args.keel_release)] if args.keel_release is not None else KEEL_RELEASE)
     name = archive_name(version)
@@ -471,6 +521,7 @@ def main(argv: list[str]) -> int:
         "sha256": f"versions/{version}/{name}.sha256",
         "manifest": f"versions/{version}/manifest.json",
         "head": f"{channel}/manifest.json",
+        "installer": INSTALLER,
     }
     say(
         f"{version} on {channel} from the tag {args.tag} "
@@ -494,7 +545,15 @@ def main(argv: list[str]) -> int:
         work = Path(work_name)
         key = key_file(args.key, work)
         archive = work / name
-        package(args.binary, args.unit_dir, args.config_sample, archive, args.zstd_level)
+        package(
+            args.binary,
+            args.unit_dir,
+            args.config_sample,
+            args.deploy_dir,
+            installer,
+            archive,
+            args.zstd_level,
+        )
         digest = sha256_of(archive)
         say(f"packaged {name} ({archive.stat().st_size} bytes, sha256 {digest})")
         notes_path = work / "notes.txt"
@@ -514,10 +573,16 @@ def main(argv: list[str]) -> int:
         store.put(paths["sha256"], sha256_bytes, "text/plain")
         store.put(paths["manifest"], manifest_bytes, "application/json")
         store.put(paths["head"], manifest_bytes, "application/json")
+        store.put(paths["installer"], installer, "text/x-shellscript")
 
         reader = store if args.dry_run else reader_for(args.channel_url, store, paths["manifest"])
-        for label in ("sha256", "manifest", "head"):
-            expected = sha256_bytes if label == "sha256" else manifest_bytes
+        expectations = {
+            "sha256": sha256_bytes,
+            "manifest": manifest_bytes,
+            "head": manifest_bytes,
+            "installer": installer,
+        }
+        for label, expected in expectations.items():
             if reader.get(paths[label]) != expected:
                 raise Failure(
                     f"{reader.describe(paths[label])} read back differs from what was uploaded"
@@ -529,7 +594,7 @@ def main(argv: list[str]) -> int:
                 f"{reader.describe(paths['archive'])} read back has sha256 "
                 f"{hasher.hexdigest()}, not {digest}"
             )
-        say(f"read back {len(paths)} objects")
+        say(f"read back {len(expectations) + 1} objects")
         was = f" (was {previous})" if previous is not None else ""
         say(f"{paths['head']} names {version}{was}")
     return 0

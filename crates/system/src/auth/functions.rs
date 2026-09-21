@@ -2,15 +2,12 @@ use std::sync::Arc;
 
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
-use keel_sdk::sea_orm::sea_query::OnConflict;
-use keel_sdk::sea_orm::{EntityTrait, Set};
 use keel_sdk::system::{CallExt, Client, PrincipalSource, SessionChange};
 use keel_sdk::types::{ErrorCode, MetaPrincipal, Via};
 
 use super::api::{LOCAL_METHOD, LoginMethod};
-use super::entity::password;
 use super::limits::Lockout;
-use super::password::{Passwords, check_policy, credentials};
+use super::password::{self, Passwords, check_policy, credentials};
 use super::{State, policy, session, totp};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -124,18 +121,7 @@ pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
                 }
                 let hash = passwords.hash(&params.password).await?;
                 let now = call.require::<dyn Clock>()?.now();
-                password::Entity::insert(password::ActiveModel {
-                    principal_id: Set(target.to_string()),
-                    hash: Set(hash),
-                    updated_at: Set(now),
-                })
-                .on_conflict(
-                    OnConflict::column(password::Column::PrincipalId)
-                        .update_columns([password::Column::Hash, password::Column::UpdatedAt])
-                        .to_owned(),
-                )
-                .exec(call.tx()?)
-                .await?;
+                password::store(call.tx()?, target, hash, now).await?;
                 Ok(PasswordChanged { principal: target })
             }
         })

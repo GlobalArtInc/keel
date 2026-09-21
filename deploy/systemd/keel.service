@@ -5,13 +5,16 @@ After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=keel
 Group=keel
 ExecStart=/opt/keel/bin/current serve
 WorkingDirectory=/var/lib/keel
 Restart=always
 RestartSec=2
+WatchdogSec=60
+TimeoutStartSec=300
 RestartForceExitStatus=75
 SuccessExitStatus=75
 TimeoutStopSec=30

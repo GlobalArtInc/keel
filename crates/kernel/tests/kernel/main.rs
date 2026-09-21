@@ -16,6 +16,7 @@ mod modules;
 mod outbox;
 mod preferences;
 mod settings;
+mod setup;
 mod socket;
 mod storage;
 mod tasks;

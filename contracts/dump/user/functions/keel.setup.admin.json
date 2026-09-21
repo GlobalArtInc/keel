@@ -1,0 +1,71 @@
+{
+  "keel": 1,
+  "name": "keel.setup.admin",
+  "module": "keel",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "SetupRequest",
+    "type": "object",
+    "properties": {
+      "key": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "login": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "password": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        }
+      }
+    },
+    "required": [
+      "key",
+      "login",
+      "password"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Created",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "login": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "login"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

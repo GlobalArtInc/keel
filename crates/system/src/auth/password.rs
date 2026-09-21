@@ -3,13 +3,18 @@ use std::sync::{Arc, OnceLock};
 use argon2::Argon2;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::password_hash::{PasswordHasher, PasswordVerifier};
-use keel_sdk::sea_orm::EntityTrait;
-use keel_sdk::system::PrincipalSource;
-use keel_sdk::{Db, Id, KeelError, Result, Secret};
+use keel_sdk::async_trait::async_trait;
+use keel_sdk::chrono::{DateTime, Utc};
+use keel_sdk::sea_orm::sea_query::OnConflict;
+use keel_sdk::sea_orm::{EntityTrait, Set};
+use keel_sdk::system::{PasswordStore, PrincipalSource};
+use keel_sdk::{Clock, Db, Id, KeelError, Result, Secret, SettingsSource};
+
 use rand::TryRng;
 use rand::rngs::SysRng;
 
 use super::entity::password;
+use super::policy::SETTING_PASSWORD_MIN_LENGTH;
 
 pub const HASH_PREFIX: &str = "$argon2id$";
 pub const MIN_LENGTH: u32 = 12;
@@ -18,6 +23,12 @@ const DECOY_LEN: usize = 32;
 pub struct Passwords {
     decoy: String,
     principals: OnceLock<Arc<dyn PrincipalSource>>,
+    platform: OnceLock<Platform>,
+}
+
+struct Platform {
+    settings: Arc<dyn SettingsSource>,
+    clock: Arc<dyn Clock>,
 }
 
 pub fn credentials() -> KeelError {
@@ -73,17 +84,40 @@ fn matches(hash: &str, password: &[u8]) -> Result<bool> {
     }
 }
 
+pub async fn store(db: &Db, principal: Id, hash: String, now: DateTime<Utc>) -> Result<()> {
+    password::Entity::insert(password::ActiveModel {
+        principal_id: Set(principal.to_string()),
+        hash: Set(hash),
+        updated_at: Set(now),
+    })
+    .on_conflict(
+        OnConflict::column(password::Column::PrincipalId)
+            .update_columns([password::Column::Hash, password::Column::UpdatedAt])
+            .to_owned(),
+    )
+    .exec(db)
+    .await?;
+    Ok(())
+}
+
 impl Passwords {
     pub fn new() -> Result<Self> {
         let decoy = hash_now(hex(&random_bytes(DECOY_LEN)?).as_bytes())?;
         Ok(Self {
             decoy,
             principals: OnceLock::new(),
+            platform: OnceLock::new(),
         })
     }
 
-    pub fn attach(&self, principals: Arc<dyn PrincipalSource>) {
+    pub fn attach(
+        &self,
+        principals: Arc<dyn PrincipalSource>,
+        settings: Arc<dyn SettingsSource>,
+        clock: Arc<dyn Clock>,
+    ) {
         let _ = self.principals.set(principals);
+        let _ = self.platform.set(Platform { settings, clock });
     }
 
     pub async fn hash(&self, password: &Secret) -> Result<String> {
@@ -126,6 +160,26 @@ impl Passwords {
             (Some(hash), Some(id)) => (hash, Some(id)),
             _ => (self.decoy.clone(), None),
         }
+    }
+}
+
+#[async_trait]
+impl PasswordStore for Passwords {
+    async fn set(&self, principal: Id, login: &str, password: &Secret, db: &Db) -> Result<()> {
+        let platform = self
+            .platform
+            .get()
+            .ok_or_else(|| KeelError::internal("auth.error.not_started"))?;
+        let min_length = platform
+            .settings
+            .resolve(SETTING_PASSWORD_MIN_LENGTH, Id::ROOT_ACCOUNT, db)
+            .await?
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or(MIN_LENGTH);
+        check_policy(password, login, min_length)?;
+        let hash = self.hash(password).await?;
+        store(db, principal, hash, platform.clock.now()).await
     }
 }
 
@@ -190,11 +244,16 @@ mod tests {
         assert!(set.data().is_some(), "{:?}", set.error());
         let passwords = Passwords::new().expect("entropy is available");
         let db = Db::from_connection(harness.db().clone());
-        let source = harness
-            .registry()
-            .services()
+        let services = harness.registry().services();
+        let source = services
             .get::<dyn PrincipalSource>()
             .expect("the kernel provides the principal source");
+        let settings = services
+            .get::<dyn SettingsSource>()
+            .expect("the kernel provides the settings source");
+        let clock = services
+            .get::<dyn Clock>()
+            .expect("the kernel provides the clock");
         assert_eq!(
             passwords
                 .verify("a1", &Secret::new("correct-horse"), &db)
@@ -203,7 +262,35 @@ mod tests {
                 .key(),
             "auth.error.not_started"
         );
-        passwords.attach(source);
+        let a2 = harness.principal(Who::A2).id;
+        assert_eq!(
+            passwords
+                .set(a2, "a2", &Secret::new("correct-horse"), &db)
+                .await
+                .unwrap_err()
+                .key(),
+            "auth.error.not_started"
+        );
+        passwords.attach(source, settings, clock);
+        assert_eq!(
+            passwords
+                .set(a2, "a2", &Secret::new("short"), &db)
+                .await
+                .unwrap_err()
+                .key(),
+            "auth.error.password_short"
+        );
+        passwords
+            .set(a2, "a2", &Secret::new("correct-horse-2"), &db)
+            .await
+            .expect("the store hashes and writes the password");
+        assert_eq!(
+            passwords
+                .verify("a2", &Secret::new("correct-horse-2"), &db)
+                .await
+                .unwrap(),
+            a2
+        );
         assert_eq!(
             passwords
                 .verify("a1", &Secret::new("correct-horse"), &db)

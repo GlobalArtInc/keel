@@ -19,10 +19,11 @@ import { expect, screen, userEvent, waitFor, within } from 'storybook/test';
 import { KeelHomeComponent } from './home/home.component';
 import { KeelLayoutComponent } from './layout/layout.component';
 import { KeelLoginComponent } from './login/login.component';
+import { KeelSetupComponent } from './login/setup.component';
 import { screenRoutes } from './routes';
 
 interface ShellArgs {
-  screen: 'layout' | 'login';
+  screen: 'layout' | 'login' | 'setup';
 }
 
 const ACCOUNTS: Choices = {
@@ -194,7 +195,9 @@ function sectionsOf(root: HTMLElement): ShownSection[] {
 
 const meta: Meta<ShellArgs> = {
   title: 'Shell',
-  decorators: [moduleMetadata({ imports: [KeelLayoutComponent, KeelLoginComponent] })],
+  decorators: [
+    moduleMetadata({ imports: [KeelLayoutComponent, KeelLoginComponent, KeelSetupComponent] }),
+  ],
   parameters: { layout: 'fullscreen' },
   argTypes: { screen: { control: false } },
   args: { screen: 'layout' },
@@ -203,6 +206,8 @@ const meta: Meta<ShellArgs> = {
     template: `
       @if (screen === 'login') {
         <keel-login />
+      } @else if (screen === 'setup') {
+        <keel-setup key="kok_story" />
       } @else {
         <keel-layout />
       }
@@ -309,6 +314,34 @@ export const Login: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Sign in' }));
     await expect(await canvas.findByRole('alert')).toHaveTextContent(
       'The login or the password is wrong',
+    );
+  },
+};
+
+export const Setup: Story = {
+  args: { screen: 'setup' },
+  decorators: [
+    withKeel({
+      level: 'guest',
+      calls: {
+        'keel.setup.admin': errorEnvelope({
+          code: 'validation',
+          key: 'keel.error.validation',
+          fields: [{ path: 'password', key: 'auth.error.password_short', params: { min: 12 } }],
+        }),
+      },
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      await canvas.findByRole('heading', { name: 'Create the first administrator' }),
+    ).toBeInTheDocument();
+    await userEvent.type(canvas.getByLabelText(/^Login/), 'first');
+    await userEvent.type(canvas.getByLabelText(/^Password/), 'short');
+    await userEvent.click(canvas.getByRole('button', { name: 'Create the administrator' }));
+    await expect(await canvas.findByRole('alert')).toHaveTextContent(
+      'The password must be at least 12 characters long',
     );
   },
 };

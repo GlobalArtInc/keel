@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use keel_kernel::doctor::{self, Doctor, Layout};
 use keel_kernel::http::Frontend;
+use keel_kernel::keel::SetupHandle;
 use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::restart::{self, Requested};
 use keel_kernel::socket::Serving;
@@ -21,6 +22,7 @@ use keel_sdk::{ModuleDef, ProductManifest};
 
 use crate::VERSION;
 use crate::error::Error;
+use crate::notify::Notifier;
 
 const RESTART_TASK_GRACE: Duration = Duration::from_secs(30);
 const RESTART_TASK_POLL: Duration = Duration::from_millis(100);
@@ -121,6 +123,14 @@ impl Runtime {
                     "keel is ready"
                 );
                 let restart = kernel.registry().services().get::<restart::Handle>();
+                if let Some(setup) = kernel.registry().services().get::<SetupHandle>()
+                    && let Some(url) = setup.link(served.addr(), tls::host_name().as_deref())
+                {
+                    tracing::info!(
+                        url = %url,
+                        "no administrator exists yet; the setup link creates the first one and dies with this process"
+                    );
+                }
                 Ok(Running {
                     storage: storage.clone(),
                     instance,
@@ -197,7 +207,12 @@ impl Runtime {
         config: &Config,
         shutdown: impl Future<Output = ()>,
     ) -> Result<Stopped, Error> {
+        let notifier = Notifier::from_env();
         let running = self.start(config).await?;
+        if let Some(notifier) = &notifier {
+            notifier.ready().await;
+        }
+        let watchdog = notifier.as_ref().and_then(Notifier::watchdog);
         let restart = running.restart.clone();
         let runner = running.kernel.registry().services().get::<dyn TaskRunner>();
         let stopped = tokio::select! {
@@ -220,6 +235,10 @@ impl Runtime {
                 Stopped::Restart(requested)
             }
         };
+        drop(watchdog);
+        if let Some(notifier) = &notifier {
+            notifier.stopping().await;
+        }
         running.stop().await?;
         Ok(stopped)
     }

@@ -21,7 +21,9 @@ admin_login=root
 reseller_login=res1
 user_login=alice
 polled_tag=@polled
+setup_tag=@setup
 guest_per_minute=120
+setup_link=""
 
 usage() {
   echo "usage: hack/e2e.sh [path/to/keel] [playwright arguments...]" >&2
@@ -279,6 +281,17 @@ stop_serve() {
   fi
 }
 
+http_status_is() {
+  local expected=$1 method=$2 path=$3 body=${4:-}
+  local status
+  status=$(curl_tls -s -o "$site/http.json" -w '%{http_code}' -X "$method" -H 'Content-Type: application/json' --data "$body" "$scheme://127.0.0.1:$port$path" 2>/dev/null) || true
+  if [ "$status" != "$expected" ]; then
+    echo "  $method $path answered $status, expected $expected" >&2
+    cat "$site/http.json" >&2
+    return 1
+  fi
+}
+
 create_principal() {
   local out=$1 login=$2 level=$3 account=$4 password=$5
   keel_ok "$out" ctl keel.principal.create "login=$login" "level=$level" "account=$account"
@@ -361,19 +374,9 @@ keel_ok "$site/enable.out" product enable demo
 start_serve
 keel_ok "$site/rate.json" ctl settings.set key=auth.rate.guest_per_minute value=$guest_per_minute
 
-root_account=00000000000000000000000000
 admin_password=$(secret)
 reseller_password=$(secret)
 user_password=$(secret)
-keel_ok "$site/reseller-account.json" ctl keel.account.create kind=reseller
-reseller_account=$(json_get "$site/reseller-account.json" 'doc["data"]["id"]')
-keel_ok "$site/user-account.json" ctl keel.account.create kind=user "parent=$reseller_account"
-user_account=$(json_get "$site/user-account.json" 'doc["data"]["id"]')
-create_principal "$site/admin.json" "$admin_login" admin "$root_account" "$admin_password"
-create_principal "$site/reseller.json" "$reseller_login" reseller "$reseller_account" "$reseller_password"
-create_principal "$site/user.json" "$user_login" user "$user_account" "$user_password"
-echo "created the admin $admin_login in the root account, the reseller $reseller_login in $reseller_account and the user $user_login in $user_account"
-
 e2e_env=(
   "KEEL_E2E_URL=$scheme://127.0.0.1:$port"
   "KEEL_E2E_ROOT_PASSWORD=$admin_password"
@@ -385,10 +388,32 @@ if [ -n "$cacert" ]; then
   echo "the browser suite trusts the certificate with the SPKI $spki"
   e2e_env+=("KEEL_E2E_SPKI=$spki" "NODE_EXTRA_CA_CERTS=$cacert")
 fi
+
+echo "--- the setup link"
+setup_link=$(grep -oE "https://127\.0\.0\.1:$port/setup\?key=kok_[0-9a-f]+" "$serve_log" | head -n 1) || true
+check "the start without an administrator logs the setup link" test -n "$setup_link"
+check "the setup key is thirty-two random bytes as hex" grep -qE '^https://.*key=kok_[0-9a-f]{64}$' <<<"$setup_link"
+echo "--- pnpm e2e $setup_tag"
+(
+  cd "$frontend"
+  env "${e2e_env[@]}" "KEEL_E2E_SETUP_URL=$setup_link" pnpm e2e --grep "$setup_tag"
+)
+check "ctl keel.principal.list finds the administrator the link created" keel_ok "$site/setup-admin.json" ctl keel.principal.list "search=$admin_login" --out json
+check "the administrator is an admin of the root account" json_is "$site/setup-admin.json" "doc['ok'] is True and [(row['login'], row['level'], row['accountId']) for row in doc['data']['data']] == [('$admin_login', 'admin', '00000000000000000000000000')]"
+check "the setup function is gone after the first administrator" http_status_is 404 POST "/api/v1/call/keel.setup.admin" '{"key":"kok_used","login":"second","password":"correct-horse-battery"}'
+
+keel_ok "$site/reseller-account.json" ctl keel.account.create kind=reseller
+reseller_account=$(json_get "$site/reseller-account.json" 'doc["data"]["id"]')
+keel_ok "$site/user-account.json" ctl keel.account.create kind=user "parent=$reseller_account"
+user_account=$(json_get "$site/user-account.json" 'doc["data"]["id"]')
+create_principal "$site/reseller.json" "$reseller_login" reseller "$reseller_account" "$reseller_password"
+create_principal "$site/user.json" "$user_login" user "$user_account" "$user_password"
+echo "created the admin $admin_login through the setup link, the reseller $reseller_login in $reseller_account and the user $user_login in $user_account"
+
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag" "$@"
+  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag" "$@"
 )
 
 echo "--- the poll job, the problem and the mail"

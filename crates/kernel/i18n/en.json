@@ -333,6 +333,12 @@
     "screen": {
       "unsupported": "Screens of kind {kind} are not rendered yet"
     },
+    "setup": {
+      "error": {
+        "entropy": "The operating system gave no randomness for the setup key",
+        "key": "The setup link is not valid; it may have been used, or the service was restarted since it was printed"
+      }
+    },
     "shell": {
       "about": {
         "api": "API version",
@@ -421,6 +427,18 @@
         "default": "Default",
         "title": "Setting {key}",
         "value": "Value"
+      },
+      "setup": {
+        "done": "This installation already has an administrator; sign in with that account",
+        "failed": "The administrator was not created",
+        "intro": "This installation has no administrator yet. Choose the login and the password of the first one.",
+        "login": "Login",
+        "no_key": "The address carries no setup key; open the link the installation printed at its first start",
+        "password": "Password",
+        "signing_in": "Signing in as the new administrator",
+        "submit": "Create the administrator",
+        "title": "Create the first administrator",
+        "to_login": "Go to the sign-in page"
       },
       "tasks": {
         "details": "Details",

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "install.sh runs under bash: curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product <id>" >&2
+  exit 2
+fi
 set -Eeuo pipefail
 
 OPT=/opt/keel
@@ -10,18 +14,30 @@ UNITS=(keel.service keel-privileged.service keel-update.path keel-update.service
 ENABLED_UNITS=(keel.service keel-privileged.service keel-update.path)
 LINK=/usr/local/bin/keel
 CERT=$LIB/tls/cert.pem
+AGENT_POLICY=$ETC/agent.yaml
 DEFAULT_LISTEN=127.0.0.1:1500
-DEFAULT_ADMIN="admin"
-ROOT_ACCOUNT=00000000000000000000000000
+DEFAULT_CHANNEL=stable
+DEFAULT_CHANNEL_URL=https://dl.globalart.hu/keel/
+ARCHIVE_TARGET=x86_64-linux-musl
+RELEASE_KEY='ed25519 b3maEuYryi/YLJRRc810KxRsMEbIdsizi55QlKy0+cg= keel release key 2026-09-21'
+ED25519_SPKI_PREFIX='\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'
+UID_RANGE_START=100000
+UID_RANGE_SIZE=65536
+UID_RANGE_CEILING=4000000000
+SUBID_FILES=(/etc/subuid /etc/subgid)
 PG_SOCKET_DIR=/run/postgresql
 PG_MIN_VERSION=150000
 READY_TIMEOUT=${KEEL_INSTALL_READY_TIMEOUT:-90}
+MANIFEST_MAX_BYTES=1048576
 
-here=$(cd "$(dirname "$0")" && pwd)
+here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
 products=""
 binary=""
+channel=$DEFAULT_CHANNEL
+channel_url=$DEFAULT_CHANNEL_URL
+requested_version=""
+release_key_file=""
 listen=$DEFAULT_LISTEN
-admin=$DEFAULT_ADMIN
 yes=0
 step="parsing the arguments"
 tmp=""
@@ -32,31 +48,37 @@ service_started=0
 touched=0
 db_created=0
 install_curl=0
+install_openssl=0
+policy_written=0
 
 usage() {
   cat <<EOF
-usage: install.sh --product <id>[,<id>] --binary <path|url> [options]
+usage: install.sh --product <id>[,<id>] [options]
 
-Installs keel on a clean Debian or Ubuntu host: Postgres from the distribution
+Installs keel on a clean Debian or Ubuntu host from the signed release channel:
+the release manifest's Ed25519 signature is verified with the key embedded in
+this script before anything is unpacked, then Postgres from the distribution
 when no server answers on the unix socket, the role and database keel, the unix
-user keel, $OPT, $ETC, $LIB, the systemd units keel.service,
-keel-privileged.service, keel-update.path and keel-update.service, the
-enabled products and the first administrator.
+user keel with the uid range the host agent may manage, $OPT, $ETC, $LIB, the
+policy $AGENT_POLICY, the systemd units keel.service, keel-privileged.service,
+keel-update.path and keel-update.service, and the enabled products. The first
+administrator is created in the browser through the one-time setup link the
+service prints at its first start; the installer prints that link.
 
   --product <id>[,<id>]   product bundles to enable (required), for example demo
-  --binary <path|url>     the keel binary, the tar.zst artifact of the Build
-                          workflow, or an https URL of either; a .sha256 file
-                          next to it is verified. Required until M4: it stands
-                          in for the release channel, and a missing --binary
-                          will then mean the channel's current version
+  --channel <name>        the release channel, stable or beta (default $DEFAULT_CHANNEL)
+  --channel-url <url>     the release channel's address (default $DEFAULT_CHANNEL_URL)
+  --version <ver>         a version of the channel instead of its head
+  --release-key <file>    a public key file in place of the embedded one, for a rehearsal channel
+  --binary <path|url>     a keel binary or tar.zst artifact of the Build workflow, or an
+                          https URL of either, in place of the channel; a .sha256 file next
+                          to it is verified, the manifest signature is not
   --listen <addr:port>    listen address written to $ETC/config.yaml
                           (default $DEFAULT_LISTEN, the kernel's own default)
-  --admin <login>         login of the first administrator (default $DEFAULT_ADMIN)
   --yes                   do not ask for confirmation
   -h, --help              print this text
 
-The administrator's password is generated, printed once and never written to
-disk. Run as root.
+Run as root.
 EOF
 }
 
@@ -155,10 +177,16 @@ parse_args() {
       --product=*) products=${1#*=}; shift ;;
       --binary) [ $# -ge 2 ] || fail "--binary needs a value"; binary=$2; shift 2 ;;
       --binary=*) binary=${1#*=}; shift ;;
+      --channel) [ $# -ge 2 ] || fail "--channel needs a value"; channel=$2; shift 2 ;;
+      --channel=*) channel=${1#*=}; shift ;;
+      --channel-url) [ $# -ge 2 ] || fail "--channel-url needs a value"; channel_url=$2; shift 2 ;;
+      --channel-url=*) channel_url=${1#*=}; shift ;;
+      --version) [ $# -ge 2 ] || fail "--version needs a value"; requested_version=$2; shift 2 ;;
+      --version=*) requested_version=${1#*=}; shift ;;
+      --release-key) [ $# -ge 2 ] || fail "--release-key needs a value"; release_key_file=$2; shift 2 ;;
+      --release-key=*) release_key_file=${1#*=}; shift ;;
       --listen) [ $# -ge 2 ] || fail "--listen needs a value"; listen=$2; shift 2 ;;
       --listen=*) listen=${1#*=}; shift ;;
-      --admin) [ $# -ge 2 ] || fail "--admin needs a value"; admin=$2; shift 2 ;;
-      --admin=*) admin=${1#*=}; shift ;;
       --yes|-y) yes=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage >&2; fail "unknown argument: $1" ;;
@@ -167,10 +195,6 @@ parse_args() {
   if [ -z "$products" ]; then
     usage >&2
     fail "--product is required"
-  fi
-  if [ -z "$binary" ]; then
-    usage >&2
-    fail "--binary is required"
   fi
   IFS=, read -r -a product_ids <<<"$products"
   local id
@@ -186,13 +210,32 @@ parse_args() {
   if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
     fail "--listen names the port $port, which is not between 1 and 65535"
   fi
-  if ! [[ $admin =~ ^[A-Za-z0-9._@-]{1,64}$ ]]; then
-    fail "--admin must be 1 to 64 characters of letters, digits, . _ @ -"
+  case $channel in
+    stable|beta) ;;
+    *) fail "--channel must be stable or beta, not \"$channel\"" ;;
+  esac
+  case $channel_url in
+    https://*) ;;
+    http://*) say "warning: the channel $channel_url is reached over plain http; the manifest signature still protects the release" ;;
+    *) fail "--channel-url must be an https:// or http:// address, not \"$channel_url\"" ;;
+  esac
+  channel_url=${channel_url%/}/
+  if [ -n "$requested_version" ] && ! [[ $requested_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    fail "--version must be a semantic version, not \"$requested_version\""
   fi
-  if [[ $admin =~ ^(true|false|null|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)$ ]]; then
-    fail "--admin \"$admin\" would be read by keel ctl as a JSON number or keyword, not as a login"
+  if [ -n "$release_key_file" ]; then
+    case $release_key_file in
+      /*) ;;
+      *) release_key_file=$PWD/$release_key_file ;;
+    esac
+    [ -f "$release_key_file" ] || fail "--release-key $release_key_file is not a file"
+    RELEASE_KEY=$(head -n 1 "$release_key_file")
+  fi
+  if ! [[ $RELEASE_KEY =~ ^ed25519\ [A-Za-z0-9+/]{43}=( .*)?$ ]]; then
+    fail "the release key is not \"ed25519 <base64 of 32 bytes> [comment]\""
   fi
   case $binary in
+    '') ;;
     https://*) ;;
     http://*) fail "--binary accepts https URLs only" ;;
     /*) ;;
@@ -266,10 +309,16 @@ check_host() {
   if [ "$(uname -s)" != "Linux" ]; then
     fail "this is not a Linux host"
   fi
+  if [ -z "$binary" ] && [ "$(uname -m)" != "x86_64" ]; then
+    fail "the channel publishes $ARCHIVE_TARGET alone; this host is $(uname -m). Pass --binary with a build for it"
+  fi
   if ! command -v curl >/dev/null 2>&1; then
     install_curl=1
   fi
-  need tar runuser useradd groupadd getent sha256sum install hostname awk
+  if [ -z "$binary" ] && ! command -v openssl >/dev/null 2>&1; then
+    install_openssl=1
+  fi
+  need tar runuser useradd groupadd getent sha256sum install hostname awk base64 sed
   local name
   name=$(sed -nE 's/^PRETTY_NAME="?([^"]*)"?$/\1/p' /etc/os-release 2>/dev/null || true)
   say "host: ${name:-unknown}, $(uname -m), systemd $(systemctl --version | head -n 1 | awk '{print $2}')"
@@ -279,9 +328,13 @@ confirm() {
   say ""
   say "This will install keel on $(hostname):"
   say "  products:   $products"
-  say "  binary:     $binary"
+  if [ -n "$binary" ]; then
+    say "  binary:     $binary (an override; the manifest signature is not checked)"
+  else
+    say "  channel:    $channel at $channel_url${requested_version:+, version $requested_version}"
+    say "  key:        ${RELEASE_KEY#ed25519 }"
+  fi
   say "  listen:     $listen"
-  say "  admin:      $admin"
   say "  paths:      $OPT $ETC $LIB $RUN"
   say "  postgres:   from the distribution unless a server answers on $PG_SOCKET_DIR"
   say ""
@@ -321,23 +374,129 @@ apt_install() {
   apt-get install -y -q --no-install-recommends "$@"
 }
 
-ensure_curl() {
+ensure_tools() {
+  local -a packages=()
   if [ "$install_curl" -eq 1 ]; then
-    apt_install curl ca-certificates
+    packages+=(curl ca-certificates)
+  fi
+  if [ "$install_openssl" -eq 1 ]; then
+    packages+=(openssl)
+  fi
+  if [ "${#packages[@]}" -gt 0 ]; then
+    apt_install "${packages[@]}"
   fi
   need curl
+  if [ -z "$binary" ]; then
+    need openssl
+    case $(openssl version 2>/dev/null) in
+      OpenSSL\ 1.1.*|OpenSSL\ 3*|OpenSSL\ [4-9]*) ;;
+      *) fail "openssl is $(openssl version 2>/dev/null); the signature check needs OpenSSL 1.1.1 or newer" ;;
+    esac
+  fi
+}
+
+download() {
+  local url=$1 out=$2
+  case $url in
+    https://*) curl -fsSL --proto '=https' --proto-redir '=https' -o "$out" "$url" ;;
+    *) curl -fsSL -o "$out" "$url" ;;
+  esac
+}
+
+json_string() {
+  local file=$1 field=$2
+  sed -nE "s/^[[:space:]]*\"$field\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*$/\1/p" "$file" | head -n 1
+}
+
+verify_signed() {
+  local file=$1 key=$2 out=$3
+  local work
+  work=$(mktemp -d "${tmp:-/tmp}/verify.XXXXXX")
+  if [ "$(wc -c <"$file")" -gt "$MANIFEST_MAX_BYTES" ]; then
+    rm -rf "$work"
+    say "the manifest is larger than $MANIFEST_MAX_BYTES bytes" >&2
+    return 1
+  fi
+  local payload signature
+  payload=$(json_string "$file" payload)
+  signature=$(json_string "$file" signature)
+  if [ -z "$payload" ] || [ -z "$signature" ]; then
+    rm -rf "$work"
+    say "the manifest is not a signed envelope with payload and signature" >&2
+    return 1
+  fi
+  if ! { printf '%b' "$ED25519_SPKI_PREFIX"; printf '%s' "${key#ed25519 }" | awk '{print $1}' | base64 -d; } >"$work/key.der" 2>/dev/null \
+    || ! openssl pkey -pubin -inform DER -in "$work/key.der" -out "$work/key.pem" >/dev/null 2>&1; then
+    rm -rf "$work"
+    say "the release key does not decode" >&2
+    return 1
+  fi
+  if ! printf '%s' "$payload" | base64 -d >"$work/payload" 2>/dev/null \
+    || ! printf '%s' "$signature" | base64 -d >"$work/signature" 2>/dev/null; then
+    rm -rf "$work"
+    say "the payload or the signature is not base64" >&2
+    return 1
+  fi
+  if ! openssl pkeyutl -verify -pubin -inkey "$work/key.pem" -rawin -in "$work/payload" -sigfile "$work/signature" >/dev/null 2>&1; then
+    rm -rf "$work"
+    say "the signature does not verify with the release key" >&2
+    return 1
+  fi
+  cp "$work/payload" "$out"
+  rm -rf "$work"
+}
+
+fetch_release() {
+  tmp=$(mktemp -d /tmp/keel-install.XXXXXX)
+  if [ -n "$binary" ]; then
+    fetch_binary
+  else
+    fetch_from_channel
+  fi
+}
+
+fetch_from_channel() {
+  local manifest_url
+  if [ -n "$requested_version" ]; then
+    manifest_url="${channel_url}versions/$requested_version/manifest.json"
+  else
+    manifest_url="${channel_url}$channel/manifest.json"
+  fi
+  begin "fetching the release manifest $manifest_url"
+  download "$manifest_url" "$tmp/manifest.json"
+  begin "verifying the Ed25519 signature of the release manifest"
+  if ! verify_signed "$tmp/manifest.json" "$RELEASE_KEY" "$tmp/payload.json"; then
+    fail "the release manifest at $manifest_url is not signed by the release key; nothing was unpacked"
+  fi
+  version=$(json_string "$tmp/payload.json" version)
+  local sha256
+  sha256=$(json_string "$tmp/payload.json" sha256)
+  if [ -z "$version" ] || ! [[ $sha256 =~ ^[0-9a-f]{64}$ ]]; then
+    fail "the verified manifest names no version or no sha256"
+  fi
+  if [ -n "$requested_version" ] && [ "$version" != "$requested_version" ]; then
+    fail "the manifest of $requested_version names the version $version"
+  fi
+  say "the manifest is signed by the release key: keel $version, sha256 $sha256"
+  local name="keel-$version-$ARCHIVE_TARGET.tar.zst"
+  local archive_url="${channel_url}versions/$version/$name"
+  begin "downloading $archive_url"
+  download "$archive_url" "$tmp/$name"
+  begin "verifying the sha256 of $name against the manifest"
+  (cd "$tmp" && printf '%s  %s\n' "$sha256" "$name" | sha256sum -c --strict --quiet)
+  unpack "$tmp/$name" "$name"
+  install -m 0644 -o root -g root "$tmp/manifest.json" "$OPT/staging/manifest.json"
 }
 
 fetch_binary() {
   begin "fetching the binary"
-  tmp=$(mktemp -d /tmp/keel-install.XXXXXX)
   local source name
   case $binary in
     https://*)
       name=${binary##*/}
       say "downloading $binary"
-      curl -fsSL --proto '=https' --proto-redir '=https' -o "$tmp/$name" "$binary"
-      if curl -fsSL --proto '=https' --proto-redir '=https' -o "$tmp/$name.sha256" "$binary.sha256" 2>/dev/null; then
+      download "$binary" "$tmp/$name"
+      if download "$binary.sha256" "$tmp/$name.sha256" 2>/dev/null; then
         say "downloaded $binary.sha256"
       else
         rm -f "$tmp/$name.sha256"
@@ -358,6 +517,11 @@ fetch_binary() {
   else
     say "no $name.sha256 next to $binary; the checksum is not verified"
   fi
+  unpack "$source" "$name"
+}
+
+unpack() {
+  local source=$1 name=$2
   begin "unpacking the release under $OPT/staging"
   touched=1
   install -d -m 0755 -o root -g root "$OPT" "$OPT/staging"
@@ -381,13 +545,18 @@ fetch_binary() {
     chmod -R u=rwX,go=rX "$OPT/staging"
     chmod 0755 "$staged"
   fi
-  if ! version=$("$staged" --version 2>&1); then
-    fail "the binary does not run on this host ($(uname -m)): $version"
+  local reported
+  if ! reported=$("$staged" --version 2>&1); then
+    fail "the binary does not run on this host ($(uname -m)): $reported"
   fi
-  version=${version#keel }
-  if [ -z "$version" ]; then
+  reported=${reported#keel }
+  if [ -z "$reported" ]; then
     fail "the binary did not print its version"
   fi
+  if [ -n "$version" ] && [ "$reported" != "$version" ]; then
+    fail "the manifest names keel $version but the binary prints $reported"
+  fi
+  version=$reported
   say "keel $version"
 }
 
@@ -467,6 +636,39 @@ ensure_user() {
   fi
 }
 
+uid_range_free() {
+  local from=$1 to=$2 file
+  if getent passwd | awk -F: -v from="$from" -v to="$to" '$3 >= from && $3 <= to { found = 1 } END { exit !found }'; then
+    return 1
+  fi
+  for file in "${SUBID_FILES[@]}"; do
+    [ -f "$file" ] || continue
+    if awk -F: -v from="$from" -v to="$to" '$2 != "" && $3 != "" { start = $2 + 0; end = $2 + $3 - 1; if (start <= to && end >= from) found = 1 } END { exit !found }' "$file"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+allot_uid_range() {
+  begin "allotting the uid range the host agent may manage"
+  local from=$UID_RANGE_START to
+  while :; do
+    to=$((from + UID_RANGE_SIZE - 1))
+    if [ "$to" -gt "$UID_RANGE_CEILING" ]; then
+      fail "no free range of $UID_RANGE_SIZE uids between $UID_RANGE_START and $UID_RANGE_CEILING"
+    fi
+    if uid_range_free "$from" "$to"; then
+      break
+    fi
+    say "the range $from-$to is taken by an account or a subordinate range; trying the next"
+    from=$((from + UID_RANGE_SIZE))
+  done
+  uid_from=$from
+  uid_to=$to
+  say "the installation manages uids $uid_from to $uid_to"
+}
+
 check_peer_auth() {
   begin "checking peer authentication as keel"
   local answer
@@ -523,6 +725,25 @@ install_files() {
   fi
 }
 
+install_policy() {
+  begin "writing the host agent policy $AGENT_POLICY with uid_range $uid_from to $uid_to"
+  if [ -f "$AGENT_POLICY" ]; then
+    say "$AGENT_POLICY exists from an earlier installation; kept as it is, the allotted uid range is not written"
+    return
+  fi
+  if ! release_file deploy/agent.yaml "$here/agent.yaml"; then
+    fail "the release does not carry deploy/agent.yaml and $here/agent.yaml is missing; copy the whole deploy/ directory next to install.sh"
+  fi
+  local template="$OPT/versions/$version/deploy/agent.yaml"
+  if [ "$(grep -cE '^  uid_range:' "$template")" != "1" ]; then
+    fail "$template does not carry exactly one uid_range line under policy"
+  fi
+  sed -E "s/^  uid_range:.*$/  uid_range: { from: $uid_from, to: $uid_to }/" "$template" >"$tmp/agent.yaml"
+  install -m 0640 -o root -g keel "$tmp/agent.yaml" "$AGENT_POLICY"
+  policy_written=1
+  sed 's/^/  /' "$AGENT_POLICY"
+}
+
 install_units() {
   begin "installing the units ${UNITS[*]} from $OPT/versions/$version/deploy/systemd"
   local unit
@@ -570,8 +791,11 @@ start_service() {
   begin "starting keel-privileged.service and keel-update.path"
   systemctl start keel-privileged.service keel-update.path
   service_started=1
-  begin "starting keel.service"
-  systemctl start keel.service
+  begin "starting keel.service and waiting for its readiness notification"
+  if ! systemctl start keel.service; then
+    journalctl -u keel.service --no-pager -n 40 >&2 || true
+    fail "keel.service did not report READY=1 to the service manager; see journalctl -u keel"
+  fi
   local host port waited status
   host=$(probe_host)
   port=$(listen_port)
@@ -596,49 +820,6 @@ start_service() {
   done
 }
 
-generate_password() {
-  local candidate
-  while :; do
-    if command -v openssl >/dev/null 2>&1; then
-      candidate=$(openssl rand -base64 96 | tr -dc 'A-Za-z0-9' | head -c 24)
-    else
-      candidate=$(head -c 1024 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 24)
-    fi
-    if [ "${#candidate}" -ne 24 ]; then
-      continue
-    fi
-    if ! printf '%s' "$candidate" | grep -q '[a-df-zA-DF-Z]'; then
-      continue
-    fi
-    if ! printf '%s' "$candidate" | grep -q '[0-9]'; then
-      continue
-    fi
-    printf '%s\n' "$candidate"
-    return
-  done
-}
-
-create_admin() {
-  begin "creating the administrator $admin"
-  local created id
-  if ! created=$(run_keel ctl keel.principal.create "login=$admin" level=admin "account=$ROOT_ACCOUNT" 2>&1); then
-    say "$created" >&2
-    fail "keel.principal.create refused the administrator"
-  fi
-  id=$(printf '%s\n' "$created" | grep -oE '"id": *"[0-7][0-9A-HJKMNP-TV-Z]{25}"' | head -n 1 | grep -oE '[0-7][0-9A-HJKMNP-TV-Z]{25}') || id=""
-  if [ -z "$id" ]; then
-    say "$created" >&2
-    fail "keel.principal.create answered without an id"
-  fi
-  password=$(generate_password)
-  local answer
-  if ! answer=$(run_keel ctl auth.password.set "principal=$id" "password=$password" 2>&1); then
-    say "$answer" >&2
-    fail "auth.password.set refused the generated password"
-  fi
-  admin_id=$id
-}
-
 certificate_fingerprint() {
   local fingerprint=""
   fingerprint=$(journalctl -u keel.service --no-pager -o cat 2>/dev/null | grep -oE '([0-9A-F]{2}:){31}[0-9A-F]{2}' | tail -n 1) || true
@@ -648,12 +829,27 @@ certificate_fingerprint() {
   printf '%s\n' "${fingerprint:-(not found; see journalctl -u keel for the line \"tls certificate\")}"
 }
 
+setup_key() {
+  local key=""
+  local waited=0
+  while [ "$waited" -lt 10 ]; do
+    key=$(journalctl -u keel.service --no-pager -o cat 2>/dev/null | grep -oE '/setup\?key=kok_[0-9a-f]{64}' | tail -n 1 | sed 's/^.*key=//') || true
+    if [ -n "$key" ]; then
+      break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  printf '%s\n' "$key"
+}
+
 report() {
-  local host port name fingerprint
+  local host port name fingerprint key
   host=$(shown_host)
   port=$(listen_port)
   name=$(hostname)
   fingerprint=$(certificate_fingerprint)
+  key=$(setup_key)
   say ""
   say "keel $version is installed on $(hostname)"
   say ""
@@ -663,14 +859,22 @@ report() {
   else
     say "  binary:       $OPT/versions/$version/keel"
   fi
+  if [ -z "$binary" ]; then
+    say "  release:      $channel channel at $channel_url, manifest signed by the release key"
+  fi
   if [ -f "$OPT/versions/$version/config-sample.yaml" ]; then
     say "  config:       $ETC/config.yaml (sample: $OPT/versions/$version/config-sample.yaml)"
   else
     say "  config:       $ETC/config.yaml"
   fi
+  if [ "$policy_written" -eq 1 ]; then
+    say "  agent policy: $AGENT_POLICY (uid_range $uid_from to $uid_to)"
+  else
+    say "  agent policy: $AGENT_POLICY (kept from an earlier installation)"
+  fi
   say "  data:         $LIB"
-  say "  socket:       $RUN/core.sock"
-  say "  units:        keel.service, keel-privileged.service and keel-update.path (enabled, running);"
+  say "  sockets:      $RUN/core.sock (control), $RUN/agent.sock (host agent)"
+  say "  units:        keel.service (Type=notify, watchdog), keel-privileged.service and keel-update.path (enabled, running);"
   say "                keel-update.service runs once per update request"
   say "  postgres:     database keel, role keel, peer authentication on $PG_SOCKET_DIR port $pg_port"
   say ""
@@ -680,30 +884,36 @@ report() {
     say "                reaching the host by another address, $host included, warns about the name as well"
   fi
   say "  certificate:  $CERT (self-signed, SHA-256 $fingerprint)"
-  say "  login:        $admin"
-  say "  password:     $password"
-  say "  principal:    $admin_id"
+  if [ -n "$key" ]; then
+    say "  setup link:   https://$host:$port/setup?key=$key"
+  else
+    say "  setup link:   (not found in the journal; journalctl -u keel -o cat | grep setup prints it)"
+  fi
   say ""
-  say "The password is shown once and is stored nowhere by the installer."
-  say "The URL serves the panel over TLS with the self-signed certificate above; a browser warns once"
-  say "and shows the fingerprint, which must match the one printed here. A reverse proxy in front"
-  say "trusts $CERT and is named in trusted_proxies of $ETC/config.yaml."
-  say "The same login over the API:"
+  say "The setup link creates the first administrator from a login and a password entered in the"
+  say "browser. It is valid once and dies with the service: a restart before it is used prints a new"
+  say "one in the journal. The URL serves the panel over TLS with the self-signed certificate above;"
+  say "a browser warns once and shows the fingerprint, which must match the one printed here. A"
+  say "reverse proxy in front trusts $CERT and is named in trusted_proxies of $ETC/config.yaml."
+  say "The same login over the API, once the administrator exists:"
   if listen_unspecified; then
     say "  curl -sS --cacert $CERT --resolve \"$name:$port:$host\" -X POST https://$name:$port/api/v1/call/auth.login \\"
   else
     say "  curl -sS --cacert $CERT -X POST https://$host:$port/api/v1/call/auth.login \\"
   fi
-  say "    -H 'Content-Type: application/json' -d '{\"login\":\"$admin\",\"password\":\"<the password above>\"}'"
+  say "    -H 'Content-Type: application/json' -d '{\"login\":\"<the login>\",\"password\":\"<the password>\"}'"
   say ""
   say "Checks:"
   say "  systemctl status keel keel-privileged keel-update.path"
   say "  journalctl -u keel -f"
+  say "  ps -eo user,comm | grep keel"
   say "  runuser -u keel -- keel ctl keel.account.list --out table"
   say "  runuser -u keel -- keel product list"
+  say "  runuser -u keel -- keel doctor"
   say ""
-  say "An operator's certificate goes into tls.cert and tls.key of $ETC/config.yaml; ACME, the host policy"
-  say "of the privileged unit, the update button and the setup link arrive with later milestones (see deploy/README.md)."
+  say "An operator's certificate goes into tls.cert and tls.key of $ETC/config.yaml; ACME arrives with a"
+  say "later milestone. The host policy in $AGENT_POLICY is read by keel-privileged.service when a"
+  say "product names the host module (see deploy/README.md)."
 }
 
 main() {
@@ -712,24 +922,27 @@ main() {
   trap on_exit EXIT
   check_host
   confirm
-  ensure_curl
-  fetch_binary
+  ensure_tools
+  fetch_release
   ensure_postgres
   ensure_role_and_database
   ensure_user
+  allot_uid_range
   check_peer_auth
   install_files
+  install_policy
   install_units
   prepare_database
   start_service
-  create_admin
   report
 }
 
 version=""
 staged=$OPT/staging/keel
 pg_port=5432
-password=""
-admin_id=""
+uid_from=0
+uid_to=0
 product_ids=()
-main "$@"
+if [ -z "${BASH_SOURCE[0]:-}" ] || [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

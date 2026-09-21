@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{
@@ -107,33 +108,57 @@ pub fn create() -> FunctionDef {
             let tx = call.tx()?;
             let account = accounts::load(tx, &account_id.to_string()).await?;
             check_level(call.principal(), params.level, &account)?;
-            let id = Id::generate();
             let now = call.require::<dyn Clock>()?.now();
-            principal::ActiveModel {
-                id: Set(id.to_string()),
-                account_id: Set(account.id),
-                login: Set(params.login.clone()),
-                level: Set(params.level.as_str().to_owned()),
-                role: Set(params
-                    .role
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_ROLE.to_owned())),
-                state: Set("active".to_owned()),
-                lang: Set(params
-                    .lang
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_LANG.to_owned())),
-                external_id: Set(None),
-                origin: Set(None),
-                acl_gen: Set(0),
-                created_at: Set(now),
-                updated_at: Set(now),
-            }
-            .insert(tx)
-            .await
-            .map_err(login_taken)?;
+            let id = insert(
+                tx,
+                NewPrincipal {
+                    account_id: account.id,
+                    login: params.login.clone(),
+                    level: params.level,
+                    role: params
+                        .role
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_ROLE.to_owned()),
+                    lang: params
+                        .lang
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_LANG.to_owned()),
+                },
+                now,
+            )
+            .await?;
             Ok(Saved { id })
         })
+}
+
+pub(super) struct NewPrincipal {
+    pub(super) account_id: String,
+    pub(super) login: String,
+    pub(super) level: Level,
+    pub(super) role: String,
+    pub(super) lang: String,
+}
+
+pub(super) async fn insert(db: &Db, principal: NewPrincipal, now: DateTime<Utc>) -> Result<Id> {
+    let id = Id::generate();
+    principal::ActiveModel {
+        id: Set(id.to_string()),
+        account_id: Set(principal.account_id),
+        login: Set(principal.login),
+        level: Set(principal.level.as_str().to_owned()),
+        role: Set(principal.role),
+        state: Set("active".to_owned()),
+        lang: Set(principal.lang),
+        external_id: Set(None),
+        origin: Set(None),
+        acl_gen: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
+    .await
+    .map_err(login_taken)?;
+    Ok(id)
 }
 
 pub fn update() -> FunctionDef {

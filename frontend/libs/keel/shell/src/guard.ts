@@ -7,6 +7,7 @@ import { KeelProducts } from './products';
 
 export const LOGIN_PATH = 'login';
 export const LOGOUT_PATH = 'logout';
+export const SETUP_PATH = 'setup';
 export const RETURN_TO = 'returnTo';
 export const GUEST_LANG = 'en';
 export const HOME_URL = '/';
@@ -21,7 +22,7 @@ export function firstSegment(url: string): string {
 
 export function authRoute(url: string): boolean {
   const segment = firstSegment(url);
-  return segment === LOGIN_PATH || segment === LOGOUT_PATH;
+  return segment === LOGIN_PATH || segment === LOGOUT_PATH || segment === SETUP_PATH;
 }
 
 export function returnable(url: string): boolean {

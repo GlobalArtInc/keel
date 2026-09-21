@@ -5,6 +5,7 @@ mod health;
 mod principals;
 mod products;
 mod restart;
+mod setup;
 mod source;
 
 use keel_sdk::prelude::*;
@@ -15,6 +16,8 @@ use health::DOCTOR_RUN;
 pub use health::LOGS_TAIL;
 pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
 pub use restart::RESTART;
+use setup::SETUP_ADMIN;
+pub use setup::{Handle as SetupHandle, KEY_PREFIX as SETUP_KEY_PREFIX, PATH as SETUP_PATH};
 pub(crate) use source::{StoredAccounts, StoredPrincipals};
 
 pub static MODULE: ModuleDef = ModuleDef {
@@ -26,11 +29,12 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 16] = [
+pub const FUNCTIONS: [&str; 17] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
     RESTART,
+    SETUP_ADMIN,
     "keel.account.list",
     "keel.account.get",
     "keel.account.create",
@@ -69,6 +73,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(products::enable())
         .function(products::disable())
         .function(restart::restart())
+        .function(setup::admin())
         .function(crate::export::function())
         .function(health::doctor_run())
         .function(health::logs_tail())
@@ -101,7 +106,13 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .label("keel.doctor.run.title"),
         )
         .i18n("en", include_str!("../../i18n/en.json"))
-        .i18n("ru", include_str!("../../i18n/ru.json"));
+        .i18n("ru", include_str!("../../i18n/ru.json"))
+        .start(|ctx| async move {
+            if setup::issue_when_unclaimed(&ctx).await? {
+                tracing::info!("no administrator exists; a setup link is issued for this start");
+            }
+            Ok(())
+        });
     Ok(())
 }
 
@@ -112,7 +123,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_sixteen_functions_under_the_keel_prefix() {
+    fn the_kernel_module_registers_its_seventeen_functions_under_the_keel_prefix() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let names: Vec<&str> = registrar.function_names().into_iter().collect();

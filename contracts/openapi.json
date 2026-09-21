@@ -4369,6 +4369,104 @@
         }
       }
     },
+    "/api/v1/call/keel.setup.admin": {
+      "post": {
+        "operationId": "keel.setup.admin",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SetupRequest",
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "login": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "password": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    },
+                    "x-ui": {
+                      "control": "password"
+                    }
+                  }
+                },
+                "required": [
+                  "key",
+                  "login",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Created",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "login": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "login"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/v1/call/note.delete": {
       "post": {
         "operationId": "note.delete",

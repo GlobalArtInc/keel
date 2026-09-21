@@ -11,6 +11,7 @@ export const AUTH_KEY_REDEEM = 'auth.key.redeem';
 export const AUTH_LOGOUT = 'auth.logout';
 export const AUTH_SU = 'auth.su';
 export const AUTH_SU_EXIT = 'auth.su.exit';
+export const KEEL_SETUP_ADMIN = 'keel.setup.admin';
 
 export interface LoginParams {
   login: string;
@@ -29,6 +30,17 @@ export interface RedeemKeyParams {
 
 export interface SuParams {
   principal: Id;
+}
+
+export interface SetupAdminParams {
+  key: string;
+  login: string;
+  password: string;
+}
+
+export interface SetupCreated {
+  id: Id;
+  login: string;
 }
 
 export type LoggedIn =
@@ -76,6 +88,10 @@ export class KeelAuth {
 
   suExit(): Promise<Envelope<Delegation>> {
     return this.run<Delegation>(AUTH_SU_EXIT, {});
+  }
+
+  setupAdmin(params: SetupAdminParams): Promise<Envelope<SetupCreated>> {
+    return firstValueFrom(this.client.call<SetupCreated>(KEEL_SETUP_ADMIN, params));
   }
 
   private async run<T>(func: string, params: unknown): Promise<Envelope<T>> {

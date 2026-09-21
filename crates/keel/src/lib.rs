@@ -2,6 +2,7 @@ mod backup;
 mod cli;
 mod doctor;
 mod error;
+mod notify;
 mod privileged;
 mod products;
 mod runtime;

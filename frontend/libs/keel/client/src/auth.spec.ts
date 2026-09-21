@@ -128,6 +128,24 @@ describe('KeelAuth', () => {
     expect(await returned).toEqual(LIST);
   });
 
+  it('setupAdmin posts the key, the login and the password and reloads nothing', async () => {
+    const pending = auth.setupAdmin({
+      key: 'kok_01J9',
+      login: 'first',
+      password: 'hunter2hunter2',
+    });
+    const request = http.expectOne({ method: 'POST', url: '/api/v1/call/keel.setup.admin' });
+    expect(request.request.body).toEqual({
+      key: 'kok_01J9',
+      login: 'first',
+      password: 'hunter2hunter2',
+    });
+    const created = ok({ id: PRINCIPAL.id, login: 'first' });
+    request.flush(created);
+    expect(await pending).toEqual(created);
+    http.expectNone('/api/v1/boot');
+  });
+
   it('a refused login is answered as its envelope without a boot reload', async () => {
     const pending = auth.login({ login: 'alice', password: 'wrong' });
     const refused: Envelope = {

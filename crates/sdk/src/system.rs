@@ -129,6 +129,11 @@ pub trait SecondFactorSource: Send + Sync {
     async fn enrolled(&self, principal: Id, db: &Db) -> Result<bool>;
 }
 
+#[async_trait]
+pub trait PasswordStore: Send + Sync {
+    async fn set(&self, principal: Id, login: &str, password: &Secret, db: &Db) -> Result<()>;
+}
+
 pub trait CallExt {
     fn client(&self) -> Option<&Client>;
     fn session(&self, change: SessionChange);
