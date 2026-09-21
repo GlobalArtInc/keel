@@ -1,0 +1,10 @@
+[Unit]
+Description=keel update trigger
+Documentation=https://github.com/GlobalArtInc/keel
+
+[Path]
+PathExists=/var/lib/keel/update.request
+Unit=keel-update.service
+
+[Install]
+WantedBy=multi-user.target

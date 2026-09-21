@@ -41,9 +41,12 @@ missing the installer says so and goes on without the check. A local build works
 target matches the host.
 
 The archive is unpacked as a whole into `/opt/keel/versions/<version>/`, the design's one
-unpacked release per version, and `keel.service` and `config-sample.yaml` are taken from its root
-when it carries them. Until the release archive of M4 does, they come from `deploy/` next to the
-script, which is why the whole directory is copied; a bare binary always takes them from there.
+unpacked release per version; the unit files are taken from its `deploy/systemd/` and
+`config-sample.yaml` from its root when it carries them. Until the release archive of the
+release workflow does, they come from `deploy/` next to the script, which is why the whole
+directory is copied, and the installer places the units under
+`/opt/keel/versions/<version>/deploy/systemd/` so that a later rollback finds them where a
+release keeps them; a bare binary always takes them from `deploy/`.
 
 ## Installing
 
@@ -96,11 +99,17 @@ non-zero.
    `listen` when `--listen` was given, `database` when the server's socket is not on port
    5432, both as quoted scalars so that a bracketed IPv6 address stays an address. With the
    defaults the file is empty, which the kernel treats as absent.
-8. Installs `keel.service` from `/opt/keel/versions/<version>/`, placed there from
-   `deploy/systemd/` when the release does not carry it, and enables it.
+8. Installs the four units from `/opt/keel/versions/<version>/deploy/systemd/`, placed there
+   from `deploy/systemd/` when the release does not carry them: `keel.service` (the kernel, user
+   `keel`), `keel-privileged.service` (the one root code path, `keel privileged --socket
+   /run/keel/agent.sock --policy /etc/keel/agent.yaml`), `keel-update.path` (watches
+   `/var/lib/keel/update.request`) and `keel-update.service` (the root oneshot `keel privileged
+   update --from-request` the path unit starts). The first three are enabled; the oneshot has
+   no install section and runs only when the path unit fires.
 9. As user `keel`: `keel migrate`, `keel product enable <id>` for each product, `keel migrate`
    again so that the products' migrations are applied before the first start.
-10. Starts the unit and waits up to 90 s for `GET /readyz` over https to answer `200`, with
+10. Starts `keel-privileged.service` and `keel-update.path`, then `keel.service`, and waits up
+    to 90 s for `GET /readyz` over https to answer `200`, with
     `--cacert /var/lib/keel/tls/cert.pem`, the certificate the binary generates at its first
     start; a missing certificate counts as not ready (`KEEL_INSTALL_READY_TIMEOUT` changes the
     limit). A unit that stops or a timeout prints the tail of the journal.
@@ -116,7 +125,7 @@ non-zero.
     addresses — warns that a browser reaching the host by another address gets a name warning
     too, and pins the API example to the host name with `--resolve`.
 
-On a failure after the host was changed the unit is stopped, disabled and removed and
+On a failure after the host was changed the units are stopped, disabled and removed and
 `/opt/keel` is deleted; `/etc/keel`, `/var/lib/keel`, the unix user and the database are left in
 place and `uninstall.sh --purge` clears them before another attempt. Steps 3 to 5 are
 idempotent, so a partially prepared host can be purged and installed again.
@@ -134,26 +143,42 @@ they exist:
   the binary writes under `/var/lib/keel/tls/` at first start, or with the pair `tls.cert` and
   `tls.key` of `config.yaml` name; ACME, the expiry problem and the certificate button of the
   settings arrive with M4. The installer generates nothing for TLS itself.
-- The privileged agent: `keel-privileged.service`, `agent.yaml` and the host catalogue arrive
-  with M4; the M2 spike `bin/spike` proved the mechanism on `keel-demo` with its own unit and
-  policy and was removed again by `hack/spike-vm.sh --cleanup`. Nothing runs as root after the
-  installer exits.
+- The host policy of the privileged unit. `keel-privileged.service` is installed and runs as
+  root, but until the `host` module and its agent arrive it serves the `update` policy alone
+  and binds no socket; `agent.yaml`, the operation catalogue and the audit of operations come
+  with the host layer of M4. The M2 spike `bin/spike` proved the mechanism on `keel-demo` with
+  its own unit and policy and was removed again by `hack/spike-vm.sh --cleanup`. After the
+  installer exits the privileged unit is the only process of keel running as root.
 - The uid range the host agent may manage. The design allots it to the installation at install
-  time next to the unix user; it arrives with `agent.yaml` in M4, since that file is where the
-  agent reads it, and the installer creates the user and the group only until then.
-- The release channel. `--binary` is required because the signed channel manifest the installer
-  fetches a release from does not exist yet; from M4 a missing `--binary` means the channel's
-  current version and the flag remains as an override.
-- Updates: `keel-update.path`, the signed release manifest and `update rollback` arrive with M4.
-  Until then a new version is installed by hand: unpack the artifact into
+  time next to the unix user; it arrives with `agent.yaml`, since that file is where the agent
+  reads it, and the installer creates the user and the group only until then.
+- The release channel. `--binary` is required because the installer does not fetch a release
+  from the signed channel yet; a missing `--binary` will mean the channel's current version and
+  the flag remains as an override.
+- The update button. The root half of an update is in place: `keel-update.path` watches
+  `/var/lib/keel/update.request`, and `keel-update.service` runs `keel privileged update
+  --from-request`, which reads the version, the channel and the requesting principal from the
+  request and nothing else, downloads `versions/<ver>/manifest.json` and the archive from
+  `https://dl.globalart.hu/keel/`, verifies the Ed25519 signature of the manifest against the
+  release key compiled into the binary, the archive's sha256 against the manifest and the
+  version against `min_upgrade_from` of the channel head, unpacks into
+  `/opt/keel/versions/<ver>/`, switches `bin/current` (keeping `bin/previous`), refreshes the
+  unit files from the release's `deploy/systemd/` and restarts `keel-privileged.service` and
+  `keel.service`; `keel privileged update rollback` switches back within the same `contract`
+  and refuses across one unless `--restore <archive>` names the pre-update backup, in which
+  case `keel.service` is stopped for the restore instead of restarted. The kernel half that
+  writes the request from a button, the pre-update dump and the published channel arrive with
+  the next steps; until then a version is installed by hand as before: unpack the artifact into
   `/opt/keel/versions/<version>/`, point `/opt/keel/bin/current` at its `keel`,
-  `systemctl restart keel` and check that `/readyz` answers `ready`; the panel is part of the
-  binary, so nothing else is deployed.
+  `systemctl restart keel` and check that `/readyz` answers `ready`. `hack/update-vm.sh`
+  rehearses the whole root half on a machine with a rehearsal key and a channel directory.
 - The setup link. `keel.setup.admin` and the one-time `kok_` link printed at the first start
   arrive with M4; the installer creates the administrator over the control socket instead.
 - The signature check of the release manifest; the installer verifies the sha256 of the artifact
   only.
-- `backup`, `restore`, `doctor` and `support-bundle` (M4).
+- `backup`, `restore`, `doctor` and `support-bundle` (M4); `rollback --restore` therefore
+  stops the service and leaves the restore of the named archive to the operator until
+  `restore` exists.
 
 `keel.service` is `Type=simple` without `WatchdogSec=` because the kernel does not send
 `sd_notify` readiness yet; the installer waits for `/readyz` instead. The unit switches to
@@ -188,7 +213,7 @@ claims is logged and ignored. A misspelt key inside `tls` or `log`, an unusable 
 ## After the installation
 
 ```
-systemctl status keel
+systemctl status keel keel-privileged keel-update.path
 journalctl -u keel -f
 runuser -u keel -- keel ctl keel.account.list --out table
 runuser -u keel -- keel product list
@@ -242,7 +267,7 @@ with M4.
 ## Uninstalling
 
 ```
-./uninstall.sh            # stops and disables the unit, removes the unit, /usr/local/bin/keel and /opt/keel
+./uninstall.sh            # stops and disables the four units, removes them, /usr/local/bin/keel and /opt/keel
 ./uninstall.sh --purge    # also removes /etc/keel, /var/lib/keel, /run/keel, the user keel, and drops the database keel and the role keel
 ```
 
@@ -259,6 +284,10 @@ testing the script, never for running an installation.
 ## Checks CI runs
 
 `hack/check-install.sh` runs `bash -n` and shellcheck over the scripts, checks that `--help`
-prints the usage, and, against the built binary, that every subcommand and flag the scripts and
-this README call exists in `keel --help`, that every function they call is defined in the
-workspace, and that `config-sample.yaml` parses.
+prints the usage, that the four unit files exist, are installed and removed by the scripts, that
+`keel.service`, `keel-privileged.service` and `keel-update.path` are enabled, that
+`keel-privileged.service` and `keel-update.service` run as root while `keel.service` runs as
+`keel`, that the path unit watches `/var/lib/keel/update.request` and starts the oneshot, and,
+against the built binary, that every subcommand and flag the units, the scripts and this README
+call exists in `keel --help`, that every function they call is defined in the workspace, and
+that `config-sample.yaml` parses.

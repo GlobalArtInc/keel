@@ -5,7 +5,8 @@ OPT=/opt/keel
 ETC=/etc/keel
 LIB=/var/lib/keel
 RUN=/run/keel
-UNIT=/etc/systemd/system/keel.service
+UNIT_DIR=/etc/systemd/system
+UNITS=(keel.service keel-privileged.service keel-update.path keel-update.service)
 LINK=/usr/local/bin/keel
 PG_SOCKET_DIR=/run/postgresql
 
@@ -17,9 +18,10 @@ usage() {
   cat <<EOF
 usage: uninstall.sh [--purge] [--yes]
 
-Without --purge: stops and disables keel.service, removes the unit, $LINK
-and $OPT. The configuration in $ETC, the data in $LIB, the unix user
-keel and the Postgres database keel stay in place.
+Without --purge: stops and disables keel.service, keel-privileged.service,
+keel-update.path and keel-update.service, removes the units, $LINK and $OPT.
+The configuration in $ETC, the data in $LIB, the unix user keel and the
+Postgres database keel stay in place.
 
 With --purge: also removes $ETC, $LIB, $RUN, the unix user and group keel,
 and drops the database keel and the role keel from the Postgres server on
@@ -71,11 +73,11 @@ confirm() {
   say ""
   if [ "$purge" -eq 1 ]; then
     say "This removes keel from $(hostname) together with its data:"
-    say "  keel.service, $LINK, $OPT, $ETC, $LIB, $RUN,"
+    say "  ${UNITS[*]}, $LINK, $OPT, $ETC, $LIB, $RUN,"
     say "  the unix user and group keel, the database keel and the role keel."
   else
-    say "This removes the keel service and binary from $(hostname):"
-    say "  keel.service, $LINK, $OPT."
+    say "This removes the keel units and binary from $(hostname):"
+    say "  ${UNITS[*]}, $LINK, $OPT."
     say "  $ETC, $LIB, the unix user keel and the database keel stay in place."
   fi
   say ""
@@ -93,20 +95,26 @@ confirm() {
 }
 
 remove_service() {
-  begin "stopping and disabling keel.service"
+  begin "stopping and disabling ${UNITS[*]}"
+  local unit
   if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files keel.service --no-legend 2>/dev/null | grep -q '^keel.service'; then
-      systemctl disable --now keel.service || true
-    else
-      say "keel.service is not installed"
-    fi
+    for unit in "${UNITS[@]}"; do
+      if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^$unit"; then
+        systemctl stop "$unit" || true
+        systemctl disable "$unit" 2>/dev/null || true
+      else
+        say "$unit is not installed"
+      fi
+    done
   else
-    say "systemd is not running; the unit file is removed without stopping anything"
+    say "systemd is not running; the unit files are removed without stopping anything"
   fi
-  if [ -f "$UNIT" ]; then
-    rm -f "$UNIT"
-    say "removed $UNIT"
-  fi
+  for unit in "${UNITS[@]}"; do
+    if [ -f "$UNIT_DIR/$unit" ]; then
+      rm -f "$UNIT_DIR/$unit"
+      say "removed $UNIT_DIR/$unit"
+    fi
+  done
   if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
   fi

@@ -101,11 +101,24 @@ done
 echo "keel-dev graph checked"
 
 facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$facade" != "keel-kernel keel-sdk keel-types " ]; then
-  echo "the facade keel depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $facade" >&2
+if [ "$facade" != "keel-kernel keel-release keel-sdk keel-types " ]; then
+  echo "the facade keel depends on workspace crates other than keel-kernel, keel-release, keel-sdk and keel-types: $facade" >&2
   fail=1
 fi
 echo "keel graph checked"
+
+release=$(cargo tree -p keel-release -e normal,build,dev --prefix none | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | sort -u | tr '\n' ' ')
+if [ -n "$release" ]; then
+  echo "keel-release depends on workspace crates: $release" >&2
+  fail=1
+fi
+for forbidden in tokio reqwest hyper axum sea-orm sqlx; do
+  if cargo tree -p keel-release -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-release depends on $forbidden" >&2
+    fail=1
+  fi
+done
+echo "keel-release graph checked"
 
 for forbidden in keel-kernel keel-sdk keel-types; do
   if cargo tree -p keel-bin -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep -qx "$forbidden"; then

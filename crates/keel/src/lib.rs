@@ -1,5 +1,6 @@
 mod cli;
 mod error;
+mod privileged;
 mod products;
 mod runtime;
 

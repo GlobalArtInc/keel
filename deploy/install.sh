@@ -5,7 +5,9 @@ OPT=/opt/keel
 ETC=/etc/keel
 LIB=/var/lib/keel
 RUN=/run/keel
-UNIT=/etc/systemd/system/keel.service
+UNIT_DIR=/etc/systemd/system
+UNITS=(keel.service keel-privileged.service keel-update.path keel-update.service)
+ENABLED_UNITS=(keel.service keel-privileged.service keel-update.path)
 LINK=/usr/local/bin/keel
 CERT=$LIB/tls/cert.pem
 DEFAULT_LISTEN=127.0.0.1:1500
@@ -37,7 +39,8 @@ usage: install.sh --product <id>[,<id>] --binary <path|url> [options]
 
 Installs keel on a clean Debian or Ubuntu host: Postgres from the distribution
 when no server answers on the unix socket, the role and database keel, the unix
-user keel, $OPT, $ETC, $LIB, the systemd unit keel.service, the
+user keel, $OPT, $ETC, $LIB, the systemd units keel.service,
+keel-privileged.service, keel-update.path and keel-update.service, the
 enabled products and the first administrator.
 
   --product <id>[,<id>]   product bundles to enable (required), for example demo
@@ -85,13 +88,16 @@ on_exit() {
   trap - EXIT
   if [ "$code" -ne 0 ]; then
     if [ "$service_started" -eq 1 ]; then
-      systemctl stop keel.service >/dev/null 2>&1 || true
+      systemctl stop "${UNITS[@]}" >/dev/null 2>&1 || true
     fi
     if [ "$unit_installed" -eq 1 ]; then
-      systemctl disable keel.service >/dev/null 2>&1 || true
-      rm -f "$UNIT"
+      systemctl disable "${ENABLED_UNITS[@]}" >/dev/null 2>&1 || true
+      local unit
+      for unit in "${UNITS[@]}"; do
+        rm -f "$UNIT_DIR/$unit"
+      done
       systemctl daemon-reload >/dev/null 2>&1 || true
-      say "the unit keel.service was disabled and removed" >&2
+      say "the units ${UNITS[*]} were disabled and removed" >&2
     fi
     if [ "$link_installed" -eq 1 ]; then
       rm -f "$LINK"
@@ -480,7 +486,7 @@ release_file() {
   if [ ! -f "$fallback" ]; then
     return 1
   fi
-  install -m 0644 -o root -g root "$fallback" "$OPT/versions/$version/$name"
+  install -D -m 0644 -o root -g root "$fallback" "$OPT/versions/$version/$name"
   say "the release does not carry $name; taken from $fallback"
 }
 
@@ -517,15 +523,18 @@ install_files() {
   fi
 }
 
-install_unit() {
-  begin "installing keel.service from $OPT/versions/$version"
-  if ! release_file keel.service "$here/systemd/keel.service"; then
-    fail "the release does not carry keel.service and $here/systemd/keel.service is missing; copy the whole deploy/ directory next to install.sh"
-  fi
-  install -m 0644 -o root -g root "$OPT/versions/$version/keel.service" "$UNIT"
+install_units() {
+  begin "installing the units ${UNITS[*]} from $OPT/versions/$version/deploy/systemd"
+  local unit
+  for unit in "${UNITS[@]}"; do
+    if ! release_file "deploy/systemd/$unit" "$here/systemd/$unit"; then
+      fail "the release does not carry deploy/systemd/$unit and $here/systemd/$unit is missing; copy the whole deploy/ directory next to install.sh"
+    fi
+    install -m 0644 -o root -g root "$OPT/versions/$version/deploy/systemd/$unit" "$UNIT_DIR/$unit"
+  done
   unit_installed=1
   systemctl daemon-reload
-  systemctl enable keel.service
+  systemctl enable "${ENABLED_UNITS[@]}"
 }
 
 run_keel() {
@@ -558,9 +567,11 @@ ready_status() {
 }
 
 start_service() {
+  begin "starting keel-privileged.service and keel-update.path"
+  systemctl start keel-privileged.service keel-update.path
+  service_started=1
   begin "starting keel.service"
   systemctl start keel.service
-  service_started=1
   local host port waited status
   host=$(probe_host)
   port=$(listen_port)
@@ -659,7 +670,8 @@ report() {
   fi
   say "  data:         $LIB"
   say "  socket:       $RUN/core.sock"
-  say "  unit:         keel.service (enabled, running)"
+  say "  units:        keel.service, keel-privileged.service and keel-update.path (enabled, running);"
+  say "                keel-update.service runs once per update request"
   say "  postgres:     database keel, role keel, peer authentication on $PG_SOCKET_DIR port $pg_port"
   say ""
   say "  URL:          https://$host:$port/"
@@ -685,13 +697,13 @@ report() {
   say "    -H 'Content-Type: application/json' -d '{\"login\":\"$admin\",\"password\":\"<the password above>\"}'"
   say ""
   say "Checks:"
-  say "  systemctl status keel"
+  say "  systemctl status keel keel-privileged keel-update.path"
   say "  journalctl -u keel -f"
   say "  runuser -u keel -- keel ctl keel.account.list --out table"
   say "  runuser -u keel -- keel product list"
   say ""
-  say "An operator's certificate goes into tls.cert and tls.key of $ETC/config.yaml; ACME, the privileged agent,"
-  say "updates and the setup link arrive with later milestones (see deploy/README.md)."
+  say "An operator's certificate goes into tls.cert and tls.key of $ETC/config.yaml; ACME, the host policy"
+  say "of the privileged unit, the update button and the setup link arrive with later milestones (see deploy/README.md)."
 }
 
 main() {
@@ -707,7 +719,7 @@ main() {
   ensure_user
   check_peer_auth
   install_files
-  install_unit
+  install_units
   prepare_database
   start_service
   create_admin

@@ -12,6 +12,7 @@ repository = "https://github.com/GlobalArtInc/keel"
 keel = { path = "crates/keel" }
 keel-demo = { path = "products/demo" }
 keel-kernel = { path = "crates/kernel" }
+keel-release = { path = "crates/release" }
 keel-sdk = { path = "crates/sdk" }
 keel-system = { path = "crates/system", default-features = false }
 keel-testkit = { path = "crates/testkit" }
@@ -31,6 +32,7 @@ chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
 croner = "4"
+ed25519-dalek = "3"
 futures = "0.3"
 hmac = "0.13"
 hostname = "0.4"
@@ -51,7 +53,7 @@ rust-embed = { version = "8", features = ["debug-embed"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 schemars = { version = "1", features = ["chrono04"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "postgres-array", "with-chrono", "with-json"] }
-semver = "1"
+semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10"
@@ -59,6 +61,7 @@ sha1 = "0.11"
 sha2 = "0.11"
 similar = "2"
 subtle = "2"
+tar = "0.4"
 tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["reusable-containers"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres"] }
@@ -70,6 +73,7 @@ tower-http = { version = "0.7", features = ["limit", "request-id", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ulid = { version = "3", features = ["serde"] }
+zstd = "0.14"
 
 [profile.dev]
 debug = "line-tables-only"

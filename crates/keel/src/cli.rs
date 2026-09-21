@@ -1,18 +1,20 @@
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::{Config, logging};
+use keel_release::{KeyRing, PublicKey};
 use tokio::signal::unix::{SignalKind, signal};
 
 use crate::VERSION;
 use crate::error::{Error, describe};
+use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
 use crate::runtime::Runtime;
 
 #[derive(Debug, Parser)]
-#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product and ctl")]
+#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl and privileged")]
 pub(crate) struct Cli {
     #[arg(long, global = true, env = "KEEL_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
@@ -33,6 +35,72 @@ pub(crate) enum Command {
     },
     #[command(about = "Call a function over the control socket")]
     Ctl(CtlArgs),
+    #[command(
+        about = "The one root code path of the installation: serves the update policy, and the host policy once a product loads the host module"
+    )]
+    Privileged(PrivilegedArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PrivilegedArgs {
+    #[arg(long, default_value = privileged::DEFAULT_SOCKET, value_name = "PATH")]
+    pub(crate) socket: PathBuf,
+    #[arg(long, default_value = privileged::DEFAULT_POLICY, value_name = "PATH")]
+    pub(crate) policy: PathBuf,
+    #[command(subcommand)]
+    pub(crate) action: Option<PrivilegedAction>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PrivilegedAction {
+    #[command(
+        about = "Install the signed version the update request names, or roll back to the previous version"
+    )]
+    Update(UpdateArgs),
+}
+
+#[derive(Debug, Args)]
+#[command(subcommand_negates_reqs = true)]
+pub(crate) struct UpdateArgs {
+    #[arg(
+        long,
+        required = true,
+        help = "Read the version, the channel and the principal from the request file and install that version"
+    )]
+    pub(crate) from_request: bool,
+    #[arg(long, default_value = privileged::DEFAULT_REQUEST, value_name = "PATH")]
+    pub(crate) request: PathBuf,
+    #[arg(long, default_value = keel_release::CHANNEL_URL, value_name = "URL|DIR")]
+    pub(crate) channel_url: String,
+    #[arg(long, default_value = privileged::DEFAULT_OPT, value_name = "DIR")]
+    pub(crate) opt: PathBuf,
+    #[arg(long, default_value = privileged::DEFAULT_UNIT_DIR, value_name = "DIR")]
+    pub(crate) unit_dir: PathBuf,
+    #[arg(long, default_value = privileged::DEFAULT_SYSTEMCTL, value_name = "PATH")]
+    pub(crate) systemctl: PathBuf,
+    #[arg(
+        long,
+        value_name = "PUBLIC_KEY",
+        help = "Verify the manifests against this key instead of the release keys compiled in; for rehearsals"
+    )]
+    pub(crate) release_key: Option<PathBuf>,
+    #[command(subcommand)]
+    pub(crate) action: Option<UpdateAction>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum UpdateAction {
+    #[command(
+        about = "Switch bin/current back to the previous version; across a contract boundary only with --restore"
+    )]
+    Rollback {
+        #[arg(
+            long,
+            value_name = "ARCHIVE",
+            help = "The pre-update backup to restore across a contract boundary; keel.service is stopped instead of restarted"
+        )]
+        restore: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -147,6 +215,13 @@ impl Runtime {
                     }
                     Ok(ExitCode::SUCCESS)
                 }
+                Command::Privileged(args) => match args.action {
+                    None => {
+                        privileged::serve(&args.socket, &args.policy, signals()).await;
+                        Ok(ExitCode::SUCCESS)
+                    }
+                    Some(PrivilegedAction::Update(update)) => Ok(privileged_update(update).await),
+                },
                 Command::Ctl(args) => {
                     let socket = match args.socket {
                         Some(socket) => socket,
@@ -173,7 +248,73 @@ impl Runtime {
     }
 }
 
-fn load(path: Option<&std::path::Path>) -> Result<Config, Error> {
+async fn privileged_update(args: UpdateArgs) -> ExitCode {
+    if args.from_request && args.action.is_some() {
+        eprintln!("error: update takes --from-request or rollback, not both");
+        return ExitCode::from(2);
+    }
+    match run_update(args).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {}", describe(&error));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run_update(args: UpdateArgs) -> Result<(), PrivilegedError> {
+    let keys = match &args.release_key {
+        Some(path) => KeyRing::new(PublicKey::read(path)?, Vec::new()),
+        None => KeyRing::compiled()?,
+    };
+    let runner = Runner {
+        opt: args.opt,
+        unit_dir: args.unit_dir,
+        systemctl: args.systemctl,
+        keys,
+        source: Source::parse(&args.channel_url)?,
+    };
+    match args.action {
+        Some(UpdateAction::Rollback { restore }) => {
+            let switched = runner.rollback(restore.as_deref()).await?;
+            println!(
+                "rolled back to {}; previous is now {}{}",
+                switched.version,
+                switched.previous,
+                units_line(&switched.units)
+            );
+            if let Some(archive) = switched.restore {
+                println!(
+                    "keel.service is stopped: restore {} as the user keel with \"keel restore\", then systemctl start keel.service",
+                    archive.display()
+                );
+            }
+        }
+        None => {
+            let request = Request::consume(&args.request)?;
+            let installed = runner.install(&request).await?;
+            println!(
+                "installed {} from {} requested by {}; previous {}{}",
+                installed.version,
+                installed.channel,
+                installed.requested_by,
+                installed.previous,
+                units_line(&installed.units)
+            );
+        }
+    }
+    Ok(())
+}
+
+fn units_line(units: &[String]) -> String {
+    if units.is_empty() {
+        String::new()
+    } else {
+        format!("; units refreshed: {}", units.join(", "))
+    }
+}
+
+fn load(path: Option<&Path>) -> Result<Config, Error> {
     let path = path.map_or_else(Config::default_path, Into::into);
     Ok(Config::load(&path)?)
 }
@@ -291,7 +432,111 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "ctl"]).is_err());
         assert!(Cli::try_parse_from(["keel", "ctl", "a.b", "--out", "yaml"]).is_err());
         assert!(Cli::try_parse_from(["keel"]).is_err());
-        assert!(Cli::try_parse_from(["keel", "privileged"]).is_err());
+    }
+
+    #[test]
+    fn privileged_takes_the_socket_and_policy_and_update_takes_the_request_or_rollback() {
+        let cli = Cli::try_parse_from(["keel", "privileged"]).unwrap();
+        let Command::Privileged(args) = cli.command else {
+            panic!("expected privileged");
+        };
+        assert_eq!(args.socket, PathBuf::from("/run/keel/agent.sock"));
+        assert_eq!(args.policy, PathBuf::from("/etc/keel/agent.yaml"));
+        assert!(args.action.is_none());
+        let cli = Cli::try_parse_from([
+            "keel",
+            "privileged",
+            "--socket",
+            "/tmp/agent.sock",
+            "--policy",
+            "/tmp/agent.yaml",
+        ])
+        .unwrap();
+        let Command::Privileged(args) = cli.command else {
+            panic!("expected privileged");
+        };
+        assert_eq!(args.socket, PathBuf::from("/tmp/agent.sock"));
+        assert_eq!(args.policy, PathBuf::from("/tmp/agent.yaml"));
+
+        let cli = Cli::try_parse_from(["keel", "privileged", "update", "--from-request"]).unwrap();
+        let Command::Privileged(PrivilegedArgs {
+            action: Some(PrivilegedAction::Update(update)),
+            ..
+        }) = cli.command
+        else {
+            panic!("expected update");
+        };
+        assert!(update.from_request);
+        assert!(update.action.is_none());
+        assert_eq!(
+            update.request,
+            PathBuf::from("/var/lib/keel/update.request")
+        );
+        assert_eq!(update.channel_url, "https://dl.globalart.hu/keel/");
+        assert_eq!(update.opt, PathBuf::from("/opt/keel"));
+        assert_eq!(update.unit_dir, PathBuf::from("/etc/systemd/system"));
+        assert_eq!(update.systemctl, PathBuf::from("systemctl"));
+        assert!(update.release_key.is_none());
+
+        let cli = Cli::try_parse_from([
+            "keel",
+            "privileged",
+            "update",
+            "--request",
+            "/tmp/r",
+            "--channel-url",
+            "/tmp/channel",
+            "--opt",
+            "/tmp/opt",
+            "--unit-dir",
+            "/tmp/units",
+            "--systemctl",
+            "/tmp/systemctl",
+            "--release-key",
+            "/tmp/k.pub",
+            "rollback",
+            "--restore",
+            "/tmp/backup.tar.zst",
+        ])
+        .unwrap();
+        let Command::Privileged(PrivilegedArgs {
+            action: Some(PrivilegedAction::Update(update)),
+            ..
+        }) = cli.command
+        else {
+            panic!("expected update");
+        };
+        assert!(!update.from_request);
+        assert_eq!(update.request, PathBuf::from("/tmp/r"));
+        assert_eq!(update.channel_url, "/tmp/channel");
+        assert_eq!(update.opt, PathBuf::from("/tmp/opt"));
+        assert_eq!(update.unit_dir, PathBuf::from("/tmp/units"));
+        assert_eq!(update.systemctl, PathBuf::from("/tmp/systemctl"));
+        assert_eq!(update.release_key, Some(PathBuf::from("/tmp/k.pub")));
+        assert!(matches!(
+            update.action,
+            Some(UpdateAction::Rollback { restore: Some(archive) }) if archive == Path::new("/tmp/backup.tar.zst")
+        ));
+
+        let cli = Cli::try_parse_from(["keel", "privileged", "update", "rollback"]).unwrap();
+        let Command::Privileged(PrivilegedArgs {
+            action: Some(PrivilegedAction::Update(update)),
+            ..
+        }) = cli.command
+        else {
+            panic!("expected update");
+        };
+        assert!(matches!(
+            update.action,
+            Some(UpdateAction::Rollback { restore: None })
+        ));
+
+        assert!(Cli::try_parse_from(["keel", "privileged", "update"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "privileged", "host"]).is_err());
+        assert!(
+            Cli::try_parse_from(["keel", "privileged", "update", "--from-request", "extra"])
+                .is_err()
+        );
     }
 
     #[test]

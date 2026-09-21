@@ -1,0 +1,15 @@
+[Unit]
+Description=keel update
+Documentation=https://github.com/GlobalArtInc/keel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/keel/bin/current privileged update --from-request
+WorkingDirectory=/opt/keel
+TimeoutStartSec=900
+ProtectHome=yes
+PrivateTmp=yes
