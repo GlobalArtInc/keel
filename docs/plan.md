@@ -5236,6 +5236,596 @@ anything of M4.
   panel directly, logged in and walked the task, the notification and the white-label screens, which
   the checklist records with the date-free note "confirmed by hand on keel-demo".
 
+## M4 work breakdown
+
+M4 is split into twenty-one PR-sized steps in eight groups, ordered by dependency; a step is one
+change to `main` and is done when its acceptance holds in CI. As in M3, the letters of a group name
+the steps of one delivery that land separately: the privileged code path into its root half, its
+kernel half and the release channel that feeds it (1a, 1b, 1c); the operator commands into backup
+and restore, diagnostics, the product switch on a running installation and the installer that ties
+them together (2a to 2d); the host layer into the agent's core, the rest of its catalogue and the
+kernel-side client (3a, 3b, 3c); the two items M3 left undone (6a, 6b), which `dns` needs before
+its first zone; the `dns` bundle into its three modules and its browser and host proof (5a to 5d).
+Every step that touches the operating system carries two kinds of proof: a test that runs
+unprivileged in CI against a stub — a fake `systemctl` on the path, a temporary directory standing
+for `file_roots`, an agent started in-process over a temporary socket — and a script under `hack/`
+the operator runs on a virtual machine for what needs root, whose transcript the exit checklist
+records. Steps 1 to 20 touch nothing under `docs/`; where a step names a mechanism the design
+leaves open it says so, the commit message records the choice, and step 21 amends the documents.
+Where the design names a crate this milestone does not build (`keel-storage`, the S3 target of a
+backup), the step says what stands in its place and the closure moves the crate to the milestone
+that needs it.
+
+### 1a. the privileged unit and the update policy
+
+**Goal.** The root half of the privilege boundary of [design/06-host.md](design/06-host.md) and
+the update section of [design/09-operations.md](design/09-operations.md): `keel privileged
+--socket <path> --policy <path>` is the one root code path of an installation, run by
+`keel-privileged.service`; in this step it serves the `update` policy alone, and `keel privileged
+update --from-request` is what `keel-update.service`, started by `keel-update.path` when
+`/var/lib/keel/update.request` appears, runs as a oneshot. The update reads the version from the
+request and nothing else: it downloads `versions/<ver>/manifest.json` and the archive from the
+channel named in the request under `update.channel_url` (default `https://dl.globalart.hu/keel/`,
+compiled in), verifies the Ed25519 signature of the manifest against the release key compiled into
+the binary or one of `previous_keys`, verifies the archive's sha256 against the manifest, refuses a
+version below `min_upgrade_from` of the channel head, unpacks into `/opt/keel/versions/<ver>/`,
+switches `bin/current`, refreshes the unit files from the release's `deploy/systemd/` and restarts
+`keel.service`; `keel privileged update rollback` switches the symlink to the previous version
+within the same `contract`, and refuses across a contract boundary unless `--restore` names a
+backup archive. The release manifest, its signing and its verification live in a new crate
+`crates/release` (`keel-release`), depending on `ed25519-dalek` and `sha2` at pinned majors, which
+`hack/release.py` of step 1c mirrors; the root paths (`/opt/keel`, `/var/lib/keel`, the unit
+directory, the `systemctl` binary) are parameters of the update runner with the design's defaults,
+so a test drives the whole sequence in a temporary tree with a stub `systemctl` and a channel served
+from a local directory. The design leaves the exact flag spellings open; the step fixes them as
+written here. The `deploy/systemd/` directory gains `keel-privileged.service`, `keel-update.path`
+and `keel-update.service`; `deploy/install.sh` installs and enables them.
+
+**Touches.** `crates/release` (new), `crates/keel/src/cli.rs`, `crates/keel/src/privileged/`
+(new: the unit's main loop, the request reader, the update runner), `deploy/systemd/`,
+`deploy/install.sh`, `hack/check-install.sh`, `Cargo.toml` (the two dependencies).
+
+**Out of scope.** The `host` policy (3a); the kernel side that writes the request (1b); the
+workflow that publishes a release (1c); ACME.
+
+**Acceptance.**
+
+- `crates/release` unit tests: `a_manifest_signed_with_the_release_key_verifies_and_a_changed_byte_does_not`,
+  `a_manifest_signed_with_a_previous_key_still_verifies`, `an_archive_whose_sha256_differs_from_the_manifest_is_refused`,
+  `a_version_below_min_upgrade_from_is_refused`.
+- `crates/keel/tests/privileged.rs`: `an_update_request_installs_the_signed_version_switches_current_and_restarts`
+  (temporary tree, local channel directory, stub `systemctl` that records its argument vectors),
+  `a_request_naming_an_unsigned_or_tampered_version_leaves_current_untouched`,
+  `rollback_switches_to_the_previous_version_within_the_contract_and_refuses_across_it`,
+  `the_request_carries_no_command_the_root_side_obeys` (a request with extra keys installs the
+  version and ignores the rest).
+- `hack/check-install.sh` asserts the three units are installed and enabled and that
+  `keel-privileged.service` runs as root while `keel.service` runs as `keel`.
+
+### 1b. the update module: check, apply as a task, rollback
+
+**Goal.** The kernel half: the system module `update` in `crates/system/src/update/` (cargo
+feature `update`, in the default set and the matrix) with the functions `update.check`, reading
+the channel head named by the setting `update.channel` (`stable` or `beta`, default `stable`,
+admin level) and answering the running version, the available version, its `notes` and whether an
+update is allowed by `min_upgrade_from` and `contract`; `update.apply`, an action with `ui.result =
+task` whose task drains the queue through the tasks module, takes the pre-update logical dump into
+`<data_dir>/backups/` with `COPY … TO STDOUT` over the kernel's own connection, one file per loaded
+module table plus the kernel tables, writes `update.request` with the version, the channel and the
+requesting principal, and ends in state `done` with the note that the root unit takes over; and
+`update.rollback`, the same shape writing a rollback request. The problem `update.available` is
+raised by a cron job polling the channel daily and cleared when the running version catches up.
+The screen `update.check` under the system group ("Updates") shows the versions, the notes and
+the two actions; the CLI `keel update check|apply|rollback` calls the same functions over the
+socket. The task ends before the restart, so the task drawer shows `done` and the shell's boot
+revalidation shows the new version after the restart.
+
+**Touches.** `crates/system/src/update/`, `crates/system/i18n/update/`, `crates/system/Cargo.toml`,
+`crates/keel/src/cli.rs`, `bin/keel/src/main.rs`, `.github/workflows/ci.yml` (the matrix set),
+`contracts/dump`, `contracts/openapi.json`, `frontend/libs/keel/testing/src/generated/`.
+
+**Out of scope.** The root side (1a); the S3 target of the dump; the button's end-to-end run on
+the demo host (step 21, operator-run).
+
+**Acceptance.**
+
+- `crates/system/tests/system/update.rs`: `check_compares_the_running_version_with_the_channel_head_and_reads_min_upgrade_from`
+  against a channel served by the test's own HTTP listener,
+  `apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_principal`,
+  `apply_refuses_a_version_below_min_upgrade_from_and_across_a_contract`,
+  `rollback_writes_a_rollback_request`, `the_daily_check_raises_update_available_and_the_running_version_clears_it`.
+- The matrix gains the set `update` alone and `tasks,cron,notify,update`; `keel update check
+  --out json` answers over the socket in `hack/prove-binary.sh`.
+
+### 1c. the release workflow and the channel
+
+**Goal.** `.github/workflows/release.yml` on the tag `keel-vX.Y.Z`: the musl build of `Build`,
+`hack/release.py` writing `versions/<ver>/manifest.json` (`version`, `sha256`, `min_upgrade_from`,
+`contract`, `notes` from the tag's annotation) and signing it with the release key held as the
+repository secret `KEEL_RELEASE_KEY`, and the upload of the archive, its `.sha256`, the version's
+manifest and the channel head `stable/manifest.json` (or `beta/` when the tag carries a
+pre-release suffix) into the Nexus raw repository `keel-releases` through its REST API under the
+deploy account `keel-release`, whose password is the secret `KEEL_RELEASE_NEXUS_PASSWORD`. The
+script verifies what it uploaded by reading it back through `https://dl.globalart.hu/keel/` when
+that name answers and through the Nexus URL otherwise. The Nexus repository, the role and the
+account, the secrets and the route `dl.globalart.hu` in gitops are operator-run and listed in the
+step's return; the script and the workflow run against a local directory in CI (`--dry-run
+--out <dir>`), which is what the test covers. The public key of the release key is what step 1a
+compiled in; the step records in the commit message how the pair was generated and where the
+private half lives.
+
+**Touches.** `.github/workflows/release.yml` (new), `hack/release.py` (new), `hack/check-release.sh`
+(new: the dry run against a directory and the manifest verified with `keel-release`'s test
+binary), `.github/workflows/ci.yml` (the check).
+
+**Out of scope.** Signing on an offline machine; the license server's download tokens (M5).
+
+**Acceptance.**
+
+- `hack/check-release.sh` in the job `check`: a dry run produces the layout of the design under a
+  directory and `cargo run -p keel-release -- verify <dir>/versions/<ver>/manifest.json` accepts
+  it with the compiled public key.
+- `release.yml` is valid (`actionlint` or the parser CI already uses) and triggers only on
+  `keel-v*` tags; the workflow's run on the closing tag of step 21 is operator-run.
+
+### 2a. backup and restore
+
+**Goal.** `keel backup [--out <path>] [--with-secret-key]` writes a `tar.zst` with a
+`manifest.json` recording the keel version, the enabled products with their editions and the
+schema version of every module ledger, the logical dump of the database — `COPY` per module
+table over the kernel's connection, or `pg_dump -Fc` when the binary is on the host — `/etc/keel/`
+in full, the brand assets and the TLS material, and the contribution of every loaded module
+through the new SDK contribution `BackupSource` (a name and an async fn writing files into a
+directory of the archive), which `dns-zones` uses in 5a for its zone files; `secret.key` is
+included only with `--with-secret-key`, sealed with a passphrase read from the terminal or
+`KEEL_BACKUP_PASSPHRASE`, since API tokens and sessions are stored as hashes and only `Secret`
+values need the key. `keel restore <archive> [--with-secret-key]` runs with the service stopped,
+consults a compatibility table by major version, refuses a binary that does not carry one of the
+bundles the manifest names, restores the database, `/etc/keel/`, the assets and the `BackupSource`
+directories, and the next start logs what the restored enabled set changed. Restore from the UI is
+`backup.restore` as a task that ends with a restart request; `backup.create` as a task writes the
+archive under `<data_dir>/backups/` and answers it as a download. The target is `local`; the S3
+target and the `keel-storage` crate the design names move to M5 with the license server, which the
+closure records.
+
+**Touches.** `crates/sdk/src/backup.rs` (new, `BackupSource`), `crates/kernel/src/backup/` (new:
+the archive writer and reader, the table dump), `crates/system/src/backup/` (new module `backup`
+with the two functions and the screen), `crates/keel/src/cli.rs`, `deploy/uninstall.sh` (the
+`--keep-backups` note), `contracts/`.
+
+**Out of scope.** S3 and `keel-storage` (M5); the restore of a backup across a major (refused).
+
+**Acceptance.**
+
+- `crates/keel/tests/backup.rs`: `a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_boot_and_logs_in_with_the_same_totp`
+  (the two-factor secret is a `Secret`, so the test restores with `--with-secret-key`),
+  `a_backup_without_the_key_restores_but_the_sealed_values_do_not_open`,
+  `restore_refuses_an_archive_naming_a_bundle_the_binary_does_not_carry`,
+  `a_backup_source_contribution_lands_in_the_archive_and_comes_back`.
+- `hack/prove-binary.sh` takes a backup over the CLI and lists the archive's manifest.
+
+### 2b. doctor, support-bundle and the log ring
+
+**Goal.** `keel doctor` checks the installation end to end and prints one line per check with
+`ok`, `warn` or `fail`: directory ownership and modes, the three units and their users, the TLS
+material and its expiry, the database (server version, socket, role rights), the migration
+ledgers against the binary, the host agent (in use, reachable, or not in use), the license (a stub
+answering `not required` until M5), free space under `/var/lib/keel` and `/opt/keel`, that every
+enabled product is carried by the binary, the orphaned modules whose tables remain after a
+disable, and accounts left in `deleting` whose job failed; exit code 1 when anything fails.
+`keel support-bundle [--out <path>]` collects `config.yaml` and `agent.yaml` with secrets redacted
+by the same `secret` flag of the field schema that masks logs and audit, the last 10 000 log
+entries from a new ring buffer in the kernel's `tracing` layer, the migration ledgers, the tail of
+the audit table, open problems and the metrics text; `keel.logs.tail` is the function over the
+same ring buffer, admin level, and the `doctor` checks are also `keel.doctor.run` for the screen
+"Health" under the system group. CI runs a test that the bundle contains no secret value.
+
+**Touches.** `crates/kernel/src/logs.rs` (new, the ring), `crates/kernel/src/doctor/` (new),
+`crates/kernel/src/support.rs` (new), `crates/keel/src/cli.rs`, `crates/system/src/` (the
+functions land in the `settings` module's crate area or a new `ops` module — the step chooses,
+with `ops` preferred so the health screen has an owner), `contracts/`.
+
+**Out of scope.** OTLP export; metrics beyond what exists.
+
+**Acceptance.**
+
+- `crates/keel/tests/doctor.rs`: `doctor_is_green_on_a_fresh_site_and_names_a_missing_unit_a_bad_mode_and_an_orphaned_module`,
+  `the_support_bundle_carries_no_secret_value` (a channel with a sealed password and a token exist,
+  and neither value appears in the bundle), `logs_tail_answers_the_newest_entries_in_order`.
+- `hack/prove-binary.sh` runs `keel doctor` on its site and asserts exit 0.
+
+### 2c. the product switch on a running installation
+
+**Goal.** `keel product enable|disable <id>` and `keel.product.enable|disable` on a running
+installation: the function records the change in `keel_kv` and requests a restart through a
+`keel.restart` internal function whose task drains the queue, takes the same pre-change logical
+dump as an update and asks the service manager to restart the unit — through `sd_notify`'s
+`RELOADING`/exit with `Restart=always`, the kernel exiting with a distinguished code that the
+unit restarts, which the step chooses and records — so the new product's modules migrate before
+the port opens; `disable` leaves the product's tables in place, `enable` of a product whose ledger
+already holds its migrations re-runs none of them, and `doctor` lists the orphaned modules; the
+lease check the design places before `enable` is a stub that always allows, marked for M5. The
+screen `keel.product.list` gains the two actions with the confirmation that names the restart.
+
+**Touches.** `crates/kernel/src/keel/products.rs`, `crates/keel/src/runtime.rs` (the restart
+exit), `crates/keel/src/cli.rs`, `deploy/systemd/keel.service` (the restart exit status),
+`contracts/`.
+
+**Out of scope.** The lease (M5); `install.sh` (2d).
+
+**Acceptance.**
+
+- `crates/keel/tests/products.rs`: `disable_leaves_the_tables_and_enable_reruns_no_applied_migration`
+  (the ledger rows are compared before and after), `enable_on_a_running_installation_requests_a_restart_after_the_dump`.
+- `hack/prove-binary.sh` disables and enables `demo` on its site and asserts the `note_*` tables
+  and the ledger survive.
+
+### 2d. install.sh in full, sd_notify and the setup link
+
+**Goal.** The installer of [design/09-operations.md](design/09-operations.md) completed: the
+release manifest's signature verified before anything is unpacked (with `keel-release`'s public
+key embedded in the script by `hack/release.py`), the uid range allotted to the installation for
+the host agent recorded in `/etc/keel/agent.yaml` under `uid_range`, `agent.yaml` installed from
+the release with the sections of every first-party product, the three units, the container and
+clean-host checks kept, and the first administrator no longer created over the socket: the kernel
+prints a one-time link with a `kok_` login key to `keel.setup.admin`, a guest-level function that
+exists only while the installation has no administrator and creates one from the login and
+password of the form; the installer prints that link. The kernel speaks `sd_notify` — `READY=1`
+after the port opens, `WATCHDOG=1` on a timer, `STOPPING=1` on drain — so `keel.service` becomes
+`Type=notify` with `WatchdogSec=60`; the notify socket is written directly, no libsystemd.
+`uninstall.sh --purge` removes the new units and the agent socket.
+
+**Touches.** `deploy/install.sh`, `deploy/uninstall.sh`, `deploy/systemd/keel.service`,
+`crates/keel/src/runtime.rs` (sd_notify), `crates/kernel/src/keel/setup.rs` (new,
+`keel.setup.admin`), `frontend/libs/keel/shell/src/login/` (the setup form when the link is
+followed), `hack/check-install.sh`, `hack/prove-binary.sh`.
+
+**Out of scope.** ACME; the second product on the same host (M5).
+
+**Acceptance.**
+
+- `crates/keel/tests/setup.rs`: `the_setup_link_creates_the_first_administrator_once_and_the_function_is_gone_after`,
+  `the_runtime_sends_ready_and_watchdog_over_the_notify_socket` (a test socket stands for
+  systemd).
+- `hack/check-install.sh` asserts the signature check, the uid range, `Type=notify`, the three
+  units and the printed setup link; `hack/e2e.sh` follows a setup link once in the browser.
+- Operator-run, recorded in the checklist: on a fresh VM `curl | sh -s -- --product demo`
+  installs and `ps -eo user,comm` shows root only under `keel privileged`.
+
+### 3a. keel-host-agent: the socket, the policy, the core catalogue and the audit
+
+**Goal.** The crate `crates/host-agent` (`keel-host-agent`) replaces `bin/spike`: the unix socket
+accepting only uid `keel` by `SO_PEERCRED`, the policy loader for `agent.yaml` (`file_roots`,
+`services`, `checks`, `exec_allow`, `uid_range`, `products` with `user_prefix` and
+`drop_in_prefix`), the frame protocol of [design/06-host.md](design/06-host.md) (`id`, `op`,
+`actor`, `request_id`, `product`, `args` in, `ok`/`data` or `error` with `key` and `detail` out),
+and the core catalogue: `host.user.*` and `host.group.*` inside the uid range and under the
+product's `user_prefix`, `host.fs.*` addressed by `file_roots` key plus name with writes through a
+temporary file and rename, `host.service.*` for units named in `services` through `systemctl` as
+a process, and `host.template.apply` with the render (minijinja on the agent side), swap, named
+check, reload and rollback sequence of the design, `changed: false` when the rendered file equals
+what is there. Every operation, accepted or refused, is one journald record with the actor and the
+request id; a request whose product has no section, whose path leaves `file_roots` or whose unit
+is not listed is refused with `host.error.policy` and audited. Impersonation is the re-exec
+`agent-exec --uid` with `setresuid` in `pre_exec`, and a test greps the crate for `setfsuid` and
+for `spawn_blocking` around a credential call. `keel privileged` serves this policy beside the
+update policy once the step lands; `bin/spike` and `hack/spike-vm.sh` are removed and
+`hack/host-vm.sh` takes their place for the operator's VM proof.
+
+**Touches.** `crates/host-agent` (new), `crates/keel/src/privileged/`, `bin/spike` (removed),
+`hack/spike-vm.sh` (removed), `hack/host-vm.sh` (new), `hack/check-deps.sh` (the boundary:
+`keel-kernel` and `keel-system` depend on neither host crate), `Cargo.toml`.
+
+**Out of scope.** `pkg`, `cron`, `quota`, `exec` and `AgentOp` (3b); the kernel-side client (3c).
+
+**Acceptance.**
+
+- `crates/host-agent/tests/agent.rs`, unprivileged with a temporary policy, a temporary
+  `file_roots` tree and a stub `systemctl`: `a_peer_that_is_not_the_configured_uid_is_refused`,
+  `a_file_operation_outside_file_roots_is_refused_and_audited`,
+  `template_apply_renders_swaps_validates_reloads_and_reports_changed`,
+  `a_failing_check_rolls_the_file_back_and_a_failing_reload_reloads_again`,
+  `an_unchanged_render_answers_changed_false_and_touches_nothing`,
+  `a_request_whose_product_has_no_section_is_refused`,
+  `no_setfsuid_and_no_credential_change_on_a_worker_thread`.
+- Operator-run with `hack/host-vm.sh` on a VM: an operating-system user is created inside the uid
+  range, a broken template rolls back on `named` without downtime, and an operation outside
+  `file_roots` is refused and appears in `journalctl -u keel-privileged` — the M4 "Done when"
+  items for the agent.
+
+### 3b. the rest of the catalogue, AgentOp and ConfigTemplate
+
+**Goal.** `host.pkg.*` over the distribution's package manager (apt on Debian and Ubuntu, the
+only two the installer accepts), `host.cron.*` writing drop-ins under the product's
+`drop_in_prefix` in `/etc/cron.d`, `host.quota.*` over `setquota` and `repquota` when present,
+and `host.exec` for binaries in `exec_allow` with a fixed argument vector per entry; the SDK
+contributions `AgentOp` (a name, the schemas of arguments and result, a handler compiled into the
+agent, a policy class) and `ConfigTemplate` (an id, the template text, a named check), collected
+by the registrar, handed to the agent at start and checked for unique ids at the freeze; template
+overrides read from `/etc/keel/templates/<id>` before the compiled text. The demo bundle
+contributes one `ConfigTemplate` and one `AgentOp` as the fixture the tests and the matrix need.
+
+**Touches.** `crates/host-agent/src/ops/`, `crates/sdk/src/host.rs` (new: `AgentOp`,
+`ConfigTemplate`), `crates/sdk/src/registrar.rs`, `products/demo/src/` (the fixtures),
+`hack/host-vm.sh`.
+
+**Out of scope.** A real product operation (libvirt, ipmi — later products).
+
+**Acceptance.**
+
+- `crates/host-agent/tests/catalogue.rs`: `exec_runs_only_allowlisted_binaries_with_their_fixed_arguments`,
+  `pkg_install_calls_the_package_manager_and_reports_what_changed` (stub `apt-get`),
+  `cron_writes_a_drop_in_under_the_product_prefix_and_removes_it`,
+  `a_product_agent_op_is_executed_under_its_policy_class_and_audited`,
+  `a_template_override_under_etc_wins_over_the_compiled_text`,
+  `two_templates_with_one_id_fail_the_freeze`.
+
+### 3c. keel-host: HostExecutor, the Local client and the host module
+
+**Goal.** The crate `crates/host` (`keel-host`), linked into the kernel process: the trait
+`HostExecutor` in `keel_host::api`, the `Local` implementation over `/run/keel/agent.sock` with
+`request_id` propagation and the mapping of agent errors to `host.error.*` keys that surface in
+the call envelope; the typed client API `users()`, `groups()`, `fs()`, `services()`, `pkg()`,
+`cron()`, `quota()`, `template()`, `exec()` and `op::<A, R>(name)`; and the module
+`keel_host::MODULE`, id `host`, registering `dyn HostExecutor` as a service, reading its
+`ConfigSection` (the socket path, a call timeout the step fixes at 60 seconds and records), and
+loaded only when an enabled bundle names `host`; a module that `requires: ["host"]` fails the
+freeze when no module provides the service, and while `host` is not loaded the kernel never opens
+the socket. The demo bundle gains `host` in its modules behind the cargo feature `demo-host`, so
+the composition without `keel-host` stays in the matrix and `check-deps.sh` proves the kernel does
+not depend on it.
+
+**Touches.** `crates/host` (new), `bin/keel/src/main.rs`, `products/demo/`, `hack/check-deps.sh`,
+`.github/workflows/ci.yml` (a composition with and without `host`), `crates/testkit` (a harness
+starting the agent in-process over a temporary socket for module tests).
+
+**Out of scope.** `Remote` (M8); host-level screens (`host.*` functions for files and logs), not
+fixed by the design and left to the products that need them.
+
+**Acceptance.**
+
+- `crates/host/tests/executor.rs`: `a_module_applies_a_template_through_the_executor_and_the_agent_audits_the_request_id`,
+  `an_agent_error_surfaces_in_the_envelope_as_its_key_with_the_detail`,
+  `a_module_requiring_host_without_a_provider_fails_the_freeze`,
+  `without_host_loaded_the_kernel_never_connects_to_the_socket`.
+- `hack/check-deps.sh` asserts `keel-kernel` and `keel-system` depend on neither `keel-host` nor
+  `keel-host-agent`; the matrix builds `keel-bin` with and without `demo-host`.
+
+### 4. the feature guard without a lease
+
+**Goal.** The third check of the access triple of [design/03-access.md](design/03-access.md): a
+function declaring `.feature("dns.zones")` is refused with `keel.error.license` (402) unless the
+installation's feature set names it, and its actions, columns and menu nodes are cut from the
+descriptor projection and `/boot` the way level and permission already cut them. The feature set
+comes from a service `dyn Features` the kernel provides with one implementation in M4: every
+feature of every enabled product is enabled, and `keel product features` lists them; the setting
+`license.features_override` is not created — M5 replaces the implementation with the lease and
+the design's `features` in `/boot` starts carrying the real set. The guard runs in the dispatcher
+in the order the design fixes: level, permission, feature, token scope, module guards, ownership.
+
+**Touches.** `crates/kernel/src/dispatcher/guards.rs`, `crates/kernel/src/boot.rs`,
+`crates/kernel/src/http/descriptors.rs`, `crates/sdk/src/function.rs` (`.feature`), `contracts/`.
+
+**Out of scope.** The lease, editions and the license module (M5).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/features.rs`: `a_function_of_a_feature_not_in_the_set_answers_license_and_is_cut_from_the_projection_and_the_menu`,
+  `the_m4_feature_set_names_every_feature_of_every_enabled_product`.
+- `hack/conformance.sh` gains the `features` group: a probe function behind a feature the fixture
+  disables answers 402.
+
+### 6a. keel.account.suspend, resume and delete as a task over AccountLifecycle
+
+**Goal.** The item M3 left undone, in the shape its 2b described: the SDK contribution
+`AccountLifecycle` with `on_suspend`, `on_resume`, `on_delete` and `on_rename` handlers that run
+after commit or as a task, the kernel functions `keel.account.suspend` and `keel.account.resume`
+switching `state` and walking the contributions after commit, and `keel.account.delete` as a task
+that moves the account to `deleting`, walks every module's `on_delete` in `requires` order with
+progress per module, and removes the account row last; a failed step leaves the account in
+`deleting` with the error on the task, which `doctor` of 2b reports. The demo bundle contributes
+a lifecycle that suspends and drops notes, the fixture the tests need and the model `dns-zones`
+follows in 5a.
+
+**Touches.** `crates/sdk/src/lifecycle.rs` (new), `crates/sdk/src/registrar.rs`,
+`crates/kernel/src/keel/accounts.rs`, `crates/kernel/src/keel/lifecycle.rs` (new),
+`products/demo/src/note/`, `contracts/`.
+
+**Out of scope.** The host side of a lifecycle (a product's `on_delete` that removes
+operating-system users goes through the executor of 3c, which `panel` first needs in M5).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/lifecycle.rs`: `suspend_and_resume_switch_the_state_and_walk_the_contributions_after_commit`,
+  `delete_runs_as_a_task_walking_on_delete_in_requires_order_and_removes_the_row_last`,
+  `a_failing_on_delete_leaves_the_account_deleting_with_the_error_on_the_task`.
+- `products/demo/tests/demo/lifecycle.rs`: notes of a suspended account refuse edits and
+  disappear with the account.
+
+### 6b. the event stream's caps and the conformance events group
+
+**Goal.** The second item M3 left undone: `SSE_MAX_CLIENTS` per session (four, the step's choice
+recorded in the commit) with the oldest stream closed with a final `retry: 0` frame when the cap
+is exceeded, the credential re-check at every keep-alive so a revoked session or token closes its
+stream within one keep-alive period, and the `events` group of `keel-conformance`: a subscription
+receives the `data.invalidate` of a write, `Last-Event-ID` replays within the window, a guest is
+refused, a revoked session is closed, and the fifth stream of a session closes the first.
+
+**Touches.** `crates/kernel/src/http/events.rs`, `crates/conformance/src/suite/events.rs` (new),
+`hack/conformance.sh`.
+
+**Out of scope.** Nothing else of the stream changes.
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/events.rs`: `the_fifth_stream_of_a_session_closes_the_first_with_retry_zero`,
+  `a_revoked_session_is_closed_at_the_next_keep_alive`.
+- `hack/conformance.sh` runs the `events` group green against the binary.
+
+### 5a. the dns bundle and dns-zones on bind
+
+**Goal.** `products/dns` — the bundle crate with `MANIFEST` (id `dns`, brand KeelDNS with the
+platform palette, modules `dns-zones`, `dns-records`, `dns-templates`, `host`), `i18n/en.json`
+and `ru.json`, the `dns` section of `agent.yaml` (`drop_in_prefix: keel-dns-`) and the module
+crate `products/dns/crates/dns-zones` (`dns-zones`): the table `dns_zone` (account, name, kind
+`primary`, serial, refresh/retry/expire/minimum, template, state), the functions
+`dns.zone.list|get|create|edit|delete` owned by account with the list screen under the menu group
+`dns`, the `LimitDef` `dns.zones` per account, the `DnsProvider` trait with the bind
+implementation that renders `bind/zone.j2` and the include drop-in `keel-dns-<zone>.conf` under
+the `zones` and `named` roots through the executor of 3c, validated by `named-checkzone` and
+reloaded with `named`, called from `after_commit` as [design/02-functions.md](design/02-functions.md)
+shows; the `AccountLifecycle` of 6a removing an account's zones on delete and the `BackupSource`
+of 2a contributing the zone files. The `ConfigTemplate` for the zone and the include come with
+the module; the agent's `named` check and the `named` service are what the operator's `agent.yaml`
+names. The binary carries `dns` behind the cargo feature `dns`, in the default set beside `demo`.
+
+**Touches.** `products/dns/` (new), `products/dns/crates/dns-zones/` (new), `bin/keel/`,
+`contracts/`, `.github/workflows/ci.yml` (the composition with `dns`), `frontend/products/dns/`
+(the product package with the brand, no custom views).
+
+**Out of scope.** Records (5b), templates (5c), secondary zones and AXFR (later), DNSSEC (later).
+
+**Acceptance.**
+
+- `products/dns/tests/dns/zones.rs` against the in-process agent of 3c's testkit with a stub
+  `named-checkzone` and `rndc`: `a_zone_created_by_a_user_renders_its_file_and_include_after_commit_and_lists_under_its_account`,
+  `a_zone_over_the_account_limit_is_refused_before_the_transaction`,
+  `a_failing_check_leaves_the_row_but_marks_the_zone_with_the_error_and_the_problem`,
+  `deleting_the_account_removes_its_zones_and_their_files`.
+- `hack/descriptors.sh` and `hack/conformance.sh` run with `dns` enabled; the dumps and the
+  OpenAPI document gain the `dns.zone.*` functions.
+
+### 5b. dns-records
+
+**Goal.** The module crate `dns-records`: the table `dns_record` (zone, type `A`, `AAAA`, `CNAME`,
+`MX`, `TXT`, `NS`, `SRV`, `CAA`, name, value, ttl, priority, weight, port), the functions
+`dns.record.list|create|edit|delete` owned through the zone's account, the per-type validation of
+the value as `x-keel` checks the form shows before the call (an address for `A` and `AAAA`, a host
+name for `CNAME`, `NS` and `MX`, the quoted text for `TXT`, the tag and value shape for `CAA`), the
+`LimitDef` `dns.records` per zone, the serial bump of the zone on every change and the re-render
+through the provider of 5a after commit, and the list screen reached from a zone's row with the
+zone as the parent filter.
+
+**Touches.** `products/dns/crates/dns-records/` (new), `products/dns/src/` (the module in the
+manifest), `contracts/`.
+
+**Out of scope.** Wildcards beyond bind's own rules; record sets as one row (later).
+
+**Acceptance.**
+
+- `products/dns/tests/dns/records.rs`: `a_record_of_every_type_validates_its_value_and_lands_in_the_rendered_zone`,
+  `an_invalid_value_is_refused_on_the_field_before_the_transaction`,
+  `every_change_bumps_the_serial_once_per_transaction`, `records_of_a_zone_over_the_limit_are_refused`.
+
+### 5c. dns-templates
+
+**Goal.** The module crate `dns-templates`: the table `dns_template` (name, owner account or
+platform, the record set with the placeholders `{zone}`, `{ip}` and `{ip6}`), the functions
+`dns.template.list|create|edit|delete` and the option source `dns.template.options` the zone form
+of 5a uses through `x-keel.options`, applying a template on zone creation by expanding its records
+into `dns_record` rows, and two platform templates shipped with the module (a web host with `A`,
+`AAAA`, `CNAME www` and `MX`, and an empty one).
+
+**Touches.** `products/dns/crates/dns-templates/` (new), `products/dns/crates/dns-zones/` (the
+template field and the expansion hook), `contracts/`.
+
+**Out of scope.** Editing an applied template's records in bulk (the records of a zone are rows
+of 5b once applied).
+
+**Acceptance.**
+
+- `products/dns/tests/dns/templates.rs`: `a_zone_created_with_a_template_receives_its_expanded_records`,
+  `a_template_of_another_account_is_not_offered_and_not_applied`, `the_platform_templates_are_present_after_the_first_start`.
+
+### 5d. dns end to end: the browser, the CLI, the token and the VM
+
+**Goal.** The "Done when" of the zone: `hack/e2e.sh` with `dns` enabled creates a zone and a
+record from the browser through the descriptor-driven list and form of the shell, the CLI
+`keel ctl dns.zone.create` and an `kat_` API token create zones too, and the three land in the
+same list; `hack/dns-vm.sh` is the operator's proof on a VM with bind: the zone the browser created
+is served by `dig @127.0.0.1 <zone> SOA`, and a template broken on purpose rolls back without
+`named` stopping. The frontend product package `frontend/products/dns` carries the brand and the
+`dns` group's icon, the contracts `contracts/i18n.json` gain the project `keel-dns`, and the
+OwnLate project is operator-run.
+
+**Touches.** `frontend/e2e/dns.spec.ts` (new), `hack/e2e.sh`, `hack/dns-vm.sh` (new),
+`contracts/i18n.json`, `frontend/products/dns/`.
+
+**Out of scope.** A DNS-specific custom view (the descriptor screens suffice for the alpha).
+
+**Acceptance.**
+
+- `frontend/e2e/dns.spec.ts` in the browser suite: a zone and a record created through the UI, a
+  zone created over the CLI in the fixture and one with a token, all three listed.
+- Operator-run, recorded in the checklist: `hack/dns-vm.sh` on a VM installed with
+  `--product dns` shows the zone answered by bind and the broken template rolled back.
+
+### 7. the dependency rehearsal
+
+**Goal.** The first proof that a product's module crates can live outside the workspace: a CI job
+`rehearsal` that builds `keel-bin` with `dns-zones`, `dns-records` and `dns-templates` taken from a
+git tag of this repository (`[patch]` entries generated by `hack/rehearsal.sh` from the closing tag
+of the previous milestone, `keel-v0.1.0`, or the tag the job is given) instead of the workspace
+paths, and runs `hack/prove-binary.sh` on the result. The step records in `hack/rehearsal.sh` what
+had to be true of the crates for the build to succeed — their `Cargo.toml` naming `keel-sdk` by
+version, their tests not reaching into the workspace — and fixes what is not.
+
+**Touches.** `hack/rehearsal.sh` (new), `.github/workflows/ci.yml` (the job, on `main` only),
+`products/dns/crates/*/Cargo.toml`.
+
+**Out of scope.** Moving the crates to their own repositories (M7).
+
+**Acceptance.**
+
+- The job `rehearsal` is green on `main` and `hack/rehearsal.sh` fails when a module crate
+  reaches a workspace path.
+
+### 8a. the security review of the privileged path
+
+**Goal.** The review the threat model of [design/06-host.md](design/06-host.md) schedules for M4,
+run as an adversarial pass over `crates/host-agent`, `crates/keel/src/privileged/` and
+`crates/release`: path traversal and symlink races in `host.fs.*` and `host.template.apply`, the
+exec allowlist, the argument vectors of `systemctl` and the package manager, the request parser
+(depth, size, unknown fields), the uid range and the re-exec, the manifest verifier and the archive
+unpacker (path entries, sizes, permissions), the request file the root unit reads; every finding
+fixed in this step with a test that reproduces it, and the findings without a fix recorded for step
+8b. Fuzz harnesses for the frame parser and the manifest verifier under `crates/host-agent/fuzz`
+and `crates/release/fuzz`, run for a bounded time in the job `check`.
+
+**Touches.** `crates/host-agent`, `crates/keel/src/privileged/`, `crates/release`, the fuzz
+directories, `.github/workflows/ci.yml`.
+
+**Out of scope.** The M7 review.
+
+**Acceptance.**
+
+- Every finding is a named test in the crate it concerns; the two fuzz targets run one minute each
+  in `check` without a crash.
+
+### 8b. M4 closure
+
+**Goal.** The document pass and the exit checklist: the choices the steps recorded amended into
+[design/06-host.md](design/06-host.md), [design/09-operations.md](design/09-operations.md),
+[design/03-access.md](design/03-access.md) and [design/05-modules.md](design/05-modules.md)
+(`keel-storage` and the S3 target moved to M5, the flag spellings, the restart exit, the cap of the
+event stream, the feature set of M4), `deploy/README.md` rewritten for the full installer,
+`README.md`'s M4 row, the version of the workspace and the frontend packages raised to `0.2.0`,
+`hack/check-docs.sh` green; the `## M4 exit checklist` with the "Done when" items ticked by test,
+spec or command, and the operator-run items unticked and named: the tag `keel-v0.2.0` published to
+the channel, the demo host updated from 0.1.0 to 0.2.0 from the button and rolled back once, a
+fresh VM installed with `--product dns`, the backup of one VM restored on another with the second
+factor working, the review findings without a fix.
+
+**Touches.** `docs/`, `README.md`, `deploy/README.md`, `Cargo.toml`, `frontend/package.json` and
+the package versions, `hack/check-docs.sh`.
+
+**Out of scope.** Code beyond the version bump.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` is green with the M4 names; every "Done when" item of M4 is ticked or
+  marked operator-run in the new checklist; `keel --version` answers `0.2.0`.
+
 ## How we work
 
 - The code lives in the monorepo `GlobalArtInc/keel` on the `main` branch until the SDK reaches
