@@ -7,11 +7,21 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks"]
+default = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "update"]
 audit = ["dep:tokio", "dep:tracing"]
 cron = ["dep:croner", "dep:tokio", "dep:tracing"]
 notify = ["cron", "dep:lettre", "dep:minijinja", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
+update = [
+  "cron",
+  "tasks",
+  "dep:base64",
+  "dep:futures",
+  "dep:reqwest",
+  "dep:semver",
+  "dep:tokio",
+  "dep:tracing",
+]
 webhooks = [
   "notify",
   "dep:hmac",
@@ -38,7 +48,9 @@ auth = [
 [dependencies]
 argon2 = { workspace = true, optional = true }
 base32 = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 croner = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 ipnet = { workspace = true, optional = true }
 jsonschema = { workspace = true, optional = true }
@@ -48,6 +60,7 @@ minijinja = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 roxmltree = { workspace = true, optional = true }
+semver = { workspace = true, optional = true }
 sha1 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }

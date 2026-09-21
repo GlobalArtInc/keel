@@ -431,6 +431,9 @@ impl FunctionDef {
 
     pub fn known_fields(&self) -> BTreeSet<String> {
         let mut known = property_names(&self.params);
+        if self.kind == Kind::Get {
+            known.extend(property_names(&self.result));
+        }
         if let Some(ui) = &self.ui {
             known.extend(ui.column_keys());
         }
@@ -505,6 +508,11 @@ mod tests {
     #[derive(Serialize, JsonSchema)]
     struct Pong {
         text: String,
+    }
+
+    #[derive(Serialize, JsonSchema)]
+    struct Answer {
+        allowed: bool,
     }
 
     #[test]
@@ -592,6 +600,39 @@ mod tests {
         );
         assert_eq!(descriptor.get("ui"), None);
         assert_eq!(def.known_fields(), BTreeSet::from(["text".to_owned()]));
+    }
+
+    #[test]
+    fn a_get_knows_the_fields_of_its_result_so_its_actions_can_read_them() {
+        let get = function::<Ping, Answer>("m.e.get")
+            .kind(Kind::Get)
+            .ui(crate::ui::ObjectScreen::new("m.e.get.title").action(
+                crate::ui::Action::new("run", keel_types::ActionRole::Button)
+                    .screen("m.e.run")
+                    .hidden_if("!allowed"),
+            ))
+            .handler(|_: Call<Ping>| async { Ok(Answer { allowed: true }) });
+        assert_eq!(
+            get.known_fields(),
+            BTreeSet::from(["allowed".to_owned(), "text".to_owned()])
+        );
+        let descriptor = get.descriptor().expect("the condition reads the result");
+        assert_eq!(
+            descriptor.ui.unwrap().actions[0].screen.as_deref(),
+            Some("m.e.run")
+        );
+        let action = function::<Ping, Answer>("m.e.run")
+            .kind(Kind::Action)
+            .ui(crate::ui::List::new("t").action(
+                crate::ui::Action::new("again", keel_types::ActionRole::Button)
+                    .hidden_if("!allowed"),
+            ))
+            .handler(|_: Call<Ping>| async { Ok(Answer { allowed: true }) });
+        assert_eq!(action.known_fields(), BTreeSet::from(["text".to_owned()]));
+        assert!(matches!(
+            action.descriptor(),
+            Err(UiError::UnknownField { field, .. }) if field == "allowed"
+        ));
     }
 
     #[test]

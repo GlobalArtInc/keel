@@ -61,7 +61,7 @@ pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
 pub use task::{TaskHandle, TaskOutput};
-pub use ui::{Action, ActionScreen, Column, Form, List, ViewSpec};
+pub use ui::{Action, ActionScreen, Column, Form, List, ObjectScreen, ViewSpec};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

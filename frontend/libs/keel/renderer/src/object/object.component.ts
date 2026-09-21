@@ -1,22 +1,62 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { KeelClient, KeelI18n } from '@globalart/keel/client';
-import { unreachable } from '@globalart/keel/forms';
-import type { CallError, Descriptor, Envelope } from '@globalart/keel/meta';
-import { PhxErrorComponent, PhxLoaderComponent, PhxPanelComponent } from '@globalart/phoenix-ui';
+import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
+import { isObject, unreachable } from '@globalart/keel/forms';
+import type { Action, CallError, Descriptor, Envelope } from '@globalart/keel/meta';
+import {
+  PhxButtonComponent,
+  PhxErrorComponent,
+  PhxLoaderComponent,
+  PhxPageHeaderComponent,
+  PhxPanelComponent,
+} from '@globalart/phoenix-ui';
 import { catchError, combineLatest, map, of, startWith, switchMap } from 'rxjs';
+import { KeelActionRunner, labelKeyOf, type Row } from '../action/runner';
+import {
+  appearanceOf,
+  iconOf,
+  isHidden,
+  screenParamsOf,
+  toolbarActionsOf,
+  type RowScope,
+} from '../list/actions';
 import { RETRY_KEY, describeError } from '../messages';
+import { KeelNavigation } from '../navigation';
 import { KeelPropsComponent } from './props.component';
 
 export type ObjectState =
   { phase: 'loading' } | { phase: 'loaded'; data: unknown } | { phase: 'failed'; error: CallError };
 
 const LOADING: ObjectState = { phase: 'loading' };
+const NO_ROW: Row = {};
 
 @Component({
   selector: 'keel-object',
-  imports: [PhxPanelComponent, PhxLoaderComponent, PhxErrorComponent, KeelPropsComponent],
+  imports: [
+    PhxPageHeaderComponent,
+    PhxButtonComponent,
+    PhxPanelComponent,
+    PhxLoaderComponent,
+    PhxErrorComponent,
+    KeelPropsComponent,
+  ],
   template: `
+    @if (title(); as title) {
+      <phx-page-header [title]="title">
+        @for (action of toolbar(); track action.id) {
+          <button
+            phxActions
+            [phxButton]="appearanceOf(action)"
+            type="button"
+            [icon]="iconOf(action)"
+            [attr.data-action]="action.id"
+            (click)="run(action)"
+          >
+            {{ labelOf(action) }}
+          </button>
+        }
+      </phx-page-header>
+    }
     <phx-panel>
       @switch (state().phase) {
         @case ('loading') {
@@ -53,6 +93,9 @@ export class KeelObjectComponent {
 
   private readonly client = inject(KeelClient);
   private readonly i18n = inject(KeelI18n);
+  private readonly boot = inject(KeelBoot);
+  private readonly runner = inject(KeelActionRunner);
+  private readonly navigation = inject(KeelNavigation);
   private readonly attempt = signal(0);
 
   readonly state = toSignal(
@@ -83,10 +126,60 @@ export class KeelObjectComponent {
     return state.phase === 'failed' ? describeError(this.i18n, state.error) : null;
   });
   protected readonly retryLabel = computed(() => this.i18n.t(RETRY_KEY));
+  protected readonly title = computed(() => {
+    const title = this.descriptor().ui?.title ?? null;
+    return title === null ? null : this.i18n.t(title);
+  });
+  protected readonly toolbar = computed(() => {
+    const state = this.state();
+    if (state.phase !== 'loaded') {
+      return [];
+    }
+    const row = isObject(state.data) ? state.data : NO_ROW;
+    const scope = this.scope();
+    return toolbarActionsOf(this.descriptor()).filter((action) => !isHidden(action, row, scope));
+  });
+
+  private readonly scope = computed<RowScope>(() => {
+    const principal = this.boot.principal();
+    return {
+      principal: principal === null ? null : { level: principal.level },
+      params: this.params(),
+    };
+  });
 
   retry(): void {
     this.attempt.update((count) => count + 1);
   }
+
+  run(action: Action): void {
+    if (action.role === 'refresh') {
+      this.retry();
+      return;
+    }
+    const screen = action.screen ?? null;
+    if (screen !== null) {
+      void this.navigation.screen({
+        screen,
+        params: screenParamsOf(this.descriptor(), action),
+      });
+      return;
+    }
+    if (action.function) {
+      void this.runner.run({ descriptor: this.descriptor(), action }).then((outcome) => {
+        if (outcome?.ok) {
+          this.retry();
+        }
+      });
+    }
+  }
+
+  protected labelOf(action: Action): string {
+    return this.i18n.t(labelKeyOf(this.descriptor(), action));
+  }
+
+  protected readonly appearanceOf = appearanceOf;
+  protected readonly iconOf = iconOf;
 }
 
 function settle(envelope: Envelope): ObjectState {

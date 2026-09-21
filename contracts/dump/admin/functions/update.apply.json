@@ -1,0 +1,82 @@
+{
+  "keel": 1,
+  "name": "update.apply",
+  "module": "update",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Requested",
+    "type": "object",
+    "properties": {
+      "kind": {
+        "$ref": "#/$defs/RunKind"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "channel": {
+        "$ref": "#/$defs/Channel"
+      },
+      "requestedBy": {
+        "type": "string"
+      },
+      "dump": {
+        "type": "string"
+      },
+      "tables": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "request": {
+        "type": "string"
+      },
+      "leftRunning": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "kind",
+      "from",
+      "to",
+      "channel",
+      "requestedBy",
+      "dump",
+      "tables",
+      "request",
+      "leftRunning"
+    ],
+    "$defs": {
+      "RunKind": {
+        "type": "string",
+        "enum": [
+          "apply",
+          "rollback"
+        ]
+      },
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "stable",
+          "beta"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "update.apply.title",
+    "result": "task"
+  }
+}

@@ -30,6 +30,13 @@ impl Db {
         matches!(self.0, Inner::Transaction(_))
     }
 
+    pub fn connection(&self) -> Option<&DatabaseConnection> {
+        match &self.0 {
+            Inner::Transaction(_) => None,
+            Inner::Connection(connection) => Some(connection),
+        }
+    }
+
     #[doc(hidden)]
     pub fn into_transaction(self) -> Result<Option<DatabaseTransaction>, usize> {
         match self.0 {
@@ -90,5 +97,21 @@ impl ConnectionTrait for Db {
             Inner::Transaction(transaction) => transaction.is_mock_connection(),
             Inner::Connection(connection) => connection.is_mock_connection(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pool_db_exposes_its_connection_and_a_transaction_db_does_not() {
+        let pool = Db::from_connection(DatabaseConnection::Disconnected);
+        assert!(!pool.is_transaction());
+        assert!(matches!(
+            pool.connection(),
+            Some(DatabaseConnection::Disconnected)
+        ));
+        assert!(pool.into_transaction().unwrap().is_none());
     }
 }

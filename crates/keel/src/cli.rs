@@ -1,11 +1,14 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::{Config, logging};
 use keel_release::{KeyRing, PublicKey};
+use keel_types::TaskState;
+use serde_json::{Value, json};
 use tokio::signal::unix::{SignalKind, signal};
 
 use crate::VERSION;
@@ -13,8 +16,14 @@ use crate::error::{Error, describe};
 use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
 use crate::runtime::Runtime;
 
+const UPDATE_CHECK: &str = "update.check";
+const UPDATE_APPLY: &str = "update.apply";
+const UPDATE_ROLLBACK: &str = "update.rollback";
+const TASK_GET: &str = "task.get";
+const TASK_POLL: Duration = Duration::from_millis(500);
+
 #[derive(Debug, Parser)]
-#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl and privileged")]
+#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update and privileged")]
 pub(crate) struct Cli {
     #[arg(long, global = true, env = "KEEL_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
@@ -35,6 +44,10 @@ pub(crate) enum Command {
     },
     #[command(about = "Call a function over the control socket")]
     Ctl(CtlArgs),
+    #[command(
+        about = "Check the release channel, apply the available version or roll back, over the control socket"
+    )]
+    Update(UpdateCommand),
     #[command(
         about = "The one root code path of the installation: serves the update policy, and the host policy once a product loads the host module"
     )]
@@ -101,6 +114,59 @@ pub(crate) enum UpdateAction {
         )]
         restore: Option<PathBuf>,
     },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct UpdateCommand {
+    #[command(subcommand)]
+    pub(crate) step: UpdateStep,
+    #[arg(long, global = true, value_enum, default_value_t = OutArg::Json)]
+    pub(crate) out: OutArg,
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(crate) socket: Option<PathBuf>,
+    #[arg(long, global = true, default_value = "en", value_name = "CODE")]
+    pub(crate) lang: String,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum UpdateStep {
+    #[command(about = "Compare the running version with the head of the release channel")]
+    Check,
+    #[command(
+        about = "Drain the tasks, dump the database and hand the available version to the root unit"
+    )]
+    Apply {
+        #[arg(
+            long,
+            help = "Follow the task until it ends and print the job instead of the task reference"
+        )]
+        wait: bool,
+    },
+    #[command(about = "The same for the version this installation was updated from")]
+    Rollback {
+        #[arg(
+            long,
+            help = "Follow the task until it ends and print the job instead of the task reference"
+        )]
+        wait: bool,
+    },
+}
+
+impl UpdateStep {
+    fn function(&self) -> &'static str {
+        match self {
+            UpdateStep::Check => UPDATE_CHECK,
+            UpdateStep::Apply { .. } => UPDATE_APPLY,
+            UpdateStep::Rollback { .. } => UPDATE_ROLLBACK,
+        }
+    }
+
+    fn waits(&self) -> bool {
+        matches!(
+            self,
+            UpdateStep::Apply { wait: true } | UpdateStep::Rollback { wait: true }
+        )
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -234,17 +300,101 @@ impl Runtime {
                         lang: args.lang,
                         run_as: args.run_as,
                     };
-                    let output = ctl::run(&socket, &request).await?;
-                    if output.ok {
-                        println!("{}", output.text.trim_end_matches('\n'));
-                        Ok(ExitCode::SUCCESS)
-                    } else {
-                        eprintln!("{}", output.text.trim_end_matches('\n'));
-                        Ok(ExitCode::FAILURE)
-                    }
+                    Ok(print(ctl::run(&socket, &request).await?))
+                }
+                Command::Update(args) => {
+                    let socket = match &args.socket {
+                        Some(socket) => socket.clone(),
+                        None => load(cli.config.as_deref())?.socket,
+                    };
+                    Ok(update(&socket, &args).await)
                 }
             }
         })
+    }
+}
+
+fn print(output: ctl::Output) -> ExitCode {
+    if output.ok {
+        println!("{}", output.text.trim_end_matches('\n'));
+        ExitCode::SUCCESS
+    } else {
+        eprintln!("{}", output.text.trim_end_matches('\n'));
+        ExitCode::FAILURE
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum UpdateCliError {
+    #[error(transparent)]
+    Ctl(#[from] ctl::CtlError),
+    #[error("{function} answered something that is not the expected envelope: {answer}")]
+    Answer { function: String, answer: String },
+}
+
+async fn update(socket: &Path, args: &UpdateCommand) -> ExitCode {
+    match follow_update(socket, args).await {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("error: {}", describe(&error));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn follow_update(socket: &Path, args: &UpdateCommand) -> Result<ExitCode, UpdateCliError> {
+    let request = |func: &str, params: Value, out: Out| ctl::Request {
+        func: func.to_owned(),
+        params,
+        out,
+        lang: args.lang.clone(),
+        run_as: None,
+    };
+    let func = args.step.function();
+    if !args.step.waits() {
+        return Ok(print(
+            ctl::run(socket, &request(func, json!({}), args.out.into())).await?,
+        ));
+    }
+    let started = ctl::run(socket, &request(func, json!({}), Out::Json)).await?;
+    if !started.ok {
+        return Ok(print(started));
+    }
+    let id = serde_json::from_str::<Value>(&started.text)
+        .ok()
+        .and_then(|envelope| envelope["data"]["task"]["id"].as_str().map(str::to_owned))
+        .ok_or_else(|| UpdateCliError::Answer {
+            function: func.to_owned(),
+            answer: started.text.clone(),
+        })?;
+    loop {
+        let job = ctl::run(socket, &request(TASK_GET, json!({ "id": id }), Out::Json)).await?;
+        if !job.ok {
+            return Ok(print(job));
+        }
+        let state = serde_json::from_str::<Value>(&job.text)
+            .ok()
+            .and_then(|envelope| {
+                serde_json::from_value::<TaskState>(envelope["data"]["state"].clone()).ok()
+            })
+            .ok_or_else(|| UpdateCliError::Answer {
+                function: TASK_GET.to_owned(),
+                answer: job.text.clone(),
+            })?;
+        if state.is_final() {
+            let shown = ctl::run(
+                socket,
+                &request(TASK_GET, json!({ "id": id }), args.out.into()),
+            )
+            .await?;
+            let code = print(shown);
+            return Ok(if state == TaskState::Done {
+                code
+            } else {
+                ExitCode::FAILURE
+            });
+        }
+        tokio::time::sleep(TASK_POLL).await;
     }
 }
 
@@ -432,6 +582,52 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "ctl"]).is_err());
         assert!(Cli::try_parse_from(["keel", "ctl", "a.b", "--out", "yaml"]).is_err());
         assert!(Cli::try_parse_from(["keel"]).is_err());
+    }
+
+    #[test]
+    fn update_takes_a_step_and_the_ctl_options_after_it() {
+        let cli = Cli::try_parse_from(["keel", "update", "check", "--out", "json"]).unwrap();
+        let Command::Update(args) = cli.command else {
+            panic!("expected update");
+        };
+        assert!(matches!(args.step, UpdateStep::Check));
+        assert_eq!(args.step.function(), UPDATE_CHECK);
+        assert!(!args.step.waits());
+        assert_eq!(args.out, OutArg::Json);
+        assert!(args.socket.is_none());
+        assert_eq!(args.lang, "en");
+        let cli = Cli::try_parse_from([
+            "keel",
+            "update",
+            "apply",
+            "--wait",
+            "--out",
+            "table",
+            "--socket",
+            "/tmp/core.sock",
+            "--lang",
+            "ru",
+        ])
+        .unwrap();
+        let Command::Update(args) = cli.command else {
+            panic!("expected update");
+        };
+        assert!(matches!(args.step, UpdateStep::Apply { wait: true }));
+        assert_eq!(args.step.function(), UPDATE_APPLY);
+        assert!(args.step.waits());
+        assert_eq!(args.out, OutArg::Table);
+        assert_eq!(args.socket, Some(PathBuf::from("/tmp/core.sock")));
+        assert_eq!(args.lang, "ru");
+        let cli = Cli::try_parse_from(["keel", "update", "rollback"]).unwrap();
+        let Command::Update(args) = cli.command else {
+            panic!("expected update");
+        };
+        assert!(matches!(args.step, UpdateStep::Rollback { wait: false }));
+        assert_eq!(args.step.function(), UPDATE_ROLLBACK);
+        assert!(!args.step.waits());
+        assert!(Cli::try_parse_from(["keel", "update"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "update", "check", "--wait"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "update", "install"]).is_err());
     }
 
     #[test]

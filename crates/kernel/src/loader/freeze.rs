@@ -497,6 +497,10 @@ impl Freezer {
     fn platform(&mut self, graph: &Graph) {
         let mut services = Services::new();
         services.provide(Arc::new(Composed::new(graph.manifests())));
+        services.provide(Arc::new(Platform {
+            version: graph.version().to_owned(),
+            api: API,
+        }));
         services.provide::<dyn Clock>(graph.clock().clone());
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
@@ -1508,6 +1512,10 @@ mod tests {
         assert_eq!(registry.product_ids(), ["base"]);
         assert_eq!(registry.platform().version, env!("CARGO_PKG_VERSION"));
         assert_eq!(registry.platform().api, API);
+        assert_eq!(
+            registry.services().get::<Platform>().as_deref(),
+            Some(registry.platform())
+        );
         let groups: Vec<(&str, Option<&str>)> = registry
             .groups()
             .iter()

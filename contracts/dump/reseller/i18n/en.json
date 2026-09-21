@@ -1123,6 +1123,66 @@
       "text": "Lines",
       "title": "Title"
     },
+    "update": {
+      "action": {
+        "apply": "Update",
+        "refresh": "Check again",
+        "rollback": "Roll back"
+      },
+      "apply": {
+        "title": "Update to the available version"
+      },
+      "available": "Version {available} is available on the {channel} channel; this installation runs {running}",
+      "blockedBy": {
+        "contract": "The update crosses a contract boundary",
+        "min_upgrade_from": "The running version is below the minimum the channel upgrades from"
+      },
+      "channel": {
+        "beta": "Beta",
+        "stable": "Stable"
+      },
+      "check": {
+        "title": "Updates"
+      },
+      "column": {
+        "allowed": "Update allowed",
+        "available": "Available version",
+        "blockedBy": "Blocked by",
+        "channel": "Channel",
+        "channelUrl": "Channel address",
+        "contract": "Contract of the available version",
+        "minUpgradeFrom": "Upgrades from",
+        "notes": "Release notes",
+        "previous": "Previous version",
+        "running": "Running version",
+        "runningContract": "Contract of the running version",
+        "upToDate": "Up to date"
+      },
+      "error": {
+        "channel": "The release channel at {url} could not be read: {reason}",
+        "channel_url": "The channel address {url} in the update section is not an http or https address",
+        "contract": "The change from {running} (contract {runningContract}) to {target} (contract {targetContract}) crosses a contract boundary; roll back with a restore from the privileged command line",
+        "contract_unknown": "The channel has no manifest for version {version}, so its contract is unknown",
+        "dump": "The pre-update dump failed: {reason}",
+        "history": "The recorded run {id} names the version {version}, which does not parse",
+        "inline": "The update runs as a task; call it through the task runner",
+        "manifest": "The channel answered something that is not a release manifest at {url}: {reason}",
+        "min_upgrade_from": "Version {target} cannot be reached from {running}: the channel upgrades from {minUpgradeFrom} at least",
+        "no_previous": "No update to {running} is recorded, so there is no version to roll back to",
+        "not_started": "The update module has not started",
+        "request": "The update request {path} could not be written: {reason}",
+        "up_to_date": "This installation runs {running}; the channel offers {available}, so there is nothing to update",
+        "version": "The running version {version} is not a semantic version"
+      },
+      "progress": {
+        "drain": "Waiting for running tasks to finish",
+        "dump": "Taking the pre-update dump of the database",
+        "request": "Writing the update request for the root unit"
+      },
+      "rollback": {
+        "title": "Roll back to the previous version"
+      }
+    },
     "webhook": {
       "dead_letter": "Webhook deliveries to {name} failed for good",
       "delivery": {

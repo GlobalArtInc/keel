@@ -7,6 +7,7 @@ fn main() -> keel::ExitCode {
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
         .module(&keel_system::webhooks::MODULE)
+        .module(&keel_system::update::MODULE)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"));
     #[cfg(feature = "demo")]
     let runtime = runtime.product(&keel_demo::MANIFEST);

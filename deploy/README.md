@@ -166,12 +166,22 @@ they exist:
   unit files from the release's `deploy/systemd/` and restarts `keel-privileged.service` and
   `keel.service`; `keel privileged update rollback` switches back within the same `contract`
   and refuses across one unless `--restore <archive>` names the pre-update backup, in which
-  case `keel.service` is stopped for the restore instead of restarted. The kernel half that
-  writes the request from a button, the pre-update dump and the published channel arrive with
-  the next steps; until then a version is installed by hand as before: unpack the artifact into
+  case `keel.service` is stopped for the restore instead of restarted. The kernel half is the
+  `update` module: the screen "Updates" under the system group and `keel update check` read the
+  head of the channel named by the setting `update.channel` (`stable` or `beta`) at the address
+  of the `update.channel_url` key of `config.yaml` (default `https://dl.globalart.hu/keel/`),
+  and `update.apply` from its button or `keel update apply [--wait]` runs as a task that drains
+  the task queue, takes the pre-update dump with `COPY … TO STDOUT` into
+  `/var/lib/keel/backups/pre-update-<version>-<instant>/`, one file per table, and writes
+  `update.request`; the task ends `done` and the root unit takes over. `update.rollback` and
+  `keel update rollback` write the same request for the version the installation was updated
+  from, within the same `contract`. The published channel arrives with the release workflow;
+  until then a version is installed by hand as before: unpack the artifact into
   `/opt/keel/versions/<version>/`, point `/opt/keel/bin/current` at its `keel`,
   `systemctl restart keel` and check that `/readyz` answers `ready`. `hack/update-vm.sh`
-  rehearses the whole root half on a machine with a rehearsal key and a channel directory.
+  rehearses the root half on a machine with a rehearsal key and a channel directory (`run`), and
+  the kernel half through `keel update apply --wait` against that channel served over HTTP
+  (`kernel`).
 - The setup link. `keel.setup.admin` and the one-time `kok_` link printed at the first start
   arrive with M4; the installer creates the administrator over the control socket instead.
 - The signature check of the release manifest; the installer verifies the sha256 of the artifact

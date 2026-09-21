@@ -80,3 +80,59 @@ export const Forbidden: Story = {
     await expect(await canvas.findByText('req-7f3a2c1b')).toBeInTheDocument();
   },
 };
+
+const STATUS = {
+  running: '0.1.0',
+  runningContract: 1,
+  channel: 'stable',
+  channelUrl: 'https://dl.globalart.hu/keel/',
+  available: '0.2.0',
+  notes: 'Second release: the update module, the release channel and the privileged unit.',
+  minUpgradeFrom: '0.1.0',
+  contract: 1,
+  upToDate: false,
+  allowed: true,
+  blockedBy: null,
+  previous: null,
+};
+
+export const UpdateAvailable: Story = {
+  name: 'Updates with a version available',
+  args: { func: 'update.check', params: null },
+  decorators: [withKeel({ calls: { 'update.check': okEnvelope(STATUS) } })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Updates' })).toBeInTheDocument();
+    await expect(canvas.getByText('0.2.0')).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+    await expect(canvas.queryByRole('button', { name: 'Roll back' })).not.toBeInTheDocument();
+  },
+};
+
+export const UpdateBlocked: Story = {
+  name: 'Updates blocked by min_upgrade_from',
+  args: { func: 'update.check', params: null },
+  decorators: [
+    withKeel({
+      calls: {
+        'update.check': okEnvelope({
+          ...STATUS,
+          available: '0.3.0',
+          minUpgradeFrom: '0.2.0',
+          allowed: false,
+          blockedBy: 'min_upgrade_from',
+          previous: '0.0.9',
+        }),
+      },
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Updates' })).toBeInTheDocument();
+    await expect(canvas.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Roll back' })).toBeInTheDocument();
+    await expect(
+      canvas.getByText('The running version is below the minimum the channel upgrades from'),
+    ).toBeInTheDocument();
+  },
+};

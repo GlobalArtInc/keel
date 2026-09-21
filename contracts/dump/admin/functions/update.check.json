@@ -1,0 +1,131 @@
+{
+  "keel": 1,
+  "name": "update.check",
+  "module": "update",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Status",
+    "type": "object",
+    "properties": {
+      "running": {
+        "type": "string"
+      },
+      "runningContract": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 0
+      },
+      "channel": {
+        "$ref": "#/$defs/Channel"
+      },
+      "channelUrl": {
+        "type": "string"
+      },
+      "available": {
+        "type": "string"
+      },
+      "notes": {
+        "type": "string"
+      },
+      "minUpgradeFrom": {
+        "type": "string"
+      },
+      "contract": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "upToDate": {
+        "type": "boolean"
+      },
+      "allowed": {
+        "type": "boolean"
+      },
+      "blockedBy": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Blocker"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "previous": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "running",
+      "channel",
+      "channelUrl",
+      "available",
+      "notes",
+      "minUpgradeFrom",
+      "contract",
+      "upToDate",
+      "allowed"
+    ],
+    "$defs": {
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "stable",
+          "beta"
+        ]
+      },
+      "Blocker": {
+        "type": "string",
+        "enum": [
+          "min_upgrade_from",
+          "contract"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "update.check.title",
+    "actions": [
+      {
+        "id": "apply",
+        "role": "button",
+        "screen": "update.apply",
+        "icon": "package",
+        "hidden_if": {
+          "not": {
+            "truthy": "allowed"
+          }
+        }
+      },
+      {
+        "id": "rollback",
+        "role": "button",
+        "screen": "update.rollback",
+        "icon": "undo-2",
+        "hidden_if": {
+          "not": {
+            "truthy": "previous"
+          }
+        }
+      },
+      {
+        "id": "refresh",
+        "role": "refresh"
+      }
+    ]
+  }
+}

@@ -236,6 +236,8 @@ jobs:
           - cron
           - notify
           - webhooks
+          - update
+          - tasks,cron,notify,update
           - settings,audit,tasks,cron,notify,webhooks
           - auth,audit,tasks,cron,notify,webhooks
           - auth,settings,tasks,cron,notify,webhooks

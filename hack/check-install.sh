@@ -132,6 +132,16 @@ fi
 help=$("$keel" --help)
 product_help=$("$keel" product --help)
 ctl_help=$("$keel" ctl --help)
+update_help=$("$keel" update --help)
+
+check "the subcommand update is in keel --help" lists_subcommand "$help" update
+for step in check apply rollback; do
+  check "update $step is in keel update --help" lists_subcommand "$update_help" "$step"
+  check "update-vm.sh or the README exercises keel update $step" grep -qE "update $step\b" hack/update-vm.sh deploy/README.md
+done
+for flag in --wait --out; do
+  check "the flag $flag of update apply is in keel update apply --help" lists_flag "$("$keel" update apply --help)" "$flag"
+done
 
 for unit in deploy/systemd/*.service; do
   line=$(sed -nE 's|^ExecStart=/opt/keel/bin/current (.*)$|\1|p' "$unit")

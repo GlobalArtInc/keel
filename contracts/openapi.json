@@ -5008,7 +5008,7 @@
                         "data": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/Channel"
+                            "$ref": "#/components/schemas/notify.channel.list.result.Channel"
                           }
                         },
                         "total": {
@@ -7240,6 +7240,334 @@
         }
       }
     },
+    "/api/v1/call/update.apply": {
+      "post": {
+        "operationId": "update.apply",
+        "tags": [
+          "update"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Requested",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "$ref": "#/components/schemas/RunKind"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "channel": {
+                          "$ref": "#/components/schemas/update.apply.result.Channel"
+                        },
+                        "requestedBy": {
+                          "type": "string"
+                        },
+                        "dump": {
+                          "type": "string"
+                        },
+                        "tables": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "request": {
+                          "type": "string"
+                        },
+                        "leftRunning": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "from",
+                        "to",
+                        "channel",
+                        "requestedBy",
+                        "dump",
+                        "tables",
+                        "request",
+                        "leftRunning"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/update.check": {
+      "post": {
+        "operationId": "update.check",
+        "tags": [
+          "update"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Status",
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "string"
+                        },
+                        "runningContract": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "channel": {
+                          "$ref": "#/components/schemas/update.apply.result.Channel"
+                        },
+                        "channelUrl": {
+                          "type": "string"
+                        },
+                        "available": {
+                          "type": "string"
+                        },
+                        "notes": {
+                          "type": "string"
+                        },
+                        "minUpgradeFrom": {
+                          "type": "string"
+                        },
+                        "contract": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "upToDate": {
+                          "type": "boolean"
+                        },
+                        "allowed": {
+                          "type": "boolean"
+                        },
+                        "blockedBy": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/Blocker"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "previous": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "running",
+                        "channel",
+                        "channelUrl",
+                        "available",
+                        "notes",
+                        "minUpgradeFrom",
+                        "contract",
+                        "upToDate",
+                        "allowed"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/update.rollback": {
+      "post": {
+        "operationId": "update.rollback",
+        "tags": [
+          "update"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Requested",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "$ref": "#/components/schemas/RunKind"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "channel": {
+                          "$ref": "#/components/schemas/update.apply.result.Channel"
+                        },
+                        "requestedBy": {
+                          "type": "string"
+                        },
+                        "dump": {
+                          "type": "string"
+                        },
+                        "tables": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "request": {
+                          "type": "string"
+                        },
+                        "leftRunning": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "from",
+                        "to",
+                        "channel",
+                        "requestedBy",
+                        "dump",
+                        "tables",
+                        "request",
+                        "leftRunning"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/webhook.delivery.get": {
       "post": {
         "operationId": "webhook.delivery.get",
@@ -8368,6 +8696,13 @@
           "elapsedMs"
         ]
       },
+      "Blocker": {
+        "type": "string",
+        "enum": [
+          "min_upgrade_from",
+          "contract"
+        ]
+      },
       "BrandRow": {
         "type": "object",
         "properties": {
@@ -8441,61 +8776,6 @@
         "required": [
           "code",
           "key"
-        ]
-      },
-      "Channel": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/Id"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ChannelKind"
-          },
-          "name": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "email": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EmailView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lastSentAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "lastError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "createdBy": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "enabled",
-          "createdAt",
-          "createdBy"
         ]
       },
       "ChannelKind": {
@@ -9229,6 +9509,13 @@
           "deny"
         ]
       },
+      "RunKind": {
+        "type": "string",
+        "enum": [
+          "apply",
+          "rollback"
+        ]
+      },
       "RunRow": {
         "type": "object",
         "properties": {
@@ -9724,6 +10011,61 @@
           "updatedAt"
         ]
       },
+      "notify.channel.list.result.Channel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChannelKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmailView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "enabled",
+          "createdAt",
+          "createdBy"
+        ]
+      },
       "notify.delivery.list.result.Delivery": {
         "type": "object",
         "properties": {
@@ -9832,6 +10174,13 @@
           "source",
           "unread",
           "createdAt"
+        ]
+      },
+      "update.apply.result.Channel": {
+        "type": "string",
+        "enum": [
+          "stable",
+          "beta"
         ]
       },
       "webhook.delivery.list.result.Delivery": {

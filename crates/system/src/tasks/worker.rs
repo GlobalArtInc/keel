@@ -263,6 +263,30 @@ pub(super) async fn drain(shared: &Shared, grace: Duration) -> Result<()> {
     Ok(())
 }
 
+pub(super) async fn quiesce(shared: &Shared, except: Id, grace: Duration) -> Vec<Id> {
+    shared.drain();
+    let deadline = Instant::now() + grace;
+    loop {
+        let settled = shared.settled.notified();
+        let others = others_running(shared, except);
+        if others.is_empty() {
+            return others;
+        }
+        if tokio::time::timeout_at(deadline, settled).await.is_err() {
+            return others_running(shared, except);
+        }
+    }
+}
+
+fn others_running(shared: &Shared, except: Id) -> Vec<Id> {
+    shared
+        .running()
+        .into_iter()
+        .map(|(id, _)| id)
+        .filter(|id| *id != except)
+        .collect()
+}
+
 pub(super) async fn idle(shared: &Shared) -> Result<bool> {
     if !shared.running().is_empty() {
         return Ok(false);

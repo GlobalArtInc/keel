@@ -17,7 +17,7 @@ demo = ["dep:keel-demo"]
 [dependencies]
 keel = { workspace = true }
 keel-demo = { workspace = true, optional = true }
-keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks"] }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "update"] }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }

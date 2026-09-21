@@ -167,6 +167,14 @@ impl UiDef {
             source: source.to_owned(),
         });
     }
+
+    fn push_action(&mut self, action: Action) {
+        if let Some(source) = action.hidden_if {
+            let target = ConditionTarget::Action(action.inner.id.clone());
+            self.condition(target, &source);
+        }
+        self.screen.actions.push(action.inner);
+    }
 }
 
 fn attach(screen: &mut ScreenUi, target: &ConditionTarget, expr: Expr) -> Result<(), &'static str> {
@@ -417,6 +425,36 @@ impl From<ActionScreen> for UiDef {
 }
 
 #[derive(Clone, Debug)]
+pub struct ObjectScreen {
+    def: UiDef,
+}
+
+impl ObjectScreen {
+    pub fn new(title: &str) -> Self {
+        Self {
+            def: UiDef {
+                screen: ScreenUi {
+                    title: title.to_owned(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn action(mut self, action: Action) -> Self {
+        self.def.push_action(action);
+        self
+    }
+}
+
+impl From<ObjectScreen> for UiDef {
+    fn from(object: ObjectScreen) -> Self {
+        object.def
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct List {
     def: UiDef,
 }
@@ -449,11 +487,7 @@ impl List {
     }
 
     pub fn action(mut self, action: Action) -> Self {
-        if let Some(source) = action.hidden_if {
-            let target = ConditionTarget::Action(action.inner.id.clone());
-            self.def.condition(target, &source);
-        }
-        self.def.screen.actions.push(action.inner);
+        self.def.push_action(action);
         self
     }
 
@@ -913,6 +947,33 @@ mod tests {
         let bare: UiDef = ActionScreen::new("note.export.title").into();
         assert_eq!(bare.screen().result, None);
         assert!(bare.field_names().is_empty());
+    }
+
+    #[test]
+    fn an_object_screen_carries_its_title_and_actions_whose_conditions_read_the_object() {
+        let def: UiDef = ObjectScreen::new("update.check.title")
+            .action(
+                Action::new("apply", keel_types::ActionRole::Button)
+                    .screen("update.apply")
+                    .icon("download")
+                    .hidden_if("!allowed"),
+            )
+            .action(
+                Action::new("rollback", keel_types::ActionRole::Button).screen("update.rollback"),
+            )
+            .into();
+        let screen = def.compile(&known(["allowed"])).unwrap();
+        assert_eq!(screen.title, "update.check.title");
+        assert_eq!(screen.actions.len(), 2);
+        assert_eq!(screen.actions[0].screen.as_deref(), Some("update.apply"));
+        assert!(screen.actions[0].hidden_if.is_some());
+        assert_eq!(screen.actions[1].hidden_if, None);
+        assert!(screen.columns.is_empty());
+        assert!(def.field_names().is_empty());
+        assert!(matches!(
+            def.compile(&known([])),
+            Err(UiError::UnknownField { field, target, .. }) if field == "allowed" && target == "action apply"
+        ));
     }
 
     #[test]

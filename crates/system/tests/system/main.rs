@@ -48,6 +48,10 @@ mod tasks;
 mod tasks_alone;
 #[cfg(feature = "tasks")]
 mod tasks_download;
+#[cfg(feature = "update")]
+mod update;
+#[cfg(feature = "update")]
+mod update_alone;
 #[cfg(feature = "webhooks")]
 mod webhooks;
 #[cfg(feature = "webhooks")]

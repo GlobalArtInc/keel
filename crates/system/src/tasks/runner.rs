@@ -53,6 +53,11 @@ impl Shared {
         self.wake.notify_one();
     }
 
+    pub fn resume(&self) {
+        self.draining.store(false, Ordering::SeqCst);
+        self.wake.notify_one();
+    }
+
     pub fn running(&self) -> Vec<(Id, Arc<JobSink>)> {
         self.running
             .lock()

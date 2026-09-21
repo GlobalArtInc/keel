@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
 import {
@@ -13,6 +14,7 @@ import { KeelMockClient } from '@globalart/keel/testing';
 import { providePhoenixIcons } from '@globalart/phoenix-ui';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
+const DUMP = resolve(__dirname, '../../../../../contracts/dump');
 
 function load<T>(name: string): T {
   return JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as T;
@@ -20,6 +22,9 @@ function load<T>(name: string): T {
 
 const GET = load<Descriptor>('descriptors/keel.account.get.json');
 const ENABLE = load<Descriptor>('descriptors/keel.product.enable.json');
+const CHECK = JSON.parse(
+  readFileSync(join(DUMP, 'admin/functions/update.check.json'), 'utf8'),
+) as Descriptor;
 const FIXTURE = load<Boot>('boot.json');
 const PRINCIPAL = FIXTURE.principal ?? null;
 const BOOT: Boot = {
@@ -40,7 +45,34 @@ const ACCOUNT = {
   updatedAt: '2026-09-13T09:45:00Z',
 };
 
+const STATUS = {
+  running: '0.1.0',
+  runningContract: 1,
+  channel: 'stable',
+  channelUrl: 'https://dl.globalart.hu/keel/',
+  available: '0.2.0',
+  notes: 'Second release',
+  minUpgradeFrom: '0.1.0',
+  contract: 1,
+  upToDate: false,
+  allowed: true,
+  blockedBy: null,
+  previous: null,
+};
+
 const MESSAGES = {
+  update: {
+    action: { apply: 'Update', refresh: 'Check again', rollback: 'Roll back' },
+    check: { title: 'Updates' },
+    channel: { stable: 'Stable', beta: 'Beta' },
+    column: {
+      running: 'Running version',
+      available: 'Available version',
+      channel: 'Channel',
+      allowed: 'Update allowed',
+      previous: 'Previous version',
+    },
+  },
   keel: {
     id: 'Id',
     kind: 'Kind',
@@ -74,15 +106,20 @@ function answer(data: unknown, requestId = 'req-get'): Envelope {
 async function render(
   client: KeelMockClient,
   params: Record<string, unknown>,
+  descriptor: Descriptor = GET,
 ): Promise<ComponentFixture<KeelObjectComponent>> {
   TestBed.configureTestingModule({
     imports: [KeelObjectComponent],
-    providers: [providePhoenixIcons(), { provide: KeelClient, useValue: client }],
+    providers: [
+      providePhoenixIcons(),
+      provideRouter([]),
+      { provide: KeelClient, useValue: client },
+    ],
   });
   await TestBed.inject(KeelBoot).load();
   await TestBed.inject(KeelI18n).load('en');
   const fixture = TestBed.createComponent(KeelObjectComponent);
-  fixture.componentRef.setInput('descriptor', GET);
+  fixture.componentRef.setInput('descriptor', descriptor);
   fixture.componentRef.setInput('params', params);
   fixture.detectChanges();
   await fixture.whenStable();
@@ -167,6 +204,60 @@ describe('keel-object', () => {
     expect(client.callsOf('keel.account.get')).toHaveLength(2);
     expect(element.getAttribute('data-phase')).toBe('loaded');
     expect(props(element)[0]).toEqual(['Account', ID]);
+  });
+
+  it('a titled get shows its header with the actions its result allows and opens their screens', async () => {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: {
+        'update.check': [answer(STATUS), answer({ ...STATUS, allowed: false, previous: '0.0.9' })],
+      },
+    });
+    const fixture = await render(client, {}, CHECK);
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('phx-page-header h1')?.textContent?.trim()).toBe('Updates');
+    const buttons = () =>
+      [...element.querySelectorAll<HTMLButtonElement>('phx-page-header button[data-action]')].map(
+        (button) => [button.getAttribute('data-action'), button.textContent?.trim()],
+      );
+    expect(buttons()).toEqual([
+      ['apply', 'Update'],
+      ['refresh', 'Check again'],
+    ]);
+    expect(props(element).slice(0, 3)).toEqual([
+      ['Running version', '0.1.0'],
+      ['update.runningContract', '1'],
+      ['Channel', 'Stable'],
+    ]);
+
+    const router = TestBed.inject(Router);
+    const navigated = jest.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    element.querySelector<HTMLButtonElement>('button[data-action="apply"]')?.click();
+    expect(navigated).toHaveBeenCalledWith('/f/update.apply');
+
+    element.querySelector<HTMLButtonElement>('button[data-action="refresh"]')?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(client.callsOf('update.check')).toHaveLength(2);
+    expect(buttons()).toEqual([
+      ['rollback', 'Roll back'],
+      ['refresh', 'Check again'],
+    ]);
+    element.querySelector<HTMLButtonElement>('button[data-action="rollback"]')?.click();
+    expect(navigated).toHaveBeenLastCalledWith('/f/update.rollback');
+    expect(element.querySelector('phx-page-header')).not.toBeNull();
+  });
+
+  it('a get without a screen title renders no header', async () => {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: { 'keel.account.get': answer(ACCOUNT) },
+    });
+    const fixture = await render(client, { id: ID });
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('phx-page-header')).toBeNull();
   });
 
   it('the screen renders a get descriptor through the object renderer', async () => {

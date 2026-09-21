@@ -177,6 +177,13 @@ export const BOOT_ONE: Boot = {
           icon: 'mail',
         },
         {
+          path: 'system/updates',
+          label: 'update.check.title',
+          func: 'update.check',
+          kind: 'get',
+          icon: 'package',
+        },
+        {
           path: 'system/webhooks',
           label: 'webhook.subscription.list.title',
           func: 'webhook.subscription.list',

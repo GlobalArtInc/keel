@@ -10,6 +10,8 @@ pub mod notify;
 pub mod settings;
 #[cfg(feature = "tasks")]
 pub mod tasks;
+#[cfg(feature = "update")]
+pub mod update;
 #[cfg(feature = "webhooks")]
 pub mod webhooks;
 

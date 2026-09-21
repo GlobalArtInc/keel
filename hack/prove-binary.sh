@@ -11,6 +11,8 @@ database=""
 site=""
 serve_pid=""
 serve_log=""
+channel_pid=""
+available_version=""
 
 usage() {
   echo "usage: hack/prove-binary.sh [path/to/keel]" >&2
@@ -41,6 +43,11 @@ cleanup() {
     if ! stop_serve; then
       code=1
     fi
+  fi
+  if [ -n "$channel_pid" ]; then
+    kill "$channel_pid" 2>/dev/null || true
+    wait "$channel_pid" 2>/dev/null || true
+    echo "stopped the release channel ($channel_pid)"
   fi
   if [ -n "$database" ]; then
     if psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$database\" WITH (FORCE)" >/dev/null; then
@@ -349,6 +356,41 @@ unclaimed_section_logged() {
   grep 'claimed by no loaded module' "$serve_log" | grep -q "\"$section\""
 }
 
+write_channel() {
+  local dir=$1 running=$2 available=$3
+  python3 - "$dir" "$running" "$available" <<'EOF'
+import base64, json, os, sys
+root, running, available = sys.argv[1:4]
+
+def signed(path, manifest):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    payload = base64.b64encode(json.dumps(manifest).encode()).decode()
+    with open(path, "w") as handle:
+        json.dump({"payload": payload, "signature": base64.b64encode(bytes(64)).decode()}, handle)
+
+signed(os.path.join(root, "stable", "manifest.json"), {"version": available, "sha256": "00", "min_upgrade_from": running, "contract": 1, "notes": "Rehearsal release " + available})
+signed(os.path.join(root, "versions", available, "manifest.json"), {"version": available, "sha256": "00", "min_upgrade_from": running, "contract": 1, "notes": "Rehearsal release " + available})
+signed(os.path.join(root, "versions", running, "manifest.json"), {"version": running, "sha256": "00", "min_upgrade_from": "0.0.1", "contract": 1, "notes": "Running release " + running})
+EOF
+}
+
+start_channel() {
+  local dir=$1 port=$2
+  python3 -m http.server "$port" --bind 127.0.0.1 --directory "$dir" >"$site/channel.log" 2>&1 &
+  channel_pid=$!
+  local waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if curl -sf -o /dev/null "http://127.0.0.1:$port/stable/manifest.json"; then
+      echo "ok: the release channel answers on http://127.0.0.1:$port/"
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  sed 's/^/  /' "$site/channel.log" >&2
+  fail "the release channel did not come up within ${timeout}s"
+}
+
 if [ -z "$admin_url" ]; then
   usage
   echo "KEEL_TEST_DATABASE_URL is not set" >&2
@@ -384,10 +426,14 @@ database="keel_test_prove_$(date +%s)_$$"
 port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
-mkdir -p "$site/run" "$site/lib"
+mkdir -p "$site/run" "$site/lib" "$site/channel"
 if [ "$scheme" = https ]; then
   cacert="$site/lib/tls/cert.pem"
 fi
+channel_port=$(free_port)
+available_version=$(python3 -c 'import sys; major, minor, patch = sys.argv[1].split("-")[0].split("."); print(f"{major}.{int(minor) + 1}.0")' "$version")
+write_channel "$site/channel" "$version" "$available_version"
+start_channel "$site/channel" "$channel_port"
 cat >"$site/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock
@@ -395,8 +441,9 @@ data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
 host: { socket: /nowhere/agent.sock }
+update: { channel_url: http://127.0.0.1:$channel_port/ }
 EOF
-echo "site $site, binary $keel $version"
+echo "site $site, binary $keel $version, channel offers $available_version"
 
 echo "--- run 1: the demo bundle enabled"
 check "product enable demo" keel_ok "$site/enable.out" product enable demo
@@ -447,6 +494,12 @@ check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$sit
 check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264'
 check "ctl keel.product.list --out json" keel_ok "$site/products.json" ctl keel.product.list --out json
 check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["note"])]'
+check "update check --out json" keel_ok "$site/update-check.json" update check --out json
+check "update check answers the running version, the channel head and that the update is allowed" json_is "$site/update-check.json" "doc['ok'] is True and doc['data']['running'] == '$version' and doc['data']['available'] == '$available_version' and doc['data']['channel'] == 'stable' and doc['data']['channelUrl'] == 'http://127.0.0.1:$channel_port/' and doc['data']['minUpgradeFrom'] == '$version' and doc['data']['contract'] == 1 and doc['data']['runningContract'] == 1 and doc['data']['allowed'] is True and doc['data']['upToDate'] is False and doc['data']['blockedBy'] is None and doc['data']['previous'] is None and doc['data']['notes'] == 'Rehearsal release $available_version'"
+check "update check --out table" keel_ok "$site/update-check.out" update check --out table
+check "the table carries the running and the available version" grep -q "running *$version" "$site/update-check.out"
+check "ctl update.check answers the same status over the socket" keel_ok "$site/update-check-ctl.json" ctl update.check --out json
+check "update.check over ctl and update check agree" cmp -s <(json_get "$site/update-check.json" 'json.dumps(doc["data"], sort_keys=True)') <(json_get "$site/update-check-ctl.json" 'json.dumps(doc["data"], sort_keys=True)')
 check "ctl note.edit title=x" keel_ok "$site/edit.json" ctl note.edit title=x
 check "note.edit answers the saved note" json_is "$site/edit.json" 'doc["ok"] is True and doc["data"]["title"] == "x" and doc["meta"]["principal"]["login"] == "owner"'
 check "ctl note.list --out json" keel_ok "$site/notes.json" ctl note.list --out json
@@ -470,7 +523,7 @@ check "keel.principal.create answers ok with an id" json_is "$site/principal.jso
 principal_id=$(json_get "$site/principal.json" 'doc["data"]["id"]')
 check "ctl auth.password.set for alice" keel_ok "$site/password.json" ctl auth.password.set "principal=$principal_id" password=correct-horse
 check "ctl settings.list --out json" keel_ok "$site/settings.json" ctl settings.list --out json
-check "settings.list answers the six auth definitions, cron.overrides and webhook.private_targets with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None), "cron.overrides": ({}, {}, None), "webhook.private_targets": (False, False, None)}'
+check "settings.list answers the six auth definitions, cron.overrides, update.channel and webhook.private_targets with their defaults" json_is "$site/settings.json" 'doc["ok"] is True and {row["key"]: (row["default"], row["value"], row["scope"]) for row in doc["data"]["data"]} == {"auth.lockout.minutes": (15, 15, None), "auth.lockout.threshold": (5, 5, None), "auth.password.min_length": (12, 12, None), "auth.rate.guest_per_minute": (30, 30, None), "auth.session.absolute_hours": (12, 12, None), "auth.session.idle_minutes": (30, 30, None), "cron.overrides": ({}, {}, None), "update.channel": ("stable", "stable", None), "webhook.private_targets": (False, False, None)}'
 check "ctl settings.set auth.password.min_length=16" keel_ok "$site/setting.json" ctl settings.set key=auth.password.min_length value=16
 check "settings.set answers the root value" json_is "$site/setting.json" 'doc["ok"] is True and doc["data"]["value"] == 16 and doc["data"]["scope"] == "00000000000000000000000000"'
 check "ctl auth.password.set with twelve characters is refused" keel_fails "$site/password-short.json" ctl auth.password.set "principal=$principal_id" password=twelve-chars
@@ -531,6 +584,7 @@ check "POST /api/v1/call/auth.login as root is 200" http_is "$site/login-root.js
 root_cookie=$(session_cookie_of "$site/login-root.json.headers") || fail "auth.login sets the session cookie for root"
 check "GET /api/v1/boot as root is 200" http_is "$site/boot-root.json" 200 GET /api/v1/boot '' "$root_cookie"
 check "boot names root without an actor" json_is "$site/boot-root.json" 'doc["principal"]["login"] == "root" and doc["principal"]["level"] == "admin" and doc["principal"]["actor"] is None'
+check "boot as root lists the Updates screen in the system group" json_is "$site/boot-root.json" 'any(item["func"] == "update.check" and item["kind"] == "get" and item["icon"] == "package" for group in doc["menu"] for item in group["items"])'
 check "POST /api/v1/call/keel.account.list as root is 200" http_is "$site/accounts-root.json" 200 POST /api/v1/call/keel.account.list '{}' "$root_cookie"
 check "keel.account.list as root lists every account" json_is "$site/accounts-root.json" "doc['ok'] is True and doc['data']['total'] >= 2 and doc['meta']['principal']['actor'] is None"
 check "POST /api/v1/call/auth.su into alice is 200" http_is "$site/su.json" 200 POST /api/v1/call/auth.su "{\"principal\":\"$principal_id\"}" "$root_cookie"
@@ -657,6 +711,12 @@ check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["
 ip_rule_id=$(json_get "$site/ip-rule.json" 'doc["data"]["id"]')
 check "ctl auth.ip_rule.list --out json" keel_ok "$site/ip-rules.json" ctl auth.ip_rule.list --out json
 check "auth.ip_rule.list answers the rule" json_is "$site/ip-rules.json" "doc['ok'] is True and [row['id'] for row in doc['data']['data']] == ['$ip_rule_id']"
+check "update apply --wait --out json" keel_ok "$site/update-apply.json" update apply --wait --out json
+check "update apply ends done with the versions, the owner and the dump" json_is "$site/update-apply.json" "doc['ok'] is True and doc['data']['state'] == 'done' and doc['data']['progress'] == '3/3' and doc['data']['result']['kind'] == 'apply' and doc['data']['result']['from'] == '$version' and doc['data']['result']['to'] == '$available_version' and doc['data']['result']['channel'] == 'stable' and doc['data']['result']['requestedBy'] == 'owner' and doc['data']['result']['leftRunning'] == 0 and doc['data']['result']['tables'] > 10 and any('the root unit takes over' in line for line in doc['data']['logTail'])"
+check "the update request names the version, the channel and the owner" json_is "$site/lib/update.request" "doc == {'version': '$available_version', 'channel': 'stable', 'requested_by': 'owner'}"
+check "the pre-update dump holds one file per table" test "$(ls "$site"/lib/backups/pre-update-*/*.copy | wc -l | tr -d ' ')" = "$(json_get "$site/update-apply.json" 'doc["data"]["result"]["tables"]')"
+check "the pre-update dump carries the task table with the update task" grep -q "update.apply" "$site"/lib/backups/pre-update-*/task_job.copy
+check "the dump manifest names the running version and the schema" json_is "$(ls "$site"/lib/backups/pre-update-*/manifest.json)" "doc['keel'] == '$version' and doc['schema'] == 'keel' and doc['format'] == 'copy-text' and 'task_job' in doc['tables']"
 check "keel serve stops on SIGTERM" stop_serve
 check "the socket file is removed" socket_is_gone
 audit_sql() {
@@ -700,11 +760,11 @@ check "audit.list answers the su row with root as the principal" json_is "$site/
 check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
-check "task.list keeps the two finished exports after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 2 and [(row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]] == [("note.export", "done", "4/4")] * 2'
+check "task.list keeps the two finished exports and the update after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 3 and sorted((row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]) == [("note.export", "done", "4/4"), ("note.export", "done", "4/4"), ("update.apply", "done", "3/3")]'
 check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job.list --out json
-check "cron.job.list answers the poll job of notify alone" json_is "$site/cron-jobs.json" 'doc["ok"] is True and [(row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]] == [("notify.problems.poll", "notify", "* * * * *")]'
+check "cron.job.list answers the poll job of notify and the daily check of update" json_is "$site/cron-jobs.json" 'doc["ok"] is True and sorted((row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]) == [("notify.problems.poll", "notify", "* * * * *"), ("update.poll", "update", "30 4 * * *")]'
 check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json
-check "cron.run.list answers runs of the poll job alone" json_is "$site/cron-runs.json" 'doc["ok"] is True and all(row["job"] == "notify.problems.poll" and row["outcome"] in ("ok", "running") for row in doc["data"]["data"])'
+check "cron.run.list answers runs of the two jobs alone" json_is "$site/cron-runs.json" 'doc["ok"] is True and all(row["job"] in ("notify.problems.poll", "update.poll") and row["outcome"] in ("ok", "running") for row in doc["data"]["data"])'
 check "ctl notify.problem.list --out json" keel_ok "$site/problems.json" ctl notify.problem.list --out json
 check "notify.problem.list answers an empty page" json_is "$site/problems.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
 check "ctl notify.message.list --out json" keel_ok "$site/messages.json" ctl notify.message.list --out json
