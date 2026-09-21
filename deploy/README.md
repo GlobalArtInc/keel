@@ -317,8 +317,22 @@ the second factor checked by hand afterwards.
 
 ## Enabling another product later
 
-`keel product enable` writes the enabled set while the service is stopped; the modules of the
-product migrate at the next start:
+`keel product enable <id>` on a running installation calls `keel.product.enable` over the control
+socket; the call records the change and queues the internal task `keel.restart`, which drains the
+task queue, takes the pre-change dump of the database with `COPY … TO STDOUT` into
+`/var/lib/keel/backups/pre-restart-<version>-<instant>/`, one file per table with a
+`manifest.json`, and then makes the kernel exit with status 75. `keel.service` carries
+`RestartForceExitStatus=75` and `SuccessExitStatus=75`, so the service manager starts the service
+again and the new product's modules migrate before the port opens:
+
+```
+runuser -u keel -- keel product enable <id>
+```
+
+The same buttons are on the screen "Products" of the system group, each behind a confirmation
+that names the restart. `keel product disable <id>` restarts the same way and leaves the product's
+tables in place as orphaned, which `keel doctor` lists. While the service is stopped the command
+writes the enabled set directly and the modules migrate at the next start:
 
 ```
 systemctl stop keel
@@ -326,9 +340,8 @@ runuser -u keel -- keel product enable <id>
 systemctl start keel
 ```
 
-`keel product disable <id>` the same way leaves the product's tables in place as orphaned.
-Enabling on a running installation through `keel.product.*` with the restart it requests arrives
-with M4.
+The lease check the design places before `enable` arrives with the license module of M5; until
+then every bundle the binary carries may be enabled.
 
 ## Uninstalling
 

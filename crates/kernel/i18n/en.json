@@ -178,6 +178,8 @@
       "read_call_has_no_outbox": "A read call has no outbox",
       "read_call_has_no_transaction": "A read call has no transaction",
       "request": "{message} (request {id})",
+      "restart_inline": "A restart runs as a task, never inline",
+      "restart_pending": "A restart is already on its way: {reason}, requested by {requestedBy}",
       "route_not_found": "The path {path} does not exist",
       "secret_open": "The sealed value does not open under the data key",
       "secret_seal": "The value could not be sealed under the data key",
@@ -285,6 +287,10 @@
         "state": "State",
         "version": "Version"
       },
+      "confirm": {
+        "disable": "Disable the product {id}? The service restarts without its modules; their tables stay in place and the product can be enabled again.",
+        "enable": "Enable the product {id}? The service restarts to load its modules; the restart takes a few seconds and every open session stays valid."
+      },
       "empty": "No products are compiled into this installation",
       "error": {
         "stored": "The stored product set cannot be read: {reason}",
@@ -296,6 +302,13 @@
       "state": {
         "disabled": "Disabled",
         "enabled": "Enabled"
+      }
+    },
+    "restart": {
+      "progress": {
+        "drain": "Waiting for running tasks to finish",
+        "dump": "Taking the pre-change dump of the database",
+        "request": "Handing the restart to the service manager"
       }
     },
     "role": "Role",

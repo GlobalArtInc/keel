@@ -28,6 +28,10 @@ export function labelKeyOf(descriptor: Descriptor, action: Action): string {
   return `${entityPrefix(descriptor.name)}.action.${action.id}`;
 }
 
+function confirmKeyOf(descriptor: Descriptor, action: Action): string {
+  return `${entityPrefix(descriptor.name)}.confirm.${action.id}`;
+}
+
 export function idsOf(descriptor: Descriptor, rows: readonly Row[]): string[] {
   const key = keyOf(descriptor);
   return rows.map((row) => String(row[key]));
@@ -97,10 +101,7 @@ export class KeelActionRunner {
     const count = rows.length;
     const options: PhxConfirmOptions = {
       title: label,
-      text:
-        count > 1
-          ? this.i18n.t(CONFIRM_MANY_KEY, { action: label, count })
-          : this.i18n.t(CONFIRM_ONE_KEY, { action: label }),
+      text: this.confirmText(request, label, count),
       confirmLabel: label,
     };
     if (confirm !== true) {
@@ -117,5 +118,16 @@ export class KeelActionRunner {
       }
     }
     return this.confirms.confirm(options);
+  }
+
+  private confirmText(request: ActionRequest, label: string, count: number): string {
+    const own = confirmKeyOf(request.descriptor, request.action);
+    if (this.i18n.has(own)) {
+      const ids = idsOf(request.descriptor, request.rows ?? []);
+      return this.i18n.t(own, { action: label, count, id: ids.join(', ') });
+    }
+    return count > 1
+      ? this.i18n.t(CONFIRM_MANY_KEY, { action: label, count })
+      : this.i18n.t(CONFIRM_ONE_KEY, { action: label });
   }
 }

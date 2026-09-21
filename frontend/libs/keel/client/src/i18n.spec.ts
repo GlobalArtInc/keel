@@ -45,6 +45,9 @@ describe('KeelI18n', () => {
     expect(i18n.t('dns.zone.name')).toBe('Name');
     expect(i18n.t('keel.check.ip')).toBe('Enter an IP address');
     expect(i18n.t('dns.zone.missing')).toBe('dns.zone.missing');
+    expect(i18n.has('dns.zone.list.title')).toBe(true);
+    expect(i18n.has('dns.zone.name')).toBe(true);
+    expect(i18n.has('dns.zone.missing')).toBe(false);
   });
 
   it('a refetch of the same language sends the ETag and keeps the catalogue on 304', async () => {

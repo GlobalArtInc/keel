@@ -599,15 +599,32 @@ async fn an_enabled_bundle_loads_its_modules_and_a_disabled_one_leaves_them_orph
     let refused = runtime
         .disable_product(&site.config, "probe")
         .await
-        .expect_err("the enabled set is not edited while the service runs");
+        .expect_err("the direct write of the enabled set is refused while the service runs");
     assert!(matches!(refused, Error::ServiceRunning { .. }), "{refused}");
     assert_eq!(
         site.cli(&["product", "disable", "probe"]).await,
-        ExitCode::FAILURE
+        ExitCode::SUCCESS,
+        "while the service runs the switch goes over the control socket"
+    );
+    assert_eq!(
+        site.database
+            .rows("SELECT value::text FROM keel_kv WHERE key = 'products'")
+            .await,
+        ["{}"]
     );
     assert_eq!(
         site.cli(&["ctl", "probe.ping", "--out", "table"]).await,
+        ExitCode::SUCCESS,
+        "the loaded modules serve until the restart"
+    );
+    assert_eq!(
+        site.cli(&["product", "disable", "probe"]).await,
         ExitCode::SUCCESS
+    );
+    assert_eq!(
+        site.cli(&["product", "enable", "x"]).await,
+        ExitCode::FAILURE,
+        "an unknown bundle is refused over the socket as well"
     );
     assert_eq!(
         site.cli(&["ctl", "keel.account.create", "kind=user", "--out", "json"])
@@ -625,10 +642,13 @@ async fn an_enabled_bundle_loads_its_modules_and_a_disabled_one_leaves_them_orph
     );
     running.stop().await.expect("the runtime stops");
 
-    runtime
-        .disable_product(&site.config, "probe")
-        .await
-        .unwrap();
+    assert_eq!(
+        runtime
+            .disable_product(&site.config, "probe")
+            .await
+            .unwrap(),
+        Change::AlreadyDisabled
+    );
     let running = runtime
         .start(&site.config)
         .await

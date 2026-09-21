@@ -217,6 +217,8 @@ pub trait TaskRunner: Send + Sync {
     async fn checkpoint(&self, id: Id, state: Value) -> Result<()>;
     async fn cancel(&self, id: Id) -> Result<()>;
     async fn state(&self, id: Id) -> Result<TaskState>;
+    async fn quiesce(&self, except: Id) -> Result<Vec<Id>>;
+    fn resume(&self) -> Result<()>;
 }
 
 pub trait ParamMasker: Send + Sync {

@@ -37,6 +37,7 @@ use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
+use crate::restart;
 use crate::secret::DataKeyCipher;
 use crate::storage::SessionLocks;
 
@@ -542,7 +543,9 @@ impl Freezer {
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
         services.provide::<dyn ParamMasker>(self.masks.clone());
         services.provide::<dyn Backups>(self.backups.clone());
+        services.provide::<backup::Handle>(self.backups.clone());
         services.provide(Arc::new(doctor::Handle::new()));
+        services.provide(Arc::new(restart::Handle::new(graph.clock().now())));
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())

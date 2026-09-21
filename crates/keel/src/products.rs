@@ -1,9 +1,12 @@
 use std::fmt;
 
+use keel_kernel::ctl::{self, Out};
+use keel_kernel::socket::ClientError;
 use keel_kernel::{Composition, Config, Storage, products};
 use keel_sdk::ProductManifest;
 use keel_sdk::chrono::Utc;
 use keel_sdk::sea_orm::TransactionTrait;
+use serde_json::{Value, json};
 use tokio::net::UnixStream;
 
 use crate::VERSION;
@@ -28,6 +31,53 @@ pub enum Change {
     AlreadyEnabled,
     Disabled,
     AlreadyDisabled,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Wanted {
+    Enabled,
+    Disabled,
+}
+
+#[derive(Debug)]
+pub(crate) enum Switched {
+    Stopped(Change),
+    Running(Change),
+    Refused(String),
+}
+
+impl Wanted {
+    fn function(self) -> &'static str {
+        match self {
+            Wanted::Enabled => "keel.product.enable",
+            Wanted::Disabled => "keel.product.disable",
+        }
+    }
+
+    fn change(self, changed: bool) -> Change {
+        match (self, changed) {
+            (Wanted::Enabled, true) => Change::Enabled,
+            (Wanted::Enabled, false) => Change::AlreadyEnabled,
+            (Wanted::Disabled, true) => Change::Disabled,
+            (Wanted::Disabled, false) => Change::AlreadyDisabled,
+        }
+    }
+}
+
+impl fmt::Display for Switched {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Switched::Stopped(change) => write!(f, "{change}"),
+            Switched::Running(Change::Enabled) => {
+                f.write_str("enabled; the service restarts to load its modules")
+            }
+            Switched::Running(Change::Disabled) => {
+                f.write_str("disabled; the service restarts without its modules")
+            }
+            Switched::Running(change) => write!(f, "{change}"),
+            Switched::Refused(text) => f.write_str(text),
+        }
+    }
 }
 
 impl fmt::Display for ProductState {
@@ -87,6 +137,42 @@ impl Runtime {
         let outcome = self.states(&storage).await;
         storage.close().await?;
         outcome
+    }
+
+    pub(crate) async fn switch_product(
+        &self,
+        config: &Config,
+        id: &str,
+        wanted: Wanted,
+    ) -> Result<Switched, Error> {
+        let request = ctl::Request {
+            func: wanted.function().to_owned(),
+            params: json!({ "id": id }),
+            out: Out::Json,
+            lang: "en".to_owned(),
+            run_as: None,
+        };
+        let output = match ctl::run(&config.socket, &request).await {
+            Ok(output) => output,
+            Err(ctl::CtlError::Client(ClientError::Connect { .. })) => {
+                let change = match wanted {
+                    Wanted::Enabled => self.enable_product(config, id).await?,
+                    Wanted::Disabled => self.disable_product(config, id).await?,
+                };
+                return Ok(Switched::Stopped(change));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        if !output.ok {
+            return Ok(Switched::Refused(output.text));
+        }
+        let changed = serde_json::from_str::<Value>(&output.text)
+            .ok()
+            .and_then(|envelope| envelope["data"]["changed"].as_bool());
+        Ok(match changed {
+            Some(changed) => Switched::Running(wanted.change(changed)),
+            None => Switched::Refused(output.text),
+        })
     }
 
     pub async fn enable_product(&self, config: &Config, id: &str) -> Result<Change, Error> {
@@ -207,5 +293,30 @@ mod tests {
             "dns\tenabled\tnot carried by this binary"
         );
         assert_eq!(Change::AlreadyEnabled.to_string(), "already enabled");
+    }
+
+    #[test]
+    fn a_switch_names_the_restart_only_when_the_running_service_changed_the_set() {
+        assert_eq!(Switched::Stopped(Change::Enabled).to_string(), "enabled");
+        assert_eq!(
+            Switched::Running(Change::Enabled).to_string(),
+            "enabled; the service restarts to load its modules"
+        );
+        assert_eq!(
+            Switched::Running(Change::Disabled).to_string(),
+            "disabled; the service restarts without its modules"
+        );
+        assert_eq!(
+            Switched::Running(Change::AlreadyDisabled).to_string(),
+            "already disabled"
+        );
+        assert_eq!(
+            Switched::Refused("error: conflict x".into()).to_string(),
+            "error: conflict x"
+        );
+        assert_eq!(Wanted::Enabled.function(), "keel.product.enable");
+        assert_eq!(Wanted::Disabled.function(), "keel.product.disable");
+        assert_eq!(Wanted::Enabled.change(false), Change::AlreadyEnabled);
+        assert_eq!(Wanted::Disabled.change(true), Change::Disabled);
     }
 }

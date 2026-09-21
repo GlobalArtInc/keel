@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
+use keel_sdk::system::{TaskRunner, TaskSpec};
 
+use super::restart::{CLASS as RESTART_CLASS, RESTART};
 use crate::products::{self, Composed, EnabledSet, ProductsError};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -139,6 +141,7 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
             by = call.principal().login,
             "the enabled product set changed; a restart applies it"
         );
+        request_restart(call, wanted, id)?;
     }
     Ok(ProductChange {
         id: id.to_owned(),
@@ -146,6 +149,40 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
         changed,
         restart: changed,
     })
+}
+
+fn request_restart(call: &Call<ProductPick>, wanted: ProductState, id: &str) -> Result<()> {
+    let Ok(runner) = call.require::<dyn TaskRunner>() else {
+        tracing::warn!(
+            product = id,
+            "no task runner is composed; the change takes effect at the next start"
+        );
+        return Ok(());
+    };
+    let reason = format!("product {} {id}", verb(wanted));
+    let requested_at = call.require::<dyn Clock>()?.now();
+    call.after_commit(move |context| async move {
+        let spawned = runner
+            .spawn(TaskSpec {
+                function: RESTART.to_owned(),
+                params: json!({ "reason": reason, "requestedAt": requested_at }),
+                principal: context.principal().clone(),
+                class: RESTART_CLASS.to_owned(),
+                resumable: false,
+                request_id: Some(context.request_id().to_owned()),
+            })
+            .await?;
+        tracing::info!(task = %spawned, reason, "the restart task is queued");
+        Ok(())
+    });
+    Ok(())
+}
+
+fn verb(state: ProductState) -> &'static str {
+    match state {
+        ProductState::Enabled => "enable",
+        ProductState::Disabled => "disable",
+    }
 }
 
 fn stored(error: ProductsError) -> KeelError {

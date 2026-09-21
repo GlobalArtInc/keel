@@ -4,6 +4,7 @@ mod entity;
 mod health;
 mod principals;
 mod products;
+mod restart;
 mod source;
 
 use keel_sdk::prelude::*;
@@ -13,6 +14,7 @@ pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
 use health::DOCTOR_RUN;
 pub use health::LOGS_TAIL;
 pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
+pub use restart::RESTART;
 pub(crate) use source::{StoredAccounts, StoredPrincipals};
 
 pub static MODULE: ModuleDef = ModuleDef {
@@ -24,10 +26,11 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 15] = [
+pub const FUNCTIONS: [&str; 16] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
+    RESTART,
     "keel.account.list",
     "keel.account.get",
     "keel.account.create",
@@ -65,6 +68,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(products::list())
         .function(products::enable())
         .function(products::disable())
+        .function(restart::restart())
         .function(crate::export::function())
         .function(health::doctor_run())
         .function(health::logs_tail())
@@ -108,7 +112,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_fifteen_functions_under_the_keel_prefix() {
+    fn the_kernel_module_registers_its_sixteen_functions_under_the_keel_prefix() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let names: Vec<&str> = registrar.function_names().into_iter().collect();

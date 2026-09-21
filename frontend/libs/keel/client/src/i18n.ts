@@ -31,4 +31,8 @@ export class KeelI18n {
     const message = lookup(this.messages(), key);
     return message === undefined ? key : format(message, params);
   }
+
+  has(key: string): boolean {
+    return lookup(this.messages(), key) !== undefined;
+  }
 }

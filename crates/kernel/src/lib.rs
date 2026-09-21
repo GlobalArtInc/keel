@@ -14,6 +14,7 @@ pub mod logs;
 pub mod migrations;
 pub mod products;
 pub mod registry;
+pub mod restart;
 pub mod secret;
 pub mod socket;
 pub mod storage;

@@ -17,6 +17,7 @@ use tokio::sync::Notify;
 use super::entity::{job, step};
 use super::log;
 use super::sink::JobSink;
+use super::worker::{STOP_GRACE, quiesce};
 
 pub const FRAME_KIND: &str = "task.progress";
 pub const ERROR_INTERRUPTED: &str = "task.error.interrupted";
@@ -415,6 +416,16 @@ impl TaskRunner for Runner {
     async fn state(&self, id: Id) -> Result<TaskState> {
         let shared = self.shared()?;
         state_of(&shared.load(id).await?)
+    }
+
+    async fn quiesce(&self, except: Id) -> Result<Vec<Id>> {
+        let shared = self.shared()?;
+        Ok(quiesce(shared, except, STOP_GRACE).await)
+    }
+
+    fn resume(&self) -> Result<()> {
+        self.shared()?.resume();
+        Ok(())
     }
 }
 

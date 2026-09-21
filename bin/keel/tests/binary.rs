@@ -321,8 +321,11 @@ mod demo {
             "{table}"
         );
         assert!(lines[1].starts_with("x "), "{table}");
-        let refused = site.failed(&["product", "disable", "demo"]);
-        assert!(refused.contains("the service is running"), "{refused}");
+        assert_eq!(
+            site.ok(&["product", "enable", "demo"]).trim(),
+            "demo: already enabled",
+            "the switch goes over the control socket while the service runs"
+        );
 
         let (status, body) = http(&site, "GET", "/healthz", "").await;
         assert_eq!(status, 200, "{body}");
@@ -389,6 +392,42 @@ mod demo {
         let (status, body) = http(&site, "GET", "/missing.png", "").await;
         assert_eq!(status, 404, "{body}");
         assert_eq!(body["error"]["key"], json!("keel.error.route_not_found"));
+
+        assert_eq!(
+            site.ok(&["product", "disable", "demo"]).trim(),
+            "demo: disabled; the service restarts without its modules"
+        );
+        let status = tokio::time::timeout(Duration::from_secs(60), serve.wait())
+            .await
+            .expect("keel serve exits for the restart")
+            .expect("the exit status is read");
+        assert_eq!(status.code(), Some(75), "{status}");
+        assert!(!site.socket.exists());
+        assert!(
+            site.ok(&["product", "list"])
+                .lines()
+                .any(|line| line.starts_with("demo\tdisabled\t")),
+            "the enabled set changed before the exit"
+        );
+        assert_eq!(
+            site.ok(&["product", "enable", "demo"]).trim(),
+            "demo: enabled",
+            "the stopped service takes the direct path"
+        );
+        let migrated = site.ok(&["migrate"]);
+        assert!(migrated.contains("note: up to date"), "{migrated}");
+        let again = std::fs::File::create(site.dir.path().join("serve-again.log"))
+            .expect("the log file is created");
+        let stderr = again.try_clone().expect("the log file handle is cloned");
+        let mut serve = tokio::process::Command::from(site.command(&["serve"]))
+            .stdout(Stdio::from(again))
+            .stderr(stderr)
+            .kill_on_drop(true)
+            .spawn()
+            .expect("keel serve starts again");
+        wait_for_socket(&site.socket, &mut serve).await;
+        let listed = site.ok(&["ctl", "note.list", "--out", "json"]);
+        assert!(listed.contains("\"ok\": true"), "{listed}");
 
         let pid = serve.id().expect("the service has a pid").to_string();
         let signalled = Command::new("kill")

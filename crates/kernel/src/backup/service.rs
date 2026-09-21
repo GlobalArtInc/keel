@@ -11,6 +11,7 @@ use keel_sdk::system::{BackupCreated, BackupManifest, BackupModule, BackupProduc
 use keel_sdk::{KeelError, Result as SdkResult};
 use keel_types::Id;
 
+use super::prechange::{self, PreChange};
 use super::restore::Request;
 use super::seal::{Passphrase, SealedKey};
 use super::{BackupError, ERROR_NOT_STARTED, archive, dump, files, manifest, seal, sources};
@@ -297,6 +298,13 @@ impl Handle {
         self.attached
             .get()
             .ok_or_else(|| KeelError::unavailable(ERROR_NOT_STARTED))
+    }
+
+    pub(crate) async fn pre_change(&self, label: &str, reason: &str) -> SdkResult<PreChange> {
+        let (site, db) = self.attached()?;
+        let at = site.now();
+        let dir = prechange::dir_of(&site.directory(), label, &site.version, at);
+        Ok(prechange::write(db, &dir, &site.version, reason, at).await?)
     }
 }
 

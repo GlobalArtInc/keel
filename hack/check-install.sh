@@ -108,6 +108,8 @@ check "install.sh installs every listed unit into the unit directory" grep -qF '
 check "install.sh starts the privileged unit and the update trigger" grep -qF 'systemctl start keel-privileged.service keel-update.path' deploy/install.sh
 check "keel-update.service is started by the path unit alone" test -z "$(unit_value keel-update.service WantedBy)"
 check "keel.service runs as keel" test "$(unit_value keel.service User)" = "keel"
+check "keel.service restarts on the kernel's restart exit status" test "$(unit_value keel.service RestartForceExitStatus)" = "75"
+check "keel.service counts the restart exit status as a clean exit" test "$(unit_value keel.service SuccessExitStatus)" = "75"
 check "keel-privileged.service runs as root" test "$(unit_value keel-privileged.service User)" = "root"
 check "keel-update.service runs as root" test "$(unit_value keel-update.service User)" = "root"
 check "keel-update.service is a oneshot" test "$(unit_value keel-update.service Type)" = "oneshot"

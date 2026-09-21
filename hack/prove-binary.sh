@@ -328,6 +328,33 @@ stop_serve() {
   fi
 }
 
+serve_exits_with() {
+  local expected=$1
+  if [ -z "$serve_pid" ]; then
+    echo "  keel serve is not running" >&2
+    return 1
+  fi
+  local pid=$serve_pid
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$((timeout * 10))" ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "  keel serve did not exit within ${timeout}s" >&2
+    sed 's/^/  /' "$serve_log" >&2
+    return 1
+  fi
+  serve_pid=""
+  local status=0
+  wait "$pid" || status=$?
+  if [ "$status" -ne "$expected" ]; then
+    echo "  keel serve exited with $status, not $expected" >&2
+    sed 's/^/  /' "$serve_log" >&2
+    return 1
+  fi
+}
+
 socket_is_gone() {
   [ ! -e "$site/run/core.sock" ]
 }
@@ -349,6 +376,17 @@ task_reaches() {
 
 task_sql() {
   psql "$(database_url "$admin_url" "$database")" -qAt -c "$1"
+}
+
+sql_is() {
+  local sql=$1 expected=$2
+  local actual
+  actual=$(task_sql "$sql")
+  if [ "$actual" != "$expected" ]; then
+    echo "  expected: $expected" >&2
+    echo "  actual:   $actual" >&2
+    return 1
+  fi
 }
 
 unclaimed_section_logged() {
@@ -781,6 +819,51 @@ check "the bundle's ledgers name the kernel and the note module" json_is "$site/
 check "the bundle's doctor report has no failure" grep -qE '^[0-9]+ ok, [0-9]+ warn, 0 fail; keel ' "$site/support/doctor.txt"
 check "the bundle's manifest lists the entries and the version" json_is "$site/support/manifest.json" 'doc["keel"] == "'"$version"'" and doc["entries"][0] == "config.yaml" and "readiness.json" in doc["notes"]'
 check "support-bundle never overwrites an archive" keel_fails "$site/support-again.err" support-bundle --out "$site/support.tar.zst" "${layout[@]}"
+echo "--- the product switch on the running installation"
+note_ledger_sql="SELECT string_agg(id::text || ':' || timestamp::text || ':' || name, ',' ORDER BY id) FROM keel.keel_migration_note"
+note_tables_sql="SELECT string_agg(table_name::text, ',' ORDER BY table_name) FROM information_schema.tables WHERE table_schema = 'keel' AND table_name LIKE 'note_%'"
+note_state_sql="SELECT state FROM keel.keel_module WHERE id = 'note'"
+note_ledger=$(task_sql "$note_ledger_sql")
+note_tables=$(task_sql "$note_tables_sql")
+check "the note ledger holds the applied migrations" test -n "$note_ledger"
+check "the note tables exist" test -n "$note_tables"
+check "product disable demo over the control socket" keel_ok "$site/disable-online.out" product disable demo
+check "product disable prints the restart" stdout_is "$site/disable-online.out" "demo: disabled; the service restarts without its modules"
+check "keel serve exits with the restart status" serve_exits_with 75
+check "the socket file is removed by the restart" socket_is_gone
+restart_dump=$(ls -d "$site"/lib/backups/pre-restart-"$version"-* | head -n 1)
+check "the pre-restart dump names the reason, the version and the note table" json_is "$restart_dump/manifest.json" "doc['keel'] == '$version' and doc['reason'] == 'product disable demo' and doc['schema'] == 'keel' and doc['format'] == 'copy-text' and 'note_item' in doc['tables'] and 'keel_kv' in doc['tables'] and 'task_job' in doc['tables']"
+check "the pre-restart dump holds one file per table" test "$(ls "$restart_dump"/*.copy | wc -l | tr -d ' ')" = "$(json_get "$restart_dump/manifest.json" 'len(doc["tables"])')"
+check "the pre-restart dump carries the notes" grep -q "hers" "$restart_dump/note_item.copy"
+check "the note tables survive the disable" sql_is "$note_tables_sql" "$note_tables"
+check "the note ledger survives the disable" sql_is "$note_ledger_sql" "$note_ledger"
+check "the restart task ended done" sql_is "SELECT string_agg(state, ',') FROM keel.task_job WHERE function = 'keel.restart'" "done"
+start_serve switched-off
+check "the note module is orphaned after the restart" sql_is "$note_state_sql" "orphaned"
+check "ctl note.list is refused while demo is disabled" keel_fails "$site/notes-off.json" ctl note.list
+check "note.list answers not_found while demo is disabled" json_is "$site/notes-off.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
+check "ctl keel.product.list --out json after the disable" keel_ok "$site/products-off.json" ctl keel.product.list --out json
+check "keel.product.list answers demo disabled" json_is "$site/products-off.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"]] == [("demo", "disabled", None)]'
+check "product disable demo while disabled prints already disabled" keel_ok "$site/disable-again.out" product disable demo
+check "the second disable requests no restart" stdout_is "$site/disable-again.out" "demo: already disabled"
+check "product enable demo over the control socket" keel_ok "$site/enable-online.out" product enable demo
+check "product enable prints the restart" stdout_is "$site/enable-online.out" "demo: enabled; the service restarts to load its modules"
+check "keel serve exits with the restart status again" serve_exits_with 75
+check "the note ledger is unchanged by the enable" sql_is "$note_ledger_sql" "$note_ledger"
+start_serve switched-on
+check "the start applied no note migration" grep -q '("note", \[\])' "$serve_log"
+check "the note module is active again" sql_is "$note_state_sql" "active"
+check "the note ledger is unchanged after the start" sql_is "$note_ledger_sql" "$note_ledger"
+check "the note tables are the ones from before the switch" sql_is "$note_tables_sql" "$note_tables"
+check "ctl note.list answers again" keel_ok "$site/notes-on.json" ctl note.list --out json
+check "note.list answers the notes written before the switch" cmp -s <(json_get "$site/notes-at-backup.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))') <(json_get "$site/notes-on.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))')
+check "keel.product.list answers demo enabled by the owner" keel_ok "$site/products-on.json" ctl keel.product.list --out json
+check "the enabled set records the owner of the socket" json_is "$site/products-on.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"]] == [("demo", "enabled", "owner")]'
+check "product enable demo while enabled prints already enabled" keel_ok "$site/enable-again.out" product enable demo
+check "the second enable requests no restart" stdout_is "$site/enable-again.out" "demo: already enabled"
+check "product enable of an unknown bundle is refused over the socket" keel_fails "$site/enable-unknown.err" product enable nothing
+check "the refusal names the unknown product" grep -q "keel.product.error.unknown" "$site/enable-unknown.err"
+check "the two restart tasks are done with their three steps" sql_is "SELECT string_agg(state || ':' || progress_done || '/' || progress_total, ',' ORDER BY created_at) FROM keel.task_job WHERE function = 'keel.restart'" "done:3/3,done:3/3"
 echo "--- the ip rule and the update"
 check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
 check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["ok"] is True and doc["data"]["action"] == "deny" and doc["data"]["cidr"] == "127.0.0.1/32" and doc["data"]["level"] == "user" and doc["data"]["comment"] == "prove" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
@@ -799,6 +882,7 @@ audit_sql() {
   psql "$(database_url "$admin_url" "$database")" -qAt -c "$1"
 }
 check "the stopped worker left no audit event unwritten" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.ip_rule.create'")" = "1"
+check "the audit trail records the switches over the socket, the restarts they requested and the refused bundle" sql_is "SELECT string_agg(function || ':' || via || ':' || status || ':' || coalesce(params_redacted->>'id', params_redacted->>'reason'), ' ' ORDER BY at) FROM keel.audit_call WHERE function IN ('keel.product.disable', 'keel.product.enable', 'keel.restart')" "keel.product.disable:socket:committed:demo keel.restart:internal:committed:product disable demo keel.product.disable:socket:committed:demo keel.product.enable:socket:committed:demo keel.restart:internal:committed:product enable demo keel.product.enable:socket:committed:demo keel.product.enable:socket:failed:nothing"
 check "the failed login is a failed row with the password masked" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'failed' AND error_key = 'auth.error.credentials' AND principal_id IS NULL AND account_id = '$root_account' AND params_redacted->>'password' = '***' AND params_redacted->>'login' = 'alice'")" = "5"
 check "the committed logins mask the password the same way" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.login' AND status = 'committed' AND params_redacted->>'password' <> '***'")" = "0"
 check "auth.password.set records the masked password" test "$(audit_sql "SELECT count(*) FROM keel.audit_call WHERE function = 'auth.password.set' AND params_redacted->>'password' <> '***'")" = "0"
@@ -836,7 +920,7 @@ check "audit.list answers the su row with root as the principal" json_is "$site/
 check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
-check "task.list keeps the two finished exports, the backup and the update after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 4 and sorted((row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]) == [("backup.create", "done", "2/2"), ("note.export", "done", "4/4"), ("note.export", "done", "4/4"), ("update.apply", "done", "3/3")]'
+check "task.list keeps the two finished exports, the backup, the two restarts and the update after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 6 and sorted((row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]) == [("backup.create", "done", "2/2"), ("keel.restart", "done", "3/3"), ("keel.restart", "done", "3/3"), ("note.export", "done", "4/4"), ("note.export", "done", "4/4"), ("update.apply", "done", "3/3")]'
 check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job.list --out json
 check "cron.job.list answers the poll job of notify and the daily check of update" json_is "$site/cron-jobs.json" 'doc["ok"] is True and sorted((row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]) == [("notify.problems.poll", "notify", "* * * * *"), ("update.poll", "update", "30 4 * * *")]'
 check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json

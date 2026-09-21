@@ -184,6 +184,14 @@ impl TaskRunner for RunnerDouble {
     async fn state(&self, _: Id) -> Result<TaskState> {
         Ok(TaskState::Queued)
     }
+
+    async fn quiesce(&self, _: Id) -> Result<Vec<Id>> {
+        Ok(Vec::new())
+    }
+
+    fn resume(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 struct SinkDouble {

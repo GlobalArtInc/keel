@@ -25,6 +25,7 @@ function load<T>(name: string): T {
 }
 
 const LIST = load<Descriptor>('descriptor-dns-zone-list.json');
+const PRODUCTS = load<Descriptor>('descriptors/keel.product.list.json');
 const ENABLE = load<Descriptor>('descriptors/keel.product.enable.json');
 const BOOT = load<Boot>('boot.json');
 const ZONES: Row[] = [
@@ -46,7 +47,8 @@ const MESSAGES = {
       unavailable: 'Temporarily unavailable',
     },
     product: {
-      action: { enable: 'Enable' },
+      action: { enable: 'Enable', disable: 'Disable' },
+      confirm: { enable: 'Enable the product {id}? The service restarts to load its modules.' },
       state: { enabled: 'Enabled' },
       column: { id: 'Product', state: 'State' },
     },
@@ -212,6 +214,46 @@ describe('the action runner', () => {
     expect(client.calls.map((call) => [call.func, call.params])).toEqual([
       ['dns.zone.suspend', { ids: ['z1'] }],
     ]);
+  });
+
+  it('a confirmation text of the action itself replaces the generic question', async () => {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: {
+        'keel.product.enable': ok({ id: 'dns', state: 'enabled', changed: true, restart: true }),
+        'keel.product.disable': ok({ id: 'dns', state: 'disabled', changed: true, restart: true }),
+      },
+    });
+    const actions = PRODUCTS.ui?.actions ?? [];
+    const enable = actions.find((entry) => entry.id === 'enable');
+    const disable = actions.find((entry) => entry.id === 'disable');
+    if (enable === undefined || disable === undefined) {
+      throw new Error('the products screen names its two actions');
+    }
+    const row: Row = { id: 'dns', state: 'disabled' };
+    const run = (await runner(client)).run({ descriptor: PRODUCTS, action: enable, rows: [row] });
+    tick();
+    const open = dialog();
+    expect(open.querySelector('.title')?.textContent).toBe('Enable');
+    expect(open.querySelector('.text')?.textContent).toBe(
+      'Enable the product dns? The service restarts to load its modules.',
+    );
+    confirmButton().click();
+    expect((await run)?.ok).toBe(true);
+    expect(client.calls.map((call) => [call.func, call.params])).toEqual([
+      ['keel.product.enable', { id: 'dns' }],
+    ]);
+
+    const fallback = TestBed.inject(KeelActionRunner).run({
+      descriptor: PRODUCTS,
+      action: disable,
+      rows: [row],
+    });
+    tick();
+    expect(dialog().querySelector('.text')?.textContent).toBe('Continue with Disable?');
+    cancelButton().click();
+    expect(await fallback).toBeNull();
   });
 
   it('a failure shows a toast with the message and the request id', async () => {

@@ -6,7 +6,7 @@ use std::time::Duration;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::doctor::{self, Layout};
-use keel_kernel::{Config, logging};
+use keel_kernel::{Config, logging, restart};
 use keel_release::{KeyRing, PublicKey};
 use keel_types::TaskState;
 use serde_json::{Value, json};
@@ -17,7 +17,8 @@ use crate::backup::{self, BackupCliError, RESTORE_CLI, describe_manifest};
 use crate::doctor::SupportCliError;
 use crate::error::{Error, describe};
 use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
-use crate::runtime::Runtime;
+use crate::products::{Switched, Wanted};
+use crate::runtime::{Runtime, Stopped};
 
 const UPDATE_CHECK: &str = "update.check";
 const UPDATE_APPLY: &str = "update.apply";
@@ -279,9 +280,13 @@ impl UpdateStep {
 pub(crate) enum ProductAction {
     #[command(about = "Print every bundle this binary carries with its state")]
     List,
-    #[command(about = "Enable a bundle; its modules load at the next start")]
+    #[command(
+        about = "Enable a bundle: over the control socket while the service runs, which restarts it, or in the database while it is stopped"
+    )]
     Enable { id: String },
-    #[command(about = "Disable a bundle; its modules become orphaned at the next start")]
+    #[command(
+        about = "Disable a bundle the same way; its modules become orphaned and their tables stay in place"
+    )]
     Disable { id: String },
 }
 
@@ -353,8 +358,10 @@ impl Runtime {
                 Command::Serve => {
                     let config = load(cli.config.as_deref())?;
                     logging::init(&config.log)?;
-                    self.serve(&config, signals()).await?;
-                    Ok(ExitCode::SUCCESS)
+                    Ok(match self.serve_until(&config, signals()).await? {
+                        Stopped::Shutdown => ExitCode::SUCCESS,
+                        Stopped::Restart(_) => ExitCode::from(restart::EXIT_STATUS),
+                    })
                 }
                 Command::Migrate => {
                     let config = load(cli.config.as_deref())?;
@@ -370,22 +377,26 @@ impl Runtime {
                 }
                 Command::Product { action } => {
                     let config = load(cli.config.as_deref())?;
-                    match action {
+                    let (id, wanted) = match action {
                         ProductAction::List => {
                             for state in self.list_products(&config).await? {
                                 println!("{state}");
                             }
+                            return Ok(ExitCode::SUCCESS);
                         }
-                        ProductAction::Enable { id } => {
-                            let change = self.enable_product(&config, &id).await?;
-                            println!("{id}: {change}");
+                        ProductAction::Enable { id } => (id, Wanted::Enabled),
+                        ProductAction::Disable { id } => (id, Wanted::Disabled),
+                    };
+                    Ok(match self.switch_product(&config, &id, wanted).await? {
+                        Switched::Refused(text) => {
+                            eprintln!("{}", text.trim_end_matches('\n'));
+                            ExitCode::FAILURE
                         }
-                        ProductAction::Disable { id } => {
-                            let change = self.disable_product(&config, &id).await?;
-                            println!("{id}: {change}");
+                        switched => {
+                            println!("{id}: {switched}");
+                            ExitCode::SUCCESS
                         }
-                    }
-                    Ok(ExitCode::SUCCESS)
+                    })
                 }
                 Command::Privileged(args) => match args.action {
                     None => {
@@ -1127,6 +1138,26 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "doctor", "--out", "yaml"]).is_err());
         assert!(Cli::try_parse_from(["keel", "doctor", "extra"]).is_err());
         assert!(Cli::try_parse_from(["keel", "support-bundle", "--out"]).is_err());
+    }
+
+    #[test]
+    fn the_kernel_unit_restarts_the_service_on_the_restart_exit_status() {
+        let unit = include_str!("../../../deploy/systemd/keel.service");
+        let status = restart::EXIT_STATUS;
+        assert!(unit.lines().any(|line| line == "Restart=always"), "{unit}");
+        assert!(
+            unit.lines()
+                .any(|line| line == format!("RestartForceExitStatus={status}")),
+            "{unit}"
+        );
+        assert!(
+            unit.lines()
+                .any(|line| line == format!("SuccessExitStatus={status}")),
+            "{unit}"
+        );
+        assert_ne!(status, 0);
+        assert_ne!(status, 1);
+        assert_ne!(status, 2);
     }
 
     #[test]

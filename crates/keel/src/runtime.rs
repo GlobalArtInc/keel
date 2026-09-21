@@ -3,20 +3,27 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use keel_kernel::doctor::{self, Doctor, Layout};
 use keel_kernel::http::Frontend;
 use keel_kernel::loader::{Migrated, Sections};
+use keel_kernel::restart::{self, Requested};
 use keel_kernel::socket::Serving;
 use keel_kernel::tls;
 use keel_kernel::{
     Config, Dispatcher, Http, HttpError, HttpOptions, Instance, Kernel, Readiness, Served, Socket,
     Storage, TlsMaterial,
 };
+use keel_sdk::system::TaskRunner;
+use keel_sdk::types::Id;
 use keel_sdk::{ModuleDef, ProductManifest};
 
 use crate::VERSION;
 use crate::error::Error;
+
+const RESTART_TASK_GRACE: Duration = Duration::from_secs(30);
+const RESTART_TASK_POLL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug, Default)]
 pub struct Runtime {
@@ -34,6 +41,13 @@ pub struct Running {
     tls: TlsMaterial,
     socket: Serving,
     products: Vec<String>,
+    restart: Option<Arc<restart::Handle>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Stopped {
+    Shutdown,
+    Restart(Requested),
 }
 
 impl Runtime {
@@ -106,6 +120,7 @@ impl Runtime {
                     socket = %socket.path().display(),
                     "keel is ready"
                 );
+                let restart = kernel.registry().services().get::<restart::Handle>();
                 Ok(Running {
                     storage: storage.clone(),
                     instance,
@@ -115,6 +130,7 @@ impl Runtime {
                     tls,
                     socket,
                     products: enabled,
+                    restart,
                 })
             }
             Err(error) => {
@@ -173,10 +189,39 @@ impl Runtime {
         config: &Config,
         shutdown: impl Future<Output = ()>,
     ) -> Result<(), Error> {
+        self.serve_until(config, shutdown).await.map(|_| ())
+    }
+
+    pub(crate) async fn serve_until(
+        &self,
+        config: &Config,
+        shutdown: impl Future<Output = ()>,
+    ) -> Result<Stopped, Error> {
         let running = self.start(config).await?;
-        shutdown.await;
-        tracing::info!("shutdown requested");
-        running.stop().await
+        let restart = running.restart.clone();
+        let runner = running.kernel.registry().services().get::<dyn TaskRunner>();
+        let stopped = tokio::select! {
+            () = shutdown => {
+                tracing::info!("shutdown requested");
+                Stopped::Shutdown
+            }
+            requested = restart_requested(restart) => {
+                tracing::info!(
+                    reason = requested.reason,
+                    requested_by = requested.requested_by,
+                    task = ?requested.task,
+                    at = %requested.at,
+                    exit_status = restart::EXIT_STATUS,
+                    "restart requested; the process exits for the service manager to start it again"
+                );
+                if let (Some(runner), Some(task)) = (runner, requested.task) {
+                    await_task(runner, task).await;
+                }
+                Stopped::Restart(requested)
+            }
+        };
+        running.stop().await?;
+        Ok(stopped)
     }
 
     pub async fn migrate(&self, config: &Config) -> Result<Migrated, Error> {
@@ -253,5 +298,31 @@ impl Running {
                 Ok(())
             }
         }
+    }
+}
+
+async fn restart_requested(handle: Option<Arc<restart::Handle>>) -> Requested {
+    match handle {
+        Some(handle) => handle.requested().await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn await_task(runner: Arc<dyn TaskRunner>, task: Id) {
+    let deadline = tokio::time::Instant::now() + RESTART_TASK_GRACE;
+    loop {
+        match runner.state(task).await {
+            Ok(state) if state.is_final() => return,
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(task = %task, error = %error, "the restart task cannot be observed; stopping now");
+                return;
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!(task = %task, "the restart task did not end within the grace; stopping now");
+            return;
+        }
+        tokio::time::sleep(RESTART_TASK_POLL).await;
     }
 }

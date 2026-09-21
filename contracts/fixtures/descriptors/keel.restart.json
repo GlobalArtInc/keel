@@ -1,0 +1,77 @@
+{
+  "keel": 1,
+  "name": "keel.restart",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "RestartRequest",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "requestedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time",
+        "default": null
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "result": {
+    "title": "Restarted",
+    "type": "object",
+    "properties": {
+      "reason": {
+        "type": "string"
+      },
+      "requestedBy": {
+        "type": "string"
+      },
+      "applied": {
+        "type": "boolean"
+      },
+      "dump": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tables": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "leftRunning": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "exitStatus": {
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0,
+        "maximum": 255
+      }
+    },
+    "required": [
+      "reason",
+      "requestedBy",
+      "applied",
+      "tables",
+      "leftRunning",
+      "exitStatus"
+    ]
+  }
+}
