@@ -2316,6 +2316,7 @@ dependencies = [
  "keel-sdk",
  "keel-testkit",
  "keel-types",
+ "nix",
  "rand 0.10.2",
  "rcgen",
  "reqwest",

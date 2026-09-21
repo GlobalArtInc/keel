@@ -184,6 +184,13 @@
           "func": "auth.grant.list",
           "kind": "list",
           "icon": "user-cog"
+        },
+        {
+          "path": "system/health",
+          "label": "keel.doctor.run.title",
+          "func": "keel.doctor.run",
+          "kind": "list",
+          "icon": "activity"
         }
       ]
     }

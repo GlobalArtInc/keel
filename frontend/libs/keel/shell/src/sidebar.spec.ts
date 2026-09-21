@@ -32,6 +32,7 @@ const MESSAGES = {
     account: { list: { title: 'Accounts' } },
     principal: { list: { title: 'Principals' } },
     product: { list: { title: 'Products' } },
+    doctor: { run: { title: 'Health' } },
   },
 };
 
@@ -146,6 +147,7 @@ const SYSTEM: ShownGroup = {
     'Accounts /f/keel.account.list',
     'Principals /f/keel.principal.list',
     'Products /f/keel.product.list',
+    'Health /f/keel.doctor.run',
   ],
 };
 const DNS: ShownGroup = { id: 'dns', label: 'DNS', items: ['Zones /f/dns.zone.list'] };

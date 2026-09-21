@@ -307,27 +307,31 @@ impl DatabaseUrl {
     }
 
     pub fn redacted(&self) -> String {
-        let Some((scheme, rest)) = self.0.split_once("://") else {
-            return self.0.clone();
-        };
-        let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-        let (authority, tail) = rest.split_at(authority_end);
-        let authority = match authority.rsplit_once('@') {
-            Some((userinfo, host)) => match userinfo.split_once(':') {
-                Some((user, _)) => format!("{user}:{MASK}@{host}"),
-                None => format!("{userinfo}@{host}"),
-            },
-            None => authority.to_owned(),
-        };
-        let tail = match tail.split_once('?') {
-            Some((path, query)) => format!("{path}?{}", redact_query(query)),
-            None => tail.to_owned(),
-        };
-        format!("{scheme}://{authority}{tail}")
+        redact_url(&self.0)
     }
 }
 
 const MASK: &str = "***";
+
+pub(crate) fn redact_url(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_owned();
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(authority_end);
+    let authority = match authority.rsplit_once('@') {
+        Some((userinfo, host)) => match userinfo.split_once(':') {
+            Some((user, _)) => format!("{user}:{MASK}@{host}"),
+            None => format!("{userinfo}@{host}"),
+        },
+        None => authority.to_owned(),
+    };
+    let tail = match tail.split_once('?') {
+        Some((path, query)) => format!("{path}?{}", redact_query(query)),
+        None => tail.to_owned(),
+    };
+    format!("{scheme}://{authority}{tail}")
+}
 
 fn redact_query(query: &str) -> String {
     query
@@ -568,6 +572,19 @@ log: { level: debug, format: text }
                 "{text}: {error}"
             );
         }
+    }
+
+    #[test]
+    fn a_raw_url_with_a_placeholder_is_redacted_without_parsing() {
+        assert_eq!(
+            redact_url("postgres://keel:${KEEL_DB_PASS}@db.example.net/keel"),
+            "postgres://keel:***@db.example.net/keel"
+        );
+        assert_eq!(
+            redact_url("postgres:///keel?host=/run/postgresql&password=${KEEL_DB_PASS}"),
+            "postgres:///keel?host=/run/postgresql&password=***"
+        );
+        assert_eq!(redact_url("not a url"), "not a url");
     }
 
     #[test]

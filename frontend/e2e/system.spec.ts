@@ -19,6 +19,7 @@ const SCREENS: readonly SystemScreen[] = [
   { label: 'Sessions', func: 'auth.session.list' },
   { label: 'API tokens', func: 'auth.token.list' },
   { label: 'Permission grants', func: 'auth.grant.list' },
+  { label: 'Health', func: 'keel.doctor.run' },
 ];
 
 const MIN_LENGTH_KEY = 'auth.password.min_length';

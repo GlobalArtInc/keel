@@ -1,5 +1,6 @@
 mod backup;
 mod cli;
+mod doctor;
 mod error;
 mod privileged;
 mod products;

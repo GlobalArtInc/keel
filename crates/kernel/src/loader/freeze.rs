@@ -32,6 +32,7 @@ use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
 use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
+use crate::doctor;
 use crate::keel::{StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -541,6 +542,7 @@ impl Freezer {
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
         services.provide::<dyn ParamMasker>(self.masks.clone());
         services.provide::<dyn Backups>(self.backups.clone());
+        services.provide(Arc::new(doctor::Handle::new()));
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())
@@ -1535,7 +1537,7 @@ mod tests {
         assert!(registry.function("base.item.edit").is_some());
         assert!(registry.function("base.item.delete").is_none());
         assert!(registry.function("keel.account.list").is_some());
-        assert_eq!(registry.menu().len(), 4);
+        assert_eq!(registry.menu().len(), 5);
         assert_eq!(registry.permissions().len(), 6);
         assert!(registry.permission("base.item.read").is_some());
         assert!(registry.permission("keel.account.manage").is_some());

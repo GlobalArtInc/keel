@@ -1,0 +1,109 @@
+{
+  "keel": 1,
+  "name": "keel.doctor.run",
+  "module": "keel",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_CheckRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/CheckRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "CheckRow": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/Status"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "status",
+          "message"
+        ]
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "warn",
+          "fail"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.doctor.run.title",
+    "columns": [
+      {
+        "key": "check",
+        "type": "text",
+        "primary": true
+      },
+      {
+        "key": "status",
+        "type": "status",
+        "map": {
+          "fail": "danger",
+          "ok": "success",
+          "warn": "warning"
+        },
+        "filter": {
+          "options": [
+            "ok",
+            "warn",
+            "fail"
+          ]
+        }
+      },
+      {
+        "key": "message",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "refresh",
+        "role": "refresh"
+      }
+    ],
+    "empty": {
+      "title": "keel.doctor.empty"
+    }
+  }
+}

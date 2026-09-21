@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use keel_kernel::ctl::{self, Out};
+use keel_kernel::doctor::{self, Layout};
 use keel_kernel::{Config, logging};
 use keel_release::{KeyRing, PublicKey};
 use keel_types::TaskState;
@@ -13,6 +14,7 @@ use tokio::signal::unix::{SignalKind, signal};
 
 use crate::VERSION;
 use crate::backup::{self, BackupCliError, RESTORE_CLI, describe_manifest};
+use crate::doctor::SupportCliError;
 use crate::error::{Error, describe};
 use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
 use crate::runtime::Runtime;
@@ -24,7 +26,7 @@ const TASK_GET: &str = "task.get";
 const TASK_POLL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Parser)]
-#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update, backup, restore and privileged")]
+#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update, backup, restore, doctor, support-bundle and privileged")]
 pub(crate) struct Cli {
     #[arg(long, global = true, env = "KEEL_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
@@ -57,6 +59,64 @@ pub(crate) enum Command {
     Backup(BackupArgs),
     #[command(about = "Restore a backup archive while the service is stopped")]
     Restore(RestoreArgs),
+    #[command(
+        about = "Check the installation end to end and print one line per check; exit 1 when a check fails"
+    )]
+    Doctor(DoctorArgs),
+    #[command(
+        about = "Collect the redacted configuration, the log ring, the ledgers, the audit tail, the open problems and the doctor report into an archive"
+    )]
+    SupportBundle(SupportArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutArgs {
+    #[arg(long, default_value = doctor::OPT, value_name = "DIR")]
+    pub(crate) opt: PathBuf,
+    #[arg(long, default_value = doctor::UNIT_DIR, value_name = "DIR")]
+    pub(crate) unit_dir: PathBuf,
+    #[arg(long, default_value = doctor::SYSTEMCTL, value_name = "PATH")]
+    pub(crate) systemctl: PathBuf,
+    #[arg(long, default_value = doctor::AGENT_SOCKET, value_name = "PATH")]
+    pub(crate) agent_socket: PathBuf,
+}
+
+impl From<LayoutArgs> for Layout {
+    fn from(args: LayoutArgs) -> Self {
+        Self {
+            opt: args.opt,
+            unit_dir: args.unit_dir,
+            systemctl: args.systemctl,
+            agent_socket: args.agent_socket,
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DoctorArgs {
+    #[command(flatten)]
+    pub(crate) layout: LayoutArgs,
+    #[arg(long, value_enum, default_value_t = ReportOut::Text)]
+    pub(crate) out: ReportOut,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ReportOut {
+    #[default]
+    Text,
+    Json,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SupportArgs {
+    #[command(flatten)]
+    pub(crate) layout: LayoutArgs,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Where to write the archive; the default is <data_dir>/support/keel-support-<version>-<instant>.tar.zst"
+    )]
+    pub(crate) out: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -363,6 +423,30 @@ impl Runtime {
                     let config = load(cli.config.as_deref())?;
                     Ok(report(self.restore_command(&config, args).await))
                 }
+                Command::Doctor(args) => {
+                    let config = load(cli.config.as_deref())?;
+                    let report = self.doctor(&config, args.layout.into()).await?;
+                    match args.out {
+                        ReportOut::Text => print!("{}", report.render()),
+                        ReportOut::Json => println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report)
+                                .unwrap_or_else(|_| report.render())
+                        ),
+                    }
+                    Ok(if report.failed() {
+                        ExitCode::FAILURE
+                    } else {
+                        ExitCode::SUCCESS
+                    })
+                }
+                Command::SupportBundle(args) => {
+                    let config = load(cli.config.as_deref())?;
+                    Ok(support(
+                        self.support_bundle(&config, args.layout.into(), args.out.as_deref())
+                            .await,
+                    ))
+                }
             }
         })
     }
@@ -474,6 +558,24 @@ impl Runtime {
         }
         println!("start the service to run on the restored installation");
         Ok(())
+    }
+}
+
+fn support(outcome: Result<keel_kernel::support::Written, SupportCliError>) -> ExitCode {
+    match outcome {
+        Ok(written) => {
+            println!(
+                "wrote {} ({} bytes): {}",
+                written.archive.display(),
+                written.bytes,
+                written.entries.join(", ")
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: {}", describe(&error));
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -963,6 +1065,68 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "backup", "--out"]).is_err());
         assert_eq!(list_or_none(&[]), "none");
         assert_eq!(list_or_none(&["a".into(), "b".into()]), "a, b");
+    }
+
+    #[test]
+    fn doctor_and_support_bundle_take_the_layout_flags_with_the_design_defaults() {
+        let cli = Cli::try_parse_from(["keel", "doctor"]).unwrap();
+        let Command::Doctor(args) = cli.command else {
+            panic!("expected doctor");
+        };
+        assert_eq!(args.out, ReportOut::Text);
+        let layout = Layout::from(args.layout);
+        assert_eq!(layout, Layout::default());
+        assert_eq!(layout.opt, PathBuf::from("/opt/keel"));
+        assert_eq!(layout.unit_dir, PathBuf::from("/etc/systemd/system"));
+        assert_eq!(layout.systemctl, PathBuf::from("systemctl"));
+        assert_eq!(layout.agent_socket, PathBuf::from("/run/keel/agent.sock"));
+        let cli = Cli::try_parse_from([
+            "keel",
+            "doctor",
+            "--out",
+            "json",
+            "--opt",
+            "/tmp/opt",
+            "--unit-dir",
+            "/tmp/units",
+            "--systemctl",
+            "/tmp/bin/systemctl",
+            "--agent-socket",
+            "/tmp/agent.sock",
+        ])
+        .unwrap();
+        let Command::Doctor(args) = cli.command else {
+            panic!("expected doctor");
+        };
+        assert_eq!(args.out, ReportOut::Json);
+        let layout = Layout::from(args.layout);
+        assert_eq!(layout.opt, PathBuf::from("/tmp/opt"));
+        assert_eq!(layout.unit_dir, PathBuf::from("/tmp/units"));
+        assert_eq!(layout.systemctl, PathBuf::from("/tmp/bin/systemctl"));
+        assert_eq!(layout.agent_socket, PathBuf::from("/tmp/agent.sock"));
+        let cli = Cli::try_parse_from([
+            "keel",
+            "support-bundle",
+            "--out",
+            "/tmp/bundle.tar.zst",
+            "--unit-dir",
+            "/tmp/units",
+        ])
+        .unwrap();
+        let Command::SupportBundle(args) = cli.command else {
+            panic!("expected support-bundle");
+        };
+        assert_eq!(args.out, Some(PathBuf::from("/tmp/bundle.tar.zst")));
+        assert_eq!(args.layout.unit_dir, PathBuf::from("/tmp/units"));
+        assert_eq!(args.layout.opt, PathBuf::from("/opt/keel"));
+        let cli = Cli::try_parse_from(["keel", "support-bundle"]).unwrap();
+        let Command::SupportBundle(args) = cli.command else {
+            panic!("expected support-bundle");
+        };
+        assert!(args.out.is_none());
+        assert!(Cli::try_parse_from(["keel", "doctor", "--out", "yaml"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "doctor", "extra"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "support-bundle", "--out"]).is_err());
     }
 
     #[test]

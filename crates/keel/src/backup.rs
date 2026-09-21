@@ -226,7 +226,7 @@ impl Runtime {
     }
 }
 
-fn throwaway_key() -> Result<Key, BackupError> {
+pub(crate) fn throwaway_key() -> Result<Key, BackupError> {
     Key::generate().map_err(BackupError::Entropy)
 }
 

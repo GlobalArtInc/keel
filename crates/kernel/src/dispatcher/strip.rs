@@ -15,6 +15,10 @@ impl Plan {
         Self(Tree::of(descriptor.params.as_value()))
     }
 
+    pub fn of_schema(schema: &Value) -> Self {
+        Self(Tree::of(schema))
+    }
+
     pub fn of_result(descriptor: &Descriptor) -> Self {
         let mut tree = Tree::of(descriptor.result.as_value());
         if descriptor.kind == Kind::List

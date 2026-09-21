@@ -3310,6 +3310,87 @@
         }
       }
     },
+    "/api/v1/call/keel.doctor.run": {
+      "post": {
+        "operationId": "keel.doctor.run",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_CheckRow",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/CheckRow"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/x/keel/export": {
       "get": {
         "tags": [
@@ -3481,6 +3562,116 @@
                 ]
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/call/keel.logs.tail": {
+      "post": {
+        "operationId": "keel.logs.tail",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "LogsTail",
+                "type": "object",
+                "properties": {
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 1,
+                    "maximum": 10000,
+                    "default": null
+                  },
+                  "level": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/LogLevel"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "LogsPage",
+                      "type": "object",
+                      "properties": {
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Entry"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "capacity": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        },
+                        "dropped": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "entries",
+                        "total",
+                        "capacity",
+                        "dropped"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -9125,6 +9316,25 @@
           "webhook"
         ]
       },
+      "CheckRow": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "status",
+          "message"
+        ]
+      },
       "Choice": {
         "type": "object",
         "properties": {
@@ -9262,6 +9472,40 @@
           "hasPassword",
           "from",
           "to"
+        ]
+      },
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevel"
+          },
+          "target": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "level",
+          "target",
+          "message"
         ]
       },
       "ErrorCode": {
@@ -9535,6 +9779,16 @@
             "additionalProperties": true
           }
         }
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
       },
       "LoginState": {
         "type": "string",
@@ -10058,6 +10312,14 @@
         "enum": [
           "asc",
           "desc"
+        ]
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "warn",
+          "fail"
         ]
       },
       "Subscription": {

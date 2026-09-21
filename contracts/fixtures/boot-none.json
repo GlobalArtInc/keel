@@ -48,6 +48,13 @@
           "func": "keel.product.list",
           "kind": "list",
           "icon": "package"
+        },
+        {
+          "path": "system/health",
+          "label": "keel.doctor.run.title",
+          "func": "keel.doctor.run",
+          "kind": "list",
+          "icon": "activity"
         }
       ]
     }

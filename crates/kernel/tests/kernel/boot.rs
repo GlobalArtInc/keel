@@ -483,7 +483,12 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
             (Some("probe"), vec!["probe/public", "probe/items"]),
             (
                 None,
-                vec!["system/accounts", "system/principals", "system/products"]
+                vec![
+                    "system/accounts",
+                    "system/principals",
+                    "system/products",
+                    "system/health"
+                ]
             ),
         ]
     );
@@ -535,7 +540,12 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
         paths(&boot),
         [(
             None,
-            vec!["system/accounts", "system/principals", "system/products"]
+            vec![
+                "system/accounts",
+                "system/principals",
+                "system/products",
+                "system/health"
+            ]
         )]
     );
     assert_eq!(boot.keel.version, env!("CARGO_PKG_VERSION"));

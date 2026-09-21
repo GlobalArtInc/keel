@@ -2,8 +2,11 @@ use std::error::Error;
 
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::ParseError;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::config::{Log, LogFormat};
+use crate::logs;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoggingError {
@@ -18,12 +21,16 @@ fn filter(log: &Log) -> Result<EnvFilter, LoggingError> {
 }
 
 pub fn init(log: &Log) -> Result<(), LoggingError> {
-    let builder = tracing_subscriber::fmt().with_env_filter(filter(log)?);
+    let layers = tracing_subscriber::registry()
+        .with(filter(log)?)
+        .with(logs::layer());
     match log.format {
-        LogFormat::Json => builder.json().try_init(),
-        LogFormat::Text => builder.try_init(),
+        LogFormat::Json => layers
+            .with(tracing_subscriber::fmt::layer().json())
+            .try_init(),
+        LogFormat::Text => layers.with(tracing_subscriber::fmt::layer()).try_init(),
     }
-    .map_err(LoggingError::Init)
+    .map_err(|error| LoggingError::Init(Box::new(error)))
 }
 
 #[cfg(test)]
@@ -57,12 +64,25 @@ mod tests {
     }
 
     #[test]
-    fn logging_initialises_once_per_process() {
+    fn logging_initialises_once_per_process_and_feeds_the_ring() {
         let log = Log {
             level: "warn".to_owned(),
             format: LogFormat::Text,
         };
         init(&log).unwrap();
         assert!(matches!(init(&log), Err(LoggingError::Init(_))));
+        tracing::warn!(probe = "ring", "the ring receives what the filter admits");
+        tracing::info!(probe = "ring", "the filter drops this line");
+        let tail = logs::ring().tail(logs::CAPACITY, None);
+        assert!(
+            tail.iter()
+                .any(|entry| entry.message == "the ring receives what the filter admits"),
+            "{tail:?}"
+        );
+        assert!(
+            tail.iter()
+                .all(|entry| entry.message != "the filter drops this line"),
+            "{tail:?}"
+        );
     }
 }

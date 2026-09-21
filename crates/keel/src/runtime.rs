@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
+use keel_kernel::doctor::{self, Doctor, Layout};
 use keel_kernel::http::Frontend;
 use keel_kernel::loader::{Migrated, Sections};
 use keel_kernel::socket::Serving;
@@ -139,6 +140,15 @@ impl Runtime {
             .sections(Sections::new(&config.file, config.sections.clone()))
             .data_dir(config.data_dir.clone());
         let kernel = Kernel::boot(composition, storage).await?;
+        if let Some(handle) = kernel.registry().services().get::<doctor::Handle>()
+            && !handle.attach(Arc::new(Doctor::new(
+                kernel.graph(),
+                &config.tls,
+                Layout::default(),
+            )))
+        {
+            tracing::warn!("the doctor was attached before the boot; the first attachment stands");
+        }
         let dispatcher = Arc::new(Dispatcher::new(
             kernel.registry().clone(),
             storage.db().clone(),

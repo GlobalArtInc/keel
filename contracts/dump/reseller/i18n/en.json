@@ -85,6 +85,25 @@
         "one": "Continue with {action}?"
       },
       "createdAt": "Created",
+      "doctor": {
+        "action": {
+          "refresh": "Run again"
+        },
+        "column": {
+          "check": "Check",
+          "message": "Finding",
+          "status": "Status"
+        },
+        "empty": "No check matches the filter",
+        "run": {
+          "title": "Health"
+        },
+        "status": {
+          "fail": "fail",
+          "ok": "ok",
+          "warn": "warn"
+        }
+      },
       "error": {
         "account_not_found": "The account does not exist or is outside your scope",
         "actor_not_delegated": "The actor arrived without delegation",
@@ -102,6 +121,7 @@
         "config_missing": "The configuration section {section} is not contributed",
         "conflict": "The change conflicts with the current state",
         "cross_site": "The request comes from another site",
+        "doctor_not_started": "The doctor is not attached to this process yet",
         "download_route": "The function {function} streams a file; fetch it at {route}",
         "download_stored_inline": "A stored download can only be written inside a task",
         "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",

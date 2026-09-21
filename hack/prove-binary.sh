@@ -727,6 +727,60 @@ check "ctl backup.list --out json" keel_ok "$site/backup-list.json" ctl backup.l
 check "backup.list answers the task's archive with the demo bundle and no secret key" json_is "$site/backup-list.json" "doc['ok'] is True and doc['data']['total'] == 1 and doc['data']['data'][0]['file'] == '$task_archive' and doc['data']['data'][0]['products'] == 'demo' and doc['data']['data'][0]['secretKey'] is False and doc['data']['data'][0]['keel'] == '$version'"
 check "ctl backup.list --out table" keel_ok "$site/backup-list.out" ctl backup.list --out table
 check "the table carries the translated header" grep -q "Archive" "$site/backup-list.out"
+echo "--- doctor and the support bundle"
+mkdir -p "$site/units" "$site/opt/versions/$version" "$site/opt/bin" "$site/bin"
+cp deploy/systemd/keel.service deploy/systemd/keel-privileged.service deploy/systemd/keel-update.service deploy/systemd/keel-update.path "$site/units/"
+ln -s "$keel" "$site/opt/versions/$version/keel"
+ln -s "$site/opt/versions/$version/keel" "$site/opt/bin/current"
+cat >"$site/bin/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname "$0")/systemctl.log"
+case "$1" in is-enabled) echo enabled ;; is-active) echo active ;; esac
+EOF
+chmod 0755 "$site/bin/systemctl"
+layout=(--opt "$site/opt" --unit-dir "$site/units" --systemctl "$site/bin/systemctl" --agent-socket "$site/run/agent.sock")
+check "doctor exits 0 on the proven site" keel_ok "$site/doctor.out" doctor "${layout[@]}"
+check "doctor prints fourteen lines and none fails" test "$(grep -cE '^(ok|warn|fail) ' "$site/doctor.out")" = "14" -a "$(grep -c '^fail ' "$site/doctor.out")" = "0"
+for line in "units .*keel.service \(keel\), keel-privileged.service \(root\), keel-update.service \(root\), keel-update.path are installed" "install_dir .*bin/current -> $site/opt/versions/$version/keel" "secret_key .*secret.key has mode 0600" "tls .*the generated certificate .* is valid until" "database .*PostgreSQL .* the schema keel exists and the role may create in it" "migrations .* ledger\(s\) match the binary" "agent .*not in use" "license .*not required" "products .*demo enabled and carried by the binary" "orphans .*no module is orphaned" "accounts .*no account is left in deleting"; do
+  check "doctor: ok $line" grep -qE "^ok +$line" "$site/doctor.out"
+done
+check "doctor prints the totals line" grep -qE '^[0-9]+ ok, [0-9]+ warn, 0 fail; keel '"$version"' at ' "$site/doctor.out"
+check "the stub service manager was asked with fixed argument vectors" grep -qx "is-enabled keel-update.path" "$site/bin/systemctl.log"
+check "doctor --out json" keel_ok "$site/doctor.json" doctor --out json "${layout[@]}"
+check "the json report carries the fourteen checks in order" json_is "$site/doctor.json" 'len(doc["checks"]) == 14 and [c["id"] for c in doc["checks"]] == ["data_dir", "config_dir", "install_dir", "secret_key", "tls", "units", "database", "migrations", "agent", "license", "space", "products", "orphans", "accounts"] and all(c["status"] in ("ok", "warn") for c in doc["checks"]) and doc["version"] == "'"$version"'"'
+check "doctor without the units of the design fails on this host" keel_fails "$site/doctor-default.err" doctor --opt "$site/opt" --systemctl "$site/bin/systemctl"
+check "the failing report names the missing units" grep -qE '^fail +units .*keel.service is missing from /etc/systemd/system' "$site/stdout"
+check "ctl keel.doctor.run --out table" keel_ok "$site/doctor-table.out" ctl keel.doctor.run --out table
+check "the health screen renders the translated headers" grep -q "Check" "$site/doctor-table.out"
+check "ctl keel.doctor.run answers the checks with the design's layout" keel_ok "$site/doctor-run.json" ctl keel.doctor.run --out json 'filters=[{"key":"status","op":"eq","value":"ok"}]'
+check "keel.doctor.run lists the database and the products as ok" json_is "$site/doctor-run.json" 'doc["ok"] is True and {row["check"] for row in doc["data"]["data"]} >= {"database", "migrations", "products", "secret_key", "tls", "license", "agent"} and all(row["status"] == "ok" for row in doc["data"]["data"])'
+check "ctl keel.logs.tail limit=5" keel_ok "$site/logs-tail.json" ctl keel.logs.tail limit=5 --out json
+check "keel.logs.tail answers five entries in order from a ring of ten thousand" json_is "$site/logs-tail.json" 'doc["ok"] is True and len(doc["data"]["entries"]) == 5 and [e["seq"] for e in doc["data"]["entries"]] == sorted(e["seq"] for e in doc["data"]["entries"]) and doc["data"]["capacity"] == 10000 and all(set(e) >= {"seq", "at", "level", "target", "message"} for e in doc["data"]["entries"])'
+check "ctl keel.logs.tail level=warn" keel_ok "$site/logs-warn.json" ctl keel.logs.tail level=warn --out json
+check "keel.logs.tail with a level floor answers warnings and errors alone" json_is "$site/logs-warn.json" 'doc["ok"] is True and all(e["level"] in ("warn", "error") for e in doc["data"]["entries"])'
+check "support-bundle writes the archive" keel_ok "$site/support.out" support-bundle --out "$site/support.tar.zst" "${layout[@]}"
+check "support-bundle prints the archive, its size and its entries" grep -q "^wrote $site/support.tar.zst ([0-9]* bytes): config.yaml, logs.jsonl, ledgers.json, audit.jsonl, problems.json, readiness.json, doctor.txt, manifest.json$" "$site/support.out"
+check "the bundle is written with mode 0600" test "$(stat -f '%Lp' "$site/support.tar.zst" 2>/dev/null || stat -c '%a' "$site/support.tar.zst")" = "600"
+mkdir -p "$site/support"
+zstd -d -c "$site/support.tar.zst" | tar -x -C "$site/support"
+token_plaintext=$(json_get "$site/token-as-alice.json" 'doc["data"]["token"]')
+db_password=$(python3 -c 'import sys; from urllib.parse import urlparse; print(urlparse(sys.argv[1]).password or "")' "$admin_url")
+check "the bundle carries no API token" test -z "$(grep -rl -- "$token_plaintext" "$site/support")"
+check "the bundle carries no password of a principal" test -z "$(grep -rl -- "correct-horse" "$site/support")"
+check "the bundle carries no totp secret or recovery code" test -z "$(grep -rlE -- "$totp_secret|$recovery_code" "$site/support")"
+if [ -n "$db_password" ]; then
+  check "the bundle carries no database password" test -z "$(grep -rl -- ":$db_password@" "$site/support")"
+  check "the bundle's configuration masks the database password" grep -q ':\*\*\*@' "$site/support/config.yaml"
+fi
+check "the bundle's configuration keeps the listen address" grep -q "^listen: 127.0.0.1:$port$" "$site/support/config.yaml"
+check "the bundle's log ring carries the ready line of the service" grep -q '"message":"keel is ready"' "$site/support/logs.jsonl"
+python3 -c 'import json,sys; print(json.dumps([json.loads(l) for l in open(sys.argv[1])]))' "$site/support/audit.jsonl" >"$site/support-audit.json"
+check "the bundle's audit tail masks the password of the failed logins" json_is "$site/support-audit.json" 'any(r["function"] == "auth.login" and r["params_redacted"]["password"] == "***" for r in doc) and all(r["params_redacted"].get("password", "***") == "***" for r in doc)'
+check "the bundle's readiness answer is ready" json_is "$site/support/readiness.json" 'doc["status"] == 200 and doc["body"]["status"] == "ready"'
+check "the bundle's ledgers name the kernel and the note module" json_is "$site/support/ledgers.json" 'any(l["module"] == "keel" and l["table"] == "keel_migration" and l["present"] and not l["pending"] for l in doc) and any(l["module"] == "note" for l in doc)'
+check "the bundle's doctor report has no failure" grep -qE '^[0-9]+ ok, [0-9]+ warn, 0 fail; keel ' "$site/support/doctor.txt"
+check "the bundle's manifest lists the entries and the version" json_is "$site/support/manifest.json" 'doc["keel"] == "'"$version"'" and doc["entries"][0] == "config.yaml" and "readiness.json" in doc["notes"]'
+check "support-bundle never overwrites an archive" keel_fails "$site/support-again.err" support-bundle --out "$site/support.tar.zst" "${layout[@]}"
 echo "--- the ip rule and the update"
 check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
 check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["ok"] is True and doc["data"]["action"] == "deny" and doc["data"]["cidr"] == "127.0.0.1/32" and doc["data"]["level"] == "user" and doc["data"]["comment"] == "prove" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
@@ -787,6 +841,9 @@ check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job
 check "cron.job.list answers the poll job of notify and the daily check of update" json_is "$site/cron-jobs.json" 'doc["ok"] is True and sorted((row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]) == [("notify.problems.poll", "notify", "* * * * *"), ("update.poll", "update", "30 4 * * *")]'
 check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json
 check "cron.run.list answers runs of the two jobs alone" json_is "$site/cron-runs.json" 'doc["ok"] is True and all(row["job"] in ("notify.problems.poll", "update.poll") and row["outcome"] in ("ok", "running") for row in doc["data"]["data"])'
+check "doctor exits 0 with the demo disabled" keel_ok "$site/doctor-2.out" doctor "${layout[@]}"
+check "doctor names the orphaned note module" grep -qE '^warn +orphans .*note' "$site/doctor-2.out"
+check "doctor reports that no product is enabled" grep -qE '^ok +products .*no product is enabled' "$site/doctor-2.out"
 check "ctl notify.problem.list --out json" keel_ok "$site/problems.json" ctl notify.problem.list --out json
 check "notify.problem.list answers an empty page" json_is "$site/problems.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
 check "ctl notify.message.list --out json" keel_ok "$site/messages.json" ctl notify.message.list --out json

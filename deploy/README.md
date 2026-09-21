@@ -186,9 +186,25 @@ they exist:
   arrive with M4; the installer creates the administrator over the control socket instead.
 - The signature check of the release manifest; the installer verifies the sha256 of the artifact
   only.
-- `doctor` and `support-bundle` (M4). `backup` and `restore` are in place (see below);
-  `rollback --restore` still stops the service and leaves the restore of the named archive to
-  the operator, who runs `keel restore` as the user `keel` and starts the service again.
+- `rollback --restore` still stops the service and leaves the restore of the named archive to
+  the operator, who runs `keel restore` as the user `keel` and starts the service again;
+  `backup` and `restore` themselves are in place (see below).
+
+`keel doctor`, run as the user `keel`, checks the installation end to end and prints one line
+per check with `ok`, `warn` or `fail`, exit 1 when a check fails: the data, configuration and
+install directories with their owners and modes, `secret.key`, the TLS pair and its expiry, the
+three units with their users through `systemctl`, the database (server version, socket, role
+rights), the migration ledgers against the binary, the host agent, the license (not required
+until M5), free space, that every enabled product is carried by the binary, the orphaned modules
+and accounts left in `deleting`. The same checks are the screen "Health" under the system group
+(`keel.doctor.run`), with the design's paths; the CLI takes `--opt`, `--unit-dir`, `--systemctl`
+and `--agent-socket` for a rehearsal in another tree. `keel support-bundle [--out <path>]` writes
+`<data_dir>/support/keel-support-<version>-<instant>.tar.zst` with `config.yaml` redacted (the
+database password, every `secret` field of a module section, and the password-like keys of a
+section no loaded module claims), `agent.yaml`, the last 10 000 log entries of the running service
+(`keel.logs.tail` over the control socket), the migration ledgers, the tail of the audit table,
+the open problems, the `/readyz` answer (the kernel exposes no metrics yet) and the doctor report.
+`hack/doctor-vm.sh` proves both on a machine installed by `install.sh`.
 
 `keel.service` is `Type=simple` without `WatchdogSec=` because the kernel does not send
 `sd_notify` readiness yet; the installer waits for `/readyz` instead. The unit switches to
@@ -227,6 +243,8 @@ systemctl status keel keel-privileged keel-update.path
 journalctl -u keel -f
 runuser -u keel -- keel ctl keel.account.list --out table
 runuser -u keel -- keel product list
+runuser -u keel -- keel doctor
+runuser -u keel -- keel support-bundle
 curl -sS --cacert /var/lib/keel/tls/cert.pem https://127.0.0.1:1500/readyz
 journalctl -u keel --no-pager -o cat | grep -oE '([0-9A-F]{2}:){31}[0-9A-F]{2}' | tail -n 1
 ```

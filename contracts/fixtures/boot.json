@@ -19,6 +19,7 @@
     { "id": "system", "product": null, "label": "menu.system", "icon": "settings",
       "items": [ { "path": "system/accounts", "label": "keel.account.list.title", "func": "keel.account.list", "kind": "list", "icon": "users" },
                  { "path": "system/principals", "label": "keel.principal.list.title", "func": "keel.principal.list", "kind": "list", "icon": "user" },
-                 { "path": "system/products", "label": "keel.product.list.title", "func": "keel.product.list", "kind": "list", "icon": "package" } ] } ],
+                 { "path": "system/products", "label": "keel.product.list.title", "func": "keel.product.list", "kind": "list", "icon": "package" },
+                 { "path": "system/health", "label": "keel.doctor.run.title", "func": "keel.doctor.run", "kind": "list", "icon": "activity" } ] } ],
   "dashboard": [],
   "views": [], "meta": "m-7f3a2c1b9d4e0a62", "problems": null }

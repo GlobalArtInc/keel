@@ -1,0 +1,128 @@
+{
+  "keel": 1,
+  "name": "keel.logs.tail",
+  "module": "keel",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "LogsTail",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": null
+      },
+      "level": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LogLevel"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "$defs": {
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "LogsPage",
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Entry"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "capacity": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "dropped": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "entries",
+      "total",
+      "capacity",
+      "dropped"
+    ],
+    "$defs": {
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "$ref": "#/$defs/LogLevel"
+          },
+          "target": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "level",
+          "target",
+          "message"
+        ]
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
+      }
+    }
+  }
+}
