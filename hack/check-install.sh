@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 keel=${1:-}
 problems=0
-scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh)
+scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh)
 units=(keel.service keel-privileged.service keel-update.path keel-update.service)
 enabled_units=(keel.service keel-privileged.service keel-update.path)
 
@@ -119,6 +119,11 @@ check "keel.service alone owns the runtime directory" test "$(grep -l '^RuntimeD
 check "keel.service alone drops privileges with NoNewPrivileges" test "$(grep -l '^NoNewPrivileges=yes$' deploy/systemd/* | tr '\n' ' ')" = "deploy/systemd/keel.service "
 check "the kernel unit is the only one that is not root" test "$(grep -L '^User=root$' deploy/systemd/*.service | tr '\n' ' ')" = "deploy/systemd/keel.service "
 check "update-vm.sh --help prints the usage and exits 0" prints_usage hack/update-vm.sh
+check "backup-vm.sh --help prints the usage and exits 0" prints_usage hack/backup-vm.sh
+for flag in --with-secret-key --out; do
+  check "backup-vm.sh exercises keel backup $flag" grep -qE -- "backup .*$flag" hack/backup-vm.sh
+done
+check "backup-vm.sh exercises keel restore --with-secret-key" grep -qE -- 'restore "\$staged" --with-secret-key' hack/backup-vm.sh
 
 if [ -z "$keel" ]; then
   cargo build -p keel-bin
@@ -135,6 +140,15 @@ ctl_help=$("$keel" ctl --help)
 update_help=$("$keel" update --help)
 
 check "the subcommand update is in keel --help" lists_subcommand "$help" update
+for subcommand in backup restore; do
+  check "the subcommand $subcommand is in keel --help" lists_subcommand "$help" "$subcommand"
+  check "the flag --with-secret-key of $subcommand is in keel $subcommand --help" lists_flag "$("$keel" "$subcommand" --help)" --with-secret-key
+done
+check "backup inspect is in keel backup --help" lists_subcommand "$("$keel" backup --help)" inspect
+check "the flag --out of backup is in keel backup --help" lists_flag "$("$keel" backup --help)" --out
+check "uninstall.sh --keep-backups is documented in its usage" grep -qE '^\s+--keep-backups\s' deploy/uninstall.sh
+check "uninstall.sh keeps the backup directory when asked" grep -qF 'if [ "$keep_backups" -eq 1 ] && [ -d "$LIB/backups" ]; then' deploy/uninstall.sh
+check "the deploy README names uninstall.sh --keep-backups" grep -qF -- '--purge --keep-backups' deploy/README.md
 for step in check apply rollback; do
   check "update $step is in keel update --help" lists_subcommand "$update_help" "$step"
   check "update-vm.sh or the README exercises keel update $step" grep -qE "update $step\b" hack/update-vm.sh deploy/README.md

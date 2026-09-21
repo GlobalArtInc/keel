@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod clock;
 pub mod config;
 pub mod ctl;

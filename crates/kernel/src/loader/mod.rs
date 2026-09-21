@@ -19,10 +19,13 @@ pub use init::{InitError, Initialised};
 pub use lifecycle::{Kernel, StartError, StopError};
 pub use migrate::{ACTIVE, MigrateError, Migrated, ORPHANED};
 
+use crate::backup::BackupError;
 use crate::storage::Storage;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BootError {
+    #[error("the pending restore failed: {0}")]
+    Restore(#[from] BackupError),
     #[error(transparent)]
     Composition(#[from] CompositionError),
     #[error(transparent)]

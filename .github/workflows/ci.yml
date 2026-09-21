@@ -242,7 +242,9 @@ jobs:
           - notify
           - webhooks
           - update
+          - backup
           - tasks,cron,notify,update
+          - tasks,backup
           - settings,audit,tasks,cron,notify,webhooks
           - auth,audit,tasks,cron,notify,webhooks
           - auth,settings,tasks,cron,notify,webhooks

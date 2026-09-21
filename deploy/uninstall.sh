@@ -11,12 +11,13 @@ LINK=/usr/local/bin/keel
 PG_SOCKET_DIR=/run/postgresql
 
 purge=0
+keep_backups=0
 yes=0
 step="parsing the arguments"
 
 usage() {
   cat <<EOF
-usage: uninstall.sh [--purge] [--yes]
+usage: uninstall.sh [--purge [--keep-backups]] [--yes]
 
 Without --purge: stops and disables keel.service, keel-privileged.service,
 keel-update.path and keel-update.service, removes the units, $LINK and $OPT.
@@ -25,11 +26,15 @@ Postgres database keel stay in place.
 
 With --purge: also removes $ETC, $LIB, $RUN, the unix user and group keel,
 and drops the database keel and the role keel from the Postgres server on
-$PG_SOCKET_DIR. The Postgres server itself is left installed.
+$PG_SOCKET_DIR. The Postgres server itself is left installed. The backup
+archives under $LIB/backups go with $LIB; take one with "keel backup
+--with-secret-key" and copy it elsewhere first, or pass --keep-backups to
+leave $LIB/backups in place.
 
-  --purge     remove the data as well
-  --yes       do not ask for confirmation
-  -h, --help  print this text
+  --purge         remove the data as well
+  --keep-backups  with --purge, keep $LIB/backups and remove the rest of $LIB
+  --yes           do not ask for confirmation
+  -h, --help      print this text
 
 Run as root.
 EOF
@@ -62,6 +67,7 @@ parse_args() {
   while [ $# -gt 0 ]; do
     case $1 in
       --purge) purge=1; shift ;;
+      --keep-backups) keep_backups=1; shift ;;
       --yes|-y) yes=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage >&2; fail "unknown argument: $1" ;;
@@ -75,6 +81,11 @@ confirm() {
     say "This removes keel from $(hostname) together with its data:"
     say "  ${UNITS[*]}, $LINK, $OPT, $ETC, $LIB, $RUN,"
     say "  the unix user and group keel, the database keel and the role keel."
+    if [ "$keep_backups" -eq 1 ]; then
+      say "  $LIB/backups is kept."
+    else
+      say "  The backup archives under $LIB/backups go with it."
+    fi
   else
     say "This removes the keel units and binary from $(hostname):"
     say "  ${UNITS[*]}, $LINK, $OPT."
@@ -173,13 +184,27 @@ drop_database() {
 
 remove_data() {
   begin "removing $ETC, $LIB and $RUN"
-  local path
-  for path in "$ETC" "$LIB" "$RUN"; do
+  local path entry
+  for path in "$ETC" "$RUN"; do
     if [ -e "$path" ]; then
       rm -rf "$path"
       say "removed $path"
     fi
   done
+  if [ ! -e "$LIB" ]; then
+    return
+  fi
+  if [ "$keep_backups" -eq 1 ] && [ -d "$LIB/backups" ]; then
+    for entry in "$LIB"/* "$LIB"/.[!.]*; do
+      if [ -e "$entry" ] && [ "$entry" != "$LIB/backups" ]; then
+        rm -rf "$entry"
+      fi
+    done
+    say "removed $LIB except $LIB/backups"
+  else
+    rm -rf "$LIB"
+    say "removed $LIB"
+  fi
 }
 
 remove_user() {
@@ -198,7 +223,9 @@ remove_user() {
 
 report() {
   say ""
-  if [ "$purge" -eq 1 ]; then
+  if [ "$purge" -eq 1 ] && [ "$keep_backups" -eq 1 ]; then
+    say "keel is removed from $(hostname) together with its data; the backup archives stay under $LIB/backups. The Postgres server stays installed."
+  elif [ "$purge" -eq 1 ]; then
     say "keel is removed from $(hostname) together with its data. The Postgres server stays installed."
   else
     say "keel is removed from $(hostname). Kept: $ETC, $LIB, the unix user keel and the database keel."
@@ -209,6 +236,9 @@ report() {
 main() {
   parse_args "$@"
   trap on_error ERR
+  if [ "$keep_backups" -eq 1 ] && [ "$purge" -eq 0 ]; then
+    fail "--keep-backups goes with --purge; without --purge the data stays in place anyway"
+  fi
   if [ "$(id -u)" -ne 0 ]; then
     fail "run as root"
   fi

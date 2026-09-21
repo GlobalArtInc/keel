@@ -1,0 +1,165 @@
+{
+  "keel": 1,
+  "name": "backup.list",
+  "module": "backup",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "file",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_ArchiveRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ArchiveRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "ArchiveRow": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "keel": {
+            "type": "string"
+          },
+          "products": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "sources": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "secretKey": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file",
+          "bytes",
+          "at",
+          "keel",
+          "products",
+          "tables",
+          "sources",
+          "secretKey"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "backup.list.title",
+    "search": [
+      "file"
+    ],
+    "columns": [
+      {
+        "key": "file",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "at",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "bytes",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "keel",
+        "type": "text"
+      },
+      {
+        "key": "products",
+        "type": "text"
+      },
+      {
+        "key": "tables",
+        "type": "number"
+      },
+      {
+        "key": "sources",
+        "type": "number"
+      },
+      {
+        "key": "secretKey",
+        "type": "boolean"
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "backup.create",
+        "icon": "archive"
+      },
+      {
+        "id": "restore",
+        "role": "button",
+        "screen": "backup.restore",
+        "icon": "history",
+        "params": {
+          "archive": "$id"
+        }
+      },
+      {
+        "id": "refresh",
+        "role": "refresh"
+      }
+    ],
+    "row_actions": [
+      "restore"
+    ],
+    "empty": {
+      "title": "backup.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "backup.*"
+    ]
+  }
+}

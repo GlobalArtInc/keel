@@ -86,6 +86,12 @@
     "error": {
       "account_not_found": "The account does not exist or is outside your scope",
       "actor_not_delegated": "The actor arrived without delegation",
+      "backup_archive": "{path} is not a usable backup archive: {reason}",
+      "backup_bundle": "The archive names the product {id}, which this binary does not carry; it carries {known}",
+      "backup_exists": "{path} exists already; a backup never overwrites an archive",
+      "backup_failed": "The backup operation failed: {reason}",
+      "backup_incompatible": "The archive was taken by keel {archive} and this binary is keel {running}: {reason}",
+      "backup_not_started": "The backup service has not started",
       "body_not_json": "The request body is not JSON",
       "body_not_multipart": "The request body is not multipart/form-data",
       "body_too_large": "The request body is above {limit} bytes",

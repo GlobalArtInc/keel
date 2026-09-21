@@ -2,6 +2,8 @@
 pub mod audit;
 #[cfg(feature = "auth")]
 pub mod auth;
+#[cfg(feature = "backup")]
+pub mod backup;
 #[cfg(feature = "cron")]
 pub mod cron;
 #[cfg(feature = "notify")]

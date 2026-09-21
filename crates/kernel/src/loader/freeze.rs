@@ -7,11 +7,12 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Caller, LanguageSource, LiveEvents, OutboxSubscriber, ParamMasker,
-    PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, LanguageSource, LiveEvents, OutboxSubscriber,
+    ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
-    ConfigSection, DashboardWidget, FunctionDef, MenuNode, ProductManifest, SettingsSource,
+    BackupSource, ConfigSection, DashboardWidget, FunctionDef, MenuNode, ProductManifest,
+    SettingsSource,
 };
 use keel_types::descriptor::{Control, KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
@@ -26,6 +27,7 @@ use super::icons::{ICONS_FILE, IconSet};
 use super::init::Initialised;
 use super::settings::DefaultSettings;
 use super::{keys, patch, section};
+use crate::backup;
 use crate::clock::Clock;
 use crate::dispatcher::guards::RegisteredPermissions;
 use crate::dispatcher::strip::Plan;
@@ -44,6 +46,7 @@ pub struct Frozen {
     pub(super) registry: Arc<Registry>,
     pub(super) lifecycle: Vec<Lifecycle>,
     pub(super) locks: Arc<SessionLocks>,
+    pub(super) backups: Arc<backup::Handle>,
 }
 
 pub(super) struct Lifecycle {
@@ -75,6 +78,14 @@ pub enum FreezeProblem {
     SectionClaimedTwice {
         file: String,
         section: String,
+        first: String,
+        second: String,
+    },
+    #[error("module {module}: the backup source {name} does not carry the module prefix")]
+    BackupSourceName { module: String, name: String },
+    #[error("the backup source {name} is contributed by both {first} and {second}")]
+    BackupSourceClaimedTwice {
+        name: String,
         first: String,
         second: String,
     },
@@ -383,8 +394,10 @@ struct Freezer {
     lifecycle: Vec<Lifecycle>,
     sections: Sections,
     claimed: BTreeMap<String, String>,
+    source_owners: BTreeMap<String, String>,
     locks: Arc<SessionLocks>,
     masks: Arc<MaskHandle>,
+    backups: Arc<backup::Handle>,
 }
 
 impl Initialised {
@@ -419,8 +432,10 @@ impl Initialised {
             lifecycle: Vec::new(),
             sections: self.graph.sections().clone(),
             claimed: BTreeMap::new(),
+            source_owners: BTreeMap::new(),
             locks: Arc::new(SessionLocks::new()),
             masks: Arc::new(MaskHandle::new()),
+            backups: Arc::new(backup::Handle::new()),
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
@@ -454,6 +469,9 @@ impl Initialised {
             }
             for section in registrations.contributions.of::<ConfigSection>() {
                 freezer.section(&module, section);
+            }
+            for source in registrations.contributions.of::<BackupSource>() {
+                freezer.backup_source(&module, source);
             }
             hooks.push((module.clone(), registrations.before, registrations.within));
             patches.push((module.clone(), registrations.patches));
@@ -522,6 +540,7 @@ impl Freezer {
         services.provide::<OutboxFeed>(outbox);
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
         services.provide::<dyn ParamMasker>(self.masks.clone());
+        services.provide::<dyn Backups>(self.backups.clone());
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())
@@ -591,6 +610,25 @@ impl Freezer {
         let mut services = Services::new();
         services.provide_erased(section.service(), parsed);
         self.provide(module, services);
+    }
+
+    fn backup_source(&mut self, module: &str, source: &BackupSource) {
+        if source.module() != module {
+            self.problems.push(FreezeProblem::BackupSourceName {
+                module: module.to_owned(),
+                name: source.name().to_owned(),
+            });
+        }
+        if let Some(first) = self.source_owners.get(source.name()) {
+            self.problems.push(FreezeProblem::BackupSourceClaimedTwice {
+                name: source.name().to_owned(),
+                first: first.clone(),
+                second: module.to_owned(),
+            });
+            return;
+        }
+        self.source_owners
+            .insert(source.name().to_owned(), module.to_owned());
     }
 
     fn unclaimed(&self) {
@@ -1065,6 +1103,7 @@ impl Freezer {
             registry: Arc::new(registry),
             lifecycle: self.lifecycle,
             locks: self.locks,
+            backups: self.backups,
         })
     }
 }
@@ -2475,6 +2514,7 @@ mod section_tests {
     use std::sync::{Arc, Mutex, PoisonError};
 
     use keel_sdk::prelude::*;
+    use keel_sdk::system::Backups;
     use keel_sdk::{ConfigSection, Registrar};
     use tracing_subscriber::fmt::MakeWriter;
 
@@ -2618,6 +2658,63 @@ mod section_tests {
             ),
             "{}",
             listed[0]
+        );
+    }
+
+    fn zones_init(r: &mut Registrar) -> Result<()> {
+        r.contribute(BackupSource::new("zones.files", |_| async { Ok(()) }));
+        Ok(())
+    }
+
+    fn zones_again_init(r: &mut Registrar) -> Result<()> {
+        r.contribute(BackupSource::new("zones.files", |_| async { Ok(()) }))
+            .contribute(BackupSource::new("other.files", |_| async { Ok(()) }));
+        Ok(())
+    }
+
+    module!(ZONES, "zones", [], zones_init);
+    module!(ZONES_AGAIN, "zones_again", [], zones_again_init);
+
+    #[test]
+    fn a_backup_source_carries_its_module_prefix_and_is_contributed_once() {
+        let alone = Composition::new()
+            .module(&ZONES)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect("one source freezes");
+        assert!(
+            alone.registry().services().get::<dyn Backups>().is_some(),
+            "the kernel provides the backups service"
+        );
+        assert_eq!(
+            alone
+                .registry()
+                .contributions()
+                .of::<BackupSource>()
+                .map(BackupSource::name)
+                .collect::<Vec<_>>(),
+            ["zones.files"]
+        );
+        let twice = Composition::new()
+            .module(&ZONES)
+            .module(&ZONES_AGAIN)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect_err("a foreign prefix and a second claim fail");
+        let listed: Vec<String> = twice.problems().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            [
+                "module zones_again: the backup source zones.files does not carry the module prefix",
+                "the backup source zones.files is contributed by both zones and zones_again",
+                "module zones_again: the backup source other.files does not carry the module prefix",
+            ]
         );
     }
 }

@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use tokio::signal::unix::{SignalKind, signal};
 
 use crate::VERSION;
+use crate::backup::{self, BackupCliError, RESTORE_CLI, describe_manifest};
 use crate::error::{Error, describe};
 use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
 use crate::runtime::Runtime;
@@ -23,7 +24,7 @@ const TASK_GET: &str = "task.get";
 const TASK_POLL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Parser)]
-#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update and privileged")]
+#[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update, backup, restore and privileged")]
 pub(crate) struct Cli {
     #[arg(long, global = true, env = "KEEL_CONFIG", value_name = "PATH")]
     pub(crate) config: Option<PathBuf>,
@@ -52,6 +53,51 @@ pub(crate) enum Command {
         about = "The one root code path of the installation: serves the update policy, and the host policy once a product loads the host module"
     )]
     Privileged(PrivilegedArgs),
+    #[command(about = "Write a backup archive of the installation, or inspect the manifest of one")]
+    Backup(BackupArgs),
+    #[command(about = "Restore a backup archive while the service is stopped")]
+    Restore(RestoreArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct BackupArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Where to write the archive; the default is <data_dir>/backups/keel-<version>-<instant>.tar.zst"
+    )]
+    pub(crate) out: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "Include secret.key, sealed under a passphrase read from KEEL_BACKUP_PASSPHRASE or the terminal"
+    )]
+    pub(crate) with_secret_key: bool,
+    #[arg(long, env = keel_kernel::backup::PASSPHRASE_VARIABLE, hide = true, hide_env_values = true)]
+    pub(crate) passphrase: Option<String>,
+    #[command(subcommand)]
+    pub(crate) action: Option<BackupAction>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum BackupAction {
+    #[command(about = "Print the manifest of an archive as JSON")]
+    Inspect {
+        #[arg(value_name = "ARCHIVE")]
+        archive: PathBuf,
+    },
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RestoreArgs {
+    #[arg(value_name = "ARCHIVE")]
+    pub(crate) archive: PathBuf,
+    #[arg(
+        long,
+        help = "Restore secret.key from the archive, opened with the passphrase from KEEL_BACKUP_PASSPHRASE or the terminal"
+    )]
+    pub(crate) with_secret_key: bool,
+    #[arg(long, env = keel_kernel::backup::PASSPHRASE_VARIABLE, hide = true, hide_env_values = true)]
+    pub(crate) passphrase: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -309,8 +355,143 @@ impl Runtime {
                     };
                     Ok(update(&socket, &args).await)
                 }
+                Command::Backup(args) => {
+                    let config = load(cli.config.as_deref())?;
+                    Ok(report(self.backup_command(&config, args).await))
+                }
+                Command::Restore(args) => {
+                    let config = load(cli.config.as_deref())?;
+                    Ok(report(self.restore_command(&config, args).await))
+                }
             }
         })
+    }
+
+    async fn backup_command(
+        &self,
+        config: &Config,
+        args: BackupArgs,
+    ) -> Result<(), BackupCliError> {
+        if let Some(BackupAction::Inspect { archive }) = args.action {
+            let manifest =
+                tokio::task::spawn_blocking(move || keel_kernel::backup::read_manifest(&archive))
+                    .await
+                    .map_err(|error| BackupCliError::Terminal(std::io::Error::other(error)))??;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&manifest)
+                    .unwrap_or_else(|_| describe_manifest(&manifest))
+            );
+            return Ok(());
+        }
+        let passphrase = if args.with_secret_key {
+            Some(backup::passphrase("seal", args.passphrase)?)
+        } else {
+            None
+        };
+        let created = self
+            .backup(config, args.out.as_deref(), passphrase.as_ref())
+            .await?;
+        println!(
+            "wrote {} ({} bytes): {}",
+            created.archive.display(),
+            created.bytes,
+            describe_manifest(&created.manifest)
+        );
+        Ok(())
+    }
+
+    async fn restore_command(
+        &self,
+        config: &Config,
+        args: RestoreArgs,
+    ) -> Result<(), BackupCliError> {
+        let passphrase = if args.with_secret_key {
+            Some(backup::passphrase("open", args.passphrase)?)
+        } else {
+            None
+        };
+        let restored = self
+            .restore(config, &args.archive, passphrase.as_ref(), RESTORE_CLI)
+            .await?;
+        let note = &restored.note;
+        println!(
+            "restored {} (keel {}) into {}: {} table(s) loaded, {} file(s) written",
+            note.archive.display(),
+            note.keel,
+            config.data_dir.display(),
+            note.tables,
+            restored.files_written
+        );
+        if !restored.skipped_tables.is_empty() {
+            println!(
+                "skipped {} table(s) without a table in this schema: {}",
+                restored.skipped_tables.len(),
+                restored.skipped_tables.join(", ")
+            );
+        }
+        println!(
+            "enabled products: {} -> {} ({})",
+            list_or_none(&note.products_before),
+            list_or_none(&note.products_after),
+            note.changes()
+        );
+        match (&restored.secret_key, note.data_key.as_str()) {
+            (Some(path), _) => println!("secret key: written to {}", path.display()),
+            (None, "kept") => {
+                println!("secret key: the key of this host opens the data key of the archive")
+            }
+            (None, "dropped") => println!(
+                "secret key: the archive carries none and the key of this host does not open its data key; a new data key is generated at the next start and the sealed values of the dump will not open"
+            ),
+            (None, _) => println!("secret key: the archive carries no wrapped data key"),
+        }
+        for kept in &restored.config_kept {
+            println!(
+                "configuration: {kept} of this host is kept; the archive's copy is beside it as {kept}{}",
+                keel_kernel::backup::KEPT_SUFFIX
+            );
+        }
+        if let Some(fallback) = &restored.config_fallback {
+            println!(
+                "configuration: {} is not writable by this user; the archive's tree is at {}: copy what belongs there as root",
+                config
+                    .file
+                    .parent()
+                    .map(|dir| dir.display().to_string())
+                    .unwrap_or_default(),
+                fallback.display()
+            );
+        }
+        if !note.sources.is_empty() {
+            println!("sources restored: {}", note.sources.join(", "));
+        }
+        if !restored.sources_skipped.is_empty() {
+            println!(
+                "sources left in the archive (no module restores them): {}",
+                restored.sources_skipped.join(", ")
+            );
+        }
+        println!("start the service to run on the restored installation");
+        Ok(())
+    }
+}
+
+fn report(outcome: Result<(), BackupCliError>) -> ExitCode {
+    match outcome {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {}", describe(&error));
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn list_or_none(ids: &[String]) -> String {
+    if ids.is_empty() {
+        "none".to_owned()
+    } else {
+        ids.join(", ")
     }
 }
 
@@ -733,6 +914,55 @@ mod tests {
             Cli::try_parse_from(["keel", "privileged", "update", "--from-request", "extra"])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn backup_takes_its_output_and_key_flags_and_restore_takes_the_archive() {
+        let cli = Cli::try_parse_from(["keel", "backup"]).unwrap();
+        let Command::Backup(args) = cli.command else {
+            panic!("expected backup");
+        };
+        assert!(args.out.is_none());
+        assert!(!args.with_secret_key);
+        assert!(args.action.is_none());
+        let cli = Cli::try_parse_from([
+            "keel",
+            "backup",
+            "--out",
+            "/tmp/site.tar.zst",
+            "--with-secret-key",
+            "--passphrase",
+            "words",
+        ])
+        .unwrap();
+        let Command::Backup(args) = cli.command else {
+            panic!("expected backup");
+        };
+        assert_eq!(args.out, Some(PathBuf::from("/tmp/site.tar.zst")));
+        assert!(args.with_secret_key);
+        assert_eq!(args.passphrase.as_deref(), Some("words"));
+        let cli = Cli::try_parse_from(["keel", "backup", "inspect", "/tmp/site.tar.zst"]).unwrap();
+        let Command::Backup(args) = cli.command else {
+            panic!("expected backup");
+        };
+        assert!(matches!(
+            args.action,
+            Some(BackupAction::Inspect { archive }) if archive == Path::new("/tmp/site.tar.zst")
+        ));
+        let cli =
+            Cli::try_parse_from(["keel", "restore", "/tmp/site.tar.zst", "--with-secret-key"])
+                .unwrap();
+        let Command::Restore(args) = cli.command else {
+            panic!("expected restore");
+        };
+        assert_eq!(args.archive, PathBuf::from("/tmp/site.tar.zst"));
+        assert!(args.with_secret_key);
+        assert!(args.passphrase.is_none());
+        assert!(Cli::try_parse_from(["keel", "restore"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "backup", "inspect"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "backup", "--out"]).is_err());
+        assert_eq!(list_or_none(&[]), "none");
+        assert_eq!(list_or_none(&["a".into(), "b".into()]), "a, b");
     }
 
     #[test]

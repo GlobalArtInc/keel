@@ -1,4 +1,5 @@
 pub mod access;
+pub mod backup;
 pub mod clock;
 pub mod config;
 pub mod context;
@@ -40,6 +41,7 @@ pub use serde_json;
 pub use tokio;
 
 pub use access::{AccountScope, DefaultScopePolicy, Owned, ScopePolicy, scope_by_account};
+pub use backup::{BackupDir, BackupSource};
 pub use call::{AfterContext, Call};
 pub use clock::Clock;
 pub use config::ConfigSection;

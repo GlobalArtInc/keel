@@ -7,8 +7,9 @@ publish.workspace = true
 repository.workspace = true
 
 [features]
-default = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "update"]
+default = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "update", "backup"]
 audit = ["dep:tokio", "dep:tracing"]
+backup = ["tasks", "dep:tokio", "dep:tracing"]
 cron = ["dep:croner", "dep:tokio", "dep:tracing"]
 notify = ["cron", "dep:lettre", "dep:minijinja", "dep:tokio", "dep:tracing"]
 tasks = ["dep:tokio", "dep:tracing"]
@@ -73,5 +74,7 @@ axum = { workspace = true }
 futures = { workspace = true }
 insta = { workspace = true }
 keel-testkit = { workspace = true }
+tar = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
+zstd = { workspace = true }

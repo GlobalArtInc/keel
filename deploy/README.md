@@ -186,9 +186,9 @@ they exist:
   arrive with M4; the installer creates the administrator over the control socket instead.
 - The signature check of the release manifest; the installer verifies the sha256 of the artifact
   only.
-- `backup`, `restore`, `doctor` and `support-bundle` (M4); `rollback --restore` therefore
-  stops the service and leaves the restore of the named archive to the operator until
-  `restore` exists.
+- `doctor` and `support-bundle` (M4). `backup` and `restore` are in place (see below);
+  `rollback --restore` still stops the service and leaves the restore of the named archive to
+  the operator, who runs `keel restore` as the user `keel` and starts the service again.
 
 `keel.service` is `Type=simple` without `WatchdogSec=` because the kernel does not send
 `sd_notify` readiness yet; the installer waits for `/readyz` instead. The unit switches to
@@ -259,6 +259,44 @@ runuser -u keel -- keel ctl auth.password.set principal=<id> password=<new>
 ```
 
 
+## Backup and restore
+
+`keel backup` as the user `keel` writes a `tar.zst` archive, by default
+`/var/lib/keel/backups/keel-<version>-<instant>.tar.zst`, or where `--out` says; it never
+overwrites an archive. The archive carries `manifest.json` (the keel version, the enabled
+products with their editions, the schema version of every module ledger, the tables with their
+columns), a `COPY` dump of every table of the schema taken in one snapshot over the kernel's own
+connection, `/etc/keel/` in full (the parent directory of the configuration file the command
+runs with, regular files only), `instance.id` and the TLS material under `/var/lib/keel`, and
+the directories every loaded module contributes through `BackupSource`. `secret.key` is
+included only with `--with-secret-key`, sealed under a passphrase read from
+`KEEL_BACKUP_PASSPHRASE` or asked for on the terminal; API tokens and sessions are stored as
+hashes, so an archive without the key holds nothing that opens a session, and only `Secret`
+values (the second factor's seed, channel passwords) need it. `keel backup inspect <archive>`
+prints the manifest. The same backup runs from the screen "Backups" of the system group or with
+`keel ctl backup.create` as a task that writes under `/var/lib/keel/backups/` and offers the
+archive for download.
+
+`keel restore <archive> [--with-secret-key]` runs as the user `keel` with the service stopped.
+It refuses an archive of another major version or one newer than the binary, and one naming a
+product bundle the binary does not carry. It applies the binary's migrations for the products
+the manifest names, truncates every table of the schema except the migration ledgers and loads
+the dump parents first, so the ledgers stay the binary's and the data becomes the archive's;
+tables of the archive without a table in the schema are skipped and named. The enabled set
+comes back with `keel_kv`, and the next start logs what it changed. With `--with-secret-key` the
+key is opened with the passphrase and written to `/var/lib/keel/secret.key`; without it, the
+wrapped data key of the dump is kept when this host's `secret.key` opens it and dropped
+otherwise, in which case the next start generates a new data key and the sealed values of the
+dump do not open. The configuration file the command runs with is never overwritten: the
+archive's copy lands beside it as `config.yaml.restored`. When `/etc/keel` is not writable by
+the user `keel`, which the installer's `0750 root:keel` makes the rule, the archive's `/etc/keel`
+tree lands under `/var/lib/keel/backups/<archive>.etc/` and the command says so: `agent.yaml` is
+root's policy and root copies it. `keel ctl backup.restore archive=<name>` from the screen or the
+socket checks the archive and writes `/var/lib/keel/restore.request`; `keel serve` consumes the
+request before it opens its port, so the restore runs at the next restart. `hack/backup-vm.sh`
+rehearses the round trip on two machines: `take` on the first, `restore` on the second, with
+the second factor checked by hand afterwards.
+
 ## Enabling another product later
 
 `keel product enable` writes the enabled set while the service is stopped; the modules of the
@@ -279,6 +317,7 @@ with M4.
 ```
 ./uninstall.sh            # stops and disables the four units, removes them, /usr/local/bin/keel and /opt/keel
 ./uninstall.sh --purge    # also removes /etc/keel, /var/lib/keel, /run/keel, the user keel, and drops the database keel and the role keel
+./uninstall.sh --purge --keep-backups   # the same, leaving the archives under /var/lib/keel/backups in place
 ```
 
 Both ask for confirmation unless `--yes` is passed. Without `--purge` nothing in Postgres is

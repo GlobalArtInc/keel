@@ -109,7 +109,7 @@ header_of() {
 }
 
 run_keel() {
-  "$keel" --config "$site/config.yaml" "$@"
+  "$keel" --config "$site/etc/config.yaml" "$@"
 }
 
 keel_ok() {
@@ -277,7 +277,7 @@ session_cookie_of() {
 start_serve() {
   local label=$1
   serve_log="$site/serve-$label.log"
-  "$keel" --config "$site/config.yaml" serve >"$serve_log" 2>&1 &
+  "$keel" --config "$site/etc/config.yaml" serve >"$serve_log" 2>&1 &
   serve_pid=$!
   local waited=0
   while [ "$waited" -lt "$((timeout * 10))" ]; do
@@ -426,7 +426,7 @@ database="keel_test_prove_$(date +%s)_$$"
 port=$(free_port)
 psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
 echo "created database $database"
-mkdir -p "$site/run" "$site/lib" "$site/channel"
+mkdir -p "$site/run" "$site/lib" "$site/channel" "$site/etc"
 if [ "$scheme" = https ]; then
   cacert="$site/lib/tls/cert.pem"
 fi
@@ -434,7 +434,7 @@ channel_port=$(free_port)
 available_version=$(python3 -c 'import sys; major, minor, patch = sys.argv[1].split("-")[0].split("."); print(f"{major}.{int(minor) + 1}.0")' "$version")
 write_channel "$site/channel" "$version" "$available_version"
 start_channel "$site/channel" "$channel_port"
-cat >"$site/config.yaml" <<EOF
+cat >"$site/etc/config.yaml" <<EOF
 listen: 127.0.0.1:$port
 socket: $site/run/core.sock
 data_dir: $site/lib
@@ -706,6 +706,28 @@ check "the resumed export answers the note count with each exported line exactly
 check "the resumed export file holds each record once" test "$(cut -d, -f2 "$site/lib/tasks/$paced_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
 check "ctl note.delete of two ids runs inline" keel_ok "$site/delete-inline.json" ctl note.delete "ids=$(json_get "$site/import.json" 'json.dumps(doc["data"]["ids"])')"
 check "note.delete answers the deleted count" json_is "$site/delete-inline.json" 'doc["ok"] is True and doc["data"] == {"deleted": 2}'
+echo "--- backup over the CLI and as a task"
+check "ctl note.list before the backup" keel_ok "$site/notes-at-backup.json" ctl note.list --out json
+KEEL_BACKUP_PASSPHRASE=prove-passphrase check "backup --with-secret-key writes the archive while the service runs" keel_ok "$site/backup.out" backup --out "$site/backup.tar.zst" --with-secret-key
+check "backup prints the archive, its size and the manifest line" grep -q "^wrote $site/backup.tar.zst ([0-9]* bytes): keel $version taken .*; products: demo $version; .*; secret key included$" "$site/backup.out"
+check "the archive is written with mode 0600" test "$(stat -f '%Lp' "$site/backup.tar.zst" 2>/dev/null || stat -c '%a' "$site/backup.tar.zst")" = "600"
+check "backup inspect prints the manifest" keel_ok "$site/backup-manifest.json" backup inspect "$site/backup.tar.zst"
+check "the manifest names the version, the demo bundle, the note table, the configuration and the sealed key" json_is "$site/backup-manifest.json" "doc['keel'] == '$version' and [(p['id'], p['version']) for p in doc['products']] == [('demo', '$version')] and any(t['name'] == 'note_item' and 'title' in t['columns'] for t in doc['tables']) and any(m['id'] == 'keel' and m['ledger'] == 'keel_migration' and m['applied'] == 2 for m in doc['modules']) and doc['config'] == ['config.yaml'] and 'instance.id' in doc['data'] and 'tls/key.pem' in doc['data'] and 'secret.key.sealed' in doc['data'] and doc['secretKey'] is True"
+check "ctl backup.create runs as a task" keel_ok "$site/backup-create.json" ctl backup.create
+check "backup.create answers a task ref" json_is "$site/backup-create.json" 'doc["ok"] is True and list(doc["data"]) == ["task"]'
+backup_task=$(json_get "$site/backup-create.json" 'doc["data"]["task"]["id"]')
+check "task.get answers done for the backup task" task_reaches "$site/backup-task.json" "$backup_task" "done"
+check "the backup task names the archive under backups, the tables and the download" json_is "$site/backup-task.json" "doc['data']['state'] == 'done' and doc['data']['progress'] == '2/2' and doc['data']['result']['file'].startswith('keel-$version-') and doc['data']['result']['file'].endswith('.tar.zst') and doc['data']['result']['archive'] == '$site/lib/backups/' + doc['data']['result']['file'] and doc['data']['result']['tables'] > 10 and doc['data']['result']['products'] == ['demo'] and doc['data']['result']['download'] == {'function': 'task.download', 'params': {'id': '$backup_task'}}"
+task_archive=$(json_get "$site/backup-task.json" 'doc["data"]["result"]["file"]')
+check "the task's archive exists under backups" test -f "$site/lib/backups/$task_archive"
+check "GET /api/v1/x/task/download as root streams the archive" http_is "$site/backup-download.tar.zst" 200 GET "/api/v1/x/task/download?id=$backup_task" '' "$root_cookie"
+check "the download answers the archive byte for byte" cmp -s "$site/backup-download.tar.zst" "$site/lib/backups/$task_archive"
+check "the download names the archive" header_matches "$site/backup-download.tar.zst.headers" content-disposition "^attachment; filename=\"$task_archive\"$"
+check "ctl backup.list --out json" keel_ok "$site/backup-list.json" ctl backup.list --out json
+check "backup.list answers the task's archive with the demo bundle and no secret key" json_is "$site/backup-list.json" "doc['ok'] is True and doc['data']['total'] == 1 and doc['data']['data'][0]['file'] == '$task_archive' and doc['data']['data'][0]['products'] == 'demo' and doc['data']['data'][0]['secretKey'] is False and doc['data']['data'][0]['keel'] == '$version'"
+check "ctl backup.list --out table" keel_ok "$site/backup-list.out" ctl backup.list --out table
+check "the table carries the translated header" grep -q "Archive" "$site/backup-list.out"
+echo "--- the ip rule and the update"
 check "ctl auth.ip_rule.create deny 127.0.0.1/32 at level user" keel_ok "$site/ip-rule.json" ctl auth.ip_rule.create action=deny cidr=127.0.0.1/32 level=user comment=prove
 check "auth.ip_rule.create answers the rule" json_is "$site/ip-rule.json" 'doc["ok"] is True and doc["data"]["action"] == "deny" and doc["data"]["cidr"] == "127.0.0.1/32" and doc["data"]["level"] == "user" and doc["data"]["comment"] == "prove" and re.fullmatch("[0-7][0-9A-HJKMNP-TV-Z]{25}", doc["data"]["id"])'
 ip_rule_id=$(json_get "$site/ip-rule.json" 'doc["data"]["id"]')
@@ -760,7 +782,7 @@ check "audit.list answers the su row with root as the principal" json_is "$site/
 check "ctl audit.list --as alice sees her account only" keel_ok "$site/audit-alice.json" ctl audit.list --out json --as alice
 check "audit.list as alice answers rows of her account alone" json_is "$site/audit-alice.json" "doc['ok'] is True and doc['data']['total'] >= 1 and all(row['accountId'] == '$account_id' for row in doc['data']['data'])"
 check "ctl task.list --out json" keel_ok "$site/tasks.json" ctl task.list --out json
-check "task.list keeps the two finished exports and the update after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 3 and sorted((row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]) == [("note.export", "done", "4/4"), ("note.export", "done", "4/4"), ("update.apply", "done", "3/3")]'
+check "task.list keeps the two finished exports, the backup and the update after the bundle is disabled" json_is "$site/tasks.json" 'doc["ok"] is True and doc["data"]["total"] == 4 and sorted((row["function"], row["state"], row["progress"]) for row in doc["data"]["data"]) == [("backup.create", "done", "2/2"), ("note.export", "done", "4/4"), ("note.export", "done", "4/4"), ("update.apply", "done", "3/3")]'
 check "ctl cron.job.list --out json" keel_ok "$site/cron-jobs.json" ctl cron.job.list --out json
 check "cron.job.list answers the poll job of notify and the daily check of update" json_is "$site/cron-jobs.json" 'doc["ok"] is True and sorted((row["id"], row["module"], row["schedule"]) for row in doc["data"]["data"]) == [("notify.problems.poll", "notify", "* * * * *"), ("update.poll", "update", "30 4 * * *")]'
 check "ctl cron.run.list --out json" keel_ok "$site/cron-runs.json" ctl cron.run.list --out json
@@ -781,5 +803,33 @@ check "ctl webhook.delivery.list --out json" keel_ok "$site/webhook-deliveries.j
 check "webhook.delivery.list answers an empty page" json_is "$site/webhook-deliveries.json" 'doc["ok"] is True and doc["data"]["total"] == 0'
 check "ctl note.list is refused" keel_fails "$site/orphan.json" ctl note.list
 check "note.list answers not_found" json_is "$site/orphan.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
+check "ctl backup.restore while the service runs writes the restore request" keel_ok "$site/backup-restore.json" ctl backup.restore "archive=$task_archive"
+restore_task=$(json_get "$site/backup-restore.json" 'doc["data"]["task"]["id"]')
+check "task.get answers done for the restore request" task_reaches "$site/restore-task.json" "$restore_task" "done"
+check "the restore task names the archive, the bundle and the request" json_is "$site/restore-task.json" "doc['data']['state'] == 'done' and doc['data']['result']['archive'] == '$site/lib/backups/$task_archive' and doc['data']['result']['products'] == ['demo'] and doc['data']['result']['request'] == '$site/lib/restore.request' and doc['data']['result']['requestedBy'] == 'owner'"
+check "the restore request names the archive and the owner" json_is "$site/lib/restore.request" "doc == {'archive': '$site/lib/backups/$task_archive', 'requested_by': 'owner'}"
+check "keel serve stops on SIGTERM" stop_serve
+check "the socket file is removed" socket_is_gone
+
+echo "--- run 3: the pending restore runs before the start, then the CLI restore with the secret key"
+start_serve restored
+check "the start consumed the restore request" test ! -e "$site/lib/restore.request"
+check "the start logged the pending restore and the enabled set it changed" grep -q "restored from a backup; the enabled set changed: +demo" "$serve_log"
+check "product list shows demo enabled again after the restore" keel_ok "$site/list-restored.out" product list
+check "the restored enabled set carries demo" stdout_has_line "$site/list-restored.out" "$(printf 'demo\tenabled\t%s' "$version")"
+check "ctl note.list after the restore" keel_ok "$site/notes-restored.json" ctl note.list --out json
+check "note.list answers the notes of the backup" cmp -s <(json_get "$site/notes-at-backup.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))') <(json_get "$site/notes-restored.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))')
+check "keel serve stops on SIGTERM" stop_serve
+KEEL_BACKUP_PASSPHRASE=wrong check "restore refuses a wrong passphrase" keel_fails "$site/restore-wrong.err" restore "$site/backup.tar.zst" --with-secret-key
+check "the refusal names the passphrase" grep -q "passphrase does not open" "$site/restore-wrong.err"
+KEEL_BACKUP_PASSPHRASE=prove-passphrase check "restore with the secret key restores the CLI archive" keel_ok "$site/restore.out" restore "$site/backup.tar.zst" --with-secret-key
+check "restore prints the loaded tables, the enabled set and the kept configuration" grep -q "^enabled products: demo -> demo (unchanged)$" "$site/restore.out"
+check "restore prints where the secret key landed" grep -q "^secret key: written to $site/lib/secret.key$" "$site/restore.out"
+check "restore keeps this host's configuration and puts the archive's copy beside it" cmp -s "$site/etc/config.yaml" "$site/etc/config.yaml.restored"
+check "the restore note names the archive and the kept data key" json_is "$site/lib/restore.note" "doc['archive'] == '$site/backup.tar.zst' and doc['data_key'] == 'kept' and doc['requested_by'] == 'keel restore' and doc['products_after'] == ['demo']"
+start_serve restored-cli
+check "the start consumed the restore note" test ! -e "$site/lib/restore.note"
+check "ctl note.list after the CLI restore" keel_ok "$site/notes-restored-cli.json" ctl note.list --out json
+check "note.list answers the notes of the CLI backup" cmp -s <(json_get "$site/notes-at-backup.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))') <(json_get "$site/notes-restored-cli.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))')
 check "keel serve stops on SIGTERM" stop_serve
 check "the socket file is removed" socket_is_gone

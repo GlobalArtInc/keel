@@ -9,6 +9,7 @@ use tokio::task::JoinSet;
 
 use super::composition::Graph;
 use super::freeze::Frozen;
+use crate::backup::Site;
 use crate::registry::Registry;
 
 pub struct Kernel {
@@ -44,6 +45,8 @@ pub struct StopError {
 impl Frozen {
     pub async fn start(self, db: DatabaseConnection) -> Result<Kernel, StartError> {
         self.locks.attach(db.clone());
+        self.backups
+            .attach(Arc::new(Site::new(&self.graph, &self.registry)), db.clone());
         let data_dir = self.graph.data_dir().to_path_buf();
         let mut kernel = Kernel {
             graph: self.graph,

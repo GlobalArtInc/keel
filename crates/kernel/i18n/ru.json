@@ -86,6 +86,12 @@
     "error": {
       "account_not_found": "Аккаунта не существует или он вне вашей области",
       "actor_not_delegated": "Актор пришёл без делегирования",
+      "backup_archive": "{path} — не пригодный архив резервной копии: {reason}",
+      "backup_bundle": "Архив называет продукт {id}, которого этот бинарник не несёт; в нём есть {known}",
+      "backup_exists": "{path} уже существует; резервная копия никогда не перезаписывает архив",
+      "backup_failed": "Операция с резервной копией не удалась: {reason}",
+      "backup_incompatible": "Архив снят keel {archive}, а этот бинарник — keel {running}: {reason}",
+      "backup_not_started": "Служба резервных копий не запущена",
       "body_not_json": "Тело запроса не является JSON",
       "body_not_multipart": "Тело запроса не multipart/form-data",
       "body_too_large": "Тело запроса больше {limit} байт",

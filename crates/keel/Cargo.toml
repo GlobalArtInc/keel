@@ -12,6 +12,7 @@ keel-kernel = { workspace = true }
 keel-release = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }
+nix = { workspace = true }
 reqwest = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
@@ -25,6 +26,7 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
+keel-system = { workspace = true, features = ["auth", "tasks"] }
 keel-testkit = { workspace = true }
 rustls = { workspace = true }
 schemars = { workspace = true }

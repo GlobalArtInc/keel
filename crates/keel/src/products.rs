@@ -176,7 +176,7 @@ impl Runtime {
     }
 }
 
-async fn refuse_while_running(config: &Config) -> Result<(), Error> {
+pub(crate) async fn refuse_while_running(config: &Config) -> Result<(), Error> {
     match UnixStream::connect(&config.socket).await {
         Ok(_) => Err(Error::ServiceRunning {
             socket: config.socket.clone(),

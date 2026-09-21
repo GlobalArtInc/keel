@@ -1,0 +1,70 @@
+{
+  "keel": 1,
+  "name": "backup.create",
+  "module": "backup",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Created",
+    "type": "object",
+    "properties": {
+      "archive": {
+        "type": "string"
+      },
+      "file": {
+        "type": "string"
+      },
+      "bytes": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "keel": {
+        "type": "string"
+      },
+      "products": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tables": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "config": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "archive",
+      "file",
+      "bytes",
+      "keel",
+      "products",
+      "tables",
+      "sources",
+      "config"
+    ]
+  },
+  "ui": {
+    "title": "backup.create.title",
+    "result": "task"
+  }
+}

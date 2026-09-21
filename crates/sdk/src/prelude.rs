@@ -11,6 +11,7 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_json::{Value, json};
 
 pub use crate::access::{AccountScope, Owned, ScopePolicy, scope_by_account};
+pub use crate::backup::{BackupDir, BackupSource};
 pub use crate::call::{AfterContext, Call};
 pub use crate::clock::Clock;
 pub use crate::config::ConfigSection;

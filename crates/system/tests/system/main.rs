@@ -22,6 +22,10 @@ mod auth_su;
 mod auth_tokens;
 #[cfg(feature = "auth")]
 mod auth_totp;
+#[cfg(feature = "backup")]
+mod backup;
+#[cfg(feature = "backup")]
+mod backup_alone;
 #[cfg(feature = "cron")]
 mod cron;
 #[cfg(feature = "cron")]

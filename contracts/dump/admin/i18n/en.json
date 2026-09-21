@@ -88,6 +88,12 @@
       "error": {
         "account_not_found": "The account does not exist or is outside your scope",
         "actor_not_delegated": "The actor arrived without delegation",
+        "backup_archive": "{path} is not a usable backup archive: {reason}",
+        "backup_bundle": "The archive names the product {id}, which this binary does not carry; it carries {known}",
+        "backup_exists": "{path} exists already; a backup never overwrites an archive",
+        "backup_failed": "The backup operation failed: {reason}",
+        "backup_incompatible": "The archive was taken by keel {archive} and this binary is keel {running}: {reason}",
+        "backup_not_started": "The backup service has not started",
         "body_not_json": "The request body is not JSON",
         "body_not_multipart": "The request body is not multipart/form-data",
         "body_too_large": "The request body is above {limit} bytes",
@@ -1050,6 +1056,47 @@
         "interrupted": "Interrupted",
         "queued": "Queued",
         "running": "Running"
+      }
+    },
+    "backup": {
+      "action": {
+        "create": "Take a backup",
+        "refresh": "Refresh",
+        "restore": "Restore"
+      },
+      "archive": "Archive",
+      "column": {
+        "at": "Taken",
+        "bytes": "Size",
+        "file": "Archive",
+        "keel": "Keel version",
+        "products": "Products",
+        "secretKey": "Secret key",
+        "sources": "Sources",
+        "tables": "Tables"
+      },
+      "create": {
+        "title": "Take a backup"
+      },
+      "empty": "No backup has been taken yet",
+      "error": {
+        "directory": "The backup directory {path} could not be read",
+        "inline": "The backup runs as a task; call it through the task runner",
+        "link": "The archive {archive} could not be offered for download at {output}",
+        "name": "{archive} is not the name of an archive under the backup directory",
+        "not_found": "There is no archive named {archive} under the backup directory"
+      },
+      "list": {
+        "title": "Backups"
+      },
+      "progress": {
+        "archive": "Dumping the database and packing the archive",
+        "check": "Reading the archive manifest",
+        "link": "Offering the archive for download",
+        "request": "Writing the restore request"
+      },
+      "restore": {
+        "title": "Restore a backup"
       }
     },
     "note": {

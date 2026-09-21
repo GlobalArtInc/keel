@@ -2217,8 +2217,10 @@ dependencies = [
  "keel-kernel",
  "keel-release",
  "keel-sdk",
+ "keel-system",
  "keel-testkit",
  "keel-types",
+ "nix",
  "reqwest",
  "rust-embed",
  "rustls",
@@ -2301,6 +2303,7 @@ name = "keel-kernel"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "argon2",
  "axum",
  "axum-server",
  "base64 0.22.1",
@@ -2320,10 +2323,12 @@ dependencies = [
  "rustls",
  "schemars 1.2.2",
  "sea-orm",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml_ng",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2331,6 +2336,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ulid",
+ "zstd",
 ]
 
 [[package]]
@@ -2417,11 +2423,13 @@ dependencies = [
  "sha1 0.11.0",
  "sha2 0.11.0",
  "subtle",
+ "tar",
  "tempfile",
  "testcontainers",
  "thiserror",
  "tokio",
  "tracing",
+ "zstd",
 ]
 
 [[package]]

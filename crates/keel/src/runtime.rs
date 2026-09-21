@@ -59,6 +59,7 @@ impl Runtime {
         if tls::install_provider() {
             tracing::debug!("the TLS provider is installed");
         }
+        self.restore_pending(config).await?;
         let storage = Storage::connect(config).await?;
         let outcome = self.start_with(config, &storage).await;
         match outcome {

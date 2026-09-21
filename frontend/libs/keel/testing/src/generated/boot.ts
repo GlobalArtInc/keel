@@ -191,6 +191,13 @@ export const BOOT_ONE: Boot = {
           icon: 'share-2',
         },
         {
+          path: 'system/backups',
+          label: 'backup.list.title',
+          func: 'backup.list',
+          kind: 'list',
+          icon: 'archive',
+        },
+        {
           path: 'system/audit',
           label: 'audit.list.title',
           func: 'audit.list',

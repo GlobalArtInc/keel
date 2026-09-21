@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use keel_types::{
     BootProblems, CallError, DownloadFile, Event, Id, Level, Mode, Principal, TaskState,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::watch;
 
@@ -289,6 +289,63 @@ impl fmt::Debug for LockGuard {
 #[async_trait]
 pub trait AdvisoryLock: Send + Sync {
     async fn take(&self, key: i64) -> Result<LockGuard>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupManifest {
+    pub keel: String,
+    pub at: DateTime<Utc>,
+    pub instance: Option<String>,
+    pub schema: String,
+    pub products: Vec<BackupProduct>,
+    pub modules: Vec<BackupModule>,
+    pub tables: Vec<BackupTable>,
+    pub sources: Vec<String>,
+    pub config: Vec<String>,
+    pub data: Vec<String>,
+    pub secret_key: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupProduct {
+    pub id: String,
+    pub version: String,
+    pub edition: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupModule {
+    pub id: String,
+    pub version: String,
+    pub ledger: Option<String>,
+    pub applied: u32,
+    pub head: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupTable {
+    pub name: String,
+    pub columns: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackupCreated {
+    pub archive: PathBuf,
+    pub bytes: u64,
+    pub manifest: BackupManifest,
+}
+
+#[async_trait]
+pub trait Backups: Send + Sync {
+    fn directory(&self) -> PathBuf;
+    async fn create(&self, archive: &Path) -> Result<BackupCreated>;
+    async fn inspect(&self, archive: &Path) -> Result<BackupManifest>;
+    fn admits(&self, manifest: &BackupManifest) -> Result<()>;
+    async fn request_restore(&self, archive: &Path, requested_by: &str) -> Result<PathBuf>;
 }
 
 #[async_trait]
