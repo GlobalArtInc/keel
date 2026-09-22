@@ -1,0 +1,307 @@
+mod files;
+mod fs;
+mod group;
+mod service;
+mod template;
+mod user;
+
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+
+use crate::accounts::Accounts;
+use crate::policy::{Policy, Product, UidRange};
+use crate::protocol::{ERROR_UNKNOWN_OP, Failure, Request};
+
+const OP_USER_CREATE: &str = "host.user.create";
+const OP_USER_DELETE: &str = "host.user.delete";
+const OP_USER_GET: &str = "host.user.get";
+const OP_USER_LIST: &str = "host.user.list";
+const OP_GROUP_CREATE: &str = "host.group.create";
+const OP_GROUP_DELETE: &str = "host.group.delete";
+const OP_GROUP_GET: &str = "host.group.get";
+const OP_GROUP_LIST: &str = "host.group.list";
+const OP_FS_WRITE: &str = "host.fs.write";
+const OP_FS_READ: &str = "host.fs.read";
+const OP_FS_REMOVE: &str = "host.fs.remove";
+const OP_FS_MKDIR: &str = "host.fs.mkdir";
+const OP_FS_LIST: &str = "host.fs.list";
+const OP_SERVICE_RELOAD: &str = "host.service.reload";
+const OP_SERVICE_RESTART: &str = "host.service.restart";
+const OP_SERVICE_LIST: &str = "host.service.list";
+const OP_TEMPLATE_APPLY: &str = "host.template.apply";
+
+const NAME_LIMIT: usize = 32;
+
+pub(crate) struct Context {
+    policy: Policy,
+    templates: PathBuf,
+    serial: Mutex<()>,
+}
+
+struct Call<'a> {
+    policy: &'a Policy,
+    templates: &'a Path,
+    product: &'a Product,
+    product_id: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Dest {
+    root: String,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Empty {}
+
+impl Context {
+    pub(crate) fn new(policy: Policy, templates: PathBuf) -> Self {
+        Self {
+            policy,
+            templates,
+            serial: Mutex::new(()),
+        }
+    }
+
+    pub(crate) fn templates(&self) -> &Path {
+        &self.templates
+    }
+}
+
+pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Failure> {
+    let product = context.policy.product(&request.product).ok_or_else(|| {
+        Failure::policy(format!(
+            "the product {} has no section in the policy",
+            request.product
+        ))
+    })?;
+    let call = Call {
+        policy: &context.policy,
+        templates: &context.templates,
+        product,
+        product_id: &request.product,
+    };
+    let _serial = context
+        .serial
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let args = &request.args;
+    match request.op.as_str() {
+        OP_USER_CREATE => user::create(&call, parse(args)?),
+        OP_USER_DELETE => user::delete(&call, parse(args)?),
+        OP_USER_GET => user::get(&call, parse(args)?),
+        OP_USER_LIST => user::list(&call, parse::<Empty>(args).map(drop)?),
+        OP_GROUP_CREATE => group::create(&call, parse(args)?),
+        OP_GROUP_DELETE => group::delete(&call, parse(args)?),
+        OP_GROUP_GET => group::get(&call, parse(args)?),
+        OP_GROUP_LIST => group::list(&call, parse::<Empty>(args).map(drop)?),
+        OP_FS_WRITE => fs::write(&call, parse(args)?),
+        OP_FS_READ => fs::read(&call, parse(args)?),
+        OP_FS_REMOVE => fs::remove(&call, parse(args)?),
+        OP_FS_MKDIR => fs::mkdir(&call, parse(args)?),
+        OP_FS_LIST => fs::list(&call, parse(args)?),
+        OP_SERVICE_RELOAD => service::reload(&call, parse(args)?),
+        OP_SERVICE_RESTART => service::restart(&call, parse(args)?),
+        OP_SERVICE_LIST => service::list(&call, parse::<Empty>(args).map(drop)?),
+        OP_TEMPLATE_APPLY => template::apply(&call, parse(args)?),
+        other => Err(Failure::new(
+            ERROR_UNKNOWN_OP,
+            format!("{other} is not an operation of the catalogue"),
+        )),
+    }
+}
+
+fn parse<T: DeserializeOwned>(value: &Value) -> Result<T, Failure> {
+    let value = if value.is_null() {
+        Value::Object(Default::default())
+    } else {
+        value.clone()
+    };
+    serde_json::from_value(value).map_err(|error| Failure::args(error.to_string()))
+}
+
+impl Call<'_> {
+    fn accounts(&self) -> Accounts<'_> {
+        Accounts::new(&self.policy.tools().getent)
+    }
+
+    fn uid_range(&self) -> Result<UidRange, Failure> {
+        self.policy
+            .uid_range()
+            .ok_or_else(|| Failure::policy("the policy allots no uid_range to this installation"))
+    }
+
+    fn user_prefix(&self) -> Result<&str, Failure> {
+        self.product.user_prefix.as_deref().ok_or_else(|| {
+            Failure::policy(format!(
+                "the product {} has no user_prefix in the policy",
+                self.product_id
+            ))
+        })
+    }
+
+    fn drop_in_prefix(&self) -> Result<&str, Failure> {
+        self.product.drop_in_prefix.as_deref().ok_or_else(|| {
+            Failure::policy(format!(
+                "the product {} has no drop_in_prefix in the policy",
+                self.product_id
+            ))
+        })
+    }
+
+    fn account_name(&self, name: &str) -> Result<(), Failure> {
+        let prefix = self.user_prefix()?;
+        if valid_account_name(name, prefix) {
+            Ok(())
+        } else {
+            Err(Failure::policy(format!(
+                "the name {name} is not an account name under the prefix {prefix}"
+            )))
+        }
+    }
+
+    fn resolve(&self, dest: &Dest) -> Result<PathBuf, Failure> {
+        let prefix = self.drop_in_prefix()?;
+        let root = self.policy.root(&dest.root).ok_or_else(|| {
+            Failure::policy(format!("{} is not a file root of the policy", dest.root))
+        })?;
+        if !valid_file_name(&dest.name, prefix) {
+            return Err(Failure::policy(format!(
+                "the name {} is not a file name under the prefix {prefix}",
+                dest.name
+            )));
+        }
+        let canonical = root.canonicalize().map_err(|error| {
+            Failure::policy(format!(
+                "the file root {} at {} is not reachable: {error}",
+                dest.root,
+                root.display()
+            ))
+        })?;
+        let target = canonical.join(&dest.name);
+        if let Ok(meta) = std::fs::symlink_metadata(&target)
+            && meta.file_type().is_symlink()
+        {
+            return Err(Failure::policy(format!(
+                "{} is a symbolic link, which the agent does not follow",
+                target.display()
+            )));
+        }
+        Ok(target)
+    }
+
+    fn root_dir(&self, root: &str) -> Result<PathBuf, Failure> {
+        let path = self
+            .policy
+            .root(root)
+            .ok_or_else(|| Failure::policy(format!("{root} is not a file root of the policy")))?;
+        path.canonicalize().map_err(|error| {
+            Failure::policy(format!(
+                "the file root {root} at {} is not reachable: {error}",
+                path.display()
+            ))
+        })
+    }
+
+    fn check(&self, name: &str) -> Result<&[String], Failure> {
+        self.policy
+            .check(name)
+            .ok_or_else(|| Failure::policy(format!("{name} is not a check of the policy")))
+    }
+
+    fn service(&self, name: &str) -> Result<(), Failure> {
+        if self.policy.allows_service(name) {
+            Ok(())
+        } else {
+            Err(Failure::policy(format!(
+                "{name} is not a service of the policy"
+            )))
+        }
+    }
+}
+
+fn valid_account_name(name: &str, prefix: &str) -> bool {
+    let mut chars = name.chars();
+    name.len() <= NAME_LIMIT
+        && name.len() > prefix.len()
+        && name.starts_with(prefix)
+        && chars
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+fn valid_file_name(name: &str, prefix: &str) -> bool {
+    name.len() > prefix.len()
+        && name.starts_with(prefix)
+        && !name.contains('/')
+        && !name.contains('\0')
+        && !name.starts_with('.')
+        && name != "."
+        && name != ".."
+}
+
+const FILE_MODE_LIMIT: u32 = 0o1777;
+const DIR_MODE_LIMIT: u32 = 0o3777;
+
+fn parse_mode(text: &str, limit: u32) -> Option<u32> {
+    u32::from_str_radix(text, 8)
+        .ok()
+        .filter(|mode| *mode <= limit)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_names_carry_the_prefix_and_the_characters_the_tools_accept() {
+        assert!(valid_account_name("hp_site", "hp_"));
+        assert!(valid_account_name("hp_a-1", "hp_"));
+        assert!(!valid_account_name("hp_", "hp_"));
+        assert!(!valid_account_name("site", "hp_"));
+        assert!(!valid_account_name("hp_Site", "hp_"));
+        assert!(!valid_account_name("hp_a b", "hp_"));
+        assert!(!valid_account_name("hp_../x", "hp_"));
+        assert!(!valid_account_name(
+            &format!("hp_{}", "a".repeat(30)),
+            "hp_"
+        ));
+        assert!(valid_account_name("root", "ro"));
+    }
+
+    #[test]
+    fn file_names_carry_the_prefix_and_no_path_separator() {
+        assert!(valid_file_name("keel-dns-a.org.zone", "keel-dns-"));
+        assert!(!valid_file_name("keel-dns-", "keel-dns-"));
+        assert!(!valid_file_name("a.org.zone", "keel-dns-"));
+        assert!(!valid_file_name("keel-dns-../x.zone", "keel-dns-"));
+        assert!(!valid_file_name("keel-dns-a/b.zone", "keel-dns-"));
+        assert!(!valid_file_name("keel-dns-a\0", "keel-dns-"));
+        assert!(!valid_file_name(".keel-dns-a", "keel-dns-"));
+        assert!(!valid_file_name("..", ""));
+        assert!(!valid_file_name(".", ""));
+    }
+
+    #[test]
+    fn modes_are_octal_and_carry_no_setuid_bit_nor_a_setgid_bit_on_a_file() {
+        assert_eq!(parse_mode("0644", FILE_MODE_LIMIT), Some(0o644));
+        assert_eq!(parse_mode("640", FILE_MODE_LIMIT), Some(0o640));
+        assert_eq!(parse_mode("1777", FILE_MODE_LIMIT), Some(0o1777));
+        assert_eq!(parse_mode("4755", FILE_MODE_LIMIT), None);
+        assert_eq!(parse_mode("2755", FILE_MODE_LIMIT), None);
+        assert_eq!(parse_mode("2775", DIR_MODE_LIMIT), Some(0o2775));
+        assert_eq!(parse_mode("4755", DIR_MODE_LIMIT), None);
+        assert_eq!(parse_mode("6775", DIR_MODE_LIMIT), None);
+        assert_eq!(parse_mode("0o644", FILE_MODE_LIMIT), None);
+        assert_eq!(parse_mode("778", FILE_MODE_LIMIT), None);
+        assert_eq!(parse_mode("17777", DIR_MODE_LIMIT), None);
+        assert_eq!(parse_mode("", FILE_MODE_LIMIT), None);
+    }
+}

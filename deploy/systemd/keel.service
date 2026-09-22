@@ -20,6 +20,7 @@ SuccessExitStatus=75
 TimeoutStopSec=30
 RuntimeDirectory=keel
 RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
 StateDirectory=keel
 StateDirectoryMode=0700
 NoNewPrivileges=yes

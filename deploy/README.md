@@ -165,12 +165,17 @@ they exist:
   the binary writes under `/var/lib/keel/tls/` at first start, or with the pair `tls.cert` and
   `tls.key` of `config.yaml` name; ACME, the expiry problem and the certificate button of the
   settings arrive later. The installer generates nothing for TLS itself.
-- The host policy of the privileged unit. `keel-privileged.service` is installed and runs as
-  root, `agent.yaml` is written with the uid range and the product sections, but until the
-  `host` module and its agent arrive the unit serves the `update` policy alone and binds no
-  socket; the operation catalogue and the audit of operations come with the host layer of M4.
-  After the installer exits the privileged unit is the only process of keel running as root,
-  which `ps -eo user,comm | grep keel` shows.
+- The kernel side of the host policy. `keel-privileged.service` runs as root and serves the
+  host policy of `agent.yaml` on `/run/keel/agent.sock`: the socket admits the account `keel`
+  alone, checked by peer credentials, and every operation of the catalogue (`host.user.*`,
+  `host.group.*` inside `uid_range`, `host.fs.*` and `host.template.apply` under `file_roots`,
+  `host.service.*` for the units in `services`) is one line in `journalctl -u keel-privileged`
+  with the actor, the request id and the outcome; a request outside the policy is refused with
+  `host.error.policy` and appears there too. The kernel does not connect to the socket yet:
+  the `host` module and its executor arrive with the rest of the host layer of M4, and until
+  then `keel doctor` reports the agent as not in use. `hack/host-vm.sh` proves the agent on a
+  machine installed by `install.sh`. After the installer exits the privileged unit is the only
+  process of keel running as root, which `ps -eo user,comm | grep keel` shows.
 - The update button. The root half of an update is in place: `keel-update.path` watches
   `/var/lib/keel/update.request`, and `keel-update.service` runs `keel privileged update
   --from-request`, which reads the version, the channel and the requesting principal from the

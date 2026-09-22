@@ -10,3 +10,4 @@
 .DS_Store
 config.yaml
 agent.yaml
+!/deploy/agent.yaml

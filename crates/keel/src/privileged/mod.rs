@@ -5,6 +5,8 @@ mod update;
 use std::future::Future;
 use std::path::Path;
 
+use keel_host_agent::journal::JournalError;
+use keel_host_agent::{Agent, AgentError, Policy, PolicyError};
 use keel_release::ReleaseError;
 
 pub(crate) use channel::{Source, SourceError};
@@ -28,14 +30,35 @@ pub(crate) enum PrivilegedError {
     Release(#[from] ReleaseError),
     #[error(transparent)]
     Update(#[from] UpdateError),
+    #[error(transparent)]
+    Policy(#[from] PolicyError),
+    #[error(transparent)]
+    Agent(#[from] AgentError),
+    #[error(transparent)]
+    Journal(#[from] JournalError),
 }
 
-pub(crate) async fn serve(socket: &Path, policy: &Path, shutdown: impl Future<Output = ()>) {
-    println!(
-        "keel privileged: serving the update policy alone; the host policy arrives with the host module (socket {}, policy {})",
-        socket.display(),
-        policy.display()
+pub(crate) struct HostPolicy<'a> {
+    pub(crate) socket: &'a Path,
+    pub(crate) policy: &'a Path,
+    pub(crate) user: &'a str,
+    pub(crate) templates: &'a Path,
+}
+
+pub(crate) async fn serve(
+    host: HostPolicy<'_>,
+    shutdown: impl Future<Output = ()>,
+) -> Result<(), PrivilegedError> {
+    keel_host_agent::journal::init()?;
+    let policy = Policy::load(host.policy)?;
+    let agent = Agent::for_user(policy, host.user, host.templates.to_owned())?;
+    tracing::info!(
+        policy = %host.policy.display(),
+        user = %host.user,
+        admitted_uid = agent.admitted(),
+        "keel privileged serves the host policy; the update policy runs from the request file"
     );
-    shutdown.await;
-    println!("keel privileged: stopped");
+    let bound = agent.bind(host.socket).await?;
+    bound.serve(shutdown).await;
+    Ok(())
 }

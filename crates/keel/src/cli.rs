@@ -4,6 +4,8 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use keel_host_agent::exec::{self, Target};
+use keel_host_agent::{DEFAULT_TEMPLATES, DEFAULT_USER, Policy};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::doctor::{self, Layout};
 use keel_kernel::{Config, logging, restart};
@@ -16,7 +18,7 @@ use crate::VERSION;
 use crate::backup::{self, BackupCliError, RESTORE_CLI, describe_manifest};
 use crate::doctor::SupportCliError;
 use crate::error::{Error, describe};
-use crate::privileged::{self, PrivilegedError, Request, Runner, Source};
+use crate::privileged::{self, HostPolicy, PrivilegedError, Request, Runner, Source};
 use crate::products::{Switched, Wanted};
 use crate::runtime::{Runtime, Stopped};
 
@@ -25,6 +27,7 @@ const UPDATE_APPLY: &str = "update.apply";
 const UPDATE_ROLLBACK: &str = "update.rollback";
 const TASK_GET: &str = "task.get";
 const TASK_POLL: Duration = Duration::from_millis(500);
+const EXIT_CANNOT_EXECUTE: u8 = 126;
 
 #[derive(Debug, Parser)]
 #[command(name = "keel", version = VERSION, about = "The keel installation: serve, migrate, product, ctl, update, backup, restore, doctor, support-bundle and privileged")]
@@ -68,6 +71,27 @@ pub(crate) enum Command {
         about = "Collect the redacted configuration, the log ring, the ledgers, the audit tail, the open problems and the doctor report into an archive"
     )]
     SupportBundle(SupportArgs),
+    #[command(
+        hide = true,
+        about = "Run a program under a uid of the installation's range; the agent re-executes itself through this subcommand instead of changing its own credentials"
+    )]
+    AgentExec(AgentExecArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AgentExecArgs {
+    #[arg(long, value_name = "UID")]
+    pub(crate) uid: u32,
+    #[arg(long, default_value = privileged::DEFAULT_POLICY, value_name = "PATH")]
+    pub(crate) policy: PathBuf,
+    #[arg(value_name = "PROGRAM", required = true)]
+    pub(crate) program: PathBuf,
+    #[arg(
+        value_name = "ARG",
+        trailing_var_arg = true,
+        allow_hyphen_values = true
+    )]
+    pub(crate) args: Vec<OsString>,
 }
 
 #[derive(Debug, Args)]
@@ -167,6 +191,20 @@ pub(crate) struct PrivilegedArgs {
     pub(crate) socket: PathBuf,
     #[arg(long, default_value = privileged::DEFAULT_POLICY, value_name = "PATH")]
     pub(crate) policy: PathBuf,
+    #[arg(
+        long,
+        default_value = DEFAULT_USER,
+        value_name = "NAME",
+        help = "The one account whose connections the agent socket admits, checked by peer credentials"
+    )]
+    pub(crate) user: String,
+    #[arg(
+        long,
+        default_value = DEFAULT_TEMPLATES,
+        value_name = "DIR",
+        help = "The directory the operator's template overrides are read from"
+    )]
+    pub(crate) templates: PathBuf,
     #[command(subcommand)]
     pub(crate) action: Option<PrivilegedAction>,
 }
@@ -349,12 +387,16 @@ impl Runtime {
     }
 
     fn execute(&self, cli: Cli) -> Result<ExitCode, Error> {
+        let command = match cli.command {
+            Command::AgentExec(args) => return Ok(agent_exec(args)),
+            command => command,
+        };
         let executor = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .map_err(Error::Executor)?;
         executor.block_on(async {
-            match cli.command {
+            match command {
                 Command::Serve => {
                     let config = load(cli.config.as_deref())?;
                     logging::init(&config.log)?;
@@ -400,11 +442,23 @@ impl Runtime {
                 }
                 Command::Privileged(args) => match args.action {
                     None => {
-                        privileged::serve(&args.socket, &args.policy, signals()).await;
-                        Ok(ExitCode::SUCCESS)
+                        let host = HostPolicy {
+                            socket: &args.socket,
+                            policy: &args.policy,
+                            user: &args.user,
+                            templates: &args.templates,
+                        };
+                        Ok(match privileged::serve(host, signals()).await {
+                            Ok(()) => ExitCode::SUCCESS,
+                            Err(error) => {
+                                eprintln!("error: {}", describe(&error));
+                                ExitCode::FAILURE
+                            }
+                        })
                     }
                     Some(PrivilegedAction::Update(update)) => Ok(privileged_update(update).await),
                 },
+                Command::AgentExec(args) => Ok(agent_exec(args)),
                 Command::Ctl(args) => {
                     let socket = match args.socket {
                         Some(socket) => socket,
@@ -750,6 +804,24 @@ async fn run_update(args: UpdateArgs) -> Result<(), PrivilegedError> {
     Ok(())
 }
 
+fn agent_exec(args: AgentExecArgs) -> ExitCode {
+    let policy = match Policy::load(&args.policy) {
+        Ok(policy) => policy,
+        Err(error) => {
+            eprintln!("error: {}", describe(&error));
+            return ExitCode::from(EXIT_CANNOT_EXECUTE);
+        }
+    };
+    let target = Target {
+        uid: args.uid,
+        program: args.program,
+        args: args.args,
+    };
+    let error = exec::run(&policy, &target);
+    eprintln!("error: {}", describe(&error));
+    ExitCode::from(EXIT_CANNOT_EXECUTE)
+}
+
 fn units_line(units: &[String]) -> String {
     if units.is_empty() {
         String::new()
@@ -932,6 +1004,8 @@ mod tests {
         };
         assert_eq!(args.socket, PathBuf::from("/run/keel/agent.sock"));
         assert_eq!(args.policy, PathBuf::from("/etc/keel/agent.yaml"));
+        assert_eq!(args.user, "keel");
+        assert_eq!(args.templates, PathBuf::from("/etc/keel/templates"));
         assert!(args.action.is_none());
         let cli = Cli::try_parse_from([
             "keel",
@@ -940,6 +1014,10 @@ mod tests {
             "/tmp/agent.sock",
             "--policy",
             "/tmp/agent.yaml",
+            "--user",
+            "tester",
+            "--templates",
+            "/tmp/templates",
         ])
         .unwrap();
         let Command::Privileged(args) = cli.command else {
@@ -947,6 +1025,8 @@ mod tests {
         };
         assert_eq!(args.socket, PathBuf::from("/tmp/agent.sock"));
         assert_eq!(args.policy, PathBuf::from("/tmp/agent.yaml"));
+        assert_eq!(args.user, "tester");
+        assert_eq!(args.templates, PathBuf::from("/tmp/templates"));
 
         let cli = Cli::try_parse_from(["keel", "privileged", "update", "--from-request"]).unwrap();
         let Command::Privileged(PrivilegedArgs {
@@ -1027,6 +1107,39 @@ mod tests {
             Cli::try_parse_from(["keel", "privileged", "update", "--from-request", "extra"])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn agent_exec_takes_the_uid_the_policy_and_the_program_with_its_arguments() {
+        let cli = Cli::try_parse_from([
+            "keel",
+            "agent-exec",
+            "--uid",
+            "100001",
+            "--policy",
+            "/tmp/agent.yaml",
+            "--",
+            "/usr/bin/id",
+            "-u",
+            "--zero",
+        ])
+        .unwrap();
+        let Command::AgentExec(args) = cli.command else {
+            panic!("expected agent-exec");
+        };
+        assert_eq!(args.uid, 100_001);
+        assert_eq!(args.policy, PathBuf::from("/tmp/agent.yaml"));
+        assert_eq!(args.program, PathBuf::from("/usr/bin/id"));
+        assert_eq!(args.args, ["-u", "--zero"]);
+        let cli = Cli::try_parse_from(["keel", "agent-exec", "--uid", "7", "/bin/true"]).unwrap();
+        let Command::AgentExec(args) = cli.command else {
+            panic!("expected agent-exec");
+        };
+        assert_eq!(args.policy, PathBuf::from("/etc/keel/agent.yaml"));
+        assert!(args.args.is_empty());
+        assert!(Cli::try_parse_from(["keel", "agent-exec", "/bin/true"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "agent-exec", "--uid", "7"]).is_err());
+        assert!(Cli::try_parse_from(["keel", "agent-exec", "--uid", "-1", "/bin/true"]).is_err());
     }
 
     #[test]

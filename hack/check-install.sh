@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 keel=${1:-}
 problems=0
-scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh)
+scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh hack/host-vm.sh)
 units=(keel.service keel-privileged.service keel-update.path keel-update.service)
 enabled_units=(keel.service keel-privileged.service keel-update.path)
 
@@ -99,6 +99,8 @@ check "install.sh installs the agent policy from the release" grep -qF 'release_
 check "install.sh keeps an existing agent policy" grep -qF 'exists from an earlier installation; kept as it is' deploy/install.sh
 check "deploy/agent.yaml carries one uid_range line under policy" test "$(grep -cE '^  uid_range: \{ from: [0-9]+, to: [0-9]+ \}$' deploy/agent.yaml)" = "1"
 check "deploy/agent.yaml starts with the policy key" test "$(head -n 1 deploy/agent.yaml)" = "policy:"
+check "deploy/agent.yaml names the check of the zones on named" grep -qF 'named.check: ["named-checkconf", "-z"]' deploy/agent.yaml
+check "host-vm.sh expects that check in the installed policy" grep -qF 'named.check' hack/host-vm.sh
 for product in bill dns panel; do
   check "deploy/agent.yaml carries the section of $product" grep -qE "^    $product: \{ .*drop_in_prefix: keel-$product- \}$" deploy/agent.yaml
 done
@@ -152,6 +154,11 @@ check "keel-update.path starts keel-update.service" test "$(unit_value keel-upda
 check "keel-privileged.service runs privileged with the socket and the policy" test "$(unit_value keel-privileged.service ExecStart)" = "/opt/keel/bin/current privileged --socket /run/keel/agent.sock --policy /etc/keel/agent.yaml"
 check "keel-update.service runs the update from the request" test "$(unit_value keel-update.service ExecStart)" = "/opt/keel/bin/current privileged update --from-request"
 check "keel.service alone owns the runtime directory" test "$(grep -l '^RuntimeDirectory=keel$' deploy/systemd/* | tr '\n' ' ')" = "deploy/systemd/keel.service "
+check "keel.service keeps the runtime directory and the agent socket across its restarts" test "$(unit_value keel.service RuntimeDirectoryPreserve)" = "restart"
+check "host-vm.sh --help prints the usage and exits 0" prints_usage hack/host-vm.sh
+check "host-vm.sh proves the refusal outside file_roots in the journal" grep -qF 'check "the refusal is in the journal with its request id"' hack/host-vm.sh
+check "host-vm.sh proves the rollback of a broken template without downtime" grep -qF 'check "$NAMED_UNIT was not restarted"' hack/host-vm.sh
+check "host-vm.sh proves the user inside the uid range" grep -qF 'check "the uid $uid is inside the uid range of the policy"' hack/host-vm.sh
 check "keel.service alone drops privileges with NoNewPrivileges" test "$(grep -l '^NoNewPrivileges=yes$' deploy/systemd/* | tr '\n' ' ')" = "deploy/systemd/keel.service "
 check "the kernel unit is the only one that is not root" test "$(grep -L '^User=root$' deploy/systemd/*.service | tr '\n' ' ')" = "deploy/systemd/keel.service "
 check "update-vm.sh --help prints the usage and exits 0" prints_usage hack/update-vm.sh

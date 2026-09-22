@@ -101,11 +101,35 @@ done
 echo "keel-dev graph checked"
 
 facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$facade" != "keel-kernel keel-release keel-sdk keel-types " ]; then
-  echo "the facade keel depends on workspace crates other than keel-kernel, keel-release, keel-sdk and keel-types: $facade" >&2
+if [ "$facade" != "keel-host-agent keel-kernel keel-release keel-sdk keel-types " ]; then
+  echo "the facade keel depends on workspace crates other than keel-host-agent, keel-kernel, keel-release, keel-sdk and keel-types: $facade" >&2
   fail=1
 fi
 echo "keel graph checked"
+
+agent=$(cargo tree -p keel-host-agent -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | sort -u | tr '\n' ' ')
+for direct in $agent; do
+  case "$direct" in
+    keel-sdk|keel-types) ;;
+    *)
+      echo "keel-host-agent depends on the workspace crate $direct; only keel-sdk and keel-types are allowed" >&2
+      fail=1
+      ;;
+  esac
+done
+for forbidden in keel-kernel keel-system keel-host keel-testkit keel keel-release; do
+  if cargo tree -p keel-host-agent -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-host-agent reaches $forbidden through its dependencies" >&2
+    fail=1
+  fi
+done
+for forbidden in axum hyper http reqwest sea-orm sqlx tonic; do
+  if cargo tree -p keel-host-agent -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-host-agent depends on $forbidden; the agent knows nothing about the database or HTTP" >&2
+    fail=1
+  fi
+done
+echo "keel-host-agent graph checked"
 
 release=$(cargo tree -p keel-release -e normal,build,dev --prefix none | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | sort -u | tr '\n' ' ')
 if [ -n "$release" ]; then

@@ -11,6 +11,7 @@ repository = "https://github.com/GlobalArtInc/keel"
 [workspace.dependencies]
 keel = { path = "crates/keel" }
 keel-demo = { path = "products/demo" }
+keel-host-agent = { path = "crates/host-agent" }
 keel-kernel = { path = "crates/kernel" }
 keel-release = { path = "crates/release" }
 keel-sdk = { path = "crates/sdk" }
@@ -44,7 +45,7 @@ jsonschema = { version = "0.56", default-features = false }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
 migrator = { package = "sqlmig", version = "0.2.1" }
 minijinja = { version = "2", features = ["custom_syntax"] }
-nix = { version = "0.29", features = ["fs", "term", "user"] }
+nix = { version = "0.29", features = ["fs", "sched", "socket", "term", "user"] }
 rand = "0.10"
 rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
 regex = "1"

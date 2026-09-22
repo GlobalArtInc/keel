@@ -1,5 +1,294 @@
 const KEEL: &str = env!("CARGO_BIN_EXE_keel");
 
+mod privileged {
+    use std::fs;
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::os::unix::net::UnixStream;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    use super::KEEL;
+
+    const START_TIMEOUT: Duration = Duration::from_secs(20);
+
+    struct Tree {
+        dir: tempfile::TempDir,
+        uid: u32,
+    }
+
+    impl Tree {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            let root = dir.path();
+            let meta = fs::metadata(root).expect("metadata");
+            let (uid, gid) = (meta.uid(), meta.gid());
+            fs::create_dir_all(root.join("zones")).expect("the zones root");
+            fs::create_dir_all(root.join("templates")).expect("the templates directory");
+            fs::write(
+                root.join("passwd"),
+                format!(
+                    "root:x:0:0:root:/root:/bin/sh\ntester:x:{uid}:{gid}::/home/tester:/bin/sh\n"
+                ),
+            )
+            .expect("passwd");
+            let getent = root.join("getent");
+            fs::write(
+                &getent,
+                format!(
+                    "#!/bin/sh\ndb=$1; shift\n[ \"${{1:-}}\" = -- ] && shift\n[ \"$db\" = passwd ] || exit 1\nif [ $# -eq 0 ]; then cat {passwd}; exit 0; fi\nline=$(awk -F: -v k=\"$1\" '$1 == k || $3 == k' {passwd})\n[ -n \"$line\" ] || exit 2\nprintf '%s\\n' \"$line\"\n",
+                    passwd = root.join("passwd").display()
+                ),
+            )
+            .expect("the getent stub");
+            fs::set_permissions(&getent, fs::Permissions::from_mode(0o755)).expect("executable");
+            fs::write(
+                root.join("agent.yaml"),
+                format!(
+                    "policy:\n  uid_range: {{ from: {uid}, to: {uid} }}\n  file_roots: {{ zones: {zones} }}\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools: {{ getent: {getent} }}\n",
+                    zones = root.join("zones").display(),
+                    getent = getent.display()
+                ),
+            )
+            .expect("the policy");
+            Self { dir, uid }
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.dir.path().join(name)
+        }
+
+        fn arg(&self, name: &str) -> String {
+            self.path(name).display().to_string()
+        }
+    }
+
+    fn wait_for(socket: &Path, log: &Path) {
+        let started = Instant::now();
+        while UnixStream::connect(socket).is_err() {
+            assert!(
+                started.elapsed() < START_TIMEOUT,
+                "the agent did not listen within {START_TIMEOUT:?}: {}",
+                fs::read_to_string(log).unwrap_or_default()
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    #[test]
+    fn keel_privileged_serves_the_host_policy_on_the_socket_and_audits_to_stderr() {
+        let tree = Tree::new();
+        let socket = tree.path("run/agent.sock");
+        let log = tree.path("privileged.log");
+        let stderr = fs::File::create(&log).expect("the log file");
+        let mut child = Command::new(KEEL)
+            .args([
+                "privileged",
+                "--socket",
+                &tree.arg("run/agent.sock"),
+                "--policy",
+                &tree.arg("agent.yaml"),
+                "--user",
+                "tester",
+                "--templates",
+                &tree.arg("templates"),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(stderr)
+            .spawn()
+            .expect("keel privileged starts");
+        wait_for(&socket, &log);
+        assert_eq!(
+            fs::metadata(&socket).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
+
+        let mut stream = UnixStream::connect(&socket).expect("a connection");
+        stream
+            .write_all(b"{\"id\":1,\"op\":\"host.fs.list\",\"actor\":{\"login\":\"alice\",\"level\":\"admin\"},\"request_id\":\"bin-1\",\"product\":\"dns\",\"args\":{\"root\":\"zones\"}}\n")
+            .expect("the request is sent");
+        let mut answer = String::new();
+        BufReader::new(&stream)
+            .read_line(&mut answer)
+            .expect("the answer is read");
+        assert_eq!(
+            answer.trim_end(),
+            r#"{"id":1,"ok":true,"data":{"entries":[]}}"#
+        );
+        stream
+            .write_all(b"{\"id\":2,\"op\":\"host.fs.list\",\"actor\":{\"login\":\"alice\",\"level\":\"admin\"},\"request_id\":\"bin-2\",\"product\":\"bill\",\"args\":{\"root\":\"zones\"}}\n")
+            .expect("the request is sent");
+        let mut refused = String::new();
+        BufReader::new(&stream)
+            .read_line(&mut refused)
+            .expect("the answer is read");
+        assert!(
+            refused.contains(r#""key":"host.error.policy""#),
+            "{refused}"
+        );
+        drop(stream);
+
+        let pid = child.id().to_string();
+        assert!(
+            Command::new("kill")
+                .args(["-TERM", &pid])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let started = Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("the child is polled") {
+                break status;
+            }
+            assert!(
+                started.elapsed() < START_TIMEOUT,
+                "keel privileged did not stop on SIGTERM"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert!(status.success(), "{status}");
+        assert!(!socket.exists());
+        let text = fs::read_to_string(&log).unwrap();
+        assert!(text.contains("serves the host policy"), "{text}");
+        assert!(
+            text.contains(&format!("admitted_uid={}", tree.uid)),
+            "{text}"
+        );
+        let accepted = text
+            .lines()
+            .find(|line| line.contains("request_id=bin-1"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "no audit line for bin-1 in:
+{text}"
+                )
+            });
+        assert!(accepted.contains("keel_host_agent::audit"), "{accepted}");
+        assert!(accepted.contains("op=host.fs.list"), "{accepted}");
+        assert!(accepted.contains("actor=alice"), "{accepted}");
+        assert!(accepted.contains("level=admin"), "{accepted}");
+        assert!(accepted.contains("product=dns"), "{accepted}");
+        assert!(accepted.contains("outcome=ok"), "{accepted}");
+        let refused = text
+            .lines()
+            .find(|line| line.contains("request_id=bin-2"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "no audit line for bin-2 in:
+{text}"
+                )
+            });
+        assert!(refused.contains("outcome=host.error.policy"), "{refused}");
+        assert!(refused.contains("product=bill"), "{refused}");
+        assert!(text.contains("the agent stopped"), "{text}");
+    }
+
+    #[test]
+    fn keel_privileged_refuses_to_start_without_a_policy_or_the_admitted_account() {
+        let tree = Tree::new();
+        let output = Command::new(KEEL)
+            .args([
+                "privileged",
+                "--socket",
+                &tree.arg("run/agent.sock"),
+                "--policy",
+                &tree.arg("missing.yaml"),
+            ])
+            .output()
+            .expect("the binary runs");
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("could not read the policy"), "{stderr}");
+        let output = Command::new(KEEL)
+            .args([
+                "privileged",
+                "--socket",
+                &tree.arg("run/agent.sock"),
+                "--policy",
+                &tree.arg("agent.yaml"),
+                "--user",
+                "nobody-here",
+            ])
+            .output()
+            .expect("the binary runs");
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("nobody-here is not an account"), "{stderr}");
+        assert!(!tree.path("run/agent.sock").exists());
+    }
+
+    #[test]
+    fn agent_exec_refuses_a_uid_outside_the_range_and_changes_credentials_only_on_linux() {
+        let tree = Tree::new();
+        let outside = Command::new(KEEL)
+            .args([
+                "agent-exec",
+                "--uid",
+                "0",
+                "--policy",
+                &tree.arg("agent.yaml"),
+                "--",
+                "/bin/sh",
+                "-c",
+                "echo hi",
+            ])
+            .output()
+            .expect("the binary runs");
+        assert_eq!(outside.status.code(), Some(126));
+        let stderr = String::from_utf8_lossy(&outside.stderr);
+        assert!(stderr.contains("outside the uid_range"), "{stderr}");
+        assert!(outside.stdout.is_empty());
+
+        let unknown = Command::new(KEEL)
+            .args([
+                "agent-exec",
+                "--uid",
+                &tree.uid.to_string(),
+                "--policy",
+                &tree.arg("missing.yaml"),
+                "--",
+                "/bin/sh",
+                "-c",
+                "echo hi",
+            ])
+            .output()
+            .expect("the binary runs");
+        assert_eq!(unknown.status.code(), Some(126));
+
+        let own = Command::new(KEEL)
+            .args([
+                "agent-exec",
+                "--uid",
+                &tree.uid.to_string(),
+                "--policy",
+                &tree.arg("agent.yaml"),
+                "--",
+                "/bin/sh",
+                "-c",
+                "echo hi",
+            ])
+            .output()
+            .expect("the binary runs");
+        let stderr = String::from_utf8_lossy(&own.stderr);
+        if cfg!(target_os = "linux") {
+            if own.status.success() {
+                assert_eq!(String::from_utf8_lossy(&own.stdout), "hi\n");
+            } else {
+                assert_eq!(own.status.code(), Some(126), "{stderr}");
+                assert!(stderr.contains("setgroups"), "{stderr}");
+                assert!(stderr.contains("not permitted"), "{stderr}");
+            }
+        } else {
+            assert_eq!(own.status.code(), Some(126), "{stderr}");
+            assert!(stderr.contains("Linux operation"), "{stderr}");
+            assert!(own.stdout.is_empty());
+        }
+    }
+}
+
 #[cfg(not(feature = "demo"))]
 #[test]
 fn the_binary_without_the_demo_feature_carries_no_product_bundle() {

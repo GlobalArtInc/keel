@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 clap = { workspace = true }
+keel-host-agent = { workspace = true }
 keel-kernel = { workspace = true }
 keel-release = { workspace = true }
 keel-sdk = { workspace = true }

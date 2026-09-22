@@ -1,0 +1,21 @@
+[package]
+name = "keel-host-agent"
+description = "The server side of the root boundary: the agent socket admitting one uid by its peer credentials, the agent.yaml policy, the operation catalogue, the journal audit and the impersonation helper"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+minijinja = { workspace = true }
+nix = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

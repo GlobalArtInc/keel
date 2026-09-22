@@ -1,0 +1,10 @@
+policy:
+  uid_range: { from: 100000, to: 165535 }
+  file_roots: { zones: /etc/bind/zones, vhosts: /etc/nginx/conf.d, www: /var/www }
+  services: [named, nginx, php8.3-fpm]
+  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"] }
+  exec_allow: [certbot, quotatool]
+  products:
+    bill: { drop_in_prefix: keel-bill- }
+    dns: { drop_in_prefix: keel-dns- }
+    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }

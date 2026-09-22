@@ -2214,6 +2214,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
+ "keel-host-agent",
  "keel-kernel",
  "keel-release",
  "keel-sdk",
@@ -2296,6 +2297,22 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "keel-host-agent"
+version = "0.1.0"
+dependencies = [
+ "minijinja",
+ "nix",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
