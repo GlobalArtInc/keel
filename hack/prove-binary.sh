@@ -768,7 +768,7 @@ echo "--- backup over the CLI and as a task"
 check "ctl note.list before the backup" keel_ok "$site/notes-at-backup.json" ctl note.list --out json
 KEEL_BACKUP_PASSPHRASE=prove-passphrase check "backup --with-secret-key writes the archive while the service runs" keel_ok "$site/backup.out" backup --out "$site/backup.tar.zst" --with-secret-key
 check "backup prints the archive, its size and the manifest line" grep -q "^wrote $site/backup.tar.zst ([0-9]* bytes): keel $version taken .*; products: demo $version; .*; secret key included$" "$site/backup.out"
-check "the archive is written with mode 0600" test "$(stat -f '%Lp' "$site/backup.tar.zst" 2>/dev/null || stat -c '%a' "$site/backup.tar.zst")" = "600"
+check "the archive is written with mode 0600" test "$(stat -c '%a' "$site/backup.tar.zst" 2>/dev/null || stat -f '%Lp' "$site/backup.tar.zst")" = "600"
 check "backup inspect prints the manifest" keel_ok "$site/backup-manifest.json" backup inspect "$site/backup.tar.zst"
 check "the manifest names the version, the demo bundle, the note table, the configuration and the sealed key" json_is "$site/backup-manifest.json" "doc['keel'] == '$version' and [(p['id'], p['version']) for p in doc['products']] == [('demo', '$version')] and any(t['name'] == 'note_item' and 'title' in t['columns'] for t in doc['tables']) and any(m['id'] == 'keel' and m['ledger'] == 'keel_migration' and m['applied'] == 2 for m in doc['modules']) and doc['config'] == ['config.yaml'] and 'instance.id' in doc['data'] and 'tls/key.pem' in doc['data'] and 'secret.key.sealed' in doc['data'] and doc['secretKey'] is True"
 check "ctl backup.create runs as a task" keel_ok "$site/backup-create.json" ctl backup.create
@@ -818,7 +818,7 @@ check "ctl keel.logs.tail level=warn" keel_ok "$site/logs-warn.json" ctl keel.lo
 check "keel.logs.tail with a level floor answers warnings and errors alone" json_is "$site/logs-warn.json" 'doc["ok"] is True and all(e["level"] in ("warn", "error") for e in doc["data"]["entries"])'
 check "support-bundle writes the archive" keel_ok "$site/support.out" support-bundle --out "$site/support.tar.zst" "${layout[@]}"
 check "support-bundle prints the archive, its size and its entries" grep -q "^wrote $site/support.tar.zst ([0-9]* bytes): config.yaml, logs.jsonl, ledgers.json, audit.jsonl, problems.json, readiness.json, doctor.txt, manifest.json$" "$site/support.out"
-check "the bundle is written with mode 0600" test "$(stat -f '%Lp' "$site/support.tar.zst" 2>/dev/null || stat -c '%a' "$site/support.tar.zst")" = "600"
+check "the bundle is written with mode 0600" test "$(stat -c '%a' "$site/support.tar.zst" 2>/dev/null || stat -f '%Lp' "$site/support.tar.zst")" = "600"
 mkdir -p "$site/support"
 zstd -d -c "$site/support.tar.zst" | tar -x -C "$site/support"
 token_plaintext=$(json_get "$site/token-as-alice.json" 'doc["data"]["token"]')
