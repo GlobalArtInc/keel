@@ -2243,6 +2243,7 @@ version = "0.1.0"
 dependencies = [
  "keel",
  "keel-demo",
+ "keel-dns",
  "keel-system",
  "keel-testkit",
  "reqwest",
@@ -2298,6 +2299,27 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "keel-dns"
+version = "0.1.0"
+dependencies = [
+ "keel",
+ "keel-dns-zones",
+ "keel-host",
+ "keel-system",
+ "keel-testkit",
+ "tempfile",
+]
+
+[[package]]
+name = "keel-dns-zones"
+version = "0.1.0"
+dependencies = [
+ "keel",
+ "keel-host",
+ "keel-system",
 ]
 
 [[package]]

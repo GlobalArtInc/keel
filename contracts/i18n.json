@@ -25,6 +25,14 @@
         "products/demo/i18n": ["product.demo", "menu.demo"],
         "products/demo/i18n/note": ["note"]
       }
+    },
+    {
+      "name": "keel-dns",
+      "id_env": "KEEL_OWNLATE_PROJECT_DNS",
+      "directories": {
+        "products/dns/i18n": ["product.dns", "menu.dns"],
+        "products/dns/crates/dns-zones/i18n": ["dns"]
+      }
     }
   ]
 }

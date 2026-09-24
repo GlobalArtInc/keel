@@ -11,13 +11,15 @@ name = "keel"
 path = "src/main.rs"
 
 [features]
-default = ["demo", "demo-host"]
+default = ["demo", "demo-host", "dns"]
 demo = ["dep:keel-demo"]
 demo-host = ["demo", "keel-demo/host"]
+dns = ["dep:keel-dns"]
 
 [dependencies]
 keel = { workspace = true }
 keel-demo = { workspace = true, optional = true }
+keel-dns = { workspace = true, optional = true }
 keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "update", "backup"] }
 
 [dev-dependencies]

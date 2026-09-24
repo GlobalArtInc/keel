@@ -488,7 +488,8 @@
     },
     "menu": {
       "system": "System",
-      "demo": "Demo"
+      "demo": "Demo",
+      "dns": "DNS"
     },
     "phx": {
       "addToFavourites": "Add to favourites",
@@ -1021,6 +1022,56 @@
       },
       "test": "Test email from the channel {channel}"
     },
+    "dns": {
+      "zone": {
+        "account": "Account",
+        "action": {
+          "create": "New zone",
+          "delete": "Delete",
+          "edit": "Edit"
+        },
+        "column": {
+          "accountId": "Account",
+          "error": "Error",
+          "name": "Name",
+          "serial": "Serial",
+          "state": "State",
+          "updatedAt": "Updated"
+        },
+        "create": {
+          "title": "New zone"
+        },
+        "edit": {
+          "title": "Zone"
+        },
+        "empty": "No zones yet",
+        "error": {
+          "account": "The stored account {account} of a zone is not an identifier",
+          "backup": "The zone file {file} could not be copied into the backup",
+          "exists": "The zone {name} already exists",
+          "id": "The stored id {id} of a zone is not an identifier",
+          "not_started": "The dns module has not started, so no name server is attached"
+        },
+        "expire": "Expire, seconds",
+        "failed": "The zone {name} could not be published: {error}",
+        "list": {
+          "title": "Zones"
+        },
+        "minimum": "Negative caching TTL, seconds",
+        "name": "Name",
+        "page": {
+          "main": "Zone",
+          "owner": "Owner"
+        },
+        "refresh": "Refresh, seconds",
+        "retry": "Retry, seconds",
+        "state": {
+          "active": "Active",
+          "error": "Error",
+          "pending": "Pending"
+        }
+      }
+    },
     "settings": {
       "action": {
         "set": "Change"
@@ -1393,6 +1444,9 @@
     "product": {
       "demo": {
         "brand": "Keel Demo"
+      },
+      "dns": {
+        "brand": "KeelDNS"
       }
     }
   }

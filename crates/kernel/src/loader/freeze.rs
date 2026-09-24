@@ -7,8 +7,9 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, Features, LanguageSource, LiveEvents,
-    OutboxSubscriber, ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, Features, LanguageSource, LimitSource,
+    LiveEvents, OutboxSubscriber, ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher,
+    TaskRunner,
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
@@ -34,7 +35,7 @@ use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
 use crate::doctor;
 use crate::features::ProductFeatures;
-use crate::keel::{SetupHandle, StoredAccounts, StoredPrincipals};
+use crate::keel::{SetupHandle, StoredAccounts, StoredLimits, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
@@ -536,6 +537,7 @@ impl Freezer {
         services.provide::<dyn Clock>(graph.clock().clone());
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
+        services.provide::<dyn LimitSource>(Arc::new(StoredLimits::new(&self.contributions)));
         services.provide::<dyn LanguageSource>(Arc::new(Languages(self.catalogue.languages())));
         services.provide::<dyn PermissionCatalogue>(Arc::new(RegisteredPermissions::new(
             self.permissions.clone(),

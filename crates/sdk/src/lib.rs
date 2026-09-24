@@ -11,6 +11,7 @@ pub mod function;
 pub mod guard;
 pub mod host;
 pub mod lifecycle;
+pub mod limit;
 pub mod list;
 pub mod module;
 pub mod multipart;

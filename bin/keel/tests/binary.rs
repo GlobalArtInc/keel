@@ -263,7 +263,11 @@ mod privileged {
         child.kill().expect("the agent is stopped");
         child.wait().expect("the agent is reaped");
         let text = fs::read_to_string(&log).unwrap_or_default();
-        assert!(text.contains("operations=1 templates=1"), "{text}");
+        let templates = if cfg!(feature = "dns") { 4 } else { 1 };
+        assert!(
+            text.contains(&format!("operations=1 templates={templates}")),
+            "{text}"
+        );
         let line = text
             .lines()
             .find(|line| line.contains("request_id=demo-2"))
@@ -374,7 +378,7 @@ mod privileged {
     }
 }
 
-#[cfg(not(feature = "demo"))]
+#[cfg(not(any(feature = "demo", feature = "dns")))]
 #[test]
 fn the_binary_without_the_demo_feature_carries_no_product_bundle() {
     let output = std::process::Command::new(KEEL)
@@ -644,19 +648,27 @@ mod demo {
     #[tokio::test]
     async fn the_binary_enables_demo_serves_and_answers_ctl_and_http_with_the_envelope() {
         let site = site().await;
-        let unknown = site.failed(&["product", "enable", "dns"]);
+        let unknown = site.failed(&["product", "enable", "panel"]);
+        let carried = if cfg!(feature = "dns") {
+            "demo, dns"
+        } else {
+            "demo"
+        };
         assert!(
-            unknown.contains("the product dns is not carried by this binary; it carries demo"),
+            unknown.contains(&format!(
+                "the product panel is not carried by this binary; it carries {carried}"
+            )),
             "{unknown}"
         );
         assert_eq!(
             site.ok(&["product", "enable", "demo"]).trim(),
             "demo: enabled"
         );
-        assert_eq!(
-            site.ok(&["product", "list"]).trim(),
-            format!("demo\tenabled\t{}", env!("CARGO_PKG_VERSION"))
-        );
+        let mut listed = format!("demo\tenabled\t{}", env!("CARGO_PKG_VERSION"));
+        if cfg!(feature = "dns") {
+            listed.push_str(&format!("\ndns\tdisabled\t{}", env!("CARGO_PKG_VERSION")));
+        }
+        assert_eq!(site.ok(&["product", "list"]).trim(), listed);
         assert_eq!(site.ok(&["product", "features"]), "");
         let migrated = site.ok(&["migrate"]);
         assert!(migrated.contains("note: applied"), "{migrated}");

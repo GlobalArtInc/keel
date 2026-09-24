@@ -24,7 +24,8 @@
       "@globalart/keel": ["libs/keel/src/public-api.ts"],
       "@globalart/keel/*": ["libs/keel/*/src/public-api.ts"],
       "@globalart/keel/testing/playwright": ["libs/keel/testing/src/playwright.ts"],
-      "@globalart/keel-demo": ["products/demo/src/public-api.ts"]
+      "@globalart/keel-demo": ["products/demo/src/public-api.ts"],
+      "@globalart/keel-dns": ["products/dns/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {

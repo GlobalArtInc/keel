@@ -1,0 +1,155 @@
+{
+  "keel": 1,
+  "name": "dns.zone.edit",
+  "module": "dns",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.manage",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "ZoneEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "refresh": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 60,
+        "maximum": 2419200
+      },
+      "retry": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 60,
+        "maximum": 2419200
+      },
+      "expire": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 3600,
+        "maximum": 4838400
+      },
+      "minimum": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 60,
+        "maximum": 86400
+      }
+    },
+    "required": [
+      "id",
+      "refresh",
+      "retry",
+      "expire",
+      "minimum"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Zone",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "serial": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "refresh": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "retry": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "expire": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "minimum": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "template": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "served": {
+        "type": "boolean"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "name",
+      "kind",
+      "serial",
+      "refresh",
+      "retry",
+      "expire",
+      "minimum",
+      "state",
+      "served",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "dns.zone.edit.title",
+    "read": "dns.zone.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "refresh",
+          "retry",
+          "expire",
+          "minimum"
+        ]
+      }
+    ]
+  }
+}

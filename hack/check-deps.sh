@@ -189,37 +189,57 @@ root = meta["workspace_root"] + "/products/"
 print(" ".join(sorted(p["name"] for p in meta["packages"] if p["manifest_path"].startswith(root))))
 ')
 if cargo metadata --format-version 1 --no-deps | python3 -c '
-import json, sys
+import json, os, sys
 meta = json.load(sys.stdin)
 root = meta["workspace_root"]
-products = {p["name"] for p in meta["packages"] if p["manifest_path"].startswith(root + "/products/")}
+dirs = {p["name"]: os.path.dirname(p["manifest_path"]) for p in meta["packages"] if p["manifest_path"].startswith(root + "/products/")}
 bad = 0
 for package in meta["packages"]:
     if package["manifest_path"].startswith(root + "/bin/"):
         continue
+    own = os.path.dirname(package["manifest_path"]) + "/crates/"
     for dependency in package["dependencies"]:
-        if dependency["name"] in products:
+        name = dependency["name"]
+        if name in dirs and not (package["name"] in dirs and dirs[name].startswith(own)):
             kind = dependency["kind"] or "normal"
-            print(package["name"] + " depends on the product crate " + dependency["name"] + " (" + kind + "); only bin/* may", file=sys.stderr)
+            print(package["name"] + " depends on the product crate " + name + " (" + kind + "); only bin/* and the bundle that owns a module crate may", file=sys.stderr)
             bad = 1
 sys.exit(bad)
 '; then
-  echo "no package outside bin/* depends on a product crate"
+  echo "no package outside bin/* depends on a product crate other than a module crate of its own bundle"
 else
   fail=1
 fi
+product_rules() {
+  cargo metadata --format-version 1 --no-deps | python3 -c '
+import json, os, sys
+meta = json.load(sys.stdin)
+root = meta["workspace_root"]
+dirs = {p["name"]: os.path.dirname(p["manifest_path"]) for p in meta["packages"] if p["manifest_path"].startswith(root + "/products/")}
+name = sys.argv[1]
+modules = sorted(other for other, path in dirs.items() if path.startswith(dirs[name] + "/crates/"))
+owners = sorted(other for other, path in dirs.items() if dirs[name].startswith(path + "/crates/"))
+print(" ".join(modules))
+print(" ".join(sorted(["keel-bin"] + owners)) + " ")
+' "$1"
+}
 for product in $products; do
+  rules=$(product_rules "$product")
+  modules=$(sed -n 1p <<<"$rules")
+  expected_dependants=$(sed -n 2p <<<"$rules")
   direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -vx keel-host || true; } | sort -u | tr '\n' ' ')
+  for module in $modules; do
+    direct=$(tr ' ' '\n' <<<"$direct" | { grep -vx "$module" || true; } | { grep -v '^$' || true; } | tr '\n' ' ')
+  done
   if [ "$direct" != "keel " ] && [ "$direct" != "keel keel-system " ]; then
-    echo "$product depends on more than the facade keel, keel-host and the api modules of keel-system: $direct" >&2
+    echo "$product depends on more than the facade keel, keel-host, the api modules of keel-system and its own module crates: $direct" >&2
     fail=1
   fi
   dependants=$(cargo tree -i "$product" -e normal --prefix none | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
-  if [ "$dependants" != "keel-bin " ]; then
-    echo "$product is depended on by crates other than keel-bin: $dependants" >&2
+  if [ "$dependants" != "$expected_dependants" ]; then
+    echo "$product is depended on by $dependants; only $expected_dependants may" >&2
     fail=1
   fi
   echo "$product graph checked"
 done
-
 exit "$fail"

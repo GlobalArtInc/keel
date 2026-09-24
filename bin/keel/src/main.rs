@@ -12,5 +12,7 @@ fn main() -> keel::ExitCode {
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"));
     #[cfg(feature = "demo")]
     let runtime = runtime.product(&keel_demo::MANIFEST);
+    #[cfg(feature = "dns")]
+    let runtime = runtime.product(&keel_dns::MANIFEST);
     runtime.run()
 }

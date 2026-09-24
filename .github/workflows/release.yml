@@ -19,6 +19,7 @@ env:
   KEEL_OWNLATE_TOKEN: ${{ secrets.KEEL_OWNLATE_TOKEN }}
   KEEL_OWNLATE_PROJECT_CORE: ${{ vars.KEEL_OWNLATE_PROJECT_CORE }}
   KEEL_OWNLATE_PROJECT_DEMO: ${{ vars.KEEL_OWNLATE_PROJECT_DEMO }}
+  KEEL_OWNLATE_PROJECT_DNS: ${{ vars.KEEL_OWNLATE_PROJECT_DNS }}
 
 jobs:
   release:
@@ -92,7 +93,7 @@ jobs:
         if: env.KEEL_OWNLATE_TOKEN != ''
         run: |
           cargo run -p keel-dev -- i18n pull --out .
-          git diff --exit-code -- crates/kernel/i18n crates/system/i18n products/demo/i18n
+          git diff --exit-code -- crates/kernel/i18n crates/system/i18n products/demo/i18n products/dns/i18n products/dns/crates/dns-zones/i18n
 
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin

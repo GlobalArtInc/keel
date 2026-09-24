@@ -1,6 +1,6 @@
 policy:
   uid_range: { from: 100000, to: 165535 }
-  file_roots: { zones: /etc/bind/zones, vhosts: /etc/nginx/conf.d, www: /var/www }
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www }
   services: [named, nginx, php8.3-fpm]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"] }
   exec_allow: [certbot, quotatool]

@@ -9,11 +9,25 @@ function load(path: string): Boot {
   return JSON.parse(readFileSync(join(CONTRACTS, path), 'utf8')) as Boot;
 }
 
+const NARROWED = ['products', 'brand', 'menu', 'features'];
+
+function untouched(boot: Boot): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(boot).filter(([key]) => !NARROWED.includes(key)));
+}
+
 describe('KEEL_BOOT', () => {
-  it('carries the three committed boot payloads', () => {
+  it('carries the three committed boot payloads, the dump narrowed to demo as the one product', () => {
     expect(KEEL_BOOT.none).toEqual(load('fixtures/boot-none.json'));
-    expect(KEEL_BOOT.one).toEqual(load('dump/admin/boot.json'));
     expect(KEEL_BOOT.two).toEqual(load('fixtures/boot.json'));
+    const dump = load('dump/admin/boot.json');
+    const demo = dump.products.filter((product) => product.id === 'demo');
+    expect(KEEL_BOOT.one.products).toEqual(demo);
+    expect(KEEL_BOOT.one.brand).toEqual({ ...demo[0].brand, logo: '/brand/logo.svg' });
+    expect(KEEL_BOOT.one.menu).toEqual(dump.menu.filter((group) => group.product !== 'dns'));
+    expect(KEEL_BOOT.one.features).toEqual(
+      dump.features.filter((feature) => !feature.startsWith('dns.')),
+    );
+    expect(untouched(KEEL_BOOT.one)).toEqual(untouched(dump));
   });
 
   it('covers no product, one product and two products', () => {

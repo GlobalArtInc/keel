@@ -14,6 +14,7 @@ mod group;
 mod http;
 mod instance;
 mod lifecycle;
+mod limits;
 mod modules;
 mod outbox;
 mod preferences;

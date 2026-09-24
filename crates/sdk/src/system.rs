@@ -90,6 +90,11 @@ pub trait AccountSource: Send + Sync {
     async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;
 }
 
+#[async_trait]
+pub trait LimitSource: Send + Sync {
+    async fn effective(&self, key: &str, account: Id, db: &Db) -> Result<Option<u64>>;
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Preferences {
     pub lang: Option<String>,

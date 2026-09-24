@@ -26,7 +26,7 @@ use keel_sdk::runtime::{
     AfterCommitHook, Before, CallBuilder, CallHandle, Invoked, Invoker, Stored,
 };
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
-use keel_sdk::{AfterContext, Download, FunctionDef, KeelError, TaskHandle};
+use keel_sdk::{AfterContext, Db, Download, FunctionDef, KeelError, TaskHandle};
 use keel_types::{
     CallError, Envelope, ErrorCode, EventSubject, GroupResult, Id, Kind, Level, Meta,
     MetaPrincipal, Mode, Principal,
@@ -625,7 +625,9 @@ impl Inner {
             Ok(Performed { data, download }) => {
                 let mut hooks = take(after);
                 hooks.extend(handle.take_after_commit());
-                let context = handle.after_context();
+                let context = handle
+                    .after_context()
+                    .with_db(Db::from_connection(self.db.clone()));
                 let session = handle.take_session_change();
                 let transaction = handle
                     .finish()

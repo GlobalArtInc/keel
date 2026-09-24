@@ -1,0 +1,208 @@
+{
+  "keel": 1,
+  "name": "dns.zone.list",
+  "module": "dns",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.read",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Zone",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Zone"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Zone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refresh": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "retry": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "expire": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "minimum": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "template": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "served": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "name",
+          "kind",
+          "serial",
+          "refresh",
+          "retry",
+          "expire",
+          "minimum",
+          "state",
+          "served",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.zone.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "link",
+        "to": {
+          "screen": "dns.zone.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "serial",
+        "type": "number"
+      },
+      {
+        "key": "error",
+        "type": "text"
+      },
+      {
+        "key": "updatedAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "dns.zone.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "dns.zone.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "dns.zone.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "name",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "dns.zone.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "dns.zone.*"
+    ]
+  }
+}

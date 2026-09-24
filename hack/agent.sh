@@ -10,7 +10,7 @@ start_agent() {
   gid=$(id -g)
   agent_socket="$dir/agent.sock"
   agent_log="$dir/agent.log"
-  mkdir -p "$dir/bin" "$dir/notes" "$dir/templates" "$dir/cron.d"
+  mkdir -p "$dir/bin" "$dir/notes" "$dir/zones" "$dir/named" "$dir/templates" "$dir/cron.d"
   cat >"$dir/bin/getent" <<EOF
 #!/bin/sh
 if [ "\$1" = passwd ] && [ "\$3" = "$login" ]; then
@@ -27,13 +27,20 @@ if [ "\$1" = is-active ]; then
 fi
 exit 0
 EOF
-  chmod 0755 "$dir/bin/getent" "$dir/bin/systemctl"
+  cat >"$dir/bin/named-checkconf" <<EOF
+#!/bin/sh
+echo "\$@" >>"$dir/named-checkconf.calls"
+exit 0
+EOF
+  chmod 0755 "$dir/bin/getent" "$dir/bin/systemctl" "$dir/bin/named-checkconf"
   cat >"$dir/agent.yaml" <<EOF
 policy:
-  file_roots: { notes: $dir/notes }
-  services: []
+  file_roots: { notes: $dir/notes, zones: $dir/zones, named: $dir/named }
+  services: [named]
+  checks: { named.check: ["$dir/bin/named-checkconf", "-z"] }
   products:
     demo: { user_prefix: dm_, drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }
+    dns: { drop_in_prefix: keel-dns- }
   tools: { getent: $dir/bin/getent, systemctl: $dir/bin/systemctl, cron_dir: $dir/cron.d }
 EOF
   "$keel" privileged --socket "$agent_socket" --policy "$dir/agent.yaml" --user "$login" --templates "$dir/templates" >"$agent_log" 2>&1 &

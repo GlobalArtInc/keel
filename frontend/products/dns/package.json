@@ -1,0 +1,19 @@
+{
+  "name": "@globalart/keel-dns",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The KeelDNS product package: the dns product id for the shell, with no custom views",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GlobalArtInc/keel.git",
+    "directory": "frontend/products/dns"
+  },
+  "sideEffects": false,
+  "peerDependencies": {
+    "@angular/core": "^19.1.0",
+    "@globalart/keel": "workspace:^"
+  },
+  "dependencies": {
+    "tslib": "^2.8.0"
+  }
+}

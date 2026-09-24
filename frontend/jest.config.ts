@@ -5,6 +5,7 @@ const config: Config = {
   projects: [
     '<rootDir>/libs/keel/jest.config.ts',
     '<rootDir>/products/demo/jest.config.ts',
+    '<rootDir>/products/dns/jest.config.ts',
     '<rootDir>/apps/shell/jest.config.ts',
   ],
 };

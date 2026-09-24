@@ -1,0 +1,10 @@
+{
+  "menu": {
+    "dns": "DNS"
+  },
+  "product": {
+    "dns": {
+      "brand": "KeelDNS"
+    }
+  }
+}

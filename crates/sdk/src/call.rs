@@ -17,10 +17,12 @@ use crate::download::Download;
 use crate::error::{KeelError, Result};
 use crate::services::Services;
 use crate::settings::SettingsSource;
-use crate::system::{Client, SessionChange, TaskRunner, TaskSpec};
+use crate::system::{Client, LimitSource, SessionChange, TaskRunner, TaskSpec};
 use crate::task::TaskHandle;
 
 pub const TASKS_UNAVAILABLE_KEY: &str = "keel.error.tasks_unavailable";
+const LIMIT_EXCEEDED_KEY: &str = "keel.error.limit_exceeded";
+const SERVICE_MISSING_KEY: &str = "keel.error.service_missing";
 
 pub struct Call<P> {
     state: Arc<CallState>,
@@ -68,6 +70,7 @@ pub type AfterCommitHook = Box<dyn FnOnce(AfterContext) -> BoxFuture<'static, Re
 pub struct AfterContext {
     principal: Principal,
     request_id: String,
+    db: Option<Db>,
 }
 
 impl AfterContext {
@@ -77,6 +80,18 @@ impl AfterContext {
 
     pub fn request_id(&self) -> &str {
         &self.request_id
+    }
+
+    pub fn db(&self) -> Result<&Db> {
+        self.db
+            .as_ref()
+            .ok_or_else(|| KeelError::internal(SERVICE_MISSING_KEY).param("service", "database"))
+    }
+
+    #[doc(hidden)]
+    pub fn with_db(mut self, db: Db) -> Self {
+        self.db = Some(db);
+        self
     }
 }
 
@@ -216,6 +231,22 @@ impl<P> Call<P> {
                 .param("key", key)
                 .source(error)
         })
+    }
+
+    pub async fn check_limit(&self, key: &str, current: u64) -> Result<()> {
+        let account = self
+            .state
+            .resolved
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .unwrap_or(self.state.principal.account_id);
+        let limits = self.require::<dyn LimitSource>()?;
+        match limits.effective(key, account, &self.state.db).await? {
+            Some(max) if current >= max => Err(KeelError::limit_exceeded(LIMIT_EXCEEDED_KEY)
+                .param("limit", key)
+                .param("max", max)),
+            _ => Ok(()),
+        }
     }
 
     pub async fn spawn_self_as_task(&self) -> Result<TaskRef> {
@@ -480,6 +511,7 @@ impl CallHandle {
         AfterContext {
             principal: self.0.principal.clone(),
             request_id: self.0.request_id.clone(),
+            db: None,
         }
     }
 

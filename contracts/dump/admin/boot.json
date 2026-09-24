@@ -14,11 +14,21 @@
         "hue": 264,
         "chroma": 0.18
       }
+    },
+    {
+      "id": "dns",
+      "name": "product.dns.brand",
+      "edition": "lite",
+      "brand": {
+        "name": "product.dns.brand",
+        "logo": "/brand/dns/logo.svg",
+        "hue": 264,
+        "chroma": 0.18
+      }
     }
   ],
   "brand": {
-    "name": "product.demo.brand",
-    "logo": "/brand/logo.svg",
+    "name": "keel.brand",
     "hue": 264,
     "chroma": 0.18
   },
@@ -32,7 +42,9 @@
     "tz": null,
     "totp": false
   },
-  "features": [],
+  "features": [
+    "dns.zones"
+  ],
   "license": null,
   "menu": [
     {
@@ -57,6 +69,21 @@
           "func": "note.tag.list",
           "kind": "list",
           "icon": "tag"
+        }
+      ]
+    },
+    {
+      "id": "dns",
+      "product": "dns",
+      "label": "menu.dns",
+      "icon": "globe",
+      "items": [
+        {
+          "path": "dns/zones",
+          "label": "dns.zone.list.title",
+          "func": "dns.zone.list",
+          "kind": "list",
+          "icon": "globe"
         }
       ]
     },

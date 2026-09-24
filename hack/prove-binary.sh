@@ -578,7 +578,8 @@ check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 
 check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$site/boot-brand-gone.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
 check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264'
 check "ctl keel.product.list --out json" keel_ok "$site/products.json" ctl keel.product.list --out json
-check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["host", "note"])]'
+check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"] if row["id"] == "demo"] == [("demo", "enabled", "install", ["host", "note"])]'
+check "keel.product.list answers the dns bundle disabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["modules"]) for row in doc["data"]["data"] if row["id"] != "demo"] == [("dns", "disabled", ["host", "dns"])]'
 check "update check --out json" keel_ok "$site/update-check.json" update check --out json
 check "update check answers the running version, the channel head and that the update is allowed" json_is "$site/update-check.json" "doc['ok'] is True and doc['data']['running'] == '$version' and doc['data']['available'] == '$available_version' and doc['data']['channel'] == 'stable' and doc['data']['channelUrl'] == 'http://127.0.0.1:$channel_port/' and doc['data']['minUpgradeFrom'] == '$version' and doc['data']['contract'] == 1 and doc['data']['runningContract'] == 1 and doc['data']['allowed'] is True and doc['data']['upToDate'] is False and doc['data']['blockedBy'] is None and doc['data']['previous'] is None and doc['data']['notes'] == 'Rehearsal release $available_version'"
 check "update check --out table" keel_ok "$site/update-check.out" update check --out table
@@ -890,7 +891,7 @@ check "the note module is orphaned after the restart" sql_is "$note_state_sql" "
 check "ctl note.list is refused while demo is disabled" keel_fails "$site/notes-off.json" ctl note.list
 check "note.list answers not_found while demo is disabled" json_is "$site/notes-off.json" 'doc["ok"] is False and doc["error"]["code"] == "not_found"'
 check "ctl keel.product.list --out json after the disable" keel_ok "$site/products-off.json" ctl keel.product.list --out json
-check "keel.product.list answers demo disabled" json_is "$site/products-off.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"]] == [("demo", "disabled", None)]'
+check "keel.product.list answers demo disabled" json_is "$site/products-off.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"] if row["id"] == "demo"] == [("demo", "disabled", None)]'
 check "product disable demo while disabled prints already disabled" keel_ok "$site/disable-again.out" product disable demo
 check "the second disable requests no restart" stdout_is "$site/disable-again.out" "demo: already disabled"
 check "product enable demo over the control socket" keel_ok "$site/enable-online.out" product enable demo
@@ -905,7 +906,7 @@ check "the note tables are the ones from before the switch" sql_is "$note_tables
 check "ctl note.list answers again" keel_ok "$site/notes-on.json" ctl note.list --out json
 check "note.list answers the notes written before the switch" cmp -s <(json_get "$site/notes-at-backup.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))') <(json_get "$site/notes-on.json" 'json.dumps(sorted(row["title"] for row in doc["data"]["data"]))')
 check "keel.product.list answers demo enabled by the owner" keel_ok "$site/products-on.json" ctl keel.product.list --out json
-check "the enabled set records the owner of the socket" json_is "$site/products-on.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"]] == [("demo", "enabled", "owner")]'
+check "the enabled set records the owner of the socket" json_is "$site/products-on.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"]) for row in doc["data"]["data"] if row["id"] == "demo"] == [("demo", "enabled", "owner")]'
 check "product enable demo while enabled prints already enabled" keel_ok "$site/enable-again.out" product enable demo
 check "the second enable requests no restart" stdout_is "$site/enable-again.out" "demo: already enabled"
 check "product enable of an unknown bundle is refused over the socket" keel_fails "$site/enable-unknown.err" product enable nothing

@@ -1,0 +1,19 @@
+[package]
+name = "keel-dns"
+description = "The KeelDNS product bundle: the manifest, the brand and the dictionaries of the dns product and its module crates"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-dns-zones = { workspace = true }
+keel-host = { workspace = true }
+
+[dev-dependencies]
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify"] }
+keel-testkit = { workspace = true }
+tempfile = { workspace = true }

@@ -428,6 +428,7 @@ policy:
         assert!(!range.contains(99_999));
         assert!(!range.contains(165_536));
         assert_eq!(policy.root("zones"), Some(Path::new("/etc/bind/zones")));
+        assert_eq!(policy.root("named"), Some(Path::new("/etc/bind/keel")));
         assert!(policy.allows_service("named"));
         for product in ["bill", "dns", "panel"] {
             assert_eq!(

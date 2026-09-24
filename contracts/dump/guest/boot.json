@@ -14,16 +14,28 @@
         "hue": 264,
         "chroma": 0.18
       }
+    },
+    {
+      "id": "dns",
+      "name": "product.dns.brand",
+      "edition": "lite",
+      "brand": {
+        "name": "product.dns.brand",
+        "logo": "/brand/dns/logo.svg",
+        "hue": 264,
+        "chroma": 0.18
+      }
     }
   ],
   "brand": {
-    "name": "product.demo.brand",
-    "logo": "/brand/logo.svg",
+    "name": "keel.brand",
     "hue": 264,
     "chroma": 0.18
   },
   "principal": null,
-  "features": [],
+  "features": [
+    "dns.zones"
+  ],
   "license": null,
   "menu": [],
   "dashboard": [],

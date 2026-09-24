@@ -16,6 +16,7 @@ use crate::function::FunctionDef;
 use crate::guard::Guard;
 use crate::host::{AgentOp, ConfigTemplate};
 use crate::lifecycle::AccountLifecycle;
+use crate::limit::LimitDef;
 use crate::services::{ServiceKey, Services};
 use crate::ui::ViewSpec;
 
@@ -542,6 +543,14 @@ impl Registrar {
                 .any(|other| other.name() == op.name());
             self.check_unique("agent operation", op.name(), taken);
         }
+        if let Some(limit) = any.downcast_ref::<LimitDef>() {
+            self.check_prefix("limit", limit.key());
+            let taken = self
+                .contributions
+                .of::<LimitDef>()
+                .any(|other| other.key() == limit.key());
+            self.check_unique("limit", limit.key(), taken);
+        }
         if let Some(template) = any.downcast_ref::<ConfigTemplate>() {
             let taken = self
                 .contributions
@@ -938,6 +947,24 @@ mod tests {
                 "module vm: agent operation \"vm.libvirt.create\" is registered twice",
                 "module vm: agent operation \"host.fs.write\" does not carry the module prefix",
                 "module vm: configuration template \"libvirt/domain.xml.j2\" is registered twice",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_limit_carries_the_module_prefix_and_is_contributed_once() {
+        use crate::limit::Unit;
+        let mut r = Registrar::new("dns");
+        r.contribute(LimitDef::new("dns.zones", Unit::Count).default(50))
+            .contribute(LimitDef::new("dns.zones", Unit::Count))
+            .contribute(LimitDef::new("mail.boxes", Unit::Count));
+        let errors = r.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            [
+                "module dns: limit \"dns.zones\" is registered twice",
+                "module dns: limit \"mail.boxes\" does not carry the module prefix",
             ]
         );
     }

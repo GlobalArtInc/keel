@@ -85,6 +85,29 @@
         }
       }
     },
+    "dns": {
+      "projectType": "library",
+      "root": "products/dns",
+      "sourceRoot": "products/dns/src",
+      "prefix": "dns",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "products/dns/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "products/dns/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "products/dns/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        }
+      }
+    },
     "shell": {
       "projectType": "application",
       "root": "apps/shell",

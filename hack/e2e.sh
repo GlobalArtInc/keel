@@ -362,6 +362,7 @@ data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
 host: { socket: $site/agent/agent.sock }
+dns: { zones_dir: $site/agent/zones, include_dir: $site/agent/named }
 EOF
 echo "site $site, binary $keel"
 start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
@@ -377,6 +378,7 @@ smtp_port=${smtp_host##*:}
 smtp_host=${smtp_host%:*}
 
 keel_ok "$site/enable.out" product enable demo
+keel_ok "$site/enable-dns.out" product enable dns
 start_serve
 keel_ok "$site/rate.json" ctl settings.set key=auth.rate.guest_per_minute value=$guest_per_minute
 

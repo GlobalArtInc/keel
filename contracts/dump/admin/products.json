@@ -10,5 +10,17 @@
       "host",
       "note"
     ]
+  },
+  {
+    "id": "dns",
+    "name": "product.dns.brand",
+    "version": "0.1.0",
+    "state": "enabled",
+    "enabledAt": "2026-01-01T00:00:00Z",
+    "enabledBy": "install",
+    "modules": [
+      "host",
+      "dns"
+    ]
   }
 ]

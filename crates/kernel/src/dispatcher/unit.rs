@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use keel_sdk::runtime::{CallBuilder, CallHandle};
-use keel_sdk::{Call, KeelError, TaskHandle};
+use keel_sdk::{Call, Db, KeelError, TaskHandle};
 use keel_types::Principal;
 use sea_orm::TransactionTrait;
 
@@ -44,7 +44,9 @@ impl Dispatcher {
         }
         let mut hooks = take(&after);
         hooks.extend(handle.take_after_commit());
-        let context = handle.after_context();
+        let context = handle
+            .after_context()
+            .with_db(Db::from_connection(inner.db.clone()));
         let transaction = handle
             .finish()
             .map_err(|shared| {
