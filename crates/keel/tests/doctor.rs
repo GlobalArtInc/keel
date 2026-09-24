@@ -38,6 +38,13 @@ const UNIT_FILES: [(&str, &str); 4] = [
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
 
+#[derive(Default, Deserialize, JsonSchema)]
+struct ProbeSection {
+    endpoint: String,
+    #[schemars(extend("x-keel" = json!({ "secret": true })))]
+    dsn: String,
+}
+
 static PROBE_MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/tests/probe/migrations").table("keel_migration_probe");
 
@@ -51,6 +58,7 @@ static PROBE_MODULE: ModuleDef = ModuleDef {
 };
 
 fn init(r: &mut Registrar) -> Result<()> {
+    r.contribute(ConfigSection::new::<ProbeSection>("probe"));
     r.function(
         function::<Nothing, Nothing>("probe.ping")
             .kind(Kind::Get)
@@ -130,7 +138,7 @@ async fn site() -> Site {
     fs::write(
         &config_path,
         format!(
-            "listen: {}\nsocket: {}\ndata_dir: {}\ndatabase: {}\nlog: {{ level: info, format: text }}\nrelay: {{ host: relay.example, password: never-in-a-bundle }}\n",
+            "listen: {}\nsocket: {}\ndata_dir: {}\ndatabase: {}\nlog: {{ level: info, format: text }}\nrelay: {{ host: relay.example, password: never-in-a-bundle, api_key: sk-never-in-a-bundle }}\nprobe: {{ endpoint: probe.example, dsn: dsn-never-in-a-bundle }}\n",
             config.listen,
             config.socket.display(),
             config.data_dir.display(),
@@ -143,7 +151,15 @@ async fn site() -> Site {
     config.file = config_path.clone();
     config.sections.insert(
         "relay".to_owned(),
-        json!({ "host": "relay.example", "password": "never-in-a-bundle" }),
+        json!({
+            "host": "relay.example",
+            "password": "never-in-a-bundle",
+            "api_key": "sk-never-in-a-bundle"
+        }),
+    );
+    config.sections.insert(
+        "probe".to_owned(),
+        json!({ "endpoint": "probe.example", "dsn": "dsn-never-in-a-bundle" }),
     );
     Site {
         database,
@@ -484,7 +500,26 @@ async fn the_support_bundle_carries_no_secret_value() {
             .await,
         ExitCode::SUCCESS
     );
-    let running = runtime.start(&site.config).await.expect("the site starts");
+    let running = runtime
+        .start(&site.config)
+        .await
+        .expect("the site starts with the probe");
+    running.stop().await.expect("the site stops");
+    assert_eq!(
+        site.cli(runtime.clone(), &["product", "disable", "probe"])
+            .await,
+        ExitCode::SUCCESS
+    );
+    let running = runtime
+        .start(&site.config)
+        .await
+        .expect("the site starts without the probe");
+    let probe: ProbeSection =
+        serde_json::from_value(site.config.sections["probe"].clone()).expect("the section");
+    assert_eq!(
+        (probe.endpoint.as_str(), probe.dsn.as_str()),
+        ("probe.example", "dsn-never-in-a-bundle")
+    );
     let channel = owner_call(
         &running,
         "notify.channel.set",
@@ -570,8 +605,17 @@ async fn the_support_bundle_carries_no_secret_value() {
         );
     }
     let config_text = String::from_utf8_lossy(entry(&entries, "config.yaml")).into_owned();
-    assert!(config_text.contains("host: relay.example"), "{config_text}");
+    assert!(config_text.contains("host: '***'"), "{config_text}");
     assert!(config_text.contains("password: '***'"), "{config_text}");
+    assert!(config_text.contains("api_key: '***'"), "{config_text}");
+    assert!(
+        config_text.contains("endpoint: probe.example"),
+        "{config_text}"
+    );
+    assert!(
+        config_text.contains("dsn: '***'"),
+        "the schema of a disabled product still masks its section: {config_text}"
+    );
     if let Some((_, rest)) = site.config.database.expose().split_once("://")
         && let Some((userinfo, _)) = rest.split_once('@')
         && let Some((_, password)) = userinfo.split_once(':')
@@ -619,7 +663,7 @@ async fn the_support_bundle_carries_no_secret_value() {
             .as_array()
             .expect("ledgers")
             .iter()
-            .any(|ledger| ledger["module"] == json!("probe") && ledger["present"] == json!(true)),
+            .any(|ledger| ledger["module"] == json!("keel") && ledger["present"] == json!(true)),
         "{ledgers}"
     );
     let doctor_text = String::from_utf8_lossy(entry(&entries, "doctor.txt")).into_owned();

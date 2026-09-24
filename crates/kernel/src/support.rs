@@ -42,7 +42,6 @@ const KERNEL_KEYS: [&str; 7] = [
     "log",
 ];
 const DATABASE_KEY: &str = "database";
-const SUSPICIOUS: [&str; 4] = ["password", "secret", "token", "passphrase"];
 const ARCHIVE_MODE: u32 = 0o600;
 const ENTRY_MODE: u32 = 0o600;
 const LEVEL: i32 = 3;
@@ -115,24 +114,12 @@ impl Masks {
     }
 }
 
-fn is_suspicious(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    SUSPICIOUS.iter().any(|needle| lower.contains(needle))
-}
-
-fn mask_suspicious(value: &mut Value) {
+fn mask_every_value(value: &mut Value) {
     match value {
-        Value::Object(object) => {
-            for (key, nested) in object.iter_mut() {
-                if is_suspicious(key) {
-                    *nested = Value::String(MASK.to_owned());
-                } else {
-                    mask_suspicious(nested);
-                }
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(mask_suspicious),
-        _ => {}
+        Value::Object(object) => object.values_mut().for_each(mask_every_value),
+        Value::Array(items) => items.iter_mut().for_each(mask_every_value),
+        Value::Null => {}
+        leaf => *leaf = Value::String(MASK.to_owned()),
     }
 }
 
@@ -151,7 +138,7 @@ fn redact_config(text: &str, masks: &Masks) -> Result<String, serde_yaml_ng::Err
             }
             match masks.plan(key) {
                 Some(plan) => plan.mask(section),
-                None => mask_suspicious(section),
+                None => mask_every_value(section),
             }
         }
     }
@@ -437,12 +424,13 @@ mod tests {
     }
 
     #[test]
-    fn the_configuration_is_redacted_by_the_database_url_the_section_schema_and_the_key_names() {
-        let text = "listen: 0.0.0.0:8443\ndatabase: postgres://keel:hunter2@db.example.net/keel\ntls: { cert: /etc/keel/cert.pem, key: /etc/keel/key.pem }\nrelay:\n  host: relay.example\n  api_key: sk-live-42\nfeature:\n  enabled: true\n  password: nope\n  nested: { token: t0k, name: fine }\n";
+    fn the_configuration_is_redacted_by_the_database_url_the_section_schema_and_every_value_of_an_unknown_section()
+     {
+        let text = "listen: 0.0.0.0:8443\ndatabase: postgres://keel:hunter2@db.example.net/keel\ntls: { cert: /etc/keel/cert.pem, key: /etc/keel/key.pem }\nrelay:\n  host: relay.example\n  api_key: sk-live-42\nfeature:\n  enabled: true\n  dsn: postgres://feature:opaque@db\n  nested: { token: t0k, name: fine, ports: [25, 587] }\n";
         let redacted = redact_config(text, &masks()).unwrap();
         assert!(!redacted.contains("hunter2"), "{redacted}");
         assert!(!redacted.contains("sk-live-42"), "{redacted}");
-        assert!(!redacted.contains("nope"), "{redacted}");
+        assert!(!redacted.contains("opaque"), "{redacted}");
         assert!(!redacted.contains("t0k"), "{redacted}");
         assert!(
             redacted.contains("postgres://keel:***@db.example.net/keel"),
@@ -450,14 +438,29 @@ mod tests {
         );
         assert!(redacted.contains("key: /etc/keel/key.pem"), "{redacted}");
         assert!(redacted.contains("host: relay.example"), "{redacted}");
-        assert!(redacted.contains("name: fine"), "{redacted}");
+        assert!(!redacted.contains("fine"), "{redacted}");
+        assert!(!redacted.contains("587"), "{redacted}");
+        assert!(redacted.contains("enabled: '***'"), "{redacted}");
         assert!(redacted.contains("api_key: '***'"), "{redacted}");
         assert_eq!(masks().plans.len(), 1);
         let relay: Relay = serde_json::from_value(json!({ "host": "h", "api_key": "k" })).unwrap();
         assert_eq!((relay.host.as_str(), relay.api_key.as_str()), ("h", "k"));
         assert_eq!(redact_config("", &Masks::none()).unwrap(), "{}\n");
         assert!(redact_config("listen: [", &Masks::none()).is_err());
-        assert!(is_suspicious("SMTP_PASSWORD") && !is_suspicious("host"));
+        assert!(
+            !redact_config("relay:\n  api_key: sk-live-42\n", &Masks::none())
+                .unwrap()
+                .contains("sk-live-42")
+        );
+        let unfrozen = redact_config(
+            "relay:\n  host: relay.example\n  port: 25\n",
+            &Masks::none(),
+        )
+        .unwrap();
+        assert!(
+            !unfrozen.contains("relay.example") && !unfrozen.contains("25"),
+            "{unfrozen}"
+        );
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 use std::fmt;
-use std::str::FromStr;
 use std::sync::{Mutex, PoisonError};
 
 use chrono::{DateTime, Utc};
@@ -27,18 +26,6 @@ pub enum LogLevel {
     Error,
 }
 
-impl LogLevel {
-    fn as_str(self) -> &'static str {
-        match self {
-            LogLevel::Trace => "trace",
-            LogLevel::Debug => "debug",
-            LogLevel::Info => "info",
-            LogLevel::Warn => "warn",
-            LogLevel::Error => "error",
-        }
-    }
-}
-
 impl From<tracing::Level> for LogLevel {
     fn from(level: tracing::Level) -> Self {
         match level {
@@ -48,31 +35,6 @@ impl From<tracing::Level> for LogLevel {
             tracing::Level::WARN => LogLevel::Warn,
             tracing::Level::ERROR => LogLevel::Error,
         }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{0:?} is not a log level; one of trace, debug, info, warn, error")]
-pub struct UnknownLevel(String);
-
-impl FromStr for LogLevel {
-    type Err = UnknownLevel;
-
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "trace" => Ok(LogLevel::Trace),
-            "debug" => Ok(LogLevel::Debug),
-            "info" => Ok(LogLevel::Info),
-            "warn" | "warning" => Ok(LogLevel::Warn),
-            "error" => Ok(LogLevel::Error),
-            _ => Err(UnknownLevel(text.to_owned())),
-        }
-    }
-}
-
-impl fmt::Display for LogLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad(self.as_str())
     }
 }
 
@@ -323,17 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn a_level_parses_from_its_name_and_prints_it() {
-        assert_eq!("WARN".parse::<LogLevel>().unwrap(), LogLevel::Warn);
-        assert_eq!("warning".parse::<LogLevel>().unwrap(), LogLevel::Warn);
-        assert_eq!(" info ".parse::<LogLevel>().unwrap(), LogLevel::Info);
-        assert_eq!(LogLevel::Error.to_string(), "error");
+    fn a_level_comes_from_tracing_and_serialises_by_its_name() {
         assert!(LogLevel::Error > LogLevel::Trace);
-        let error = "loud".parse::<LogLevel>().unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "\"loud\" is not a log level; one of trace, debug, info, warn, error"
-        );
         assert_eq!(LogLevel::from(tracing::Level::DEBUG), LogLevel::Debug);
         assert_eq!(LogLevel::from(tracing::Level::TRACE), LogLevel::Trace);
         assert_eq!(
@@ -351,7 +304,6 @@ mod tests {
             fields,
             ..entry(LogLevel::Warn, "slow")
         };
-        assert_eq!(format!("{:<5}|", entry.level), "warn |");
         let json = serde_json::to_value(&entry).unwrap();
         assert_eq!(json["level"], "warn");
         assert_eq!(json["fields"]["count"], 3);

@@ -86,12 +86,26 @@ impl Runtime {
             .into_iter()
             .filter(|id| self.bundle(id).is_some())
             .collect();
+        self.graph(config, &usable)
+    }
+
+    fn graph(&self, config: &Config, products: &[String]) -> Result<Graph, Error> {
         Ok(self
-            .composition(&usable)?
+            .composition(products)?
             .key(throwaway_key().map_err(|error| Error::Boot(BootError::Restore(error)))?)
             .sections(Sections::new(&config.file, config.sections.clone()))
             .data_dir(config.data_dir.clone())
             .resolve()?)
+    }
+
+    fn masks(&self, config: &Config) -> Result<Masks, Error> {
+        let frozen = self
+            .graph(config, &self.known_ids())?
+            .init()
+            .map_err(BootError::from)?
+            .freeze()
+            .map_err(BootError::from)?;
+        Ok(Masks::of(frozen.registry().contributions()))
     }
 
     pub(crate) async fn doctor(&self, config: &Config, layout: Layout) -> Result<Report, Error> {
@@ -126,17 +140,14 @@ impl Runtime {
         connected: &Connected,
     ) -> Result<Written, SupportCliError> {
         let graph = self.site_graph(config, connected).await?;
-        let frozen = graph
-            .init()
-            .map_err(BootError::from)
-            .and_then(|initialised| initialised.freeze().map_err(BootError::from));
-        let (masks, mask_note) = match frozen {
-            Ok(frozen) => (Masks::of(frozen.registry().contributions()), None),
-            Err(error) => (
+        let (masks, mask_note) = match self.masks(config) {
+            Ok(masks) => (masks, None),
+            Err(_) => (
                 Masks::none(),
-                Some(format!(
-                    "the composition did not freeze, so every section was masked by key names alone: {error}"
-                )),
+                Some(
+                    "the composition of every carried product did not freeze, so every value of every module section was masked"
+                        .to_owned(),
+                ),
             ),
         };
         let doctor = Doctor::new(&graph, &config.tls, layout);
