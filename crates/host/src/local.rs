@@ -57,24 +57,36 @@ impl HostExecutor for Local {
 async fn exchange(socket: &Path, line: &[u8]) -> io::Result<Vec<u8>> {
     let stream = UnixStream::connect(socket).await?;
     let (read, mut write) = stream.into_split();
-    write.write_all(line).await?;
-    write.flush().await?;
+    write.write_all(line).await.map_err(refused)?;
+    write.flush().await.map_err(refused)?;
     let mut answer = Vec::new();
     BufReader::new(read)
         .take(ANSWER_LIMIT)
         .read_until(b'\n', &mut answer)
-        .await?;
+        .await
+        .map_err(refused)?;
     match answer.last() {
         Some(b'\n') => Ok(answer),
-        None => Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "the agent closed the connection without an answer; it admits one account by its peer credentials",
-        )),
+        None => Err(closed()),
         Some(_) => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("the answer ended without a line break or passed {ANSWER_LIMIT} bytes"),
         )),
     }
+}
+
+fn refused(error: io::Error) -> io::Error {
+    match error.kind() {
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe => closed(),
+        _ => error,
+    }
+}
+
+fn closed() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "the agent closed the connection without an answer; it admits one account by its peer credentials",
+    )
 }
 
 #[cfg(test)]
