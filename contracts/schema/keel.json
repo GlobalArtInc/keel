@@ -510,12 +510,34 @@
       "enum": [
         "domain",
         "ip",
+        "ipv4",
+        "ipv6",
         "cidr",
         "email",
         "int",
         "name",
         "port",
-        "path"
+        "path",
+        "quoted",
+        "caa"
+      ]
+    },
+    "CheckBy": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Check"
+          }
+        }
+      },
+      "required": [
+        "field",
+        "cases"
       ]
     },
     "Choice": {
@@ -1469,6 +1491,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/Check"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckBy"
             },
             {
               "type": "null"

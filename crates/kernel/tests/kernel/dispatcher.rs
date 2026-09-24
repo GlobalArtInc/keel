@@ -116,6 +116,14 @@ struct Probe {
     port: Option<String>,
     #[schemars(extend("x-keel" = json!({ "check": "path" })))]
     path: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "check": "ipv4" })))]
+    ipv4: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "check": "ipv6" })))]
+    ipv6: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "check": "quoted" })))]
+    quoted: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "check": "caa" })))]
+    caa: Option<String>,
     hosts: Option<Vec<Host>>,
 }
 

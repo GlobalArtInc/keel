@@ -348,7 +348,13 @@ interface Tree {
 
 interface Node {
   check?: Check;
+  checkBy?: CheckChoice;
   nested: Tree;
+}
+
+interface CheckChoice {
+  field: string;
+  cases: ReadonlyMap<string, Check>;
 }
 
 function emptyTree(): Tree {
@@ -374,7 +380,11 @@ function treeOf(schema: Schema, defs: JsonObject, depth: number): Tree {
       if (!isSchema(property)) {
         continue;
       }
-      fields.set(name, { check: presetOf(property), nested: treeOf(property, defs, depth + 1) });
+      fields.set(name, {
+        check: presetOf(property),
+        checkBy: choiceOf(property),
+        nested: treeOf(property, defs, depth + 1),
+      });
     }
     return { fields };
   }
@@ -412,6 +422,29 @@ function presetOf(property: Schema): Check | undefined {
   return isCheck(preset) ? preset : undefined;
 }
 
+function choiceOf(property: Schema): CheckChoice | undefined {
+  const attrs = isObject(property) ? property['x-keel'] : undefined;
+  const by = isObject(attrs) ? attrs['checkBy'] : undefined;
+  if (!isObject(by) || typeof by['field'] !== 'string' || !isObject(by['cases'])) {
+    return undefined;
+  }
+  const cases = new Map<string, Check>();
+  for (const [value, preset] of Object.entries(by['cases'])) {
+    if (isCheck(preset)) {
+      cases.set(value, preset);
+    }
+  }
+  return { field: by['field'], cases };
+}
+
+function presetsOf(node: Node, siblings: JsonObject): Check[] {
+  const presets = node.check === undefined ? [] : [node.check];
+  const by = node.checkBy;
+  const selector = by === undefined ? undefined : siblings[by.field];
+  const chosen = typeof selector === 'string' ? by?.cases.get(selector) : undefined;
+  return chosen === undefined ? presets : [...presets, chosen];
+}
+
 function probeTree(tree: Tree, value: unknown, path: string, errors: FieldError[]): void {
   if (isObject(value)) {
     for (const [name, nested] of Object.entries(value)) {
@@ -420,8 +453,7 @@ function probeTree(tree: Tree, value: unknown, path: string, errors: FieldError[
         continue;
       }
       const fieldPath = pushSegment(path, name);
-      const preset = node.check;
-      if (preset !== undefined) {
+      for (const preset of presetsOf(node, value)) {
         if (typeof nested === 'string') {
           probe(preset, nested, fieldPath, errors);
         } else if (Array.isArray(nested)) {

@@ -2306,11 +2306,20 @@ name = "keel-dns"
 version = "0.1.0"
 dependencies = [
  "keel",
+ "keel-dns-records",
  "keel-dns-zones",
  "keel-host",
  "keel-system",
  "keel-testkit",
  "tempfile",
+]
+
+[[package]]
+name = "keel-dns-records"
+version = "0.1.0"
+dependencies = [
+ "keel",
+ "keel-dns-zones",
 ]
 
 [[package]]

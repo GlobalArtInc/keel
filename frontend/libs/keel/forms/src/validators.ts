@@ -12,6 +12,7 @@ export interface FieldRule {
   schema: JsonObject;
   defs: JsonObject;
   required: () => boolean;
+  siblings?: () => Record<string, unknown>;
 }
 
 export function isEmptyValue(value: unknown): boolean {
@@ -36,7 +37,7 @@ export function validateField(rule: FieldRule, value: unknown): FieldError[] {
     properties: { [rule.name]: rule.schema },
     $defs: rule.defs,
   };
-  return validate(wrapper, { [rule.name]: value });
+  return validate(wrapper, { ...rule.siblings?.(), [rule.name]: value });
 }
 
 export function fieldValidator(rule: FieldRule): ValidatorFn {

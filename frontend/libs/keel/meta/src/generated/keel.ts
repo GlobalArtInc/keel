@@ -77,7 +77,19 @@ export type ErrorCode =
   | 'unavailable'
   | 'peer'
   | 'internal';
-export type Check = 'domain' | 'ip' | 'cidr' | 'email' | 'int' | 'name' | 'port' | 'path';
+export type Check =
+  | 'domain'
+  | 'ip'
+  | 'ipv4'
+  | 'ipv6'
+  | 'cidr'
+  | 'email'
+  | 'int'
+  | 'name'
+  | 'port'
+  | 'path'
+  | 'quoted'
+  | 'caa';
 export type ColumnType =
   'text' | 'number' | 'link' | 'status' | 'toggle' | 'date' | 'datetime' | 'boolean';
 export type Total = 'sum' | 'avg' | 'min' | 'max' | 'count';
@@ -249,6 +261,12 @@ export interface FieldError {
   key?: string | null;
   params?: Record<string, unknown>;
 }
+export interface CheckBy {
+  field: string;
+  cases: {
+    [k: string]: Check;
+  };
+}
 export interface Choice {
   value: string;
   label: string;
@@ -400,6 +418,7 @@ export interface KeelAttrs {
   secret?: boolean;
   once?: boolean;
   check?: Check | null;
+  checkBy?: CheckBy | null;
   options?: string | null;
   file?: FileAttrs | null;
 }

@@ -3,12 +3,16 @@ import type { Check } from './generated';
 export const CHECKS: readonly Check[] = [
   'domain',
   'ip',
+  'ipv4',
+  'ipv6',
   'cidr',
   'email',
   'int',
   'name',
   'port',
   'path',
+  'quoted',
+  'caa',
 ];
 
 export function isCheck(value: unknown): value is Check {
@@ -29,6 +33,10 @@ export function check(preset: Check, value: string): boolean {
       return isDomain(value);
     case 'ip':
       return ipFamily(value) !== undefined;
+    case 'ipv4':
+      return ipFamily(value) === 4;
+    case 'ipv6':
+      return ipFamily(value) === 6;
     case 'cidr':
       return isCidr(value);
     case 'email':
@@ -41,6 +49,10 @@ export function check(preset: Check, value: string): boolean {
       return isPort(value);
     case 'path':
       return isPath(value);
+    case 'quoted':
+      return isQuoted(value);
+    case 'caa':
+      return isCaa(value);
   }
 }
 
@@ -55,6 +67,10 @@ export function ipFamily(value: string): IpFamily | undefined {
 const I64_MIN = -(2n ** 63n);
 const I64_MAX = 2n ** 63n - 1n;
 const LOCAL_PART_SYMBOLS = ".!#$%&'*+/=?^_`{|}~-";
+const CHARACTER_STRING = 255;
+const CAA_TAG = 15;
+const FLAGS_MAX = 255;
+const LEADING_SPACES = /^ +/;
 
 function isDomain(value: string): boolean {
   if (value.length === 0 || value.length > 253) {
@@ -164,6 +180,70 @@ function isPath(value: string): boolean {
       return code < 0x20 || code === 0x7f;
     }) &&
     rest.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..')
+  );
+}
+
+function isQuoted(value: string): boolean {
+  let rest = value;
+  for (;;) {
+    const after = characterString(rest);
+    if (after === undefined) {
+      return false;
+    }
+    if (after === '') {
+      return true;
+    }
+    if (!after.startsWith(' ')) {
+      return false;
+    }
+    rest = after.replace(LEADING_SPACES, '');
+  }
+}
+
+function characterString(text: string): string | undefined {
+  if (!text.startsWith('"')) {
+    return undefined;
+  }
+  let length = 0;
+  let escaped = false;
+  for (let index = 1; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x20 || code >= 0x7f) {
+      return undefined;
+    }
+    const char = text[index];
+    if (escaped) {
+      if (char !== '"' && char !== '\\') {
+        return undefined;
+      }
+      escaped = false;
+      length += 1;
+    } else if (char === '\\') {
+      escaped = true;
+    } else if (char === '"') {
+      return length <= CHARACTER_STRING ? text.slice(index + 1) : undefined;
+    } else {
+      length += 1;
+    }
+  }
+  return undefined;
+}
+
+function isCaa(value: string): boolean {
+  const first = value.indexOf(' ');
+  const second = first < 0 ? -1 : value.indexOf(' ', first + 1);
+  if (second < 0) {
+    return false;
+  }
+  const flags = value.slice(0, first);
+  const tag = value.slice(first + 1, second);
+  return (
+    isCanonicalDigits(flags) &&
+    Number(flags) <= FLAGS_MAX &&
+    tag.length > 0 &&
+    tag.length <= CAA_TAG &&
+    [...tag].every(isAsciiAlphanumeric) &&
+    characterString(value.slice(second + 1)) === ''
   );
 }
 

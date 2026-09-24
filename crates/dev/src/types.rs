@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn kind_enumerates_the_ten_kinds_and_check_the_eight_presets() {
+    fn kind_enumerates_the_ten_kinds_and_check_the_twelve_presets() {
         let definitions = definitions();
         assert_eq!(
             enum_values(&definitions["Kind"]),
@@ -321,7 +321,8 @@ mod tests {
         assert_eq!(
             enum_values(&definitions["Check"]),
             [
-                "domain", "ip", "cidr", "email", "int", "name", "port", "path"
+                "domain", "ip", "ipv4", "ipv6", "cidr", "email", "int", "name", "port", "path",
+                "quoted", "caa"
             ]
         );
         assert_eq!(enum_values(&definitions["ErrorCode"]).len(), 13);

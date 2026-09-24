@@ -187,7 +187,7 @@ describe('contracts/fixtures', () => {
   it('the check member of every check-cases.json case validates against Check', () => {
     const cases = load('check-cases.json') as CheckCase[];
     const presets = new Set(cases.map((found) => found.check));
-    expect(presets.size).toBe(8);
+    expect(presets.size).toBe(12);
     for (const preset of presets) {
       expectValid('Check', preset, preset);
     }

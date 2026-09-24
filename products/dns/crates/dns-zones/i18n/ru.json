@@ -5,7 +5,8 @@
       "action": {
         "create": "Новая зона",
         "delete": "Удалить",
-        "edit": "Изменить"
+        "edit": "Изменить",
+        "records": "Записи"
       },
       "column": {
         "accountId": "Аккаунт",

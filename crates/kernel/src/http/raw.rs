@@ -82,8 +82,11 @@ pub(super) async fn post(
 }
 
 fn resolve<'a>(live: &'a Live, module: &str, name: &str) -> Option<&'a Function> {
-    live.registry
-        .function(&format!("{module}.{name}"))
+    let dotted = module.replace('_', ".");
+    [module, dotted.as_str()]
+        .into_iter()
+        .find_map(|prefix| live.registry.function(&format!("{prefix}.{name}")))
+        .filter(|function| function.module() == module)
         .filter(is_raw)
 }
 

@@ -1,0 +1,251 @@
+{
+  "keel": 1,
+  "name": "dns.record.edit",
+  "module": "dns_record",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.manage",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "RecordEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "type": {
+        "$ref": "#/$defs/RecordType"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 253,
+        "pattern": "^(@|\\*|(\\*\\.)?[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(\\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*)$"
+      },
+      "value": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000,
+        "x-keel": {
+          "checkBy": {
+            "field": "type",
+            "cases": {
+              "A": "ipv4",
+              "AAAA": "ipv6",
+              "CNAME": "domain",
+              "MX": "domain",
+              "TXT": "quoted",
+              "NS": "domain",
+              "SRV": "domain",
+              "CAA": "caa"
+            }
+          }
+        }
+      },
+      "ttl": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 60,
+        "maximum": 604800
+      },
+      "priority": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint16",
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "weight": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint16",
+        "minimum": 0,
+        "maximum": 65535
+      },
+      "port": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint16",
+        "minimum": 0,
+        "maximum": 65535
+      }
+    },
+    "required": [
+      "id",
+      "type",
+      "name",
+      "value",
+      "ttl"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "RecordType": {
+        "type": "string",
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME",
+          "MX",
+          "TXT",
+          "NS",
+          "SRV",
+          "CAA"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Record",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "zoneId": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      },
+      "ttl": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "priority": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "weight": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "port": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "zoneId",
+      "accountId",
+      "type",
+      "name",
+      "value",
+      "ttl",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "dns.record.edit.title",
+    "read": "dns.record.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "type",
+          "name",
+          "value",
+          "ttl",
+          "priority",
+          "weight",
+          "port"
+        ]
+      }
+    ],
+    "fields": {
+      "port": {
+        "show_if": {
+          "eq": [
+            "type",
+            "SRV"
+          ]
+        },
+        "required_if": {
+          "eq": [
+            "type",
+            "SRV"
+          ]
+        }
+      },
+      "priority": {
+        "show_if": {
+          "in": [
+            "type",
+            [
+              "MX",
+              "SRV"
+            ]
+          ]
+        },
+        "required_if": {
+          "in": [
+            "type",
+            [
+              "MX",
+              "SRV"
+            ]
+          ]
+        }
+      },
+      "weight": {
+        "show_if": {
+          "eq": [
+            "type",
+            "SRV"
+          ]
+        },
+        "required_if": {
+          "eq": [
+            "type",
+            "SRV"
+          ]
+        }
+      }
+    },
+    "multi": [
+      "ttl"
+    ]
+  }
+}

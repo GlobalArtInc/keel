@@ -70,14 +70,18 @@
     },
     "brand": "Keel",
     "check": {
+      "caa": "Enter the flags, the tag and the quoted value, as in 0 issue \"example.org\"",
       "cidr": "Enter a network in CIDR notation",
       "domain": "Enter a domain name",
       "email": "Enter an e-mail address",
       "int": "Enter a whole number",
       "ip": "Enter an IP address",
+      "ipv4": "Enter an IPv4 address",
+      "ipv6": "Enter an IPv6 address",
       "name": "Enter a name: a letter followed by letters, digits, underscores or dashes",
       "path": "Enter an absolute path",
-      "port": "Enter a port between 1 and 65535"
+      "port": "Enter a port between 1 and 65535",
+      "quoted": "Enter text in double quotes: printable characters, at most 255 in each quoted part"
     },
     "column": {
       "createdAt": "Created",
@@ -475,6 +479,7 @@
     },
     "state": "State",
     "title": "Title",
+    "type": "Type",
     "updatedAt": "Updated",
     "value": {
       "false": "No",

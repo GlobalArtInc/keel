@@ -1,9 +1,9 @@
 use keel::prelude::*;
-use keel::sdk::chrono::{DateTime, Datelike, Utc};
 use keel::sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
 };
 
+use crate::changes::{bump, first_serial};
 use crate::provider::DnsProvider;
 use crate::{EXISTS, zone};
 
@@ -11,7 +11,7 @@ const READ: &str = "dns.zone.read";
 const MANAGE: &str = "dns.zone.manage";
 const FEATURE: &str = "dns.zones";
 const SUBJECT: &str = "dns.zone";
-const SERIAL_REVISIONS: i64 = 100;
+const RECORDS: &str = "dns.record.list";
 
 const REFRESH: u32 = 10_800;
 const RETRY: u32 = 3_600;
@@ -143,9 +143,15 @@ pub(crate) fn list() -> FunctionDef {
                         input: Some(ConfirmInput::Count),
                     }),
             )
-            .row_actions(["edit", "delete"])
+            .action(
+                Action::new("records", ActionRole::Child)
+                    .screen(RECORDS)
+                    .params([("zone_id", "$id")])
+                    .icon("list"),
+            )
+            .row_actions(["edit", "records", "delete"])
             .empty("dns.zone.empty", Some("create"))
-            .invalidate_on(["dns.zone.*"]))
+            .invalidate_on(["dns.zone.*", "dns.record.*"]))
         .default_sort("name", SortDir::Asc)
         .source(entity_source::<zone::Entity>())
 }
@@ -181,7 +187,7 @@ pub(crate) fn create() -> FunctionDef {
                 account_id: Set(account.to_string()),
                 name: Set(name),
                 kind: Set(zone::KIND_PRIMARY.to_owned()),
-                serial: Set(serial(now, None)),
+                serial: Set(first_serial(now)),
                 refresh: Set(seconds(params.refresh)),
                 retry: Set(seconds(params.retry)),
                 expire: Set(seconds(params.expire)),
@@ -213,17 +219,15 @@ pub(crate) fn edit() -> FunctionDef {
         .handler(|call: Call<ZoneEdit>| async move {
             let params = call.params();
             let tx = call.tx()?;
-            let current = load(tx, &params.id).await?;
             let now = call.require::<dyn Clock>()?.now();
+            let id = params.id.to_string();
+            bump(tx, &id, now).await?.ok_or_else(not_found)?;
             let row = zone::ActiveModel {
-                id: Set(current.id.clone()),
-                serial: Set(serial(now, Some(current.serial))),
+                id: Set(id),
                 refresh: Set(seconds(params.refresh)),
                 retry: Set(seconds(params.retry)),
                 expire: Set(seconds(params.expire)),
                 minimum: Set(seconds(params.minimum)),
-                state: Set(zone::STATE_PENDING.to_owned()),
-                updated_at: Set(now),
                 ..Default::default()
             }
             .update(tx)
@@ -272,8 +276,8 @@ pub(crate) fn remove_after_commit<P>(call: &Call<P>, rows: Vec<zone::Model>) -> 
 
 fn apply_after_commit<P>(call: &Call<P>, row: &zone::Model) -> Result<()> {
     let dns = call.require::<dyn DnsProvider>()?;
-    let row = row.clone();
-    call.after_commit(move |ctx| async move { dns.apply(&ctx, &row).await });
+    let id = row.id.clone();
+    call.after_commit(move |ctx| async move { dns.apply(&ctx, &id).await });
     Ok(())
 }
 
@@ -294,12 +298,6 @@ fn announce<P>(call: &Call<P>, kind: &str, row: &zone::Model) -> Result<()> {
         },
         &json!({ "id": row.id, "name": row.name, "serial": row.serial }),
     )
-}
-
-fn serial(now: DateTime<Utc>, current: Option<i64>) -> i64 {
-    let day = i64::from(now.year()) * 10_000 + i64::from(now.month()) * 100 + i64::from(now.day());
-    let base = day * SERIAL_REVISIONS;
-    current.map_or(base, |current| (current + 1).max(base))
 }
 
 fn seconds(value: u32) -> i32 {
@@ -323,24 +321,9 @@ async fn load<C: ConnectionTrait>(db: &C, id: &Id) -> Result<zone::Model> {
     zone::Entity::find_by_id(id.to_string())
         .one(db)
         .await?
-        .ok_or_else(|| KeelError::not_found("keel.error.not_found"))
+        .ok_or_else(not_found)
 }
 
-#[cfg(test)]
-mod tests {
-    use keel::sdk::chrono::TimeZone;
-
-    use super::*;
-
-    #[test]
-    fn a_serial_starts_at_the_day_and_grows_by_one_within_it_and_jumps_to_a_later_day() {
-        let day = Utc
-            .with_ymd_and_hms(2026, 9, 24, 10, 0, 0)
-            .single()
-            .expect("a time");
-        assert_eq!(serial(day, None), 2_026_092_400);
-        assert_eq!(serial(day, Some(2_026_092_400)), 2_026_092_401);
-        assert_eq!(serial(day, Some(2_026_092_499)), 2_026_092_500);
-        assert_eq!(serial(day, Some(2_026_010_105)), 2_026_092_400);
-    }
+fn not_found() -> KeelError {
+    KeelError::not_found("keel.error.not_found")
 }

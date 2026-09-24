@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::check::Check;
 use crate::is_false;
@@ -99,10 +102,28 @@ pub struct KeelAttrs {
     pub once: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check: Option<Check>,
+    #[serde(default, rename = "checkBy", skip_serializing_if = "Option::is_none")]
+    pub check_by: Option<CheckBy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub options: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<FileAttrs>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CheckBy {
+    pub field: String,
+    pub cases: BTreeMap<String, Check>,
+}
+
+impl CheckBy {
+    pub fn select(&self, siblings: &Map<String, Value>) -> Option<Check> {
+        siblings
+            .get(&self.field)
+            .and_then(Value::as_str)
+            .and_then(|case| self.cases.get(case))
+            .copied()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -261,6 +282,35 @@ mod tests {
         );
         let short = json_schema!({ "x-keel": { "file": { "maxBytes": 1 } } });
         assert!(KeelAttrs::of(&short).is_err());
+    }
+
+    #[test]
+    fn a_check_chosen_by_a_sibling_names_the_field_and_a_preset_per_value() {
+        let field = json_schema!({
+            "type": "string",
+            "x-keel": { "checkBy": { "field": "type", "cases": { "A": "ipv4", "TXT": "quoted" } } }
+        });
+        let keel = KeelAttrs::of(&field).unwrap().unwrap();
+        let by = keel.check_by.clone().expect("the checkBy attribute");
+        assert_eq!(by.field, "type");
+        let siblings = |value: Value| value.as_object().cloned().unwrap_or_default();
+        assert_eq!(
+            by.select(&siblings(json!({ "type": "A" }))),
+            Some(Check::Ipv4)
+        );
+        assert_eq!(
+            by.select(&siblings(json!({ "type": "TXT" }))),
+            Some(Check::Quoted)
+        );
+        assert_eq!(by.select(&siblings(json!({ "type": "MX" }))), None);
+        assert_eq!(by.select(&siblings(json!({ "type": 1 }))), None);
+        assert_eq!(by.select(&siblings(json!({}))), None);
+        assert_eq!(
+            serde_json::to_value(&keel).unwrap(),
+            json!({ "checkBy": { "field": "type", "cases": { "A": "ipv4", "TXT": "quoted" } } })
+        );
+        let unknown = json_schema!({ "x-keel": { "checkBy": { "field": "type", "cases": { "A": "phone" } } } });
+        assert!(KeelAttrs::of(&unknown).is_err());
     }
 
     #[test]

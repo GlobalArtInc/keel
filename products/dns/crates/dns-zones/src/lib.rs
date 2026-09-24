@@ -1,4 +1,6 @@
+pub mod api;
 mod bind;
+mod changes;
 mod config;
 mod functions;
 mod hooks;
@@ -11,7 +13,9 @@ use keel::prelude::*;
 use keel::sdk::limit::Unit;
 use keel_host::api::HostExecutor;
 
+use api::{ZoneRecords, Zones};
 use bind::BindProvider;
+use changes::ZoneChanges;
 use config::{DnsConfig, SECTION};
 use provider::DnsProvider;
 
@@ -39,8 +43,10 @@ fn init(r: &mut Registrar) -> Result<()> {
     let bind = Arc::new(BindProvider::default());
     let started = Arc::clone(&bind);
     let backed_up = Arc::clone(&bind);
+    let changes = ZoneChanges::new(Arc::clone(&bind));
     r.require::<dyn HostExecutor>()
         .provide::<dyn DnsProvider>(bind)
+        .provide::<dyn Zones>(Arc::new(changes))
         .function(functions::list())
         .function(functions::get())
         .function(functions::create())
@@ -92,7 +98,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .start(move |ctx| async move {
             let host = ctx.require::<dyn HostExecutor>()?;
             let config = ctx.config::<DnsConfig>()?;
-            started.attach(host, config);
+            started.attach(host, config, ctx.require::<dyn ZoneRecords>().ok());
             Ok(())
         });
     Ok(())

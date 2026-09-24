@@ -8,10 +8,10 @@ pub const UPLOAD_ROUTE_KEY: &str = "keel.error.upload_route";
 
 pub fn raw_route(function: &Function) -> String {
     let module = function.module();
-    let name = function
-        .name()
-        .strip_prefix(module)
-        .and_then(|rest| rest.strip_prefix('.'))
+    let dotted = module.replace('_', ".");
+    let name = [module, dotted.as_str()]
+        .into_iter()
+        .find_map(|prefix| function.name().strip_prefix(prefix)?.strip_prefix('.'))
         .unwrap_or_else(|| function.name());
     format!("{RAW_PREFIX}/{module}/{name}")
 }

@@ -1,43 +1,58 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+const CHARACTER_STRING: usize = 255;
+const CAA_TAG: usize = 15;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Check {
     Domain,
     Ip,
+    Ipv4,
+    Ipv6,
     Cidr,
     Email,
     Int,
     Name,
     Port,
     Path,
+    Quoted,
+    Caa,
 }
 
 impl Check {
-    pub const ALL: [Check; 8] = [
+    pub const ALL: [Check; 12] = [
         Check::Domain,
         Check::Ip,
+        Check::Ipv4,
+        Check::Ipv6,
         Check::Cidr,
         Check::Email,
         Check::Int,
         Check::Name,
         Check::Port,
         Check::Path,
+        Check::Quoted,
+        Check::Caa,
     ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Check::Domain => "domain",
             Check::Ip => "ip",
+            Check::Ipv4 => "ipv4",
+            Check::Ipv6 => "ipv6",
             Check::Cidr => "cidr",
             Check::Email => "email",
             Check::Int => "int",
             Check::Name => "name",
             Check::Port => "port",
             Check::Path => "path",
+            Check::Quoted => "quoted",
+            Check::Caa => "caa",
         }
     }
 
@@ -53,12 +68,16 @@ impl Check {
         match self {
             Check::Domain => is_domain(value),
             Check::Ip => value.parse::<IpAddr>().is_ok(),
+            Check::Ipv4 => value.parse::<Ipv4Addr>().is_ok(),
+            Check::Ipv6 => value.parse::<Ipv6Addr>().is_ok(),
             Check::Cidr => is_cidr(value),
             Check::Email => is_email(value),
             Check::Int => is_int(value),
             Check::Name => is_name(value),
             Check::Port => is_port(value),
             Check::Path => is_path(value),
+            Check::Quoted => is_quoted(value),
+            Check::Caa => is_caa(value),
         }
     }
 }
@@ -159,6 +178,62 @@ fn is_path(value: &str) -> bool {
             .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
+// https://www.rfc-editor.org/rfc/rfc1035#section-5.1
+fn is_quoted(value: &str) -> bool {
+    let mut rest = value;
+    loop {
+        let Some(after) = character_string(rest) else {
+            return false;
+        };
+        if after.is_empty() {
+            return true;
+        }
+        let Some(next) = after.strip_prefix(' ') else {
+            return false;
+        };
+        rest = next.trim_start_matches(' ');
+    }
+}
+
+fn character_string(text: &str) -> Option<&str> {
+    let body = text.strip_prefix('"')?;
+    let mut length = 0;
+    let mut escaped = false;
+    for (index, byte) in body.bytes().enumerate() {
+        if !(0x20..0x7f).contains(&byte) {
+            return None;
+        }
+        if escaped {
+            if byte != b'"' && byte != b'\\' {
+                return None;
+            }
+            escaped = false;
+            length += 1;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            return (length <= CHARACTER_STRING).then(|| &body[index + 1..]);
+        } else {
+            length += 1;
+        }
+    }
+    None
+}
+
+// https://www.rfc-editor.org/rfc/rfc8659#section-4.1.1
+fn is_caa(value: &str) -> bool {
+    let mut parts = value.splitn(3, ' ');
+    let (Some(flags), Some(tag), Some(text)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    is_canonical_digits(flags)
+        && flags.parse::<u8>().is_ok()
+        && !tag.is_empty()
+        && tag.len() <= CAA_TAG
+        && tag.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        && character_string(text) == Some("")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +254,48 @@ mod tests {
                 serde_json::json!(check.as_str())
             );
         }
+    }
+
+    #[test]
+    fn an_address_family_check_admits_only_its_own_family() {
+        assert!(Check::Ipv4.matches("192.0.2.1"));
+        assert!(!Check::Ipv4.matches("2001:db8::1"));
+        assert!(!Check::Ipv4.matches("192.0.2.01"));
+        assert!(Check::Ipv6.matches("2001:db8::1"));
+        assert!(Check::Ipv6.matches("::ffff:192.0.2.1"));
+        assert!(!Check::Ipv6.matches("192.0.2.1"));
+    }
+
+    #[test]
+    fn quoted_text_is_one_or_more_printable_character_strings_of_at_most_255() {
+        assert!(Check::Quoted.matches("\"v=spf1 -all\""));
+        assert!(Check::Quoted.matches("\"a\" \"b\""));
+        assert!(Check::Quoted.matches("\"\""));
+        assert!(Check::Quoted.matches("\"say \\\"hi\\\" \\\\ ok; (fine)\""));
+        assert!(Check::Quoted.matches(&format!("\"{}\"", "a".repeat(255))));
+        assert!(!Check::Quoted.matches(&format!("\"{}\"", "a".repeat(256))));
+        assert!(!Check::Quoted.matches("v=spf1"));
+        assert!(!Check::Quoted.matches("\"open"));
+        assert!(!Check::Quoted.matches("\"a\"\"b\""));
+        assert!(!Check::Quoted.matches("\"a\" "));
+        assert!(!Check::Quoted.matches(" \"a\""));
+        assert!(!Check::Quoted.matches("\"line\nbreak\""));
+        assert!(!Check::Quoted.matches("\"\\065\""));
+        assert!(!Check::Quoted.matches("\"caf\u{e9}\""));
+    }
+
+    #[test]
+    fn caa_is_flags_a_tag_and_one_quoted_value() {
+        assert!(Check::Caa.matches("0 issue \"letsencrypt.org\""));
+        assert!(Check::Caa.matches("128 iodef \"mailto:security@example.org\""));
+        assert!(Check::Caa.matches("0 issuewild \";\""));
+        assert!(!Check::Caa.matches("256 issue \"a.org\""));
+        assert!(!Check::Caa.matches("00 issue \"a.org\""));
+        assert!(!Check::Caa.matches("0 is-sue \"a.org\""));
+        assert!(!Check::Caa.matches("0 abcdefghijklmnop \"a.org\""));
+        assert!(!Check::Caa.matches("0 issue a.org"));
+        assert!(!Check::Caa.matches("0 issue \"a\" \"b\""));
+        assert!(!Check::Caa.matches("0 issue"));
     }
 
     #[test]

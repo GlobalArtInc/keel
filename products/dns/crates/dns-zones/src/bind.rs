@@ -11,6 +11,7 @@ use keel::sdk::tokio;
 use keel::sdk::tokio::sync::Mutex;
 use keel_host::api::{Dest, Host, HostExecutor, Origin};
 
+use crate::api::{RecordLine, ZoneRecords};
 use crate::config::DnsConfig;
 use crate::provider::DnsProvider;
 use crate::{PRODUCT, zone};
@@ -31,6 +32,7 @@ const BACKUP_FAILED: &str = "dns.zone.error.backup";
 struct Attached {
     host: Arc<dyn HostExecutor>,
     config: Arc<DnsConfig>,
+    records: Option<Arc<dyn ZoneRecords>>,
 }
 
 #[derive(Default)]
@@ -40,8 +42,17 @@ pub(crate) struct BindProvider {
 }
 
 impl BindProvider {
-    pub(crate) fn attach(&self, host: Arc<dyn HostExecutor>, config: Arc<DnsConfig>) {
-        let _ = self.attached.set(Attached { host, config });
+    pub(crate) fn attach(
+        &self,
+        host: Arc<dyn HostExecutor>,
+        config: Arc<DnsConfig>,
+        records: Option<Arc<dyn ZoneRecords>>,
+    ) {
+        let _ = self.attached.set(Attached {
+            host,
+            config,
+            records,
+        });
     }
 
     fn attached(&self) -> Result<&Attached> {
@@ -75,20 +86,27 @@ impl BindProvider {
 
 #[async_trait]
 impl DnsProvider for BindProvider {
-    async fn apply(&self, ctx: &AfterContext, zone: &zone::Model) -> Result<()> {
+    async fn apply(&self, ctx: &AfterContext, zone: &str) -> Result<()> {
         let _turn = self.turn.lock().await;
         let attached = self.attached()?;
         let db = ctx.db()?;
-        let Some(current) = zone::Entity::find_by_id(zone.id.as_str()).one(db).await? else {
+        let Some(current) = zone::Entity::find_by_id(zone).one(db).await? else {
             return Ok(());
         };
+        if current.state != zone::STATE_PENDING {
+            return Ok(());
+        }
         let host = attached.host.on(origin(ctx));
-        match publish(&host, &attached.config, db, &current).await {
-            Ok(()) => mark(db, &current.id, zone::STATE_ACTIVE, None, true).await,
+        let published = match lines(attached, db, &current).await {
+            Ok(records) => publish(&host, &attached.config, db, &current, &records).await,
+            Err(error) => Err(error),
+        };
+        match published {
+            Ok(()) => mark(db, &current, zone::STATE_ACTIVE, None, true).await,
             Err(error) => {
                 mark(
                     db,
-                    &current.id,
+                    &current,
                     zone::STATE_ERROR,
                     Some(detail(&error, &current)),
                     current.served,
@@ -120,7 +138,24 @@ fn origin(ctx: &AfterContext) -> Origin {
     Origin::new(PRODUCT, ctx.principal(), ctx.request_id())
 }
 
-async fn publish(host: &Host<'_>, config: &DnsConfig, db: &Db, zone: &zone::Model) -> Result<()> {
+async fn lines(attached: &Attached, db: &Db, zone: &zone::Model) -> Result<Vec<RecordLine>> {
+    let Some(records) = &attached.records else {
+        return Ok(Vec::new());
+    };
+    let id: Id = zone
+        .id
+        .parse()
+        .map_err(|_| KeelError::internal("dns.zone.error.id").param("id", zone.id.as_str()))?;
+    records.lines(db, &id).await
+}
+
+async fn publish(
+    host: &Host<'_>,
+    config: &DnsConfig,
+    db: &Db,
+    zone: &zone::Model,
+    records: &[RecordLine],
+) -> Result<()> {
     let file = zone.file();
     host.template(ZONE_TEMPLATE)
         .vars(&json!({
@@ -132,6 +167,7 @@ async fn publish(host: &Host<'_>, config: &DnsConfig, db: &Db, zone: &zone::Mode
             "minimum": zone.minimum,
             "nameserver": config.nameserver,
             "hostmaster": config.hostmaster,
+            "records": records,
         }))
         .dest(ZONES_ROOT, &file)
         .mode(MODE)
@@ -182,12 +218,19 @@ async fn served_names(db: &Db, current: Option<&str>) -> Result<Vec<String>> {
         .await?)
 }
 
-async fn mark(db: &Db, id: &str, state: &str, error: Option<String>, served: bool) -> Result<()> {
+async fn mark(
+    db: &Db,
+    zone: &zone::Model,
+    state: &str,
+    error: Option<String>,
+    served: bool,
+) -> Result<()> {
     zone::Entity::update_many()
         .col_expr(zone::Column::State, Expr::value(state))
         .col_expr(zone::Column::Error, Expr::value(error))
         .col_expr(zone::Column::Served, Expr::value(served))
-        .filter(zone::Column::Id.eq(id))
+        .filter(zone::Column::Id.eq(zone.id.as_str()))
+        .filter(zone::Column::Serial.eq(zone.serial))
         .exec(db)
         .await?;
     Ok(())

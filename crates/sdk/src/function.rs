@@ -366,6 +366,10 @@ impl FunctionDef {
         &self.module
     }
 
+    pub(crate) fn set_module(&mut self, module: &str) {
+        module.clone_into(&mut self.module);
+    }
+
     pub fn kind(&self) -> Kind {
         self.kind
     }

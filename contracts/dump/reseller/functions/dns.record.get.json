@@ -1,0 +1,101 @@
+{
+  "keel": 1,
+  "name": "dns.record.get",
+  "module": "dns_record",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.read",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Record",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "zoneId": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      },
+      "ttl": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "priority": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "weight": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "port": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int32"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "zoneId",
+      "accountId",
+      "type",
+      "name",
+      "value",
+      "ttl",
+      "createdAt",
+      "updatedAt"
+    ]
+  }
+}

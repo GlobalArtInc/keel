@@ -498,10 +498,11 @@ fn operation(function: &Function, success: &Value) -> Value {
 }
 
 pub fn raw_route(descriptor: &Descriptor) -> String {
-    let name = descriptor
-        .name
-        .strip_prefix(descriptor.module.as_str())
-        .and_then(|rest| rest.strip_prefix('.'))
+    let module = descriptor.module.as_str();
+    let dotted = module.replace('_', ".");
+    let name = [module, dotted.as_str()]
+        .into_iter()
+        .find_map(|prefix| descriptor.name.strip_prefix(prefix)?.strip_prefix('.'))
         .unwrap_or(descriptor.name.as_str());
     format!("{RAW_PREFIX}/{}/{name}", descriptor.module)
 }

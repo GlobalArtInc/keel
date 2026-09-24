@@ -31,7 +31,8 @@
       "id_env": "KEEL_OWNLATE_PROJECT_DNS",
       "directories": {
         "products/dns/i18n": ["product.dns", "menu.dns"],
-        "products/dns/crates/dns-zones/i18n": ["dns"]
+        "products/dns/crates/dns-zones/i18n": ["dns"],
+        "products/dns/crates/dns-records/i18n": ["dns.record"]
       }
     }
   ]

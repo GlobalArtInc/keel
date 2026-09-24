@@ -201,10 +201,20 @@
           "items": "name",
           "input": "count"
         }
+      },
+      {
+        "id": "records",
+        "role": "child",
+        "screen": "dns.record.list",
+        "icon": "list",
+        "params": {
+          "zone_id": "$id"
+        }
       }
     ],
     "row_actions": [
       "edit",
+      "records",
       "delete"
     ],
     "empty": {
@@ -212,7 +222,8 @@
       "action": "create"
     },
     "invalidate_on": [
-      "dns.zone.*"
+      "dns.zone.*",
+      "dns.record.*"
     ]
   }
 }

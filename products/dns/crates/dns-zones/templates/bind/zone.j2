@@ -2,3 +2,5 @@ $ORIGIN {{ name }}.
 $TTL {{ minimum }}
 @ IN SOA {{ nameserver }}. {{ hostmaster }}. ( {{ serial }} {{ refresh }} {{ retry }} {{ expire }} {{ minimum }} )
 @ IN NS {{ nameserver }}.
+{% for record in records %}{{ record.name }} {{ record.ttl }} IN {{ record.type }} {{ record.data }}
+{% endfor -%}

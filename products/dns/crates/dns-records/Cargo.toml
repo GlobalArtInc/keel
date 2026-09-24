@@ -1,0 +1,13 @@
+[package]
+name = "keel-dns-records"
+description = "The dns-records module of KeelDNS: the records of a zone, checked by their type and rendered into its zone file"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-dns-zones = { workspace = true }

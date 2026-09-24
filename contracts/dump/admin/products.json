@@ -20,7 +20,8 @@
     "enabledBy": "install",
     "modules": [
       "host",
-      "dns"
+      "dns",
+      "dns_record"
     ]
   }
 ]

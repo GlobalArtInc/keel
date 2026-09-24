@@ -72,14 +72,18 @@
       },
       "brand": "Keel",
       "check": {
+        "caa": "Enter the flags, the tag and the quoted value, as in 0 issue \"example.org\"",
         "cidr": "Enter a network in CIDR notation",
         "domain": "Enter a domain name",
         "email": "Enter an e-mail address",
         "int": "Enter a whole number",
         "ip": "Enter an IP address",
+        "ipv4": "Enter an IPv4 address",
+        "ipv6": "Enter an IPv6 address",
         "name": "Enter a name: a letter followed by letters, digits, underscores or dashes",
         "path": "Enter an absolute path",
-        "port": "Enter a port between 1 and 65535"
+        "port": "Enter a port between 1 and 65535",
+        "quoted": "Enter text in double quotes: printable characters, at most 255 in each quoted part"
       },
       "column": {
         "createdAt": "Created",
@@ -477,6 +481,7 @@
       },
       "state": "State",
       "title": "Title",
+      "type": "Type",
       "updatedAt": "Updated",
       "value": {
         "false": "No",
@@ -1028,7 +1033,8 @@
         "action": {
           "create": "New zone",
           "delete": "Delete",
-          "edit": "Edit"
+          "edit": "Edit",
+          "records": "Records"
         },
         "column": {
           "accountId": "Account",
@@ -1070,6 +1076,56 @@
           "error": "Error",
           "pending": "Pending"
         }
+      },
+      "record": {
+        "action": {
+          "create": "New record",
+          "delete": "Delete",
+          "edit": "Edit"
+        },
+        "column": {
+          "name": "Name",
+          "priority": "Priority",
+          "ttl": "TTL",
+          "type": "Type",
+          "updatedAt": "Updated",
+          "value": "Value"
+        },
+        "create": {
+          "title": "New record"
+        },
+        "edit": {
+          "title": "Record"
+        },
+        "empty": "No records in this zone yet",
+        "error": {
+          "id": "The stored id {id} of a record is not an identifier",
+          "parent": "The zone a record list is narrowed to must be an identifier",
+          "zone": "The stored zone {zone} of a record is not an identifier"
+        },
+        "list": {
+          "title": "Records"
+        },
+        "name": "Name, @ for the zone itself",
+        "page": {
+          "main": "Record"
+        },
+        "port": "Port",
+        "priority": "Priority",
+        "ttl": "TTL, seconds",
+        "type": {
+          "A": "A, IPv4 address",
+          "AAAA": "AAAA, IPv6 address",
+          "CAA": "CAA, certificate authority",
+          "CNAME": "CNAME, alias",
+          "MX": "MX, mail server",
+          "NS": "NS, name server",
+          "SRV": "SRV, service",
+          "TXT": "TXT, text"
+        },
+        "value": "Value",
+        "weight": "Weight",
+        "zone": "Zone"
       }
     },
     "settings": {

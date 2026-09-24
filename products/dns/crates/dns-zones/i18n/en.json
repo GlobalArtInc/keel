@@ -5,7 +5,8 @@
       "action": {
         "create": "New zone",
         "delete": "Delete",
-        "edit": "Edit"
+        "edit": "Edit",
+        "records": "Records"
       },
       "column": {
         "accountId": "Account",

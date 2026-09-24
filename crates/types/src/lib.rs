@@ -18,8 +18,8 @@ pub use boot::{
 };
 pub use check::Check;
 pub use descriptor::{
-    Access, Control, DESCRIPTOR_VERSION, Descriptor, FileAttrs, KeelAttrs, Kind, MemberAccess,
-    Mode, UiAttrs, X_KEEL, X_UI,
+    Access, CheckBy, Control, DESCRIPTOR_VERSION, Descriptor, FileAttrs, KeelAttrs, Kind,
+    MemberAccess, Mode, UiAttrs, X_KEEL, X_UI,
 };
 pub use envelope::{CallError, Envelope, ErrorCode, FieldError, Meta, MetaActor, MetaPrincipal};
 pub use event::{

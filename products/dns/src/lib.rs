@@ -12,7 +12,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         hue: 264,
         chroma: 0.18,
     },
-    modules: &[&keel_host::MODULE, &keel_dns_zones::MODULE],
+    modules: &[
+        &keel_host::MODULE,
+        &keel_dns_zones::MODULE,
+        &keel_dns_records::MODULE,
+    ],
     menu: &[MenuGroup {
         id: "dns",
         label: "menu.dns",
@@ -48,9 +52,12 @@ mod tests {
     const PLATFORM_FILL: &str = "#315fcf";
 
     #[test]
-    fn the_bundle_names_host_and_the_zones_module_one_group_and_the_lite_edition() {
+    fn the_bundle_names_host_the_zones_and_records_modules_one_group_and_the_lite_edition() {
         assert_eq!(MANIFEST.id, "dns");
-        assert_eq!(MANIFEST.module_ids().collect::<Vec<_>>(), ["host", "dns"]);
+        assert_eq!(
+            MANIFEST.module_ids().collect::<Vec<_>>(),
+            ["host", "dns", "dns_record"]
+        );
         assert_eq!(MANIFEST.menu.len(), 1);
         assert_eq!(MANIFEST.menu[0].id, "dns");
         assert_eq!(MANIFEST.menu[0].label, "menu.dns");

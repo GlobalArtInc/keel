@@ -23,7 +23,7 @@ function cases(): CheckCase[] {
 }
 
 describe('check', () => {
-  it('every case of check-cases.json matches its expected verdict and the eight presets are all covered', () => {
+  it('every case of check-cases.json matches its expected verdict and the twelve presets are all covered', () => {
     const found = cases();
     const covered = new Set(found.map((entry) => entry.check));
     expect([...covered].sort()).toEqual([...CHECKS].sort());

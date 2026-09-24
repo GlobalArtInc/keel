@@ -215,6 +215,38 @@ describe('validate applies check presets', () => {
     ).toEqual([]);
   });
 
+  it('chosen by a sibling value through checkBy, at any depth', () => {
+    const entry = {
+      type: 'object',
+      properties: {
+        kind: { type: 'string' },
+        value: {
+          type: 'string',
+          'x-keel': { checkBy: { field: 'kind', cases: { v4: 'ipv4', text: 'quoted' } } },
+        },
+        entries: { type: 'array', items: { $ref: '#/$defs/Entry' } },
+      },
+    };
+    const params = { ...entry, $defs: { Entry: entry } };
+    expect(validate(params, { kind: 'v4', value: '192.0.2.1' })).toEqual([]);
+    expect(validate(params, { kind: 'other', value: 'anything' })).toEqual([]);
+    expect(
+      summary(
+        validate(params, {
+          kind: 'v4',
+          value: '2001:db8::1',
+          entries: [
+            { kind: 'text', value: '"ok"' },
+            { kind: 'text', value: 'bare' },
+          ],
+        }),
+      ),
+    ).toEqual([
+      ['value', 'check.ipv4'],
+      ['entries[1].value', 'check.quoted'],
+    ]);
+  });
+
   it('after the schema errors, and never to a non-string value', () => {
     const errors = validate(zoneEditParams(), {
       name: 'not a domain',

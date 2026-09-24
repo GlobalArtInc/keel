@@ -402,8 +402,9 @@ impl Registrar {
         &self.module
     }
 
-    pub fn function(&mut self, def: FunctionDef) -> &mut Self {
+    pub fn function(&mut self, mut def: FunctionDef) -> &mut Self {
         self.check_prefix("function", def.name());
+        def.set_module(&self.module);
         if self
             .functions
             .iter()
@@ -668,9 +669,13 @@ impl Registrar {
     }
 
     fn check_prefix(&mut self, kind: &'static str, name: &str) {
-        let prefixed = name
-            .strip_prefix(self.module.as_str())
-            .is_some_and(|rest| rest.starts_with('.') && rest.len() > 1);
+        let dotted = self.module.replace('_', ".");
+        let prefixed = [self.module.as_str(), dotted.as_str()]
+            .iter()
+            .any(|prefix| {
+                name.strip_prefix(prefix)
+                    .is_some_and(|rest| rest.starts_with('.') && rest.len() > 1)
+            });
         if !prefixed {
             self.errors.push(RegistrationError::Prefix {
                 module: self.module.clone(),
@@ -868,6 +873,32 @@ mod tests {
         assert_eq!(registrations.contributions.len(), 3);
         assert_eq!(registrations.provides.get::<dyn Clock>().unwrap().now(), 7);
         assert_eq!(registrations.requires, [ServiceKey::of::<dyn Clock>()]);
+    }
+
+    #[test]
+    fn a_module_id_with_an_underscore_prefixes_its_names_with_the_underscore_read_as_a_dot() {
+        use crate::limit::Unit;
+        let mut r = Registrar::new("dns_record");
+        r.function(noop("dns.record.list"))
+            .function(noop("dns_record.list"))
+            .function(noop("dns.zone.list"))
+            .function(noop("dns.records.list"))
+            .function(noop("dns.record."))
+            .permission("dns.record.manage", &[])
+            .contribute(LimitDef::new("dns.record.max", Unit::Count))
+            .contribute(LimitDef::new("dns.records", Unit::Count));
+        assert!(r.functions.iter().all(|def| def.module() == "dns_record"));
+        let errors = r.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            [
+                "module dns_record: function \"dns.zone.list\" does not carry the module prefix",
+                "module dns_record: function \"dns.records.list\" does not carry the module prefix",
+                "module dns_record: function \"dns.record.\" does not carry the module prefix",
+                "module dns_record: limit \"dns.records\" does not carry the module prefix",
+            ]
+        );
     }
 
     #[test]

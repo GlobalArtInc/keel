@@ -156,7 +156,12 @@ fn check(tree: &Tree, value: &Value, path: &mut String, into: &mut Vec<FieldErro
                         into.push(file_too_large(path, file, Some(size)));
                     }
                 }
-                if let Some(preset) = node.attrs.check {
+                let chosen = node
+                    .attrs
+                    .check_by
+                    .as_ref()
+                    .and_then(|by| by.select(object));
+                for preset in node.attrs.check.into_iter().chain(chosen) {
                     match nested {
                         Value::String(text) => probe(preset, text, path, into),
                         Value::Array(items) => {
@@ -431,6 +436,59 @@ mod tests {
         validator()
             .validate(&json!({ "name": "a.org", "master_ips": [], "port": null, "ttl": 1 }))
             .unwrap();
+    }
+
+    #[derive(Deserialize, Serialize, JsonSchema)]
+    struct Entry {
+        kind: String,
+        #[schemars(extend("x-keel" = json!({ "checkBy": { "field": "kind", "cases": { "v4": "ipv4", "text": "quoted" } } })))]
+        value: String,
+        entries: Option<Vec<Chosen>>,
+    }
+
+    #[derive(Deserialize, Serialize, JsonSchema)]
+    struct Chosen {
+        kind: String,
+        #[schemars(extend("x-keel" = json!({ "checkBy": { "field": "kind", "cases": { "v4": "ipv4", "text": "quoted" } } })))]
+        value: String,
+    }
+
+    #[test]
+    fn a_check_chosen_by_a_sibling_applies_the_preset_its_value_names_at_any_depth() {
+        let descriptor = function::<Entry, Nested>("t.entry.edit")
+            .kind(Kind::Form)
+            .level(Level::User)
+            .unowned()
+            .handler(|_: Call<Entry>| async { unreachable!() })
+            .descriptor()
+            .unwrap();
+        let validator = ParamsValidator::new(&descriptor).unwrap();
+        validator
+            .validate(&json!({ "kind": "v4", "value": "192.0.2.1" }))
+            .unwrap();
+        validator
+            .validate(&json!({ "kind": "other", "value": "anything" }))
+            .unwrap();
+        let wire = validator
+            .validate(&json!({
+                "kind": "v4", "value": "2001:db8::1",
+                "entries": [ { "kind": "text", "value": "\"ok\"" }, { "kind": "text", "value": "bare" } ]
+            }))
+            .unwrap_err()
+            .to_call_error();
+        let mut summary: Vec<(&str, &str)> = wire
+            .fields
+            .iter()
+            .map(|field| (field.path.as_str(), field.code.as_deref().unwrap()))
+            .collect();
+        summary.sort_unstable();
+        assert_eq!(
+            summary,
+            [
+                ("entries[1].value", "check.quoted"),
+                ("value", "check.ipv4")
+            ]
+        );
     }
 
     #[test]

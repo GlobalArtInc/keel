@@ -187,6 +187,36 @@ describe('validators', () => {
     expect(findingsOf(null)).toEqual([]);
   });
 
+  it('a check chosen by a sibling follows that sibling as it changes', () => {
+    const record: Descriptor = {
+      ...EDIT,
+      name: 'dns.record.create',
+      key: undefined,
+      ui: undefined,
+      params: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['A', 'AAAA'] },
+          value: {
+            type: 'string',
+            'x-keel': { checkBy: { field: 'type', cases: { A: 'ipv4', AAAA: 'ipv6' } } },
+          },
+        },
+      },
+    };
+    const form = buildForm(record, { values: { type: 'A', value: '2001:db8::1' } });
+    const value = form.field('value');
+    if (value === undefined) {
+      throw new Error('no field value');
+    }
+    expect(findingsOf(value.control).map((finding) => finding.code)).toEqual(['check.ipv4']);
+    form.group.controls['type']?.setValue('AAAA');
+    expect(findingsOf(value.control)).toEqual([]);
+    value.control.setValue('192.0.2.1');
+    expect(findingsOf(value.control).map((finding) => finding.code)).toEqual(['check.ipv6']);
+    form.destroy();
+  });
+
   it('isEmptyValue treats null, undefined, the empty string and an empty array as absent', () => {
     expect([null, undefined, '', []].map(isEmptyValue)).toEqual([true, true, true, true]);
     expect([0, false, ' ', [''], {}].map(isEmptyValue)).toEqual([

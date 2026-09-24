@@ -210,6 +210,14 @@ pub enum FreezeProblem {
         "function {function}: field {field} has the file control without {X_KEEL}.file naming maxBytes and types"
     )]
     FileAttrsMissing { function: String, field: String },
+    #[error(
+        "function {function}: field {field} chooses its check by {sibling}, which is not a parameter beside it"
+    )]
+    CheckBySibling {
+        function: String,
+        field: String,
+        sibling: String,
+    },
     #[error("function {function}: the upload carries no form block to render its fields")]
     UploadWithoutForm { function: String },
     #[error("function {function}: ui.multi names {field}, which is {problem}")]
@@ -1233,6 +1241,16 @@ impl References<'_> {
             let mut file = false;
             match KeelAttrs::of(&schema) {
                 Ok(Some(attrs)) => {
+                    if let Some(by) = &attrs.check_by
+                        && (by.field == *field
+                            || !properties.is_some_and(|all| all.contains_key(&by.field)))
+                    {
+                        self.problems.push(FreezeProblem::CheckBySibling {
+                            function: self.function.to_owned(),
+                            field: field.clone(),
+                            sibling: by.field.clone(),
+                        });
+                    }
                     if let Some(options) = &attrs.options {
                         self.function(
                             &format!("field {field} {X_KEEL}.options"),
@@ -2362,6 +2380,12 @@ mod tests {
         knob: String,
         #[schemars(extend("x-keel" = json!({ "options": "base.item.get" })))]
         wrong: String,
+        #[schemars(extend("x-keel" = json!({ "checkBy": { "field": "knob", "cases": { "v4": "ipv4" } } })))]
+        x_chosen: String,
+        #[schemars(extend("x-keel" = json!({ "checkBy": { "field": "x_self", "cases": { "v4": "ipv4" } } })))]
+        x_self: String,
+        #[schemars(extend("x-keel" = json!({ "checkBy": { "field": "missing", "cases": { "v4": "ipv4" } } })))]
+        x_stray: String,
     }
 
     fn attributed_init(r: &mut Registrar) -> Result<()> {
@@ -2378,12 +2402,16 @@ mod tests {
     #[test]
     fn field_attributes_are_checked_for_membership_and_the_options_function_for_its_kind() {
         let listed = problems(&[&BASE, &ATTRIBUTED], &[&BASE_BUNDLE]);
-        assert_eq!(listed.len(), 3, "{listed:?}");
+        assert_eq!(listed.len(), 5, "{listed:?}");
         assert!(listed[0].starts_with("function attributed.item.edit: field broken carries an invalid x-keel attribute: unknown variant `boss`"), "{listed:?}");
         assert!(listed[1].starts_with("function attributed.item.edit: field knob carries an invalid x-ui attribute: unknown variant `knob`"), "{listed:?}");
         assert_eq!(
-            listed[2],
-            "function attributed.item.edit: field wrong x-keel.options names base.item.get, which is a get function, not options"
+            listed[2..],
+            [
+                "function attributed.item.edit: field wrong x-keel.options names base.item.get, which is a get function, not options",
+                "function attributed.item.edit: field x_self chooses its check by x_self, which is not a parameter beside it",
+                "function attributed.item.edit: field x_stray chooses its check by missing, which is not a parameter beside it",
+            ]
         );
     }
 

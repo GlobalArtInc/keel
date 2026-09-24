@@ -1,4 +1,4 @@
-import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import { computed, signal, untracked, type Signal, type WritableSignal } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import type { KeelClient } from '@globalart/keel/client';
 import {
@@ -123,6 +123,7 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
     requiredNames,
     conditions: descriptor.ui?.fields ?? {},
     context: computed(() => contextOf(values(), scope)),
+    values,
     initial,
     client,
     scope: screenParams,
@@ -167,6 +168,7 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
 
   const group = new FormGroup<FormControls>(controls);
   values.set(group.getRawValue());
+  revalidateChoices(fields);
   const visiblePages = computed(() => pages.filter((page) => page.visible()));
   const teardown = new Subscription();
   const pending = signal(false);
@@ -227,6 +229,7 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
       try {
         values.set(group.getRawValue());
         applyConditions(form);
+        revalidateChoices(form.fields);
       } finally {
         applying = false;
       }
@@ -242,6 +245,7 @@ interface Site {
   requiredNames: string[];
   conditions: Record<string, FieldUi>;
   context: Signal<Context>;
+  values: Signal<Record<string, unknown>>;
   initial: Record<string, unknown>;
   client: KeelClient | null;
   scope: Record<string, unknown>;
@@ -256,7 +260,13 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
       : site.requiredNames.includes(name),
   );
   const control = new FormControl<unknown>(initialOf(shape, site.initial), {
-    validators: fieldValidator({ name, schema: shape.schema, defs: site.defs, required }),
+    validators: fieldValidator({
+      name,
+      schema: shape.schema,
+      defs: site.defs,
+      required,
+      siblings: () => untracked(site.values),
+    }),
   });
   return {
     name,
@@ -276,6 +286,14 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
     required,
     readonly: computed(() => holds(own.readonly_if, site.context(), false)),
   };
+}
+
+function revalidateChoices(fields: readonly FormField[]): void {
+  for (const field of fields) {
+    if (field.keel.checkBy !== undefined) {
+      field.control.updateValueAndValidity({ emitEvent: false });
+    }
+  }
 }
 
 function remoteOptionsOf(shape: FieldSchema, site: Site): RemoteOptions | null {

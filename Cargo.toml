@@ -12,6 +12,7 @@ repository = "https://github.com/GlobalArtInc/keel"
 keel = { path = "crates/keel" }
 keel-demo = { path = "products/demo" }
 keel-dns = { path = "products/dns" }
+keel-dns-records = { path = "products/dns/crates/dns-records" }
 keel-dns-zones = { path = "products/dns/crates/dns-zones" }
 keel-host = { path = "crates/host" }
 keel-host-agent = { path = "crates/host-agent" }
