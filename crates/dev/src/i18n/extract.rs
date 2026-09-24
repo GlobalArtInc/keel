@@ -241,7 +241,7 @@ pub(super) mod tests {
             .iter()
             .map(|(name, _)| name.as_str())
             .collect();
-        assert_eq!(names, ["keel-core", "keel-demo"]);
+        assert_eq!(names, ["keel-core", "keel-demo", "keel-dns"]);
         let core = read(&out.join("keel-core.en.json"));
         let demo = read(&out.join("keel-demo.en.json"));
         assert_eq!(extracted.files[0].1, core.len());
@@ -292,8 +292,8 @@ pub(super) mod tests {
         assert_eq!(russian.len(), demo.len());
         assert_ne!(russian["note.list.title"], demo["note.list.title"]);
         assert!(matches!(
-            extract(&dump, &projects, Some("keel-dns"), "en", &repository, &out),
-            Err(Error::UnknownProject(name)) if name == "keel-dns"
+            extract(&dump, &projects, Some("keel-nowhere"), "en", &repository, &out),
+            Err(Error::UnknownProject(name)) if name == "keel-nowhere"
         ));
         assert!(matches!(
             extract(&dump, &projects, None, "de", &repository, &out),
