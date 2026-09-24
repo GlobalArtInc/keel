@@ -85,7 +85,10 @@ static ATLAS_BUNDLE: ProductManifest = ProductManifest {
         disabled: &[],
     },
     account_kinds: &["user"],
-    editions: &[],
+    editions: &[Edition {
+        id: "standard",
+        features: &["atlas.maps"],
+    }],
     i18n: &[("en", BUNDLE_EN)],
     assets: &[],
 };

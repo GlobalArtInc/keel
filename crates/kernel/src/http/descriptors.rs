@@ -15,7 +15,7 @@ use super::Shared;
 use super::live::Live;
 use super::reply::{self, RequestId};
 use crate::dispatcher::guards;
-use crate::registry::{Function, Registry};
+use crate::registry::{Function, Registry, View};
 
 const MAX_DEPTH: usize = 16;
 
@@ -39,9 +39,15 @@ impl<'a> Projection<'a> {
         self.admits(&function.descriptor().access)
     }
 
-    pub fn admits(&self, access: &Access) -> Result<(), KeelError> {
+    fn admits(&self, access: &Access) -> Result<(), KeelError> {
         guards::level(access, self.principal)?;
-        guards::permission(self.registry, access, self.principal)
+        guards::permission(self.registry, access, self.principal)?;
+        guards::feature(self.registry, access)
+    }
+
+    pub(crate) fn admits_view(&self, view: &View) -> Result<(), KeelError> {
+        self.admits(view.access())?;
+        guards::needs(self.registry, view.needs())
     }
 
     pub(super) fn callable(&self, name: &str) -> bool {

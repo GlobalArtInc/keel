@@ -220,6 +220,11 @@ echo "site $site, binary $keel, suite $conformance"
 start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
 
 keel_ok "$site/enable.out" product enable demo
+keel_ok "$site/features.out" product features
+if grep -qx "demo.withheld" "$site/features.out"; then
+  fail "keel product features names demo.withheld, which the fixture leaves out"
+fi
+echo "keel product features leaves demo.withheld out"
 start_serve
 
 root_account=00000000000000000000000000

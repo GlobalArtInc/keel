@@ -680,6 +680,7 @@ impl Inner {
         guards::internal(function.def(), handle.principal())?;
         guards::level(access, handle.principal())?;
         guards::permission(&self.registry, access, handle.principal())?;
+        guards::feature(&self.registry, access)?;
         if entered {
             guards::scope(function.name(), function.def().mode(), handle.principal())?;
             if !self.registry.guards().is_empty() {
@@ -710,6 +711,7 @@ impl Inner {
         guards::internal(def, handle.principal())?;
         guards::level(&descriptor.access, handle.principal())?;
         guards::permission(&self.registry, &descriptor.access, handle.principal())?;
+        guards::feature(&self.registry, &descriptor.access)?;
         guards::scope(function.name(), def.mode(), handle.principal())?;
         if !self.registry.guards().is_empty() {
             let probe = handle.call(params.clone());

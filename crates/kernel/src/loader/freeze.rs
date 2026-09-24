@@ -7,8 +7,8 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, LanguageSource, LiveEvents, OutboxSubscriber,
-    ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, Features, LanguageSource, LiveEvents,
+    OutboxSubscriber, ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
@@ -33,6 +33,7 @@ use crate::dispatcher::guards::RegisteredPermissions;
 use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
 use crate::doctor;
+use crate::features::ProductFeatures;
 use crate::keel::{SetupHandle, StoredAccounts, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -558,6 +559,9 @@ impl Freezer {
         services.provide(Arc::new(doctor::Handle::new()));
         services.provide(Arc::new(restart::Handle::new(graph.clock().now())));
         services.provide(Arc::new(SetupHandle::new()));
+        if !self.services.contains(&ServiceKey::of::<dyn Features>()) {
+            services.provide::<dyn Features>(Arc::new(ProductFeatures::new(graph.products())));
+        }
         if !self
             .services
             .contains(&ServiceKey::of::<dyn SettingsSource>())

@@ -15,12 +15,13 @@ pub const MAX_LINE: usize = 200;
 pub const LOCKED_PREFIX: &str = "locked";
 pub const DELETE_BATCH_THRESHOLD: u32 = 10;
 pub const GROUP_BATCH_THRESHOLD: u32 = 10;
-pub const FUNCTIONS: [&str; 9] = [
+pub const FUNCTIONS: [&str; 10] = [
     "note.list",
     "note.get",
     "note.edit",
     "note.delete",
     "note.recompute",
+    "note.withheld",
     "note.import",
     "note.import.check",
     "note.tag.list",
@@ -111,6 +112,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::edit())
         .function(functions::delete())
         .function(functions::recompute())
+        .function(functions::withheld())
         .function(import::import())
         .function(import::check())
         .function(tags::list())
@@ -162,6 +164,7 @@ mod tests {
                 ("note.edit", Kind::Form, Mode::Write),
                 ("note.delete", Kind::Action, Mode::Write),
                 ("note.recompute", Kind::Action, Mode::Read),
+                ("note.withheld", Kind::Action, Mode::Read),
                 ("note.import", Kind::Wizard, Mode::Write),
                 ("note.import.check", Kind::Action, Mode::Read),
                 ("note.tag.list", Kind::List, Mode::Read),

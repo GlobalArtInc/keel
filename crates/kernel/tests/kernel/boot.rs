@@ -514,7 +514,7 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
     assert_eq!(system.items[0].label, "keel.account.list.title");
     assert_eq!(system.items[0].func, "keel.account.list");
     assert!(boot.meta.starts_with("m-"), "{}", boot.meta);
-    assert_eq!(boot.features, ["probe.items"]);
+    assert_eq!(boot.features, ["probe.items", "probe.export"]);
     assert!(boot.views.is_empty());
     assert!(boot.dashboard.is_empty());
     assert!(boot.license.is_none());

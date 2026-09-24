@@ -1,5 +1,7 @@
 use chrono_tz::Tz;
-use keel_sdk::system::{ManifestPatch, ManifestSource, ProblemCounter, SecondFactorSource};
+use keel_sdk::system::{
+    Features, ManifestPatch, ManifestSource, ProblemCounter, SecondFactorSource,
+};
 use keel_sdk::{DashboardWidget, Db, KeelError, ProductManifest};
 use keel_types::{
     Boot, BootBrand, BootPrincipal, BootProblems, BootProduct, BootWidget, Level, Principal,
@@ -89,26 +91,18 @@ pub(crate) fn products(registry: &Registry) -> Vec<BootProduct> {
 }
 
 pub(crate) fn features(registry: &Registry) -> Vec<String> {
-    let mut features: Vec<String> = Vec::new();
-    for manifest in registry.products() {
-        for feature in manifest
-            .default_edition()
-            .map(|edition| edition.features)
-            .unwrap_or_default()
-        {
-            if !features.iter().any(|known| known == feature) {
-                features.push((*feature).to_owned());
-            }
-        }
-    }
-    features
+    registry
+        .services()
+        .get::<dyn Features>()
+        .map(|features| features.enabled())
+        .unwrap_or_default()
 }
 
 pub(crate) fn views(registry: &Registry, principal: &Principal) -> Vec<String> {
     let projection = Projection::new(registry, principal);
     registry
         .views()
-        .filter(|view| projection.admits(view.access()).is_ok())
+        .filter(|view| projection.admits_view(view).is_ok())
         .map(|view| view.name().to_owned())
         .collect()
 }

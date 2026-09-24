@@ -8,6 +8,7 @@ mod dispatcher;
 mod download;
 mod events;
 mod export;
+mod features;
 mod grants;
 mod group;
 mod http;

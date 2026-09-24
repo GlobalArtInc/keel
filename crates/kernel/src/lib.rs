@@ -5,6 +5,7 @@ pub mod ctl;
 pub mod dispatcher;
 pub mod doctor;
 pub mod export;
+pub mod features;
 pub mod http;
 pub mod instance;
 pub mod keel;

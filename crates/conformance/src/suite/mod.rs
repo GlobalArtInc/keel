@@ -2,6 +2,7 @@ mod auth;
 mod boot;
 mod errors;
 mod export;
+mod features;
 mod health;
 mod lists;
 mod tokens;
@@ -39,7 +40,7 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         settings,
         report: Report::default(),
     };
-    let groups: [(&str, Step); 8] = [
+    let groups: [(&str, Step); 9] = [
         ("health", |suite| Box::pin(health::run(suite))),
         ("boot", |suite| Box::pin(boot::run(suite))),
         ("auth", |suite| Box::pin(auth::run(suite))),
@@ -47,6 +48,7 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         ("list", |suite| Box::pin(lists::run(suite))),
         ("export", |suite| Box::pin(export::run(suite))),
         ("error", |suite| Box::pin(errors::run(suite))),
+        ("features", |suite| Box::pin(features::run(suite))),
         ("webhook", |suite| Box::pin(webhooks::run(suite))),
     ];
     for (name, group) in groups {

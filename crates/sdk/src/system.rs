@@ -80,6 +80,11 @@ pub trait PermissionCatalogue: Send + Sync {
     fn holds(&self, principal: &Principal, key: &str) -> bool;
 }
 
+pub trait Features: Send + Sync {
+    fn enabled(&self) -> Vec<String>;
+    fn allows(&self, feature: &str) -> bool;
+}
+
 #[async_trait]
 pub trait AccountSource: Send + Sync {
     async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;

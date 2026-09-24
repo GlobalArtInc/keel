@@ -11,6 +11,7 @@ use super::{
 };
 
 pub const DUE_AHEAD_DAYS: u64 = 7;
+const WITHHELD_FEATURE: &str = "demo.withheld";
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(crate = "keel::sdk::serde")]
@@ -34,6 +35,11 @@ struct RecomputedValues {
 struct Recomputed {
     pub values: RecomputedValues,
 }
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde", deny_unknown_fields)]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Withheld {}
 
 pub fn list() -> FunctionDef {
     function::<ListQuery, Page<item::Model>>("note.list")
@@ -257,6 +263,16 @@ pub fn recompute() -> FunctionDef {
                 values: RecomputedValues { due: Some(due) },
             })
         })
+}
+
+pub fn withheld() -> FunctionDef {
+    function::<Withheld, Withheld>("note.withheld")
+        .kind(Kind::Action)
+        .mode(Mode::Read)
+        .access(Level::User, "note.read")
+        .feature(WITHHELD_FEATURE)
+        .unowned()
+        .handler(|_: Call<Withheld>| async { Ok(Withheld {}) })
 }
 
 async fn refuse_taken_title<C: ConnectionTrait>(

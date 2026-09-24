@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use keel_sdk::runtime::{Db, Ownership, PermissionDef};
-use keel_sdk::system::PermissionCatalogue;
+use keel_sdk::system::{Features, PermissionCatalogue};
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
 use keel_types::{Access, Id, Level, Mode, Principal, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 use serde_json::Value;
 
 use crate::registry::Registry;
+
+const LICENSE: &str = "keel.error.license";
 
 pub fn level(access: &Access, principal: &Principal) -> Result<(), KeelError> {
     if principal.level >= access.level {
@@ -32,6 +34,31 @@ pub fn permission(
     } else {
         Err(KeelError::forbidden("keel.error.permission").param("permission", key.as_str()))
     }
+}
+
+pub(crate) fn feature(registry: &Registry, access: &Access) -> Result<(), KeelError> {
+    match &access.feature {
+        Some(feature) if !enabled(registry, feature) => Err(unlicensed(feature)),
+        _ => Ok(()),
+    }
+}
+
+pub(crate) fn needs(registry: &Registry, features: &[String]) -> Result<(), KeelError> {
+    match features.iter().find(|feature| !enabled(registry, feature)) {
+        Some(feature) => Err(unlicensed(feature)),
+        None => Ok(()),
+    }
+}
+
+fn enabled(registry: &Registry, feature: &str) -> bool {
+    registry
+        .services()
+        .get::<dyn Features>()
+        .is_some_and(|features| features.allows(feature))
+}
+
+fn unlicensed(feature: &str) -> KeelError {
+    KeelError::license(LICENSE).param("feature", feature)
 }
 
 pub fn internal_only(function: &str) -> KeelError {

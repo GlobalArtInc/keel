@@ -2,7 +2,7 @@ use std::fmt;
 
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::socket::ClientError;
-use keel_kernel::{Composition, Config, Storage, products};
+use keel_kernel::{Composition, Config, Storage, features, products};
 use keel_sdk::ProductManifest;
 use keel_sdk::chrono::Utc;
 use keel_sdk::sea_orm::TransactionTrait;
@@ -230,6 +230,20 @@ impl Runtime {
         .await;
         storage.close().await?;
         outcome
+    }
+
+    pub(crate) async fn product_features(&self, config: &Config) -> Result<Vec<String>, Error> {
+        let storage = Storage::connect(config).await?;
+        let outcome = self.enabled(&storage).await;
+        storage.close().await?;
+        let enabled = outcome?.ids;
+        let bundles: Vec<&ProductManifest> = self
+            .products
+            .iter()
+            .copied()
+            .filter(|bundle| enabled.iter().any(|id| id == bundle.id))
+            .collect();
+        Ok(features::every(&bundles))
     }
 
     pub(crate) async fn enabled(&self, storage: &Storage) -> Result<Stored, Error> {

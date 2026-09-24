@@ -61,7 +61,7 @@ fn item(registry: &Registry, projection: &Projection<'_>, node: &MenuNode) -> Op
         }
         None => {
             let view = registry.view(node.func())?;
-            projection.admits(view.access()).ok()?;
+            projection.admits_view(view).ok()?;
             (node.label_key()?, None)
         }
     };

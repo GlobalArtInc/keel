@@ -44,7 +44,9 @@ pub(crate) enum Command {
     Serve,
     #[command(about = "Apply the migrations of the enabled composition and exit")]
     Migrate,
-    #[command(about = "List, enable or disable product bundles while the service is stopped")]
+    #[command(
+        about = "List product bundles and their license features, enable or disable a bundle"
+    )]
     Product {
         #[command(subcommand)]
         action: ProductAction,
@@ -333,6 +335,8 @@ impl UpdateStep {
 pub(crate) enum ProductAction {
     #[command(about = "Print every bundle this binary carries with its state")]
     List,
+    #[command(about = "Print the license features of the enabled bundles, one per line")]
+    Features,
     #[command(
         about = "Enable a bundle: over the control socket while the service runs, which restarts it, or in the database while it is stopped"
     )]
@@ -438,6 +442,12 @@ impl Runtime {
                         ProductAction::List => {
                             for state in self.list_products(&config).await? {
                                 println!("{state}");
+                            }
+                            return Ok(ExitCode::SUCCESS);
+                        }
+                        ProductAction::Features => {
+                            for feature in self.product_features(&config).await? {
+                                println!("{feature}");
                             }
                             return Ok(ExitCode::SUCCESS);
                         }
@@ -908,6 +918,13 @@ mod tests {
             cli.command,
             Command::Product {
                 action: ProductAction::List
+            }
+        ));
+        let cli = Cli::try_parse_from(["keel", "product", "features"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Product {
+                action: ProductAction::Features
             }
         ));
         let cli = Cli::try_parse_from(["keel", "product", "enable", "demo"]).unwrap();

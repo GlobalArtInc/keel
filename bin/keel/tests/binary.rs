@@ -657,6 +657,7 @@ mod demo {
             site.ok(&["product", "list"]).trim(),
             format!("demo\tenabled\t{}", env!("CARGO_PKG_VERSION"))
         );
+        assert_eq!(site.ok(&["product", "features"]), "");
         let migrated = site.ok(&["migrate"]);
         assert!(migrated.contains("note: applied"), "{migrated}");
 
