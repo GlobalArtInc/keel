@@ -887,8 +887,14 @@ async fn descriptors_are_projected_by_level_and_permission() {
         columns(list),
         ["id", "kind", "state", "parentId", "createdAt"]
     );
-    assert_eq!(actions(list), ["create", "edit"]);
-    assert_eq!(list["ui"]["row_actions"], json!(["edit"]));
+    assert_eq!(
+        actions(list),
+        ["create", "edit", "suspend", "resume", "delete"]
+    );
+    assert_eq!(
+        list["ui"]["row_actions"],
+        json!(["edit", "suspend", "resume", "delete"])
+    );
     assert_eq!(list["ui"]["empty"]["action"], json!("create"));
     let as_admin = bench
         .get("/api/v1/functions/keel.account.list", Some(&admin()))

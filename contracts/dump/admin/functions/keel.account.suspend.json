@@ -1,0 +1,68 @@
+{
+  "keel": 1,
+  "name": "keel.account.suspend",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "keel.account.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Switched",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "state": {
+        "$ref": "#/$defs/AccountState"
+      },
+      "changed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "state",
+      "changed"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "AccountState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "deleting"
+        ]
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ impl CallerHandle {
             .is_some()
     }
 
-    fn dispatcher(&self) -> Option<Dispatcher> {
+    pub(crate) fn dispatcher(&self) -> Option<Dispatcher> {
         self.dispatcher
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

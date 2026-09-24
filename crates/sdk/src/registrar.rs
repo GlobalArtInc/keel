@@ -15,6 +15,7 @@ use crate::error::Result;
 use crate::function::FunctionDef;
 use crate::guard::Guard;
 use crate::host::{AgentOp, ConfigTemplate};
+use crate::lifecycle::AccountLifecycle;
 use crate::services::{ServiceKey, Services};
 use crate::ui::ViewSpec;
 
@@ -524,7 +525,14 @@ impl Registrar {
         self
     }
 
-    pub fn contribute<T: Any + Send + Sync>(&mut self, contribution: T) -> &mut Self {
+    pub fn contribute<T: Any + Send + Sync>(&mut self, mut contribution: T) -> &mut Self {
+        let any: &mut dyn Any = &mut contribution;
+        if let Some(lifecycle) = any.downcast_mut::<AccountLifecycle>() {
+            lifecycle.stamp(&self.module);
+            let taken = self.contributions.of::<AccountLifecycle>().next().is_some();
+            let module = self.module.clone();
+            self.check_unique("account lifecycle", &module, taken);
+        }
         let any: &dyn Any = &contribution;
         if let Some(op) = any.downcast_ref::<AgentOp>() {
             self.check_prefix("agent operation", op.name());
@@ -931,6 +939,29 @@ mod tests {
                 "module vm: agent operation \"host.fs.write\" does not carry the module prefix",
                 "module vm: configuration template \"libvirt/domain.xml.j2\" is registered twice",
             ]
+        );
+    }
+
+    #[test]
+    fn an_account_lifecycle_carries_the_contributing_module_and_is_contributed_once() {
+        let mut r = Registrar::new("zones");
+        r.contribute(AccountLifecycle::new().on_delete(|_| async { Ok(()) }));
+        let registrations = r.into_registrations().expect("one lifecycle is valid");
+        let lifecycles: Vec<&AccountLifecycle> = registrations
+            .contributions
+            .of::<AccountLifecycle>()
+            .collect();
+        assert_eq!(lifecycles.len(), 1);
+        assert_eq!(lifecycles[0].module(), "zones");
+        let mut twice = Registrar::new("zones");
+        twice
+            .contribute(AccountLifecycle::new())
+            .contribute(AccountLifecycle::new());
+        let errors = twice.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            ["module zones: account lifecycle \"zones\" is registered twice"]
         );
     }
 

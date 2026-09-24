@@ -23,6 +23,7 @@ pub use crate::error::{KeelError, Result};
 pub use crate::function::{FunctionDef, function};
 pub use crate::guard::Guard;
 pub use crate::host::{AgentOp, AgentOpError, AgentScope, ConfigTemplate};
+pub use crate::lifecycle::AccountLifecycle;
 pub use crate::list::{ListSource, ListSpec, entity_source, fetch_page};
 pub use crate::module::ModuleDef;
 pub use crate::multipart;

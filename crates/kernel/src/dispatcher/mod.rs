@@ -10,6 +10,7 @@ mod raw;
 mod schema;
 pub(crate) mod strip;
 mod task;
+mod unit;
 mod validate;
 
 use std::collections::BTreeMap;
@@ -47,6 +48,7 @@ pub use raw::{
 };
 pub use strip::MASK;
 pub use task::BATCH_LOG_PREFIX;
+pub(crate) use unit::Unit;
 pub use validate::{FILE_ENCODING_KEY, FILE_TOO_LARGE_KEY, FILE_TYPE_KEY, SchemaError};
 
 pub(crate) use strip::Plan;

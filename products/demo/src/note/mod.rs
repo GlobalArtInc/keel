@@ -4,6 +4,7 @@ mod hooks;
 mod host;
 mod import;
 mod item;
+mod lifecycle;
 mod problems;
 mod tags;
 
@@ -128,6 +129,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(problems::source())
         .contribute(host::template())
         .contribute(host::stat_op())
+        .contribute(lifecycle::contribution())
         .menu(
             MenuNode::new("demo/tags", "note.tag.list")
                 .icon("tag")
@@ -136,7 +138,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .i18n("en", include_str!("../../i18n/note/en.json"))
         .i18n("ru", include_str!("../../i18n/note/ru.json"))
         .before("note.delete", hooks::refuse_locked)
-        .within("note.edit", hooks::enforce_limit);
+        .within("note.edit", hooks::enforce_limit)
+        .within("note.delete", lifecycle::refuse_held);
     Ok(())
 }
 
@@ -214,6 +217,16 @@ mod tests {
         assert_eq!(languages, ["en", "ru"]);
         assert_eq!(registrations.before[0].function, "note.delete");
         assert_eq!(registrations.within[0].function, "note.edit");
+        assert_eq!(registrations.within[1].function, "note.delete");
+        let lifecycles: Vec<String> = registrations
+            .contributions
+            .of::<AccountLifecycle>()
+            .map(|lifecycle| format!("{lifecycle:?}"))
+            .collect();
+        assert_eq!(
+            lifecycles,
+            [r#"AccountLifecycle { module: "note", handles: ["suspend", "resume", "delete"] }"#]
+        );
         let delete = registrations
             .functions
             .iter()

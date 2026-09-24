@@ -155,10 +155,56 @@
         "role": "edit",
         "screen": "keel.account.update",
         "default": true
+      },
+      {
+        "id": "suspend",
+        "role": "button",
+        "function": "keel.account.suspend",
+        "icon": "pause",
+        "params": {
+          "id": "$id"
+        },
+        "hidden_if": {
+          "ne": [
+            "state",
+            "active"
+          ]
+        }
+      },
+      {
+        "id": "resume",
+        "role": "button",
+        "function": "keel.account.resume",
+        "icon": "play",
+        "params": {
+          "id": "$id"
+        },
+        "hidden_if": {
+          "ne": [
+            "state",
+            "suspended"
+          ]
+        }
+      },
+      {
+        "id": "delete",
+        "role": "button",
+        "function": "keel.account.delete",
+        "icon": "trash",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": {
+          "destructive": true,
+          "items": "id"
+        }
       }
     ],
     "row_actions": [
-      "edit"
+      "edit",
+      "suspend",
+      "resume",
+      "delete"
     ],
     "empty": {
       "title": "keel.account.empty",

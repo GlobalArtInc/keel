@@ -1,0 +1,91 @@
+{
+  "keel": 1,
+  "name": "keel.account.delete",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "keel.account.manage"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Deletion",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/TaskRef"
+      },
+      {
+        "$ref": "#/$defs/Deleted"
+      }
+    ],
+    "$defs": {
+      "TaskRef": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/$defs/TaskLink"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "TaskLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Deleted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "modules"
+        ]
+      }
+    }
+  }
+}

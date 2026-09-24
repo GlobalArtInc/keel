@@ -101,15 +101,15 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     let note = migrated.modules.iter().find(|(id, _)| id == "note");
     assert_eq!(
         note.map(|(_, applied)| applied.len()),
-        Some(2),
+        Some(3),
         "{migrated:?}"
     );
-    assert_eq!(site.tables().await, ["note_item"]);
+    assert_eq!(site.tables().await, ["note_hold", "note_item"]);
     assert_eq!(
         site.database
             .rows("SELECT count(*)::text FROM keel_migration_note")
             .await,
-        ["2"]
+        ["3"]
     );
 
     let running = runtime

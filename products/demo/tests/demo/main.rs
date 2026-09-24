@@ -1,5 +1,6 @@
 mod audit;
 mod day_boundary;
+mod lifecycle;
 mod note;
 mod problems;
 mod runtime;

@@ -13,6 +13,7 @@ mod grants;
 mod group;
 mod http;
 mod instance;
+mod lifecycle;
 mod modules;
 mod outbox;
 mod preferences;

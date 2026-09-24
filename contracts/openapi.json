@@ -2908,6 +2908,80 @@
         }
       }
     },
+    "/api/v1/call/keel.account.delete": {
+      "post": {
+        "operationId": "keel.account.delete",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "reseller",
+            "permission": "keel.account.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deletion",
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/TaskRef"
+                        },
+                        {
+                          "$ref": "#/components/schemas/Deleted"
+                        }
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/keel.account.get": {
       "post": {
         "operationId": "keel.account.get",
@@ -3191,6 +3265,172 @@
                       "required": [
                         "data",
                         "more"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/keel.account.resume": {
+      "post": {
+        "operationId": "keel.account.resume",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "reseller",
+            "permission": "keel.account.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Switched",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/AccountState"
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "state",
+                        "changed"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/keel.account.suspend": {
+      "post": {
+        "operationId": "keel.account.suspend",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "reseller",
+            "permission": "keel.account.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Switched",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/AccountState"
+                        },
+                        "changed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "state",
+                        "changed"
                       ]
                     },
                     "meta": {
@@ -9176,6 +9416,14 @@
           "updatedAt"
         ]
       },
+      "AccountState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "deleting"
+        ]
+      },
       "ActorVia": {
         "type": "string",
         "enum": [
@@ -9464,6 +9712,24 @@
         "required": [
           "value",
           "label"
+        ]
+      },
+      "Deleted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "modules"
         ]
       },
       "EmailInput": {
@@ -10492,6 +10758,28 @@
         "required": [
           "tag",
           "count"
+        ]
+      },
+      "TaskLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "TaskRef": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/TaskLink"
+          }
+        },
+        "required": [
+          "task"
         ]
       },
       "TaskRow": {

@@ -2,6 +2,7 @@ mod accounts;
 mod acl;
 mod entity;
 mod health;
+mod lifecycle;
 mod principals;
 mod products;
 mod restart;
@@ -29,7 +30,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 17] = [
+pub const FUNCTIONS: [&str; 20] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
@@ -40,6 +41,9 @@ pub const FUNCTIONS: [&str; 17] = [
     "keel.account.create",
     "keel.account.update",
     "keel.account.options",
+    accounts::SUSPEND,
+    accounts::RESUME,
+    accounts::DELETE,
     "keel.principal.list",
     "keel.principal.get",
     "keel.principal.create",
@@ -65,6 +69,9 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(accounts::create())
         .function(accounts::update())
         .function(accounts::options())
+        .function(accounts::suspend())
+        .function(accounts::resume())
+        .function(accounts::delete())
         .function(principals::list())
         .function(principals::get())
         .function(principals::create())
@@ -123,7 +130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_seventeen_functions_under_the_keel_prefix() {
+    fn the_kernel_module_registers_its_twenty_functions_under_the_keel_prefix() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let names: Vec<&str> = registrar.function_names().into_iter().collect();

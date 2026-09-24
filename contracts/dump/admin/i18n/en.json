@@ -5,7 +5,10 @@
       "account": {
         "action": {
           "create": "New account",
-          "edit": "Edit"
+          "delete": "Delete",
+          "edit": "Edit",
+          "resume": "Resume",
+          "suspend": "Suspend"
         },
         "column": {
           "createdAt": "Created",
@@ -18,12 +21,23 @@
         "create": {
           "title": "New account"
         },
+        "delete": {
+          "progress": {
+            "modules": "Removing the account's data from each module",
+            "row": "Removing the account"
+          }
+        },
         "empty": "No accounts yet",
         "error": {
+          "deleting": "The account {id} is being deleted",
+          "has_children": "The account {id} has accounts of its own; delete them first",
           "kind_reserved": "The kind {kind} is reserved for the root account",
+          "own_account": "You cannot suspend, resume or delete the account you belong to",
           "parent_cycle": "An account cannot be moved under itself or under one of its own accounts",
           "path_unknown": "The stored path of an account carries the segment {segment}, which is not a ULID",
-          "root_immutable": "The root account cannot be changed"
+          "root_immutable": "The root account cannot be changed",
+          "rows_remain": "Data of the account remains in a module that did not remove it: {detail}",
+          "state_changed": "The account is {state}, not {expected}; it changed while the operation ran"
         },
         "id": "Account",
         "kind": "Kind",
