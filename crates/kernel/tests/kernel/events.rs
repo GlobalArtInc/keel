@@ -1,12 +1,17 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use keel_kernel::dispatcher::OUTBOX_BATCH;
-use keel_kernel::http::{DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_RETRY};
+use keel_kernel::http::{
+    DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SESSION_COOKIE, SSE_MAX_CLIENTS, SSE_RETRY,
+};
 use keel_kernel::{Http, HttpOptions};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
-use keel_sdk::system::{Frame, LiveEvents, OutboxSubscriber};
+use keel_sdk::system::{
+    Authenticated, Authenticator, Client, Credential, Frame, LiveEvents, OutboxSubscriber,
+};
 use keel_testkit::http::with_test_principal;
 use keel_testkit::{EVENTS_PATH, EventStream, Harness, PRINCIPAL_HEADER, SseFrame, TestHttp, Who};
 use keel_types::Event;
@@ -14,6 +19,9 @@ use keel_types::Event;
 const QUIET: Duration = Duration::from_millis(700);
 const PATIENCE: Duration = Duration::from_secs(5);
 const STOP_WITHIN: Duration = Duration::from_secs(1);
+const KEEP_ALIVE: Duration = Duration::from_millis(200);
+
+static CREDENTIALS: LazyLock<Mutex<HashMap<String, Principal>>> = LazyLock::new(Mutex::default);
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Labelled {
@@ -72,8 +80,79 @@ fn init(r: &mut Registrar) -> Result<()> {
     Ok(())
 }
 
+static CREDENTIAL: ModuleDef = ModuleDef {
+    id: "credential",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: init_credential,
+};
+
+struct Revocable;
+
+#[async_trait]
+impl Authenticator for Revocable {
+    async fn authenticate(
+        &self,
+        credential: &Credential,
+        _: &Client,
+        _: &Db,
+    ) -> Result<Option<Authenticated>> {
+        let (Credential::Bearer(secret) | Credential::Session(secret)) = credential;
+        let principal = CREDENTIALS
+            .lock()
+            .expect("the credentials")
+            .get(secret.expose())
+            .cloned();
+        Ok(principal.map(|principal| Authenticated {
+            principal,
+            session: None,
+        }))
+    }
+}
+
+fn init_credential(r: &mut Registrar) -> Result<()> {
+    let authenticator: Arc<dyn Authenticator> = Arc::new(Revocable);
+    r.contribute(authenticator);
+    Ok(())
+}
+
+fn issue(harness: &Harness, who: Who, prefix: &str) -> String {
+    let secret = format!("{prefix}{}", Id::generate());
+    CREDENTIALS
+        .lock()
+        .expect("the credentials")
+        .insert(secret.clone(), harness.principal(who).clone());
+    secret
+}
+
+fn revoke(secret: &str) {
+    CREDENTIALS.lock().expect("the credentials").remove(secret);
+}
+
+fn cookie(secret: &str) -> String {
+    format!("{SESSION_COOKIE}={secret}")
+}
+
 async fn boot() -> Harness {
     Harness::new().module(&STREAM).boot().await
+}
+
+async fn boot_with_credentials() -> Harness {
+    Harness::new()
+        .module(&STREAM)
+        .module(&CREDENTIAL)
+        .boot()
+        .await
+}
+
+async fn opened_with(http: &TestHttp, headers: &[(&str, &str)]) -> EventStream {
+    let mut stream = http.stream(EVENTS_PATH, headers).await;
+    assert_eq!(stream.status(), 200, "{headers:?}");
+    let first = stream.next().await;
+    assert_eq!(first.retry, Some(3000), "{first:?}");
+    stream
 }
 
 fn subscriber(harness: &Harness) -> Arc<dyn OutboxSubscriber> {
@@ -563,5 +642,76 @@ async fn every_open_stream_closes_when_the_runtime_drains_so_stop_returns_within
     })
     .await
     .expect("every stream is released");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_fifth_stream_of_a_session_closes_the_first_with_retry_zero() {
+    let harness = boot_with_credentials().await;
+    let http = harness.http().await;
+    let session = cookie(&issue(&harness, Who::A1, "ks_"));
+    let other = cookie(&issue(&harness, Who::A1, "ks_"));
+    let mut neighbour = opened_with(&http, &[("cookie", &other)]).await;
+    let mut streams = Vec::new();
+    for _ in 0..=SSE_MAX_CLIENTS {
+        streams.push(opened_with(&http, &[("cookie", &session)]).await);
+    }
+    let mut first = streams.remove(0);
+    let last = first.next().await;
+    assert_eq!(last.retry, Some(0), "{last:?}");
+    assert!(last.comments.iter().any(|c| c == "superseded"), "{last:?}");
+    assert!(
+        first.closes_within(PATIENCE).await,
+        "the first stream closes after the final frame"
+    );
+
+    let seq = touch(&harness, Who::A1, "after the fifth stream").await;
+    for stream in streams.iter_mut().chain([&mut neighbour]) {
+        assert_eq!(invalidate(&stream.next_event().await).0, seq);
+    }
+    drop((first, streams, neighbour));
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_revoked_session_is_closed_at_the_next_keep_alive() {
+    let harness = boot_with_credentials().await;
+    let http = harness
+        .http_with(HttpOptions {
+            sse_keep_alive: KEEP_ALIVE,
+            ..HttpOptions::default()
+        })
+        .await;
+    let session = issue(&harness, Who::A1, "ks_");
+    let token = issue(&harness, Who::A1, "kat_");
+    let kept = issue(&harness, Who::A1, "ks_");
+    let bearer = format!("Bearer {token}");
+    let mut by_session = opened_with(&http, &[("cookie", &cookie(&session))]).await;
+    let mut by_token = opened_with(&http, &[("authorization", &bearer)]).await;
+    let mut unrevoked = opened_with(&http, &[("cookie", &cookie(&kept))]).await;
+    for stream in [&mut by_session, &mut by_token, &mut unrevoked] {
+        let beat = stream.next().await;
+        assert!(
+            beat.comments.iter().any(|c| c == "keep-alive"),
+            "a keep-alive passes while the credential holds: {beat:?}"
+        );
+    }
+
+    revoke(&session);
+    revoke(&token);
+    assert!(
+        by_session.closes_within(PATIENCE).await,
+        "the revoked session loses its stream"
+    );
+    assert!(
+        by_token.closes_within(PATIENCE).await,
+        "the revoked token loses its stream"
+    );
+    let seq = touch(&harness, Who::A1, "after the revocation").await;
+    assert_eq!(invalidate(&unrevoked.next_event().await).0, seq);
+    revoke(&kept);
+    drop((by_session, by_token, unrevoked));
+    http.stop().await.expect("the server stops");
     harness.finish().await;
 }

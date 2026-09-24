@@ -38,13 +38,15 @@ use crate::dispatcher::Dispatcher;
 use crate::registry::Registry;
 use crate::tls::TlsMaterial;
 
-use events::Streams;
+use events::{SSE_KEEP_ALIVE, Streams};
 use live::Live;
 
 pub use assets::Frontend;
 pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
-pub use events::{DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_REPLAY_WINDOW, SSE_RETRY};
+pub use events::{
+    DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_MAX_CLIENTS, SSE_REPLAY_WINDOW, SSE_RETRY,
+};
 pub use i18n::Catalogue;
 pub use raw::{BODY_NOT_MULTIPART_KEY, PART_REPEATED_KEY, PART_UNKNOWN_KEY};
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
@@ -61,6 +63,7 @@ pub struct HttpOptions {
     pub body_limit: usize,
     pub frontend: Option<Frontend>,
     pub sse_replay_window: u64,
+    pub sse_keep_alive: Duration,
     pub trusted_proxies: Vec<IpNet>,
 }
 
@@ -70,6 +73,7 @@ impl Default for HttpOptions {
             body_limit: BODY_LIMIT,
             frontend: None,
             sse_replay_window: SSE_REPLAY_WINDOW,
+            sse_keep_alive: SSE_KEEP_ALIVE,
             trusted_proxies: Vec::new(),
         }
     }

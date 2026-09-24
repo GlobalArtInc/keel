@@ -21,6 +21,7 @@ pub const CACHE_PRIVATE: &str = "private, no-store";
 pub const MASK: &str = "***";
 
 const TIMEOUT: Duration = Duration::from_secs(30);
+const STREAM_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Credential {
@@ -140,15 +141,32 @@ impl Client {
             .await
     }
 
-    async fn send(
+    pub async fn stream(
         &mut self,
-        method: Method,
         path: &str,
+        credential: Credential,
+        extra: &[(HeaderName, &str)],
+    ) -> Result<reqwest::Response, Failure> {
+        let request = self
+            .http
+            .get(format!("{}{path}", self.base))
+            .timeout(STREAM_TIMEOUT);
+        let response = self.authorize(request, credential, extra)?.send().await?;
+        self.counted(
+            &Method::GET,
+            path,
+            response.status().as_u16(),
+            response.headers(),
+        );
+        Ok(response)
+    }
+
+    fn authorize(
+        &self,
         mut request: RequestBuilder,
         credential: Credential,
         extra: &[(HeaderName, &str)],
-    ) -> Result<Answer, Failure> {
-        let stored = matches!(credential, Credential::Guest | Credential::Session);
+    ) -> Result<RequestBuilder, Failure> {
         match credential {
             Credential::Guest => {}
             Credential::Session => {
@@ -166,10 +184,31 @@ impl Client {
         for (name, value) in extra {
             request = request.header(name.clone(), *value);
         }
-        let response = request.send().await?;
+        Ok(request)
+    }
+
+    fn counted(&mut self, method: &Method, path: &str, status: u16, headers: &HeaderMap) {
+        self.responses += 1;
+        if !headers.contains_key(REQUEST_ID) {
+            self.without_request_id
+                .push(format!("{method} {path} ({status})"));
+        }
+    }
+
+    async fn send(
+        &mut self,
+        method: Method,
+        path: &str,
+        request: RequestBuilder,
+        credential: Credential,
+        extra: &[(HeaderName, &str)],
+    ) -> Result<Answer, Failure> {
+        let stored = matches!(credential, Credential::Guest | Credential::Session);
+        let response = self.authorize(request, credential, extra)?.send().await?;
         let status = response.status().as_u16();
         let headers = response.headers().clone();
         let body = response.text().await?;
+        self.counted(&method, path, status, &headers);
         let answer = Answer {
             method,
             path: path.to_owned(),
@@ -178,13 +217,6 @@ impl Client {
             body,
             confidential: false,
         };
-        self.responses += 1;
-        if answer.header(REQUEST_ID).is_none() {
-            self.without_request_id.push(format!(
-                "{} {} ({})",
-                answer.method, answer.path, answer.status
-            ));
-        }
         if stored && let Some(change) = answer.session_change() {
             self.session = change;
         }

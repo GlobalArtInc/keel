@@ -1,6 +1,7 @@
+use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use axum::extract::State;
@@ -9,24 +10,27 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, Uri};
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::stream;
-use keel_sdk::system::{Frame, OutboxSubscriber};
+use keel_sdk::runtime::Db;
+use keel_sdk::system::{Authenticator, Client, Credential, Frame, OutboxSubscriber};
 use keel_sdk::{AccountScope, KeelError};
-use keel_types::{Event, Level, Principal};
+use keel_types::{ErrorCode, Event, Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::{Instant, MissedTickBehavior};
 
-use super::auth::Caller;
+use super::auth::{self, Caller};
 use super::live::Live;
 use super::{Readiness, Shared, reply};
 use crate::dispatcher::{OUTBOX_BATCH, OutboxFeed};
 use crate::registry::Registry;
 
 pub const SSE_REPLAY_WINDOW: u64 = 1000;
-const SSE_KEEP_ALIVE: Duration = Duration::from_secs(15);
+pub(super) const SSE_KEEP_ALIVE: Duration = Duration::from_secs(15);
 pub const SSE_RETRY: Duration = Duration::from_millis(3000);
+pub const SSE_MAX_CLIENTS: usize = 4;
 pub const LAST_EVENT_ID: HeaderName = HeaderName::from_static("last-event-id");
 pub const DATA_INVALIDATE: &str = "data.invalidate";
 pub const META_INVALIDATE: &str = "meta.invalidate";
@@ -35,11 +39,22 @@ const AFTER: &str = "after";
 const NO_STORE: &str = "no-store";
 const KEEP_ALIVE_COMMENT: &str = "keep-alive";
 const DRAINING_COMMENT: &str = "draining";
+const SUPERSEDED_COMMENT: &str = "superseded";
+const KEEP_ALIVE_FLOOR: Duration = Duration::from_millis(1);
 const QUEUE: usize = 64;
+
+type SessionKey = [u8; 32];
+
+struct Slot {
+    serial: u64,
+    evict: oneshot::Sender<()>,
+}
 
 pub(super) struct Streams {
     readiness: Arc<Readiness>,
     open: AtomicUsize,
+    serial: AtomicU64,
+    sessions: Mutex<HashMap<SessionKey, VecDeque<Slot>>>,
 }
 
 impl Streams {
@@ -47,6 +62,8 @@ impl Streams {
         Self {
             readiness,
             open: AtomicUsize::new(0),
+            serial: AtomicU64::new(0),
+            sessions: Mutex::new(HashMap::new()),
         }
     }
 
@@ -54,9 +71,40 @@ impl Streams {
         self.open.load(Ordering::SeqCst)
     }
 
-    fn enter(self: &Arc<Self>) -> Opened {
+    fn enter(self: &Arc<Self>, key: SessionKey) -> (Opened, oneshot::Receiver<()>) {
+        let serial = self.serial.fetch_add(1, Ordering::SeqCst);
+        let (evict, evicted) = oneshot::channel();
+        {
+            let mut sessions = self.sessions();
+            let slots = sessions.entry(key).or_default();
+            while slots.len() >= SSE_MAX_CLIENTS
+                && let Some(oldest) = slots.pop_front()
+            {
+                let _ = oldest.evict.send(());
+            }
+            slots.push_back(Slot { serial, evict });
+        }
         self.open.fetch_add(1, Ordering::SeqCst);
-        Opened(self.clone())
+        let opened = Opened {
+            streams: self.clone(),
+            key,
+            serial,
+        };
+        (opened, evicted)
+    }
+
+    fn leave(&self, key: &SessionKey, serial: u64) {
+        let mut sessions = self.sessions();
+        if let Some(slots) = sessions.get_mut(key) {
+            slots.retain(|slot| slot.serial != serial);
+            if slots.is_empty() {
+                sessions.remove(key);
+            }
+        }
+    }
+
+    fn sessions(&self) -> MutexGuard<'_, HashMap<SessionKey, VecDeque<Slot>>> {
+        self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn drained(&self) -> watch::Receiver<bool> {
@@ -64,12 +112,30 @@ impl Streams {
     }
 }
 
-struct Opened(Arc<Streams>);
+struct Opened {
+    streams: Arc<Streams>,
+    key: SessionKey,
+    serial: u64,
+}
 
 impl Drop for Opened {
     fn drop(&mut self) {
-        self.0.open.fetch_sub(1, Ordering::SeqCst);
+        self.streams.leave(&self.key, self.serial);
+        self.streams.open.fetch_sub(1, Ordering::SeqCst);
     }
+}
+
+fn session_key(credential: &Credential) -> SessionKey {
+    let (kind, secret): (&[u8], _) = match credential {
+        Credential::Bearer(secret) => (b"bearer", secret),
+        Credential::Session(secret) => (b"session", secret),
+    };
+    Sha256::new()
+        .chain_update(kind)
+        .chain_update([0])
+        .chain_update(secret.expose().as_bytes())
+        .finalize()
+        .into()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -93,12 +159,15 @@ pub(super) async fn serve(
     uri: Uri,
 ) -> Response {
     let request_id = caller.request_id;
-    if caller.principal.level == Level::Guest {
-        return reply::error(
-            KeelError::unauthenticated("keel.error.unauthenticated"),
-            &request_id,
-        );
-    }
+    let credential = match auth::credential(&headers) {
+        Some(credential) if caller.principal.level != Level::Guest => credential,
+        _ => {
+            return reply::error(
+                KeelError::unauthenticated("keel.error.unauthenticated"),
+                &request_id,
+            );
+        }
+    };
     let (Some(bus), Some(feed)) = (live.bus.clone(), live.outbox.clone()) else {
         return reply::error(
             KeelError::unavailable("keel.error.unavailable"),
@@ -113,7 +182,7 @@ pub(super) async fn serve(
     };
     let resume = resume_point(&headers, uri.query());
     let start = start(resume, newest, state.options.sse_replay_window);
-    let opened = state.streams.enter();
+    let (opened, evicted) = state.streams.enter(session_key(&credential));
     let drained = state.streams.drained();
     let (tx, rx) = mpsc::channel(QUEUE);
     tracing::debug!(
@@ -129,6 +198,10 @@ pub(super) async fn serve(
         request_id,
         scope: AccountScope::of(&caller.principal),
         principal: caller.principal,
+        credential,
+        client: caller.client,
+        authenticators: live.authenticators.clone(),
+        keep_alive: state.options.sse_keep_alive.max(KEEP_ALIVE_FLOOR),
         db: state.db.clone(),
         registry: live.registry.clone(),
         feed,
@@ -138,7 +211,7 @@ pub(super) async fn serve(
         stale: start.stale,
         tx,
     };
-    tokio::spawn(connection.run(drained, opened));
+    tokio::spawn(connection.run(drained, evicted, opened));
     let body = stream::unfold(rx, |mut rx| async move {
         rx.recv()
             .await
@@ -191,6 +264,10 @@ struct Connection {
     request_id: String,
     principal: Principal,
     scope: AccountScope,
+    credential: Credential,
+    client: Client,
+    authenticators: Arc<[Arc<dyn Authenticator>]>,
+    keep_alive: Duration,
     db: DatabaseConnection,
     registry: Arc<Registry>,
     feed: Arc<OutboxFeed>,
@@ -202,8 +279,13 @@ struct Connection {
 }
 
 impl Connection {
-    async fn run(mut self, mut drained: watch::Receiver<bool>, opened: Opened) {
-        match self.pump(&mut drained).await {
+    async fn run(
+        mut self,
+        mut drained: watch::Receiver<bool>,
+        mut evicted: oneshot::Receiver<()>,
+        opened: Opened,
+    ) {
+        match self.pump(&mut drained, &mut evicted).await {
             Ok(()) => tracing::debug!(
                 request_id = self.request_id,
                 principal = %self.principal.id,
@@ -219,7 +301,11 @@ impl Connection {
         drop(opened);
     }
 
-    async fn pump(&mut self, drained: &mut watch::Receiver<bool>) -> Result<(), KeelError> {
+    async fn pump(
+        &mut self,
+        drained: &mut watch::Receiver<bool>,
+        evicted: &mut oneshot::Receiver<()>,
+    ) -> Result<(), KeelError> {
         if !self.send(SseEvent::default().retry(SSE_RETRY)).await {
             return Ok(());
         }
@@ -230,13 +316,19 @@ impl Connection {
             return Ok(());
         }
         let mut keep_alive =
-            tokio::time::interval_at(Instant::now() + SSE_KEEP_ALIVE, SSE_KEEP_ALIVE);
+            tokio::time::interval_at(Instant::now() + self.keep_alive, self.keep_alive);
         keep_alive.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             tokio::select! {
                 () = self.tx.closed() => return Ok(()),
                 () = draining(drained) => {
                     self.send(SseEvent::default().retry(SSE_RETRY).comment(DRAINING_COMMENT)).await;
+                    return Ok(());
+                }
+                superseded = &mut *evicted => {
+                    if superseded.is_ok() {
+                        self.send(SseEvent::default().retry(Duration::ZERO).comment(SUPERSEDED_COMMENT)).await;
+                    }
                     return Ok(());
                 }
                 changed = self.latest.changed() => {
@@ -258,10 +350,40 @@ impl Connection {
                     Err(RecvError::Closed) => return Ok(()),
                 },
                 _ = keep_alive.tick() => {
-                    if !self.send(SseEvent::default().comment(KEEP_ALIVE_COMMENT)).await {
+                    if !self.recheck().await
+                        || !self.send(SseEvent::default().comment(KEEP_ALIVE_COMMENT)).await
+                    {
                         return Ok(());
                     }
                 }
+            }
+        }
+    }
+
+    async fn recheck(&mut self) -> bool {
+        let db = Db::from_connection(self.db.clone());
+        match auth::resolve(&self.authenticators, &self.credential, &self.client, &db).await {
+            Ok(authenticated) => {
+                self.scope = AccountScope::of(&authenticated.principal);
+                self.principal = authenticated.principal;
+                true
+            }
+            Err(error) if error.code() == ErrorCode::Unauthenticated => {
+                tracing::debug!(
+                    request_id = self.request_id,
+                    principal = %self.principal.id,
+                    "the event stream's credential no longer authenticates"
+                );
+                false
+            }
+            Err(error) => {
+                tracing::warn!(
+                    request_id = self.request_id,
+                    principal = %self.principal.id,
+                    error = %error,
+                    "the event stream's credential could not be checked again"
+                );
+                true
             }
         }
     }
@@ -372,6 +494,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use chrono::Utc;
+    use keel_sdk::Secret;
     use keel_types::{EventSubject, Id, Scope, Via};
 
     use super::*;
@@ -586,5 +709,40 @@ mod tests {
         assert!(text.contains("id: 7"), "{text}");
         assert!(text.contains("event: data.invalidate"), "{text}");
         assert!(text.contains("\\\"seq\\\":7"), "{text}");
+    }
+
+    fn evicted(receiver: &mut oneshot::Receiver<()>) -> bool {
+        match receiver.try_recv() {
+            Ok(()) => true,
+            Err(oneshot::error::TryRecvError::Empty) => false,
+            Err(error) => panic!("the eviction channel closed: {error}"),
+        }
+    }
+
+    #[test]
+    fn a_session_beyond_the_cap_evicts_its_oldest_stream_and_a_closed_stream_frees_its_slot() {
+        let streams = Arc::new(Streams::new(Readiness::new()));
+        let session = session_key(&Credential::Session(Secret::new("ks_a")));
+        let token = session_key(&Credential::Bearer(Secret::new("ks_a")));
+        assert_ne!(session, token);
+        let mut held: Vec<_> = (0..SSE_MAX_CLIENTS)
+            .map(|_| streams.enter(session))
+            .collect();
+        let (_other, mut other_evicted) = streams.enter(token);
+        drop(held.remove(1));
+        held.push(streams.enter(session));
+        assert!(held.iter_mut().all(|(_, receiver)| !evicted(receiver)));
+        assert_eq!(streams.open(), SSE_MAX_CLIENTS + 1);
+
+        held.push(streams.enter(session));
+        assert!(evicted(&mut held[0].1), "the oldest stream is evicted");
+        assert!(held[1..].iter_mut().all(|(_, receiver)| !evicted(receiver)));
+        assert!(
+            !evicted(&mut other_evicted),
+            "another credential keeps its stream"
+        );
+        drop(held);
+        assert_eq!(streams.open(), 1);
+        assert!(streams.sessions().get(&session).is_none());
     }
 }

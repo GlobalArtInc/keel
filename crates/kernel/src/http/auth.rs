@@ -162,7 +162,7 @@ pub(super) fn overlay(
     Zone(preferred.tz.and_then(|name| name.parse::<Tz>().ok()))
 }
 
-async fn resolve(
+pub(super) async fn resolve(
     authenticators: &[Arc<dyn Authenticator>],
     credential: &Credential,
     client: &Client,
