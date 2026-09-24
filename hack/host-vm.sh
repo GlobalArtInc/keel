@@ -67,7 +67,10 @@ $DIGEST_TEMPLATE renders under $NOTES_DIR, an override under
 $TEMPLATES wins over it and the compiled text returns when the
 override is gone; the demo agent operation note.digest.stat reads the
 digest under its policy class, is refused for a product without that class
-and appears in the journal with class=note. --cleanup removes the zone, the
+and appears in the journal with class=note. With the demo bundle enabled,
+keel serve loads the host module the bundle names, and keel ctl
+keel.doctor.run answers the agent as in use and reachable from the kernel's
+own account. --cleanup removes the zone, the
 template, the user, the notes root, the cron drop-in, the override, the
 $PROOF_PACKAGE and bind9 the script installed, and restores the policy. The
 transcript is what the exit checklist records.
@@ -180,6 +183,15 @@ not_installed() {
 
 digest_is() {
   [ "$(cat "$NOTES_DIR/$DIGEST_FILE" 2>/dev/null)" = "$1" ]
+}
+
+served_agent_ok() {
+  python3 -c '
+import json, sys
+doc = json.loads(sys.argv[1])
+rows = [row for row in doc["data"]["data"] if row["check"] == "agent"]
+sys.exit(0 if rows and rows[0]["status"] == "ok" and "in use and reachable" in rows[0]["message"] else 1)
+' "$1"
 }
 
 wait_for_socket() {
@@ -475,6 +487,10 @@ main() {
   nobody=$(runuser -u nobody -- python3 -c "$CLIENT" "$SOCKET" '{"id":1}' 2>&1 || true)
   say "  as nobody -> $nobody"
   check "a connection as nobody does not reach the agent" grep -qiE 'permission denied|refused|connection' <<<"$nobody"
+
+  local served
+  served=$("$KEEL" ctl keel.doctor.run --out json 2>&1 || true)
+  check "keel serve, running as keel with the host module of the demo bundle, reaches the agent" served_agent_ok "$served"
 
   call panel host.user.delete "{\"name\":\"$PROOF_USER\"}"
   check "host.user.delete answers removed: true" carries '"removed":true'

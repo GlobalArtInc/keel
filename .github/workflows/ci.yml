@@ -153,6 +153,9 @@ jobs:
       - name: The binary without the demo bundle
         run: cargo test -p keel-bin --no-default-features
 
+      - name: The binary with the demo bundle and without the host module
+        run: cargo build -p keel-bin --no-default-features --features demo
+
       - name: Build the binary with the demo bundle
         run: cargo build -p keel-bin
 

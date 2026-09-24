@@ -102,8 +102,12 @@ pub(crate) struct LayoutArgs {
     pub(crate) unit_dir: PathBuf,
     #[arg(long, default_value = doctor::SYSTEMCTL, value_name = "PATH")]
     pub(crate) systemctl: PathBuf,
-    #[arg(long, default_value = doctor::AGENT_SOCKET, value_name = "PATH")]
-    pub(crate) agent_socket: PathBuf,
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "The agent socket; the socket of the host section of the configuration, else /run/keel/agent.sock"
+    )]
+    pub(crate) agent_socket: Option<PathBuf>,
 }
 
 impl From<LayoutArgs> for Layout {
@@ -112,8 +116,19 @@ impl From<LayoutArgs> for Layout {
             opt: args.opt,
             unit_dir: args.unit_dir,
             systemctl: args.systemctl,
-            agent_socket: args.agent_socket,
+            agent_socket: args
+                .agent_socket
+                .unwrap_or_else(|| PathBuf::from(doctor::AGENT_SOCKET)),
         }
+    }
+}
+
+impl LayoutArgs {
+    fn of_site(mut self, config: &Config) -> Layout {
+        if self.agent_socket.is_none() {
+            self.agent_socket = crate::doctor::agent_socket(config);
+        }
+        Layout::from(self)
     }
 }
 
@@ -491,7 +506,7 @@ impl Runtime {
                 }
                 Command::Doctor(args) => {
                     let config = load(cli.config.as_deref())?;
-                    let report = self.doctor(&config, args.layout.into()).await?;
+                    let report = self.doctor(&config, args.layout.of_site(&config)).await?;
                     match args.out {
                         ReportOut::Text => print!("{}", report.render()),
                         ReportOut::Json => println!(
@@ -509,8 +524,12 @@ impl Runtime {
                 Command::SupportBundle(args) => {
                     let config = load(cli.config.as_deref())?;
                     Ok(support(
-                        self.support_bundle(&config, args.layout.into(), args.out.as_deref())
-                            .await,
+                        self.support_bundle(
+                            &config,
+                            args.layout.of_site(&config),
+                            args.out.as_deref(),
+                        )
+                        .await,
                     ))
                 }
             }
@@ -1190,6 +1209,33 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "backup", "--out"]).is_err());
         assert_eq!(list_or_none(&[]), "none");
         assert_eq!(list_or_none(&["a".into(), "b".into()]), "a, b");
+    }
+
+    #[test]
+    fn the_doctor_reaches_the_agent_at_the_socket_of_the_host_section_unless_the_flag_names_one() {
+        let config =
+            Config::parse(Some("host: { socket: /srv/site/agent.sock }\n"), |_| None).unwrap();
+        let bare = Config::parse(None, |_| None).unwrap();
+        let args = |argv: &[&str]| {
+            let Command::Doctor(args) = Cli::try_parse_from(argv).unwrap().command else {
+                panic!("expected doctor");
+            };
+            args.layout
+        };
+        assert_eq!(
+            args(&["keel", "doctor"]).of_site(&config).agent_socket,
+            PathBuf::from("/srv/site/agent.sock")
+        );
+        assert_eq!(
+            args(&["keel", "doctor"]).of_site(&bare).agent_socket,
+            PathBuf::from("/run/keel/agent.sock")
+        );
+        assert_eq!(
+            args(&["keel", "doctor", "--agent-socket", "/tmp/flag.sock"])
+                .of_site(&config)
+                .agent_socket,
+            PathBuf::from("/tmp/flag.sock")
+        );
     }
 
     #[test]

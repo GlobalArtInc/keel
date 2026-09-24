@@ -18,6 +18,17 @@ use crate::runtime::Runtime;
 
 const POLICY_FILE: &str = "agent.yaml";
 const SUPPORT_DIR: &str = "support";
+const HOST_SECTION: &str = "host";
+const HOST_SOCKET: &str = "socket";
+
+pub(crate) fn agent_socket(config: &Config) -> Option<PathBuf> {
+    config
+        .sections
+        .get(HOST_SECTION)?
+        .get(HOST_SOCKET)?
+        .as_str()
+        .map(PathBuf::from)
+}
 const READINESS_PATH: &str = "/readyz";
 const READINESS_TIMEOUT: Duration = Duration::from_secs(5);
 const TLS_DIR: &str = "tls";

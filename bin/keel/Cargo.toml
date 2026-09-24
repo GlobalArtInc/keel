@@ -11,8 +11,9 @@ name = "keel"
 path = "src/main.rs"
 
 [features]
-default = ["demo"]
+default = ["demo", "demo-host"]
 demo = ["dep:keel-demo"]
+demo-host = ["demo", "keel-demo/host"]
 
 [dependencies]
 keel = { workspace = true }

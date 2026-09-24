@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. hack/agent.sh
 
 timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
@@ -48,6 +49,9 @@ cleanup() {
     kill "$channel_pid" 2>/dev/null || true
     wait "$channel_pid" 2>/dev/null || true
     echo "stopped the release channel ($channel_pid)"
+  fi
+  if ! stop_agent; then
+    code=1
   fi
   if [ -n "$database" ]; then
     if psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$database\" WITH (FORCE)" >/dev/null; then
@@ -394,6 +398,22 @@ unclaimed_section_logged() {
   grep 'claimed by no loaded module' "$serve_log" | grep -q "\"$section\""
 }
 
+host_section_claimed() {
+  ! unclaimed_section_logged host
+}
+
+agent_answers() {
+  local op=$1 args=$2
+  shift 2
+  local answer
+  answer=$(agent_call "$op" "$args") || return 1
+  echo "  $op -> $answer"
+  local expected
+  for expected in "$@"; do
+    grep -qF "$expected" <<<"$answer" || return 1
+  done
+}
+
 write_channel() {
   local dir=$1 running=$2 available=$3
   python3 - "$dir" "$running" "$available" <<'EOF'
@@ -478,10 +498,17 @@ socket: $site/run/core.sock
 data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
-host: { socket: /nowhere/agent.sock }
+host: { socket: $site/agent/agent.sock }
 update: { channel_url: http://127.0.0.1:$channel_port/ }
 EOF
 echo "site $site, binary $keel $version, channel offers $available_version"
+
+echo "--- keel privileged beside the kernel, unprivileged"
+check "keel privileged serves the host policy without root" start_agent "$keel" "$site/agent"
+check "the agent socket is the one the host section names" test "$agent_socket" = "$site/agent/agent.sock"
+check "an operating-system user operation answers the policy without a uid_range" agent_answers host.user.list '{}' '"key":"host.error.policy"' 'the policy allots no uid_range'
+check "the demo agent operation is served from the binary's catalogue" agent_answers note.digest.stat '{"name":"keel-demo-missing.txt"}' '"key":"host.error.not_found"' 'keel-demo-missing.txt'
+check "keel privileged is still running after the refusals" kill -0 "$agent_pid"
 
 echo "--- run 1: the demo bundle enabled"
 check "product enable demo" keel_ok "$site/enable.out" product enable demo
@@ -489,7 +516,7 @@ check "product enable demo prints demo: enabled" stdout_is "$site/enable.out" "d
 check "product list" keel_ok "$site/list.out" product list
 check "product list shows demo enabled" stdout_has_line "$site/list.out" "$(printf 'demo\tenabled\t%s' "$version")"
 start_serve demo
-check "the unclaimed host section is logged and ignored" unclaimed_section_logged host
+check "the host module of the demo bundle claims the host section" host_section_claimed
 
 echo "--- the setup link of a start without an administrator"
 setup_link=$(grep -oE "https://127\.0\.0\.1:$port/setup\?key=kok_[0-9a-f]{64}" "$serve_log" | head -n 1) || true
@@ -551,7 +578,7 @@ check "settings.brand.delete answers deleted" json_is "$site/brand-delete.json" 
 check "GET /api/v1/boot for panel.example after the delete is 200" http_is "$site/boot-brand-gone.json" 200 GET /api/v1/boot '' '' 'Host: panel.example:1500'
 check "boot for panel.example is back to the demo brand" json_is "$site/boot-brand-gone.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264'
 check "ctl keel.product.list --out json" keel_ok "$site/products.json" ctl keel.product.list --out json
-check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["note"])]'
+check "keel.product.list answers the demo enabled with its modules" json_is "$site/products.json" 'doc["ok"] is True and [(row["id"], row["state"], row["enabledBy"], row["modules"]) for row in doc["data"]["data"]] == [("demo", "enabled", "install", ["host", "note"])]'
 check "update check --out json" keel_ok "$site/update-check.json" update check --out json
 check "update check answers the running version, the channel head and that the update is allowed" json_is "$site/update-check.json" "doc['ok'] is True and doc['data']['running'] == '$version' and doc['data']['available'] == '$available_version' and doc['data']['channel'] == 'stable' and doc['data']['channelUrl'] == 'http://127.0.0.1:$channel_port/' and doc['data']['minUpgradeFrom'] == '$version' and doc['data']['contract'] == 1 and doc['data']['runningContract'] == 1 and doc['data']['allowed'] is True and doc['data']['upToDate'] is False and doc['data']['blockedBy'] is None and doc['data']['previous'] is None and doc['data']['notes'] == 'Rehearsal release $available_version'"
 check "update check --out table" keel_ok "$site/update-check.out" update check --out table
@@ -796,10 +823,10 @@ printf '%s\n' "$*" >>"$(dirname "$0")/systemctl.log"
 case "$1" in is-enabled) echo enabled ;; is-active) echo active ;; esac
 EOF
 chmod 0755 "$site/bin/systemctl"
-layout=(--opt "$site/opt" --unit-dir "$site/units" --systemctl "$site/bin/systemctl" --agent-socket "$site/run/agent.sock")
+layout=(--opt "$site/opt" --unit-dir "$site/units" --systemctl "$site/bin/systemctl")
 check "doctor exits 0 on the proven site" keel_ok "$site/doctor.out" doctor "${layout[@]}"
 check "doctor prints fourteen lines and none fails" test "$(grep -cE '^(ok|warn|fail) ' "$site/doctor.out")" = "14" -a "$(grep -c '^fail ' "$site/doctor.out")" = "0"
-for line in "units .*keel.service \(keel\), keel-privileged.service \(root\), keel-update.service \(root\), keel-update.path are installed" "install_dir .*bin/current -> $site/opt/versions/$version/keel" "secret_key .*secret.key has mode 0600" "tls .*the generated certificate .* is valid until" "database .*PostgreSQL .* the schema keel exists and the role may create in it" "migrations .* ledger\(s\) match the binary" "agent .*not in use" "license .*not required" "products .*demo enabled and carried by the binary" "orphans .*no module is orphaned" "accounts .*no account is left in deleting"; do
+for line in "units .*keel.service \(keel\), keel-privileged.service \(root\), keel-update.service \(root\), keel-update.path are installed" "install_dir .*bin/current -> $site/opt/versions/$version/keel" "secret_key .*secret.key has mode 0600" "tls .*the generated certificate .* is valid until" "database .*PostgreSQL .* the schema keel exists and the role may create in it" "migrations .* ledger\(s\) match the binary" "agent .*in use and reachable at $site/agent/agent.sock" "license .*not required" "products .*demo enabled and carried by the binary" "orphans .*no module is orphaned" "accounts .*no account is left in deleting"; do
   check "doctor: ok $line" grep -qE "^ok +$line" "$site/doctor.out"
 done
 check "doctor prints the totals line" grep -qE '^[0-9]+ ok, [0-9]+ warn, 0 fail; keel '"$version"' at ' "$site/doctor.out"
@@ -950,6 +977,8 @@ check "cron.run.list answers runs of the two jobs alone" json_is "$site/cron-run
 check "doctor exits 0 with the demo disabled" keel_ok "$site/doctor-2.out" doctor "${layout[@]}"
 check "doctor names the orphaned note module" grep -qE '^warn +orphans .*note' "$site/doctor-2.out"
 check "doctor reports that no product is enabled" grep -qE '^ok +products .*no product is enabled' "$site/doctor-2.out"
+check "doctor reports the agent as not in use without the host module" grep -qE '^ok +agent +not in use' "$site/doctor-2.out"
+check "the unclaimed host section is logged and ignored without the demo bundle" unclaimed_section_logged host
 check "ctl notify.problem.list --out json" keel_ok "$site/problems.json" ctl notify.problem.list --out json
 check "notify.problem.list answers an empty page" json_is "$site/problems.json" 'doc["ok"] is True and doc["data"]["total"] == 0 and doc["data"]["data"] == []'
 check "ctl notify.message.list --out json" keel_ok "$site/messages.json" ctl notify.message.list --out json

@@ -1,0 +1,19 @@
+[package]
+name = "keel-host"
+description = "The client side of the root boundary: the HostExecutor service, the Local client over the agent socket and the host module that registers it"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+keel-sdk = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+keel-testkit = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+tempfile = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -2274,6 +2274,7 @@ name = "keel-demo"
 version = "0.1.0"
 dependencies = [
  "keel",
+ "keel-host",
  "keel-system",
  "keel-testkit",
  "reqwest",
@@ -2297,6 +2298,20 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "keel-host"
+version = "0.1.0"
+dependencies = [
+ "keel-sdk",
+ "keel-testkit",
+ "schemars 1.2.2",
+ "serde",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2460,6 +2475,7 @@ dependencies = [
  "axum",
  "chrono",
  "insta",
+ "keel-host-agent",
  "keel-kernel",
  "keel-sdk",
  "keel-types",

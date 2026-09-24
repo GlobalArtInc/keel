@@ -15,10 +15,11 @@ use keel_sdk::system::Frame;
 use keel_sdk::{ModuleDef, ProductManifest};
 use keel_types::{Id, Level, Principal};
 use sea_orm::DatabaseConnection;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 use tokio::sync::broadcast;
 
+use crate::agent::{self, InProcessAgent, Prepared};
 use crate::auth;
 use crate::clock::FixedClock;
 use crate::database::{DatabaseError, DatabaseHandle, TestDatabase};
@@ -35,6 +36,7 @@ pub struct Builder {
     data_dir: Option<PathBuf>,
     database: Option<AttachedDatabase>,
     key: Option<Key>,
+    agent: Option<String>,
 }
 
 pub enum AttachedDatabase {
@@ -95,6 +97,7 @@ pub struct Harness {
     storage: Storage,
     database: AttachedDatabase,
     data_dir: DataDir,
+    agent: Option<InProcessAgent>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -119,6 +122,12 @@ pub enum Error {
     DataDir(#[source] std::io::Error),
     #[error("the harness shares the database {0} with the harness that created it")]
     Shared(String),
+    #[error("the directory of the in-process agent could not be prepared: {0}")]
+    AgentDirectory(#[source] std::io::Error),
+    #[error("the policy of the in-process agent is invalid: {0}")]
+    AgentPolicy(#[from] keel_host_agent::PolicyError),
+    #[error("the in-process agent did not start: {0}")]
+    Agent(#[from] keel_host_agent::AgentError),
 }
 
 impl Harness {
@@ -164,6 +173,11 @@ impl Builder {
         self
     }
 
+    pub fn agent(mut self, policy: &str) -> Self {
+        self.agent = Some(policy.to_owned());
+        self
+    }
+
     pub async fn boot(self) -> Harness {
         match self.try_boot().await {
             Ok(harness) => harness,
@@ -193,6 +207,17 @@ impl Builder {
             Some(key) => key,
             None => Key::generate()?,
         };
+        let prepared = self.agent.as_deref().map(Prepared::new).transpose()?;
+        let mut sections = self.sections;
+        if let Some(prepared) = &prepared {
+            let socket = json!(prepared.socket());
+            match sections.iter_mut().find(|(key, _)| key == agent::SECTION) {
+                Some((_, Value::Object(section))) => {
+                    section.insert("socket".to_owned(), socket);
+                }
+                _ => sections.push((agent::SECTION.to_owned(), json!({ "socket": socket }))),
+            }
+        }
         let mut composition = Composition::new()
             .clock(clock.clone())
             .key(key.clone())
@@ -204,10 +229,20 @@ impl Builder {
         for bundle in self.products {
             composition = composition.product(bundle);
         }
-        for (key, value) in self.sections {
+        for (key, value) in sections {
             composition = composition.section(&key, value);
         }
         let kernel = Kernel::boot(composition, &storage).await?;
+        let agent = match prepared {
+            Some(prepared) => match prepared.start(kernel.registry().contributions()).await {
+                Ok(agent) => Some(agent),
+                Err(error) => {
+                    stop_quietly(kernel).await;
+                    return Err(error);
+                }
+            },
+            None => None,
+        };
         let readiness = Readiness::new();
         readiness.migrated();
         let dispatcher = match Dispatcher::new(kernel.registry().clone(), storage.db().clone()) {
@@ -243,6 +278,7 @@ impl Builder {
             storage,
             database,
             data_dir,
+            agent,
         })
     }
 }
@@ -449,6 +485,7 @@ impl Harness {
             storage,
             database,
             data_dir,
+            agent,
             ..
         } = self;
         readiness.draining();
@@ -460,6 +497,9 @@ impl Harness {
         }
         if let Err(error) = storage.close().await {
             first.get_or_insert(error.into());
+        }
+        if let Some(agent) = agent {
+            agent.stop().await;
         }
         drop(data_dir);
         match first {

@@ -6,6 +6,7 @@
       "id_env": "KEEL_OWNLATE_PROJECT_CORE",
       "directories": {
         "crates/kernel/i18n": ["keel", "phx", "menu.system"],
+        "crates/host/i18n": ["host"],
         "crates/system/i18n/audit": ["audit"],
         "crates/system/i18n/auth": ["auth"],
         "crates/system/i18n/backup": ["backup"],

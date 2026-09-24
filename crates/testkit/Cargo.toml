@@ -10,6 +10,7 @@ repository.workspace = true
 axum = { workspace = true }
 chrono = { workspace = true }
 insta = { workspace = true }
+keel-host-agent = { workspace = true }
 keel-kernel = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }

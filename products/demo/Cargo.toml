@@ -8,8 +8,12 @@ repository.workspace = true
 
 [lib]
 
+[features]
+host = ["dep:keel-host"]
+
 [dependencies]
 keel = { workspace = true }
+keel-host = { workspace = true, optional = true }
 keel-system = { workspace = true, features = ["notify"] }
 
 [dev-dependencies]

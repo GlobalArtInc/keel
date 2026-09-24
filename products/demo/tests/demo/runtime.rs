@@ -94,8 +94,16 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     );
     let migrated = runtime.migrate(&site.config).await.expect("migrate runs");
     let migrated_ids: Vec<&str> = migrated.modules.iter().map(|(id, _)| id.as_str()).collect();
-    assert_eq!(migrated_ids, ["keel", "cron", "notify", "task", "note"]);
-    assert_eq!(migrated.modules[4].1.len(), 2, "{migrated:?}");
+    assert_eq!(
+        migrated_ids,
+        crate::loaded(&["keel", "cron", "notify", "task", "note"])
+    );
+    let note = migrated.modules.iter().find(|(id, _)| id == "note");
+    assert_eq!(
+        note.map(|(_, applied)| applied.len()),
+        Some(2),
+        "{migrated:?}"
+    );
     assert_eq!(site.tables().await, ["note_item"]);
     assert_eq!(
         site.database
@@ -111,7 +119,7 @@ async fn keel_serve_with_demo_enabled_starts_without_a_config_file_and_answers_o
     assert_eq!(running.products(), ["demo"]);
     assert_eq!(
         running.modules(),
-        ["keel", "cron", "notify", "task", "note"]
+        crate::loaded(&["keel", "cron", "notify", "task", "note"])
     );
     let socket = TestSocket::at(running.socket());
     let listed = socket.call("note.list", json!({})).await;

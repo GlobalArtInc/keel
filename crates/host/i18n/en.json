@@ -1,0 +1,19 @@
+{
+  "host": {
+    "error": {
+      "args": "The host operation does not accept these arguments: {detail}",
+      "exec_failed": "The program allowed on the host failed: {detail}",
+      "frame": "The host agent and the kernel did not understand each other: {detail}",
+      "io": "The host could not read or write a file: {detail}",
+      "not_found": "The host has no such resource: {detail}",
+      "policy": "The host policy does not allow this operation: {detail}",
+      "reload_failed": "The service did not accept the new configuration and was reloaded with the previous one: {detail}",
+      "render_failed": "The configuration template could not be rendered: {detail}",
+      "timeout": "The host agent did not answer in time: {detail}",
+      "unavailable": "The host lacks the tool this operation needs: {detail}",
+      "unknown_op": "The host agent does not know this operation: {detail}",
+      "unreachable": "The host agent cannot be reached: {detail}",
+      "validate_failed": "The configuration check failed and the previous file was restored: {detail}"
+    }
+  }
+}

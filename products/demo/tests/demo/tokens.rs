@@ -37,7 +37,7 @@ async fn a_token_scoped_to_note_edit_alone_edits_a_note_through_its_nested_invok
         .await;
     assert_eq!(
         harness.modules(),
-        ["keel", "auth", "cron", "notify", "task", "note", "testkit"]
+        crate::loaded(&["keel", "auth", "cron", "notify", "task", "note", "testkit"])
     );
     let http = harness.http().await;
     let token = issue(&harness, json!({ "functions": ["note.edit"] })).await;

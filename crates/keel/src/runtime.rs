@@ -170,7 +170,7 @@ impl Runtime {
             && !handle.attach(Arc::new(Doctor::new(
                 kernel.graph(),
                 &config.tls,
-                Layout::default(),
+                served_layout(config),
             )))
         {
             tracing::warn!("the doctor was attached before the boot; the first attachment stands");
@@ -344,4 +344,12 @@ async fn await_task(runner: Arc<dyn TaskRunner>, task: Id) {
         }
         tokio::time::sleep(RESTART_TASK_POLL).await;
     }
+}
+
+fn served_layout(config: &Config) -> Layout {
+    let mut layout = Layout::default();
+    if let Some(socket) = crate::doctor::agent_socket(config) {
+        layout.agent_socket = socket;
+    }
+    layout
 }

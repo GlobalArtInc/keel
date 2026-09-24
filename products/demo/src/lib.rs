@@ -4,6 +4,11 @@ pub mod note;
 
 pub const LOGO: &str = "product.demo.logo";
 
+#[cfg(feature = "host")]
+const MODULES: &[&ModuleDef] = &[&keel_host::MODULE, &note::MODULE];
+#[cfg(not(feature = "host"))]
+const MODULES: &[&ModuleDef] = &[&note::MODULE];
+
 pub static MANIFEST: ProductManifest = ProductManifest {
     id: "demo",
     name: "product.demo.brand",
@@ -14,7 +19,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         hue: 264,
         chroma: 0.18,
     },
-    modules: &[&note::MODULE],
+    modules: MODULES,
     menu: &[MenuGroup {
         id: "demo",
         label: "menu.demo",
@@ -45,10 +50,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_bundle_names_the_note_module_one_group_and_no_edition() {
+    fn the_bundle_names_the_note_module_after_host_behind_its_feature_one_group_and_no_edition() {
         assert_eq!(MANIFEST.id, "demo");
-        assert_eq!(MANIFEST.module_ids().collect::<Vec<_>>(), ["note"]);
-        assert!(std::ptr::eq(MANIFEST.modules[0], &note::MODULE));
+        let expected: &[&str] = if cfg!(feature = "host") {
+            &["host", "note"]
+        } else {
+            &["note"]
+        };
+        assert_eq!(MANIFEST.module_ids().collect::<Vec<_>>(), expected);
+        assert!(
+            MANIFEST
+                .modules
+                .last()
+                .is_some_and(|module| std::ptr::eq(*module, &note::MODULE))
+        );
         assert_eq!(MANIFEST.menu.len(), 1);
         assert_eq!(MANIFEST.menu[0].id, "demo");
         assert_eq!(MANIFEST.menu[0].label, "menu.demo");

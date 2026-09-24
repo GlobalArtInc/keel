@@ -177,7 +177,7 @@ async fn note_export_runs_as_a_task_with_progress_a_log_line_per_note_and_a_chec
     let harness = crate::demo().boot().await;
     assert_eq!(
         harness.modules(),
-        ["keel", "cron", "notify", "task", "note", "testkit"]
+        crate::loaded(&["keel", "cron", "notify", "task", "note", "testkit"])
     );
     let mut titles = vec!["alpha".to_owned(), "beta".to_owned(), "gamma".to_owned()];
     for title in &titles {

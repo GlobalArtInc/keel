@@ -61,8 +61,8 @@ fi
 echo "keel-sdk-probe graph checked"
 
 testkit=$(cargo tree -p keel-testkit -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$testkit" != "keel-kernel keel-sdk keel-types " ]; then
-  echo "keel-testkit depends on workspace crates other than keel-kernel, keel-sdk and keel-types: $testkit" >&2
+if [ "$testkit" != "keel-host-agent keel-kernel keel-sdk keel-types " ]; then
+  echo "keel-testkit depends on workspace crates other than keel-host-agent, keel-kernel, keel-sdk and keel-types: $testkit" >&2
   fail=1
 fi
 echo "keel-testkit graph checked"
@@ -72,7 +72,26 @@ if [ "$system" != "keel-sdk " ]; then
   echo "keel-system depends on workspace crates other than keel-sdk: $system" >&2
   fail=1
 fi
+for forbidden in keel-kernel keel-host keel-host-agent; do
+  if cargo tree -p keel-system --all-features -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-system reaches $forbidden through its dependencies" >&2
+    fail=1
+  fi
+done
 echo "keel-system graph checked"
+
+host=$(cargo tree -p keel-host -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | sort -u | tr '\n' ' ')
+if [ "$host" != "keel-sdk " ]; then
+  echo "keel-host depends on workspace crates other than keel-sdk: $host" >&2
+  fail=1
+fi
+for forbidden in keel-kernel keel-system keel-host-agent keel-testkit keel; do
+  if cargo tree -p keel-host -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-host reaches $forbidden through its dependencies" >&2
+    fail=1
+  fi
+done
+echo "keel-host graph checked"
 
 conformance=$(cargo tree -p keel-conformance -e normal,build,dev --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
 if [ "$conformance" != "keel-types " ]; then
@@ -190,9 +209,9 @@ else
   fail=1
 fi
 for product in $products; do
-  direct=$(cargo tree -p "$product" -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')
+  direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -vx keel-host || true; } | sort -u | tr '\n' ' ')
   if [ "$direct" != "keel " ] && [ "$direct" != "keel keel-system " ]; then
-    echo "$product depends on more than the facade keel and the api modules of keel-system: $direct" >&2
+    echo "$product depends on more than the facade keel, keel-host and the api modules of keel-system: $direct" >&2
     fail=1
   fi
   dependants=$(cargo tree -i "$product" -e normal --prefix none | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')

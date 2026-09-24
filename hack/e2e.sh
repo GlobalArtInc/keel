@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. hack/agent.sh
 
 timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
@@ -48,6 +49,9 @@ cleanup() {
     if ! stop_serve; then
       code=1
     fi
+  fi
+  if ! stop_agent; then
+    code=1
   fi
   if [ -n "$database" ]; then
     if psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$database\" WITH (FORCE)" >/dev/null; then
@@ -357,8 +361,10 @@ socket: $site/run/core.sock
 data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
+host: { socket: $site/agent/agent.sock }
 EOF
 echo "site $site, binary $keel"
+start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
 
 if [ -n "$runtime" ]; then
   start_catcher

@@ -107,7 +107,7 @@ async fn the_demo_bundle_boots_with_the_note_module_and_notes_are_scoped_by_acco
     assert_eq!(harness.registry().product_ids(), ["demo"]);
     assert_eq!(
         harness.modules(),
-        ["keel", "cron", "notify", "task", "note", "testkit"]
+        crate::loaded(&["keel", "cron", "notify", "task", "note", "testkit"])
     );
 
     let saved = harness
