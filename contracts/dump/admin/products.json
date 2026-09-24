@@ -21,7 +21,8 @@
     "modules": [
       "host",
       "dns",
-      "dns_record"
+      "dns_record",
+      "dns_template"
     ]
   }
 ]

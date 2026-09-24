@@ -28,10 +28,13 @@
         "backup": "The zone file {file} could not be copied into the backup",
         "exists": "The zone {name} already exists",
         "id": "The stored id {id} of a zone is not an identifier",
-        "not_started": "The dns module has not started, so no name server is attached"
+        "not_started": "The dns module has not started, so no name server is attached",
+        "template": "The {type} record {name} of the template does not hold for this zone"
       },
       "expire": "Expire, seconds",
       "failed": "The zone {name} could not be published: {error}",
+      "ip": "IPv4 address the template points to",
+      "ip6": "IPv6 address the template points to",
       "list": {
         "title": "Zones"
       },
@@ -47,7 +50,8 @@
         "active": "Active",
         "error": "Error",
         "pending": "Pending"
-      }
+      },
+      "template": "Template"
     }
   }
 }

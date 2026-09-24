@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 keel = { workspace = true }
 keel-dns-records = { workspace = true }
+keel-dns-templates = { workspace = true }
 keel-dns-zones = { workspace = true }
 keel-host = { workspace = true }
 

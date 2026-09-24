@@ -2307,6 +2307,7 @@ version = "0.1.0"
 dependencies = [
  "keel",
  "keel-dns-records",
+ "keel-dns-templates",
  "keel-dns-zones",
  "keel-host",
  "keel-system",
@@ -2319,6 +2320,15 @@ name = "keel-dns-records"
 version = "0.1.0"
 dependencies = [
  "keel",
+ "keel-dns-zones",
+]
+
+[[package]]
+name = "keel-dns-templates"
+version = "0.1.0"
+dependencies = [
+ "keel",
+ "keel-dns-records",
  "keel-dns-zones",
 ]
 

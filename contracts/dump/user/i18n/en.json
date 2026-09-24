@@ -1056,10 +1056,13 @@
           "backup": "The zone file {file} could not be copied into the backup",
           "exists": "The zone {name} already exists",
           "id": "The stored id {id} of a zone is not an identifier",
-          "not_started": "The dns module has not started, so no name server is attached"
+          "not_started": "The dns module has not started, so no name server is attached",
+          "template": "The {type} record {name} of the template does not hold for this zone"
         },
         "expire": "Expire, seconds",
         "failed": "The zone {name} could not be published: {error}",
+        "ip": "IPv4 address the template points to",
+        "ip6": "IPv6 address the template points to",
         "list": {
           "title": "Zones"
         },
@@ -1075,7 +1078,8 @@
           "active": "Active",
           "error": "Error",
           "pending": "Pending"
-        }
+        },
+        "template": "Template"
       },
       "record": {
         "action": {
@@ -1126,6 +1130,41 @@
         "value": "Value",
         "weight": "Weight",
         "zone": "Zone"
+      },
+      "template": {
+        "account": "Account",
+        "action": {
+          "create": "New template",
+          "delete": "Delete",
+          "edit": "Edit"
+        },
+        "column": {
+          "accountId": "Account",
+          "name": "Name",
+          "updatedAt": "Updated"
+        },
+        "create": {
+          "title": "New template"
+        },
+        "edit": {
+          "title": "Template"
+        },
+        "empty": "No templates yet",
+        "error": {
+          "account": "The stored account {account} of a template is not an identifier",
+          "exists": "A template named {name} already exists",
+          "id": "The stored id {id} of a template is not an identifier",
+          "unknown": "The template {template} is not available to this account"
+        },
+        "list": {
+          "title": "Templates"
+        },
+        "name": "Name",
+        "page": {
+          "main": "Template",
+          "owner": "Owner"
+        },
+        "records": "Records; {zone}, {ip} and {ip6} are replaced when a zone is created"
       }
     },
     "settings": {

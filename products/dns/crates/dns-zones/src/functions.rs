@@ -2,7 +2,9 @@ use keel::prelude::*;
 use keel::sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
 };
+use keel::types::ErrorCode;
 
+use crate::api::{Expansion, RecordSeed, ZoneTemplates};
 use crate::changes::{bump, first_serial};
 use crate::provider::DnsProvider;
 use crate::{EXISTS, zone};
@@ -12,6 +14,9 @@ const MANAGE: &str = "dns.zone.manage";
 const FEATURE: &str = "dns.zones";
 const SUBJECT: &str = "dns.zone";
 const RECORDS: &str = "dns.record.list";
+const RECORD_CREATE: &str = "dns.record.create";
+const TEMPLATES: &str = "dns.template.options";
+const TEMPLATE_RECORD: &str = "dns.zone.error.template";
 
 const REFRESH: u32 = 10_800;
 const RETRY: u32 = 3_600;
@@ -47,6 +52,12 @@ struct Pick {
 struct ZoneCreate {
     #[schemars(length(min = 3, max = 253), extend("x-keel" = json!({ "check": "domain" })))]
     name: String,
+    #[schemars(extend("x-keel" = json!({ "options": TEMPLATES }), "x-ui" = json!({ "control": "select" })))]
+    template: Option<Id>,
+    #[schemars(extend("x-keel" = json!({ "check": "ipv4" })))]
+    ip: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "check": "ipv6" })))]
+    ip6: Option<String>,
     #[serde(default = "refresh")]
     #[schemars(range(min = 60, max = 2_419_200))]
     refresh: u32,
@@ -172,9 +183,18 @@ pub(crate) fn create() -> FunctionDef {
         .feature(FEATURE)
         .owned::<zone::Entity>()
         .ui(Form::new("dns.zone.create.title")
-            .page("main", ["name", "refresh", "retry", "expire", "minimum"])
+            .page(
+                "main",
+                [
+                    "name", "template", "ip", "ip6", "refresh", "retry", "expire", "minimum",
+                ],
+            )
             .page("owner", ["account"])
-            .show_if("$principal.level != 'user'"))
+            .show_if("$principal.level != 'user'")
+            .field("ip")
+            .show_if("template")
+            .field("ip6")
+            .show_if("template"))
         .handler(|call: Call<ZoneCreate>| async move {
             let params = call.params();
             let tx = call.tx()?;
@@ -192,7 +212,7 @@ pub(crate) fn create() -> FunctionDef {
                 retry: Set(seconds(params.retry)),
                 expire: Set(seconds(params.expire)),
                 minimum: Set(seconds(params.minimum)),
-                template: Set(None),
+                template: Set(params.template.as_ref().map(ToString::to_string)),
                 state: Set(zone::STATE_PENDING.to_owned()),
                 error: Set(None),
                 served: Set(false),
@@ -202,9 +222,50 @@ pub(crate) fn create() -> FunctionDef {
             .insert(tx)
             .await?;
             announce(&call, "dns.zone.created", &row)?;
+            let row = match &params.template {
+                Some(template) => {
+                    expand(&call, template, &row).await?;
+                    zone::Entity::find_by_id(row.id.clone())
+                        .one(tx)
+                        .await?
+                        .ok_or_else(not_found)?
+                }
+                None => row,
+            };
             apply_after_commit(&call, &row)?;
             Ok(row)
         })
+}
+
+async fn expand(call: &Call<ZoneCreate>, template: &Id, row: &zone::Model) -> Result<()> {
+    let params = call.params();
+    let expansion = Expansion {
+        zone: row.name.clone(),
+        ip: params.ip.clone(),
+        ip6: params.ip6.clone(),
+    };
+    let seeds = call
+        .require::<dyn ZoneTemplates>()?
+        .expand(call.tx()?, call.account_scope(), template, &expansion)
+        .await?;
+    for seed in seeds {
+        let mut record = keel::sdk::serde_json::to_value(&seed)?;
+        record["zone"] = json!(row.id);
+        call.invoke(RECORD_CREATE, record)
+            .await
+            .map_err(|error| refused_record(error, &seed))?;
+    }
+    Ok(())
+}
+
+fn refused_record(error: KeelError, seed: &RecordSeed) -> KeelError {
+    if error.code() != ErrorCode::Validation {
+        return error;
+    }
+    KeelError::validation(TEMPLATE_RECORD)
+        .field("template")
+        .param("type", seed.kind.as_str())
+        .param("name", seed.name.as_str())
 }
 
 pub(crate) fn edit() -> FunctionDef {

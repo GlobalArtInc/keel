@@ -14,7 +14,7 @@ const LABEL_MAX: usize = 63;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel::sdk::serde")]
 #[schemars(crate = "keel::sdk::schemars")]
-pub(crate) enum RecordType {
+pub enum RecordType {
     A,
     #[serde(rename = "AAAA")]
     Aaaa,
@@ -44,7 +44,7 @@ impl RecordType {
         RecordType::Caa,
     ];
 
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             RecordType::A => "A",
             RecordType::Aaaa => "AAAA",

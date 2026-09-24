@@ -1,0 +1,211 @@
+{
+  "keel": 1,
+  "name": "dns.template.list",
+  "module": "dns_template",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.template.read",
+    "feature": "dns.zones"
+  },
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Template",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Template"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Template": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/TemplateRecord"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "name",
+          "records",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TemplateRecord": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/RecordType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 3600
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "weight": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
+        ]
+      },
+      "RecordType": {
+        "type": "string",
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME",
+          "MX",
+          "TXT",
+          "NS",
+          "SRV",
+          "CAA"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.template.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "link",
+        "to": {
+          "screen": "dns.template.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "updatedAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "dns.template.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "dns.template.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "dns.template.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "name",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "dns.template.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "dns.template.*"
+    ]
+  }
+}

@@ -5,7 +5,7 @@ use keel::sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
 use keel::types::ErrorCode;
 use keel_testkit::{Harness, Reply, Who, tokio};
 
-use crate::support::{Site, create, data, dns, eventually, rows, state_becomes};
+use crate::support::{Site, create, data, dns, eventually, rows, state_becomes, zone_file_has};
 
 const LIMIT: &str = "dns.record.max";
 
@@ -24,17 +24,6 @@ async fn serial(harness: &Harness, zone: &str) -> i64 {
         .first()
         .and_then(|serial| serial.parse().ok())
         .expect("the serial of the zone")
-}
-
-async fn zone_file_has(site: &Site, zone: &str, lines: &[String]) {
-    eventually(
-        &format!("the zone file of {zone} with {lines:?}"),
-        async || {
-            fs::read_to_string(site.zone_file(zone))
-                .is_ok_and(|file| lines.iter().all(|line| file.lines().any(|at| at == line)))
-        },
-    )
-    .await;
 }
 
 async fn served(harness: &Harness, site: &Site, zone: &str, name: &str) -> i64 {

@@ -22,6 +22,40 @@
           "check": "domain"
         }
       },
+      "template": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "options": "dns.template.options"
+        },
+        "x-ui": {
+          "control": "select"
+        }
+      },
+      "ip": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "check": "ipv4"
+        }
+      },
+      "ip6": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "check": "ipv6"
+        }
+      },
       "refresh": {
         "type": "integer",
         "format": "uint32",
@@ -163,6 +197,9 @@
         "id": "main",
         "fields": [
           "name",
+          "template",
+          "ip",
+          "ip6",
           "refresh",
           "retry",
           "expire",
@@ -181,6 +218,18 @@
           ]
         }
       }
-    ]
+    ],
+    "fields": {
+      "ip": {
+        "show_if": {
+          "truthy": "template"
+        }
+      },
+      "ip6": {
+        "show_if": {
+          "truthy": "template"
+        }
+      }
+    }
   }
 }

@@ -84,6 +84,13 @@
           "func": "dns.zone.list",
           "kind": "list",
           "icon": "globe"
+        },
+        {
+          "path": "dns/templates",
+          "label": "dns.template.list.title",
+          "func": "dns.template.list",
+          "kind": "list",
+          "icon": "layers"
         }
       ]
     },

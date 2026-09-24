@@ -146,6 +146,17 @@ where
     }
 }
 
+pub(crate) async fn zone_file_has(site: &Site, zone: &str, lines: &[String]) {
+    eventually(
+        &format!("the zone file of {zone} with {lines:?}"),
+        async || {
+            fs::read_to_string(site.zone_file(zone))
+                .is_ok_and(|file| lines.iter().all(|line| file.lines().any(|at| at == line)))
+        },
+    )
+    .await;
+}
+
 pub(crate) async fn state_becomes(harness: &Harness, id: &str, state: &str) {
     let sql = format!("SELECT state FROM dns_zone WHERE id = '{id}'");
     eventually(&format!("the zone {id} in state {state}"), async || {

@@ -1,3 +1,4 @@
+pub mod api;
 mod functions;
 mod lines;
 mod record;

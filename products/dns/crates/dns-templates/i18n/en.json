@@ -1,0 +1,39 @@
+{
+  "dns": {
+    "template": {
+      "account": "Account",
+      "action": {
+        "create": "New template",
+        "delete": "Delete",
+        "edit": "Edit"
+      },
+      "column": {
+        "accountId": "Account",
+        "name": "Name",
+        "updatedAt": "Updated"
+      },
+      "create": {
+        "title": "New template"
+      },
+      "edit": {
+        "title": "Template"
+      },
+      "empty": "No templates yet",
+      "error": {
+        "account": "The stored account {account} of a template is not an identifier",
+        "exists": "A template named {name} already exists",
+        "id": "The stored id {id} of a template is not an identifier",
+        "unknown": "The template {template} is not available to this account"
+      },
+      "list": {
+        "title": "Templates"
+      },
+      "name": "Name",
+      "page": {
+        "main": "Template",
+        "owner": "Owner"
+      },
+      "records": "Records; {zone}, {ip} and {ip6} are replaced when a zone is created"
+    }
+  }
+}

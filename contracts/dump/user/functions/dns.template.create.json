@@ -1,0 +1,246 @@
+{
+  "keel": 1,
+  "name": "dns.template.create",
+  "module": "dns_template",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "dns.template.manage",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "TemplateCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "records": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/TemplateRecord"
+        },
+        "maxItems": 100,
+        "default": [],
+        "x-ui": {
+          "control": "list"
+        }
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "TemplateRecord": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/RecordType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 3600
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "weight": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
+        ]
+      },
+      "RecordType": {
+        "type": "string",
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME",
+          "MX",
+          "TXT",
+          "NS",
+          "SRV",
+          "CAA"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Template",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "records": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/TemplateRecord"
+        }
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "name",
+      "records",
+      "createdAt",
+      "updatedAt"
+    ],
+    "$defs": {
+      "TemplateRecord": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/RecordType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 3600
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "weight": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
+        ]
+      },
+      "RecordType": {
+        "type": "string",
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME",
+          "MX",
+          "TXT",
+          "NS",
+          "SRV",
+          "CAA"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.template.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "records"
+        ]
+      },
+      {
+        "id": "owner",
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ]
+  }
+}

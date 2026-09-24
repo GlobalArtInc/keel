@@ -1,0 +1,141 @@
+{
+  "keel": 1,
+  "name": "dns.template.get",
+  "module": "dns_template",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.template.read",
+    "feature": "dns.zones"
+  },
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Template",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "records": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/TemplateRecord"
+        }
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "name",
+      "records",
+      "createdAt",
+      "updatedAt"
+    ],
+    "$defs": {
+      "TemplateRecord": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/$defs/RecordType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 3600
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "weight": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
+        ]
+      },
+      "RecordType": {
+        "type": "string",
+        "enum": [
+          "A",
+          "AAAA",
+          "CNAME",
+          "MX",
+          "TXT",
+          "NS",
+          "SRV",
+          "CAA"
+        ]
+      }
+    }
+  }
+}

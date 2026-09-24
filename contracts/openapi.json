@@ -3509,6 +3509,614 @@
         }
       }
     },
+    "/api/v1/call/dns.template.create": {
+      "post": {
+        "operationId": "dns.template.create",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.manage",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "TemplateCreate",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TemplateRecord"
+                    },
+                    "maxItems": 100,
+                    "default": [],
+                    "x-ui": {
+                      "control": "list"
+                    }
+                  },
+                  "account": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "reseller",
+                      "options": "keel.account.options"
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Template",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "records": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/TemplateRecord"
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "name",
+                        "records",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.template.delete": {
+      "post": {
+        "operationId": "dns.template.delete",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.manage",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Batch",
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.template.edit": {
+      "post": {
+        "operationId": "dns.template.edit",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.manage",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "TemplateEdit",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TemplateRecord"
+                    },
+                    "maxItems": 100,
+                    "x-ui": {
+                      "control": "list"
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "records"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Template",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "records": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/TemplateRecord"
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "name",
+                        "records",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.template.get": {
+      "post": {
+        "operationId": "dns.template.get",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Template",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "records": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/TemplateRecord"
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "name",
+                        "records",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.template.list": {
+      "post": {
+        "operationId": "dns.template.list",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_Template",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Template"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.template.options": {
+      "post": {
+        "operationId": "dns.template.options",
+        "tags": [
+          "dns_template"
+        ],
+        "x-keel": {
+          "kind": "options",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.template.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OptionsQuery",
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "default": 20
+                  },
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Choices",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Choice"
+                          }
+                        },
+                        "more": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "more"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/dns.zone.create": {
       "post": {
         "operationId": "dns.zone.create",
@@ -3538,6 +4146,40 @@
                     "maxLength": 253,
                     "x-keel": {
                       "check": "domain"
+                    }
+                  },
+                  "template": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "options": "dns.template.options"
+                    },
+                    "x-ui": {
+                      "control": "select"
+                    }
+                  },
+                  "ip": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "x-keel": {
+                      "check": "ipv4"
+                    }
+                  },
+                  "ip6": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "x-keel": {
+                      "check": "ipv6"
                     }
                   },
                   "refresh": {
@@ -12323,6 +12965,99 @@
           "failed",
           "cancelled",
           "interrupted"
+        ]
+      },
+      "Template": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateRecord"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "name",
+          "records",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TemplateRecord": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/RecordType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "ttl": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 60,
+            "maximum": 604800,
+            "default": 3600
+          },
+          "priority": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "weight": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "value"
         ]
       },
       "Token": {
