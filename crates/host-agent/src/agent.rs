@@ -14,7 +14,7 @@ use tokio::net::{UnixListener, UnixStream};
 
 use crate::accounts::Accounts;
 use crate::journal;
-use crate::ops::{self, Context};
+use crate::ops::{self, Context, Operation, Template};
 use crate::peer;
 use crate::policy::Policy;
 use crate::protocol::{Answer, ERROR_FRAME, ERROR_IO, Failure, LINE_LIMIT, parse_request};
@@ -48,15 +48,20 @@ pub enum AgentError {
         #[source]
         source: io::Error,
     },
+    #[error("the operation {0} is contributed twice")]
+    OperationTwice(String),
+    #[error("the operation {0} takes a name of the built-in catalogue")]
+    BuiltIn(String),
+    #[error("the configuration template {0} is contributed twice")]
+    TemplateTwice(String),
 }
 
 pub struct Agent {
-    context: Arc<Context>,
-    admitted: u32,
+    context: Context,
 }
 
 pub struct Bound {
-    agent: Agent,
+    context: Arc<Context>,
     listener: UnixListener,
     socket: PathBuf,
 }
@@ -64,9 +69,17 @@ pub struct Bound {
 impl Agent {
     pub fn new(policy: Policy, admitted: u32, templates: PathBuf) -> Self {
         Self {
-            context: Arc::new(Context::new(policy, templates)),
-            admitted,
+            context: Context::new(policy, admitted, templates),
         }
+    }
+
+    pub fn extend(
+        mut self,
+        operations: Vec<Operation>,
+        templates: Vec<Template>,
+    ) -> Result<Self, AgentError> {
+        self.context.extend(operations, templates)?;
+        Ok(self)
     }
 
     pub fn for_user(policy: Policy, user: &str, templates: PathBuf) -> Result<Self, AgentError> {
@@ -83,19 +96,19 @@ impl Agent {
     }
 
     pub fn admitted(&self) -> u32 {
-        self.admitted
+        self.context.admitted()
     }
 
     pub async fn bind(self, socket: &Path) -> Result<Bound, AgentError> {
         let listener = bind(socket).await?;
         tracing::info!(
             socket = %socket.display(),
-            admitted_uid = self.admitted,
+            admitted_uid = self.context.admitted(),
             templates = %self.context.templates().display(),
             "the agent listens"
         );
         Ok(Bound {
-            agent: self,
+            context: Arc::new(self.context),
             listener,
             socket: socket.to_owned(),
         })
@@ -112,8 +125,8 @@ impl Bound {
                 () = &mut shutdown => break,
                 accepted = self.listener.accept() => match accepted {
                     Ok((stream, _)) => {
-                        let context = Arc::clone(&self.agent.context);
-                        tokio::spawn(connection(stream, self.agent.admitted, context));
+                        let context = Arc::clone(&self.context);
+                        tokio::spawn(connection(stream, context));
                     }
                     Err(error) => tracing::warn!(error = %error, "accept failed"),
                 },
@@ -201,7 +214,8 @@ fn listen(path: &Path) -> io::Result<StdUnixListener> {
     Ok(listener)
 }
 
-async fn connection(stream: UnixStream, admitted: u32, context: Arc<Context>) {
+async fn connection(stream: UnixStream, context: Arc<Context>) {
+    let admitted = context.admitted();
     let peer = match peer::uid(&stream) {
         Ok(peer) => peer,
         Err(error) => {
@@ -260,7 +274,13 @@ async fn answer(peer: u32, line: &[u8], context: &Arc<Context>) -> Answer {
             format!("the operation did not finish: {error}"),
         ))
     });
-    journal::operation(peer, &request, &outcome, started.elapsed());
+    journal::operation(
+        peer,
+        &request,
+        context.class_of(&request.op),
+        &outcome,
+        started.elapsed(),
+    );
     match outcome {
         Ok(data) => Answer::ok(request.id, data),
         Err(failure) => Answer::failed(request.id, failure),

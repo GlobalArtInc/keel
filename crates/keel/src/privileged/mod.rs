@@ -1,3 +1,4 @@
+mod catalogue;
 mod channel;
 mod request;
 mod update;
@@ -9,6 +10,7 @@ use keel_host_agent::journal::JournalError;
 use keel_host_agent::{Agent, AgentError, Policy, PolicyError};
 use keel_release::ReleaseError;
 
+pub(crate) use catalogue::Catalogue;
 pub(crate) use channel::{Source, SourceError};
 pub(crate) use request::{Request, RequestError};
 pub(crate) use update::{Runner, UpdateError};
@@ -43,6 +45,7 @@ pub(crate) struct HostPolicy<'a> {
     pub(crate) policy: &'a Path,
     pub(crate) user: &'a str,
     pub(crate) templates: &'a Path,
+    pub(crate) catalogue: Catalogue,
 }
 
 pub(crate) async fn serve(
@@ -51,11 +54,16 @@ pub(crate) async fn serve(
 ) -> Result<(), PrivilegedError> {
     keel_host_agent::journal::init()?;
     let policy = Policy::load(host.policy)?;
-    let agent = Agent::for_user(policy, host.user, host.templates.to_owned())?;
+    let operations = host.catalogue.operations.len();
+    let templates = host.catalogue.templates.len();
+    let agent = Agent::for_user(policy, host.user, host.templates.to_owned())?
+        .extend(host.catalogue.operations, host.catalogue.templates)?;
     tracing::info!(
         policy = %host.policy.display(),
         user = %host.user,
         admitted_uid = agent.admitted(),
+        operations,
+        templates,
         "keel privileged serves the host policy; the update policy runs from the request file"
     );
     let bound = agent.bind(host.socket).await?;

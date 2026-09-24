@@ -9,6 +9,7 @@ pub mod download;
 pub mod error;
 pub mod function;
 pub mod guard;
+pub mod host;
 pub mod list;
 pub mod module;
 pub mod multipart;
@@ -52,6 +53,7 @@ pub use download::{Download, DownloadOutcome};
 pub use error::{KeelError, Result};
 pub use function::{FunctionBuilder, FunctionDef, function};
 pub use guard::Guard;
+pub use host::{AgentOp, AgentOpError, AgentScope, ConfigTemplate};
 pub use keel_types::{
     Account, Choice, Choices, FileAttrs, GroupResult, Id, Level, ListQuery, OptionsQuery, Page,
     Principal,

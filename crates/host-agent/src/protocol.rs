@@ -13,6 +13,7 @@ pub(crate) const ERROR_VALIDATE_FAILED: &str = "host.error.validate_failed";
 pub(crate) const ERROR_RELOAD_FAILED: &str = "host.error.reload_failed";
 pub(crate) const ERROR_EXEC_FAILED: &str = "host.error.exec_failed";
 pub(crate) const ERROR_IO: &str = "host.error.io";
+pub(crate) const ERROR_UNAVAILABLE: &str = "host.error.unavailable";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -34,17 +35,25 @@ pub(crate) struct Request {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct Failure {
+pub struct Failure {
     pub(crate) key: String,
     pub(crate) detail: String,
 }
 
 impl Failure {
-    pub(crate) fn new(key: &str, detail: impl Into<String>) -> Self {
+    pub fn new(key: &str, detail: impl Into<String>) -> Self {
         Self {
             key: key.to_owned(),
             detail: detail.into(),
         }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn detail(&self) -> &str {
+        &self.detail
     }
 
     pub(crate) fn policy(detail: impl Into<String>) -> Self {

@@ -447,6 +447,7 @@ impl Runtime {
                             policy: &args.policy,
                             user: &args.user,
                             templates: &args.templates,
+                            catalogue: self.host_catalogue()?,
                         };
                         Ok(match privileged::serve(host, signals()).await {
                             Ok(()) => ExitCode::SUCCESS,

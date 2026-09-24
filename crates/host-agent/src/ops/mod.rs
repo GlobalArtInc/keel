@@ -1,10 +1,16 @@
+mod cron;
+mod exec;
+mod extension;
 mod files;
 mod fs;
 mod group;
+mod pkg;
+mod quota;
 mod service;
 mod template;
 mod user;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -13,8 +19,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::accounts::Accounts;
+use crate::agent::AgentError;
 use crate::policy::{Policy, Product, UidRange};
 use crate::protocol::{ERROR_UNKNOWN_OP, Failure, Request};
+
+pub use extension::{Operation, OperationCall, Template};
 
 const OP_USER_CREATE: &str = "host.user.create";
 const OP_USER_DELETE: &str = "host.user.delete";
@@ -33,18 +42,34 @@ const OP_SERVICE_RELOAD: &str = "host.service.reload";
 const OP_SERVICE_RESTART: &str = "host.service.restart";
 const OP_SERVICE_LIST: &str = "host.service.list";
 const OP_TEMPLATE_APPLY: &str = "host.template.apply";
+const OP_PKG_INSTALL: &str = "host.pkg.install";
+const OP_PKG_REMOVE: &str = "host.pkg.remove";
+const OP_PKG_GET: &str = "host.pkg.get";
+const OP_PKG_REFRESH: &str = "host.pkg.refresh";
+const OP_CRON_WRITE: &str = "host.cron.write";
+const OP_CRON_REMOVE: &str = "host.cron.remove";
+const OP_CRON_LIST: &str = "host.cron.list";
+const OP_QUOTA_SET: &str = "host.quota.set";
+const OP_QUOTA_LIST: &str = "host.quota.list";
+const OP_EXEC: &str = "host.exec";
+const CATALOGUE_PREFIX: &str = "host.";
 
 const NAME_LIMIT: usize = 32;
 
 pub(crate) struct Context {
     policy: Policy,
+    admitted: u32,
     templates: PathBuf,
+    compiled: BTreeMap<String, Template>,
+    operations: BTreeMap<String, Operation>,
     serial: Mutex<()>,
 }
 
 struct Call<'a> {
     policy: &'a Policy,
+    admitted: u32,
     templates: &'a Path,
+    compiled: &'a BTreeMap<String, Template>,
     product: &'a Product,
     product_id: &'a str,
 }
@@ -61,16 +86,50 @@ struct Dest {
 struct Empty {}
 
 impl Context {
-    pub(crate) fn new(policy: Policy, templates: PathBuf) -> Self {
+    pub(crate) fn new(policy: Policy, admitted: u32, templates: PathBuf) -> Self {
         Self {
             policy,
+            admitted,
             templates,
+            compiled: BTreeMap::new(),
+            operations: BTreeMap::new(),
             serial: Mutex::new(()),
         }
     }
 
     pub(crate) fn templates(&self) -> &Path {
         &self.templates
+    }
+
+    pub(crate) fn admitted(&self) -> u32 {
+        self.admitted
+    }
+
+    pub(crate) fn extend(
+        &mut self,
+        operations: Vec<Operation>,
+        templates: Vec<Template>,
+    ) -> Result<(), AgentError> {
+        for operation in operations {
+            let name = operation.name().to_owned();
+            if name.starts_with(CATALOGUE_PREFIX) {
+                return Err(AgentError::BuiltIn(name));
+            }
+            if self.operations.insert(name.clone(), operation).is_some() {
+                return Err(AgentError::OperationTwice(name));
+            }
+        }
+        for template in templates {
+            let id = template.id().to_owned();
+            if self.compiled.insert(id.clone(), template).is_some() {
+                return Err(AgentError::TemplateTwice(id));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn class_of(&self, op: &str) -> Option<&str> {
+        self.operations.get(op).map(Operation::class)
     }
 }
 
@@ -83,7 +142,9 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
     })?;
     let call = Call {
         policy: &context.policy,
+        admitted: context.admitted,
         templates: &context.templates,
+        compiled: &context.compiled,
         product,
         product_id: &request.product,
     };
@@ -110,10 +171,23 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
         OP_SERVICE_RESTART => service::restart(&call, parse(args)?),
         OP_SERVICE_LIST => service::list(&call, parse::<Empty>(args).map(drop)?),
         OP_TEMPLATE_APPLY => template::apply(&call, parse(args)?),
-        other => Err(Failure::new(
-            ERROR_UNKNOWN_OP,
-            format!("{other} is not an operation of the catalogue"),
-        )),
+        OP_PKG_INSTALL => pkg::install(&call, parse(args)?),
+        OP_PKG_REMOVE => pkg::remove(&call, parse(args)?),
+        OP_PKG_GET => pkg::get(&call, parse(args)?),
+        OP_PKG_REFRESH => pkg::refresh(&call, parse::<Empty>(args).map(drop)?),
+        OP_CRON_WRITE => cron::write(&call, parse(args)?),
+        OP_CRON_REMOVE => cron::remove(&call, parse(args)?),
+        OP_CRON_LIST => cron::list(&call, parse::<Empty>(args).map(drop)?),
+        OP_QUOTA_SET => quota::set(&call, parse(args)?),
+        OP_QUOTA_LIST => quota::list(&call, parse(args)?),
+        OP_EXEC => exec::exec(&call, parse(args)?),
+        other => match context.operations.get(other) {
+            Some(operation) => extension::run(&call, operation, args),
+            None => Err(Failure::new(
+                ERROR_UNKNOWN_OP,
+                format!("{other} is not an operation of the catalogue"),
+            )),
+        },
     }
 }
 
@@ -184,16 +258,7 @@ impl Call<'_> {
                 root.display()
             ))
         })?;
-        let target = canonical.join(&dest.name);
-        if let Ok(meta) = std::fs::symlink_metadata(&target)
-            && meta.file_type().is_symlink()
-        {
-            return Err(Failure::policy(format!(
-                "{} is a symbolic link, which the agent does not follow",
-                target.display()
-            )));
-        }
-        Ok(target)
+        plain_target(&canonical, &dest.name)
     }
 
     fn root_dir(&self, root: &str) -> Result<PathBuf, Failure> {
@@ -224,6 +289,19 @@ impl Call<'_> {
             )))
         }
     }
+}
+
+fn plain_target(dir: &Path, name: &str) -> Result<PathBuf, Failure> {
+    let target = dir.join(name);
+    if let Ok(meta) = std::fs::symlink_metadata(&target)
+        && meta.file_type().is_symlink()
+    {
+        return Err(Failure::policy(format!(
+            "{} is a symbolic link, which the agent does not follow",
+            target.display()
+        )));
+    }
+    Ok(target)
 }
 
 fn valid_account_name(name: &str, prefix: &str) -> bool {

@@ -186,6 +186,91 @@ mod privileged {
         assert!(text.contains("the agent stopped"), "{text}");
     }
 
+    #[cfg(feature = "demo")]
+    #[test]
+    fn keel_privileged_hands_the_compiled_templates_and_agent_operations_to_the_agent() {
+        let tree = Tree::new();
+        fs::create_dir_all(tree.path("notes")).expect("the notes root");
+        let check = tree.path("digest-check");
+        fs::write(
+            &check,
+            format!("#!/bin/sh\necho checked >> {}\n", tree.arg("checks.log")),
+        )
+        .expect("the check stub");
+        fs::set_permissions(&check, fs::Permissions::from_mode(0o755)).expect("executable");
+        fs::write(
+            tree.path("demo.yaml"),
+            format!(
+                "policy:\n  uid_range: {{ from: {uid}, to: {uid} }}\n  file_roots: {{ notes: {notes} }}\n  checks: {{ note.digest: [\"{check}\"] }}\n  products:\n    demo: {{ drop_in_prefix: keel-demo-, classes: {{ note: {{ root: notes }} }} }}\n  tools: {{ getent: {getent} }}\n",
+                uid = tree.uid,
+                notes = tree.arg("notes"),
+                check = check.display(),
+                getent = tree.arg("getent"),
+            ),
+        )
+        .expect("the policy");
+        let socket = tree.path("run/agent.sock");
+        let log = tree.path("privileged.log");
+        let mut child = Command::new(KEEL)
+            .args([
+                "privileged",
+                "--socket",
+                &tree.arg("run/agent.sock"),
+                "--policy",
+                &tree.arg("demo.yaml"),
+                "--user",
+                "tester",
+                "--templates",
+                &tree.arg("templates"),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(fs::File::create(&log).expect("the log file"))
+            .spawn()
+            .expect("keel privileged starts");
+        wait_for(&socket, &log);
+        let stream = UnixStream::connect(&socket).expect("a connection");
+        let exchange = |frame: &str| {
+            (&stream)
+                .write_all(format!("{frame}\n").as_bytes())
+                .expect("the request is sent");
+            let mut answer = String::new();
+            BufReader::new(&stream)
+                .read_line(&mut answer)
+                .expect("the answer is read");
+            answer.trim_end().to_owned()
+        };
+        let applied = exchange(
+            r#"{"id":1,"op":"host.template.apply","actor":{"login":"alice","level":"admin"},"request_id":"demo-1","product":"demo","args":{"template":"note/digest.j2","vars":{"title":"Notes","notes":["a","b"]},"dest":{"root":"notes","name":"keel-demo-digest.txt"}}}"#,
+        );
+        assert_eq!(applied, r#"{"id":1,"ok":true,"data":{"changed":true}}"#);
+        assert_eq!(
+            fs::read_to_string(tree.path("notes/keel-demo-digest.txt")).expect("the digest"),
+            "Notes\n- a\n- b\n"
+        );
+        assert_eq!(
+            fs::read_to_string(tree.path("checks.log")).expect("the check ran"),
+            "checked\n"
+        );
+        let stat = exchange(
+            r#"{"id":2,"op":"note.digest.stat","actor":{"login":"alice","level":"admin"},"request_id":"demo-2","product":"demo","args":{"name":"keel-demo-digest.txt"}}"#,
+        );
+        assert_eq!(
+            stat,
+            r#"{"id":2,"ok":true,"data":{"product":"demo","name":"keel-demo-digest.txt","lines":3,"bytes":14}}"#
+        );
+        drop(stream);
+        child.kill().expect("the agent is stopped");
+        child.wait().expect("the agent is reaped");
+        let text = fs::read_to_string(&log).unwrap_or_default();
+        assert!(text.contains("operations=1 templates=1"), "{text}");
+        let line = text
+            .lines()
+            .find(|line| line.contains("request_id=demo-2"))
+            .unwrap_or_else(|| panic!("no audit line for demo-2 in:\n{text}"));
+        assert!(line.contains("class=note"), "{line}");
+    }
+
     #[test]
     fn keel_privileged_refuses_to_start_without_a_policy_or_the_admitted_account() {
         let tree = Tree::new();

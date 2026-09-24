@@ -3,7 +3,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
 
 const DEFAULT_SYSTEMCTL: &str = "systemctl";
 const DEFAULT_GETENT: &str = "getent";
@@ -12,6 +13,12 @@ const DEFAULT_USERDEL: &str = "userdel";
 const DEFAULT_GROUPADD: &str = "groupadd";
 const DEFAULT_GROUPDEL: &str = "groupdel";
 const DEFAULT_SHELLS: &str = "/etc/shells";
+const DEFAULT_APT_GET: &str = "apt-get";
+const DEFAULT_DPKG_QUERY: &str = "dpkg-query";
+const DEFAULT_APT_CACHE: &str = "apt-cache";
+const DEFAULT_SETQUOTA: &str = "setquota";
+const DEFAULT_REPQUOTA: &str = "repquota";
+const DEFAULT_CRON_DIR: &str = "/etc/cron.d";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PolicyError {
@@ -58,8 +65,8 @@ pub struct Policy {
     services: Vec<String>,
     #[serde(default)]
     checks: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
-    exec_allow: Vec<String>,
+    #[serde(default, deserialize_with = "exec_entries")]
+    exec_allow: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     products: BTreeMap<String, Product>,
     #[serde(default)]
@@ -86,6 +93,36 @@ pub(crate) struct Product {
     pub(crate) user_prefix: Option<String>,
     #[serde(default)]
     pub(crate) drop_in_prefix: Option<String>,
+    #[serde(default)]
+    pub(crate) classes: BTreeMap<String, Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ExecEntry {
+    Binary(String),
+    Commands(BTreeMap<String, Vec<String>>),
+}
+
+fn exec_entries<'de, D>(deserializer: D) -> Result<BTreeMap<String, Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut allowed = BTreeMap::new();
+    for entry in Vec::<ExecEntry>::deserialize(deserializer)? {
+        let commands = match entry {
+            ExecEntry::Binary(binary) => vec![(binary.clone(), vec![binary])],
+            ExecEntry::Commands(commands) => commands.into_iter().collect(),
+        };
+        for (name, argv) in commands {
+            if allowed.insert(name.clone(), argv).is_some() {
+                return Err(serde::de::Error::custom(format!(
+                    "exec_allow names {name} twice"
+                )));
+            }
+        }
+    }
+    Ok(allowed)
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -105,6 +142,18 @@ pub(crate) struct Tools {
     pub(crate) groupdel: PathBuf,
     #[serde(default = "default_shells")]
     pub(crate) shells: PathBuf,
+    #[serde(default = "default_apt_get")]
+    pub(crate) apt_get: PathBuf,
+    #[serde(default = "default_dpkg_query")]
+    pub(crate) dpkg_query: PathBuf,
+    #[serde(default = "default_apt_cache")]
+    pub(crate) apt_cache: PathBuf,
+    #[serde(default = "default_setquota")]
+    pub(crate) setquota: PathBuf,
+    #[serde(default = "default_repquota")]
+    pub(crate) repquota: PathBuf,
+    #[serde(default = "default_cron_dir")]
+    pub(crate) cron_dir: PathBuf,
 }
 
 fn default_systemctl() -> PathBuf {
@@ -135,6 +184,30 @@ fn default_shells() -> PathBuf {
     PathBuf::from(DEFAULT_SHELLS)
 }
 
+fn default_apt_get() -> PathBuf {
+    PathBuf::from(DEFAULT_APT_GET)
+}
+
+fn default_dpkg_query() -> PathBuf {
+    PathBuf::from(DEFAULT_DPKG_QUERY)
+}
+
+fn default_apt_cache() -> PathBuf {
+    PathBuf::from(DEFAULT_APT_CACHE)
+}
+
+fn default_setquota() -> PathBuf {
+    PathBuf::from(DEFAULT_SETQUOTA)
+}
+
+fn default_repquota() -> PathBuf {
+    PathBuf::from(DEFAULT_REPQUOTA)
+}
+
+fn default_cron_dir() -> PathBuf {
+    PathBuf::from(DEFAULT_CRON_DIR)
+}
+
 impl Default for Tools {
     fn default() -> Self {
         Self {
@@ -145,6 +218,12 @@ impl Default for Tools {
             groupadd: default_groupadd(),
             groupdel: default_groupdel(),
             shells: default_shells(),
+            apt_get: default_apt_get(),
+            dpkg_query: default_dpkg_query(),
+            apt_cache: default_apt_cache(),
+            setquota: default_setquota(),
+            repquota: default_repquota(),
+            cron_dir: default_cron_dir(),
         }
     }
 }
@@ -189,7 +268,11 @@ impl Policy {
                 });
             }
         }
-        if policy.exec_allow.iter().any(String::is_empty) {
+        if policy
+            .exec_allow
+            .iter()
+            .any(|(name, argv)| name.is_empty() || argv.first().is_none_or(String::is_empty))
+        {
             return Err(PolicyError::EmptyExecAllow);
         }
         for (product, section) in &policy.products {
@@ -221,6 +304,12 @@ impl Policy {
             ("groupadd", &policy.tools.groupadd),
             ("groupdel", &policy.tools.groupdel),
             ("shells", &policy.tools.shells),
+            ("apt_get", &policy.tools.apt_get),
+            ("dpkg_query", &policy.tools.dpkg_query),
+            ("apt_cache", &policy.tools.apt_cache),
+            ("setquota", &policy.tools.setquota),
+            ("repquota", &policy.tools.repquota),
+            ("cron_dir", &policy.tools.cron_dir),
         ] {
             if path.as_os_str().is_empty() {
                 return Err(PolicyError::EmptyTool { tool });
@@ -243,6 +332,10 @@ impl Policy {
 
     pub(crate) fn check(&self, name: &str) -> Option<&[String]> {
         self.checks.get(name).map(Vec::as_slice)
+    }
+
+    pub(crate) fn exec(&self, name: &str) -> Option<&[String]> {
+        self.exec_allow.get(name).map(Vec::as_slice)
     }
 
     pub(crate) fn services(&self) -> &[String] {
@@ -308,9 +401,15 @@ policy:
             Some(&Product {
                 user_prefix: Some("hp_".to_owned()),
                 drop_in_prefix: Some("keel-panel-".to_owned()),
+                classes: BTreeMap::new(),
             })
         );
         assert_eq!(policy.product("dns").unwrap().user_prefix, None);
+        assert_eq!(
+            policy.exec("certbot"),
+            Some(["certbot".to_owned()].as_slice())
+        );
+        assert_eq!(policy.exec("sh"), None);
         assert_eq!(policy.product("bill"), None);
         assert_eq!(policy.uid_range(), None);
         assert_eq!(policy.tools(), &Tools::default());
@@ -352,6 +451,12 @@ policy:
         assert_eq!(policy.tools().getent, Path::new("/tmp/stub/getent"));
         assert_eq!(policy.tools().useradd, Path::new("useradd"));
         assert_eq!(policy.tools().shells, Path::new("/etc/shells"));
+        assert_eq!(policy.tools().apt_get, Path::new("apt-get"));
+        assert_eq!(policy.tools().dpkg_query, Path::new("dpkg-query"));
+        assert_eq!(policy.tools().apt_cache, Path::new("apt-cache"));
+        assert_eq!(policy.tools().setquota, Path::new("setquota"));
+        assert_eq!(policy.tools().repquota, Path::new("repquota"));
+        assert_eq!(policy.tools().cron_dir, Path::new("/etc/cron.d"));
         assert!(matches!(
             Policy::parse("policy:\n  tools: { useradd: \"\" }\n").unwrap_err(),
             PolicyError::EmptyTool { tool: "useradd" }
@@ -360,6 +465,61 @@ policy:
             Policy::parse("policy:\n  tools: { sudo: /usr/bin/sudo }\n").unwrap_err(),
             PolicyError::Parse(_)
         ));
+    }
+
+    #[test]
+    fn exec_allow_names_a_binary_or_a_fixed_argument_vector_once() {
+        let policy = Policy::parse(
+            "policy:\n  exec_allow:\n    - certbot\n    - { certbot.renew: [certbot, renew, --quiet], keel.version: [/opt/keel/bin/current, --version] }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            policy.exec("certbot"),
+            Some(["certbot".to_owned()].as_slice())
+        );
+        assert_eq!(
+            policy.exec("certbot.renew"),
+            Some(
+                [
+                    "certbot".to_owned(),
+                    "renew".to_owned(),
+                    "--quiet".to_owned()
+                ]
+                .as_slice()
+            )
+        );
+        assert_eq!(
+            policy.exec("keel.version"),
+            Some(["/opt/keel/bin/current".to_owned(), "--version".to_owned()].as_slice())
+        );
+        assert!(matches!(
+            Policy::parse("policy:\n  exec_allow: [certbot, { certbot: [certbot, renew] }]\n")
+                .unwrap_err(),
+            PolicyError::Parse(error) if error.to_string().contains("certbot twice")
+        ));
+        assert!(matches!(
+            Policy::parse("policy:\n  exec_allow: [{ certbot.renew: [] }]\n").unwrap_err(),
+            PolicyError::EmptyExecAllow
+        ));
+        assert!(matches!(
+            Policy::parse("policy:\n  exec_allow: [{ certbot.renew: [\"\", renew] }]\n")
+                .unwrap_err(),
+            PolicyError::EmptyExecAllow
+        ));
+    }
+
+    #[test]
+    fn a_product_section_carries_the_policy_classes_it_is_granted() {
+        let policy = Policy::parse(
+            "policy:\n  products:\n    demo: { drop_in_prefix: keel-demo-, classes: { note: { root: notes, limit: 3 } } }\n",
+        )
+        .unwrap();
+        let demo = policy.product("demo").unwrap();
+        assert_eq!(
+            demo.classes.get("note"),
+            Some(&serde_json::json!({ "root": "notes", "limit": 3 }))
+        );
+        assert_eq!(demo.classes.get("vm"), None);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 mod export;
 mod functions;
 mod hooks;
+mod host;
 mod import;
 mod item;
 mod problems;
@@ -123,6 +124,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .badge(OVERDUE_PROBLEM),
         )
         .contribute(problems::source())
+        .contribute(host::template())
+        .contribute(host::stat_op())
         .menu(
             MenuNode::new("demo/tags", "note.tag.list")
                 .icon("tag")

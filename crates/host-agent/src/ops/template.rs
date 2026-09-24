@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::io;
+use std::path::{Component, Path};
 
 use minijinja::{Environment, UndefinedBehavior};
 use serde::Deserialize;
@@ -31,14 +32,14 @@ pub(super) struct Apply {
 
 pub(super) fn apply(call: &Call<'_>, args: Apply) -> Result<Value, Failure> {
     let target = call.resolve(&args.dest)?;
-    let check = match &args.validate {
+    let (text, compiled_check) = source(call, &args.template)?;
+    let check = match args.validate.as_deref().or(compiled_check) {
         Some(name) => Some(call.check(name)?),
         None => None,
     };
     if let Some(service) = &args.reload {
         call.service(service)?;
     }
-    let source = template_path(call.templates, &args.template)?;
     let placement = Placement::resolve(
         call,
         args.mode.as_deref(),
@@ -46,7 +47,7 @@ pub(super) fn apply(call: &Call<'_>, args: Apply) -> Result<Value, Failure> {
         args.group.as_deref(),
         Kind::File,
     )?;
-    let rendered = render(&source, &args.template, &args.vars)?;
+    let rendered = render(&text, &args.template, &args.vars)?;
     let previous = Previous::read(&target)?;
     if previous.as_ref().is_some_and(|previous| {
         previous.content == rendered.as_bytes() && placement.matches(previous)
@@ -77,7 +78,7 @@ pub(super) fn apply(call: &Call<'_>, args: Apply) -> Result<Value, Failure> {
     Ok(json!({ "changed": true }))
 }
 
-fn template_path(templates: &Path, id: &str) -> Result<PathBuf, Failure> {
+fn plain_id(id: &str) -> Result<&Path, Failure> {
     let relative = Path::new(id);
     let plain = !id.is_empty()
         && !id.contains('\0')
@@ -85,18 +86,46 @@ fn template_path(templates: &Path, id: &str) -> Result<PathBuf, Failure> {
             Component::Normal(part) => !part.to_string_lossy().starts_with('.'),
             _ => false,
         });
-    if !plain {
-        return Err(Failure::policy(format!(
+    if plain {
+        Ok(relative)
+    } else {
+        Err(Failure::policy(format!(
             "the template id {id} is not a relative path of plain names"
-        )));
+        )))
     }
-    let path = templates.join(relative);
+}
+
+fn source<'c>(call: &Call<'c>, id: &str) -> Result<(String, Option<&'c str>), Failure> {
+    let relative = plain_id(id)?;
+    let compiled = call.compiled.get(id);
+    let check = compiled.and_then(|template| template.check());
+    let path = call.templates.join(relative);
     match fs::symlink_metadata(&path) {
-        Ok(meta) if meta.is_file() => Ok(path),
+        Ok(meta) if meta.is_file() => {
+            fs::read_to_string(&path)
+                .map(|text| (text, check))
+                .map_err(|error| {
+                    Failure::new(
+                        ERROR_RENDER_FAILED,
+                        format!("could not read the template {id}: {error}"),
+                    )
+                })
+        }
         Ok(_) => Err(Failure::policy(format!(
             "the template {id} at {} is not a regular file",
             path.display()
         ))),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => compiled
+            .map(|template| (template.text().to_owned(), check))
+            .ok_or_else(|| {
+                Failure::new(
+                    ERROR_RENDER_FAILED,
+                    format!(
+                        "no template {id}: the binary carries none and {} does not exist",
+                        path.display()
+                    ),
+                )
+            }),
         Err(error) => Err(Failure::new(
             ERROR_RENDER_FAILED,
             format!("could not read the template {id}: {error}"),
@@ -104,17 +133,11 @@ fn template_path(templates: &Path, id: &str) -> Result<PathBuf, Failure> {
     }
 }
 
-fn render(source: &Path, id: &str, vars: &Map<String, Value>) -> Result<String, Failure> {
-    let text = fs::read_to_string(source).map_err(|error| {
-        Failure::new(
-            ERROR_RENDER_FAILED,
-            format!("could not read the template {id}: {error}"),
-        )
-    })?;
+fn render(text: &str, id: &str, vars: &Map<String, Value>) -> Result<String, Failure> {
     let mut env = Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     env.set_keep_trailing_newline(true);
-    env.add_template(id, &text)
+    env.add_template(id, text)
         .and_then(|()| env.get_template(id)?.render(vars))
         .map_err(|error| Failure::new(ERROR_RENDER_FAILED, format!("{error:#}")))
 }
@@ -125,14 +148,8 @@ mod tests {
     use crate::protocol::ERROR_POLICY;
 
     #[test]
-    fn a_template_id_is_a_relative_path_of_plain_names_under_the_templates_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("bind")).unwrap();
-        fs::write(dir.path().join("bind/zone.j2"), "x").unwrap();
-        assert_eq!(
-            template_path(dir.path(), "bind/zone.j2").unwrap(),
-            dir.path().join("bind/zone.j2")
-        );
+    fn a_template_id_is_a_relative_path_of_plain_names() {
+        assert_eq!(plain_id("bind/zone.j2").unwrap(), Path::new("bind/zone.j2"));
         for bad in [
             "",
             "../zone.j2",
@@ -140,30 +157,16 @@ mod tests {
             "bind/../zone.j2",
             ".hidden",
             "bind/.zone",
+            "bind/\0",
         ] {
-            let failure = template_path(dir.path(), bad).unwrap_err();
+            let failure = plain_id(bad).unwrap_err();
             assert_eq!(failure.key, ERROR_POLICY, "{bad}");
         }
-        let failure = template_path(dir.path(), "bind").unwrap_err();
-        assert_eq!(failure.key, ERROR_POLICY);
-        let failure = template_path(dir.path(), "bind/other.j2").unwrap_err();
-        assert_eq!(failure.key, ERROR_RENDER_FAILED);
-        assert!(
-            failure.detail.contains("bind/other.j2"),
-            "{}",
-            failure.detail
-        );
     }
 
     #[test]
     fn a_template_renders_its_variables_and_a_missing_one_fails_the_render() {
-        let dir = tempfile::tempdir().unwrap();
-        let source = dir.path().join("zone.j2");
-        fs::write(
-            &source,
-            "$ORIGIN {{ origin }}.\n{{ name }} IN A {{ address }}\n",
-        )
-        .unwrap();
+        let text = "$ORIGIN {{ origin }}.\n{{ name }} IN A {{ address }}\n";
         let vars = serde_json::from_value(json!({
             "origin": "a.org",
             "name": "www",
@@ -171,11 +174,11 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(
-            render(&source, "zone.j2", &vars).unwrap(),
+            render(text, "zone.j2", &vars).unwrap(),
             "$ORIGIN a.org.\nwww IN A 192.0.2.1\n"
         );
         let missing = serde_json::from_value(json!({ "origin": "a.org" })).unwrap();
-        let failure = render(&source, "zone.j2", &missing).unwrap_err();
+        let failure = render(text, "zone.j2", &missing).unwrap_err();
         assert_eq!(failure.key, ERROR_RENDER_FAILED);
         assert!(failure.detail.contains("name"), "{}", failure.detail);
     }

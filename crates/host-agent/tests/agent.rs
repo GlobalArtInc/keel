@@ -707,7 +707,7 @@ fn a_request_whose_product_has_no_section_is_refused() {
     assert!(line.contains("product=other"), "{line}");
     assert!(line.contains("outcome=host.error.policy"), "{line}");
 
-    let answer = site.call("host.pkg.install", "dns", json!({ "name": "bind9" }));
+    let answer = site.call("host.vm.create", "dns", json!({ "name": "vm1" }));
     refused(&answer, "host.error.unknown_op");
     let answer = site.call(
         "host.fs.write",
@@ -1133,8 +1133,9 @@ fn a_symlink_planted_at_the_socket_path_leaves_its_target_alone_on_the_rebind() 
     let target = site.root().join("sentinel");
     fs::write(&target, "sentinel").unwrap();
     fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
-    fs::remove_file(&site.socket).unwrap();
-    std::os::unix::fs::symlink(&target, &site.socket).unwrap();
+    let planted = site.root().join("run/planted");
+    std::os::unix::fs::symlink(&target, &planted).unwrap();
+    fs::rename(&planted, &site.socket).unwrap();
     let started = Instant::now();
     while !fs::symlink_metadata(&site.socket)
         .unwrap()

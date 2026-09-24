@@ -1,12 +1,38 @@
 use std::ffi::OsStr;
+use std::io;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
-use crate::protocol::{ERROR_EXEC_FAILED, Failure};
+use crate::protocol::{ERROR_EXEC_FAILED, ERROR_UNAVAILABLE, Failure};
 
 const PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 pub(crate) fn run<I, S>(program: &Path, args: I) -> Result<Output, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    spawn(program, args, &[]).map_err(|error| not_run(program, &error))
+}
+
+pub(crate) fn tool<I, S>(program: &Path, args: I, env: &[(&str, &str)]) -> Result<Output, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    spawn(program, args, env).map_err(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            Failure::new(
+                ERROR_UNAVAILABLE,
+                format!("{} is not installed on this host", program.display()),
+            )
+        } else {
+            not_run(program, &error)
+        }
+    })
+}
+
+fn spawn<I, S>(program: &Path, args: I, env: &[(&str, &str)]) -> io::Result<Output>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -16,14 +42,24 @@ where
         .env_clear()
         .env("PATH", PATH)
         .env("LC_ALL", "C")
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .output()
-        .map_err(|error| {
-            Failure::new(
-                ERROR_EXEC_FAILED,
-                format!("could not run {}: {error}", program.display()),
-            )
-        })
+}
+
+fn not_run(program: &Path, error: &io::Error) -> Failure {
+    Failure::new(
+        ERROR_EXEC_FAILED,
+        format!("could not run {}: {error}", program.display()),
+    )
+}
+
+pub(crate) fn checked(program: &Path, output: Output) -> Result<Output, Failure> {
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(Failure::new(ERROR_EXEC_FAILED, detail(program, &output)))
+    }
 }
 
 pub(crate) fn succeed<I, S>(program: &Path, args: I) -> Result<Output, Failure>
@@ -31,12 +67,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let output = run(program, args)?;
-    if output.status.success() {
-        Ok(output)
-    } else {
-        Err(Failure::new(ERROR_EXEC_FAILED, detail(program, &output)))
-    }
+    checked(program, run(program, args)?)
 }
 
 pub(crate) fn detail(program: &Path, output: &Output) -> String {
@@ -107,5 +138,26 @@ mod tests {
             "{}",
             failure.detail
         );
+        let failure = super::tool(&dir.path().join("absent"), ["x"], &[]).unwrap_err();
+        assert_eq!(failure.key, ERROR_UNAVAILABLE);
+        assert!(
+            failure.detail.ends_with("is not installed on this host"),
+            "{}",
+            failure.detail
+        );
+    }
+
+    #[test]
+    fn a_tool_gets_the_environment_it_names_and_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool_path = dir.path().join("tool");
+        fs::write(
+            &tool_path,
+            "#!/bin/sh\nprintf '%s|%s|%s' \"$DEBIAN_FRONTEND\" \"$LC_ALL\" \"${HOME:-unset}\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&tool_path, fs::Permissions::from_mode(0o755)).unwrap();
+        let output = tool(&tool_path, ["x"], &[("DEBIAN_FRONTEND", "noninteractive")]).unwrap();
+        assert_eq!(stdout(&output), "noninteractive|C|unset");
     }
 }

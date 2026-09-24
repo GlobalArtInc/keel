@@ -11,8 +11,8 @@ use keel_sdk::system::{
     ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
-    BackupSource, ConfigSection, DashboardWidget, FunctionDef, MenuNode, ProductManifest,
-    SettingsSource,
+    BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
+    ProductManifest, SettingsSource,
 };
 use keel_types::descriptor::{Control, KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
@@ -88,6 +88,12 @@ pub enum FreezeProblem {
     #[error("the backup source {name} is contributed by both {first} and {second}")]
     BackupSourceClaimedTwice {
         name: String,
+        first: String,
+        second: String,
+    },
+    #[error("the configuration template {id} is contributed by both {first} and {second}")]
+    TemplateClaimedTwice {
+        id: String,
         first: String,
         second: String,
     },
@@ -397,6 +403,7 @@ struct Freezer {
     sections: Sections,
     claimed: BTreeMap<String, String>,
     source_owners: BTreeMap<String, String>,
+    template_owners: BTreeMap<String, String>,
     locks: Arc<SessionLocks>,
     masks: Arc<MaskHandle>,
     backups: Arc<backup::Handle>,
@@ -435,6 +442,7 @@ impl Initialised {
             sections: self.graph.sections().clone(),
             claimed: BTreeMap::new(),
             source_owners: BTreeMap::new(),
+            template_owners: BTreeMap::new(),
             locks: Arc::new(SessionLocks::new()),
             masks: Arc::new(MaskHandle::new()),
             backups: Arc::new(backup::Handle::new()),
@@ -474,6 +482,9 @@ impl Initialised {
             }
             for source in registrations.contributions.of::<BackupSource>() {
                 freezer.backup_source(&module, source);
+            }
+            for template in registrations.contributions.of::<ConfigTemplate>() {
+                freezer.template(&module, template);
             }
             hooks.push((module.clone(), registrations.before, registrations.within));
             patches.push((module.clone(), registrations.patches));
@@ -616,6 +627,19 @@ impl Freezer {
         let mut services = Services::new();
         services.provide_erased(section.service(), parsed);
         self.provide(module, services);
+    }
+
+    fn template(&mut self, module: &str, template: &ConfigTemplate) {
+        if let Some(first) = self.template_owners.get(template.id()) {
+            self.problems.push(FreezeProblem::TemplateClaimedTwice {
+                id: template.id().to_owned(),
+                first: first.clone(),
+                second: module.to_owned(),
+            });
+            return;
+        }
+        self.template_owners
+            .insert(template.id().to_owned(), module.to_owned());
     }
 
     fn backup_source(&mut self, module: &str, source: &BackupSource) {

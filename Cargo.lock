@@ -2303,6 +2303,8 @@ dependencies = [
 name = "keel-host-agent"
 version = "0.1.0"
 dependencies = [
+ "keel-kernel",
+ "keel-sdk",
  "minijinja",
  "nix",
  "serde",

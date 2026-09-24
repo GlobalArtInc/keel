@@ -14,7 +14,15 @@ ZONE_FILE=keel-dns-$ZONE.zone
 ZONES_DIR=/etc/bind/zones
 NAMED_LOCAL=/etc/bind/named.conf.local
 MARKER=/root/.keel-host-vm-bind
+PKG_MARKER=/root/.keel-host-vm-hello
+POLICY_BACKUP=$ETC/agent.yaml.host-vm
 PROOF_USER=hp_proof
+PROOF_PACKAGE=hello
+NOTES_DIR=/srv/keel-demo
+DIGEST_FILE=keel-demo-digest.txt
+DIGEST_TEMPLATE=note/digest.j2
+CRON_DIR=/etc/cron.d
+CRON_FILE=keel-dns-proof
 BEGIN="// keel host-vm proof begin"
 END="// keel host-vm proof end"
 CLIENT='
@@ -31,9 +39,13 @@ usage: hack/host-vm.sh [--cleanup]
 
 Proves the host agent on a virtual machine that carries an installation made
 by deploy/install.sh, run as root. It expects $UNIT running the
-binary of this step, python3 for the client, and named.check in the checks of
-$POLICY; it installs bind9 from the distribution when no named is
-present and records that for --cleanup. As the user keel it sends frames of
+binary of this step, built with the demo bundle, and python3 for the client.
+It keeps the installed policy as $POLICY_BACKUP, writes a proof
+policy with the same uid_range (named.check, the notes root $NOTES_DIR,
+the check note.digest, an exec_allow entry keel.version and a demo section
+granted the policy class note) and restarts $UNIT; --cleanup puts
+the installed policy back. It installs bind9 from the distribution when no
+named is present and records that for --cleanup. As the user keel it sends frames of
 the agent protocol to $SOCKET: an operating-system user is created
 inside the uid range of the policy and runs a program through
 "keel agent-exec"; a zone is rendered from a template override under
@@ -42,8 +54,23 @@ answered by dig; the same apply answers changed: false; a broken template is
 refused with host.error.validate_failed while the file stays byte-identical
 and named keeps answering; an operation outside file_roots is refused with
 host.error.policy and appears in journalctl -u $UNIT; the user is
-removed again. --cleanup removes the zone, the template, the user and the
-bind9 the script installed. The transcript is what the exit checklist records.
+removed again. The rest of the catalogue follows: host.exec runs the
+keel.version entry and refuses a binary outside exec_allow; host.pkg
+installs and removes $PROOF_PACKAGE through apt-get and reports the
+change (left alone when it was installed before), refusing a trailing -
+or + that apt-get reads as the other action and never reading a name as
+a pattern; host.cron writes $CRON_DIR/$CRON_FILE as root with mode 0644
+running the keel.version entry and removes it, refusing a job as root or
+outside exec_allow; host.quota lists the notes root, or answers
+host.error.unavailable without setquota; the compiled demo template
+$DIGEST_TEMPLATE renders under $NOTES_DIR, an override under
+$TEMPLATES wins over it and the compiled text returns when the
+override is gone; the demo agent operation note.digest.stat reads the
+digest under its policy class, is refused for a product without that class
+and appears in the journal with class=note. --cleanup removes the zone, the
+template, the user, the notes root, the cron drop-in, the override, the
+$PROOF_PACKAGE and bind9 the script installed, and restores the policy. The
+transcript is what the exit checklist records.
 EOF
 }
 
@@ -143,6 +170,137 @@ uid_in_range() {
   [ -n "$from" ] && [ "$uid" -ge "$from" ] && [ "$uid" -le "$to" ]
 }
 
+carries_either() {
+  carries "$1" || carries "$2"
+}
+
+not_installed() {
+  ! dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | grep -q '^ii'
+}
+
+digest_is() {
+  [ "$(cat "$NOTES_DIR/$DIGEST_FILE" 2>/dev/null)" = "$1" ]
+}
+
+wait_for_socket() {
+  local polls=0
+  while [ ! -S "$SOCKET" ] || ! runuser -u keel -- python3 -c "$CLIENT" "$SOCKET" '{"id":0}' >/dev/null 2>&1; do
+    polls=$((polls + 1))
+    [ "$polls" -lt 100 ] || fail "$UNIT does not answer on $SOCKET after the restart"
+    sleep 0.2
+  done
+}
+
+use_proof_policy() {
+  local from to
+  read -r from to <<<"$(policy_range)"
+  if [ ! -e "$POLICY_BACKUP" ]; then
+    cp -p "$POLICY" "$POLICY_BACKUP"
+  fi
+  install -d -m 0755 -o root -g root "$NOTES_DIR"
+  cat >"$POLICY.new" <<EOF
+policy:
+  uid_range: { from: $from, to: $to }
+  file_roots: { zones: $ZONES_DIR, vhosts: /etc/nginx/conf.d, www: /var/www, notes: $NOTES_DIR }
+  services: [named, nginx, php8.3-fpm]
+  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], note.digest: ["grep", "-q", "Notes", "$NOTES_DIR/$DIGEST_FILE"] }
+  exec_allow: [certbot, quotatool, { keel.version: ["$KEEL", "--version"] }]
+  products:
+    bill: { drop_in_prefix: keel-bill- }
+    demo: { user_prefix: kd_, drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }
+    dns: { drop_in_prefix: keel-dns- }
+    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }
+EOF
+  chown --reference="$POLICY_BACKUP" "$POLICY.new"
+  chmod --reference="$POLICY_BACKUP" "$POLICY.new"
+  mv -f "$POLICY.new" "$POLICY"
+  systemctl restart "$UNIT"
+  wait_for_socket
+  say "the proof policy is in place; $POLICY_BACKUP keeps the installed one"
+}
+
+restore_policy() {
+  if [ -e "$POLICY_BACKUP" ]; then
+    mv -f "$POLICY_BACKUP" "$POLICY"
+    systemctl restart "$UNIT" || true
+    say "the installed policy is back in $POLICY"
+  fi
+}
+
+prove_catalogue() {
+  call dns host.exec '{"name":"keel.version"}'
+  check "host.exec runs the keel.version entry of exec_allow" carries '"output":"keel '
+  call dns host.exec '{"name":"sh"}'
+  check "host.exec refuses a binary outside exec_allow" carries '"key":"host.error.policy"'
+
+  call dns host.pkg.refresh '{}'
+  check "host.pkg.refresh runs apt-get update" carries '"refreshed":true'
+  if not_installed "$PROOF_PACKAGE"; then
+    : >"$PKG_MARKER"
+    call dns host.pkg.install "{\"packages\":[\"$PROOF_PACKAGE\"]}"
+    check "host.pkg.install reports $PROOF_PACKAGE as installed" carries "{\"name\":\"$PROOF_PACKAGE\",\"from\":null,\"to\":\""
+    check "dpkg knows $PROOF_PACKAGE as installed" dpkg -s "$PROOF_PACKAGE"
+    call dns host.pkg.install "{\"packages\":[\"$PROOF_PACKAGE\"]}"
+    check "the same install answers changed: false" carries '"changed":false'
+    call dns host.pkg.remove "{\"packages\":[\"$PROOF_PACKAGE\"]}"
+    check "host.pkg.remove reports $PROOF_PACKAGE as removed" carries '"to":null'
+    check "$PROOF_PACKAGE is no longer installed" not_installed "$PROOF_PACKAGE"
+    rm -f "$PKG_MARKER"
+  else
+    say "$PROOF_PACKAGE is installed already; the proof reads it and leaves it"
+    call dns host.pkg.get "{\"name\":\"$PROOF_PACKAGE\"}"
+    check "host.pkg.get reports the installed version" carries '"version":"'
+  fi
+  call dns host.pkg.install '{"packages":["-y"]}'
+  check "a package name read as an option answers host.error.policy" carries '"key":"host.error.policy"'
+  call dns host.pkg.install "{\"packages\":[\"$PROOF_PACKAGE-\"]}"
+  check "a trailing - on install answers host.error.policy" carries '"key":"host.error.policy"'
+  call dns host.pkg.remove "{\"packages\":[\"$PROOF_PACKAGE+\"]}"
+  check "a trailing + on remove answers host.error.policy" carries '"key":"host.error.policy"'
+  call dns host.pkg.install "{\"packages\":[\"$PROOF_PACKAGE.\"]}"
+  check "apt-get takes $PROOF_PACKAGE. by its name, not as a pattern" carries '"key":"host.error.exec_failed"'
+
+  call dns host.cron.write "{\"name\":\"$CRON_FILE\",\"jobs\":[{\"schedule\":\"17 3 * * *\",\"user\":\"keel\",\"exec\":\"keel.version\"}]}"
+  check "host.cron.write answers changed: true" carries '"changed":true'
+  check "$CRON_DIR/$CRON_FILE is root:root with mode 644" test "$(stat -c '%U:%G:%a' "$CRON_DIR/$CRON_FILE" 2>/dev/null)" = "root:root:644"
+  check "the drop-in runs the job as keel" grep -qxF "17 3 * * * keel '$KEEL' '--version'" "$CRON_DIR/$CRON_FILE"
+  call dns host.cron.write "{\"name\":\"$CRON_FILE\",\"jobs\":[{\"schedule\":\"@daily\",\"user\":\"root\",\"exec\":\"keel.version\"}]}"
+  check "a job as root answers host.error.policy" carries '"key":"host.error.policy"'
+  call dns host.cron.write "{\"name\":\"$CRON_FILE\",\"jobs\":[{\"schedule\":\"@daily\",\"user\":\"keel\",\"exec\":\"id\"}]}"
+  check "a job outside exec_allow answers host.error.policy" carries '"key":"host.error.policy"'
+  call dns host.cron.list '{}'
+  check "host.cron.list names the drop-in" carries "\"$CRON_FILE\""
+  call dns host.cron.remove "{\"name\":\"$CRON_FILE\"}"
+  check "host.cron.remove answers removed: true" carries '"removed":true'
+  check "the drop-in is gone" test ! -e "$CRON_DIR/$CRON_FILE"
+
+  call demo host.quota.list '{"root":"notes"}'
+  if command -v setquota >/dev/null 2>&1 && command -v repquota >/dev/null 2>&1; then
+    check "host.quota.list answers the report or the refusal of repquota" carries_either '"ok":true' '"key":"host.error.exec_failed"'
+  else
+    check "without the quota tools host.quota answers host.error.unavailable" carries '"key":"host.error.unavailable"'
+  fi
+
+  local digest_args compiled
+  digest_args="{\"template\":\"$DIGEST_TEMPLATE\",\"vars\":{\"title\":\"Notes\",\"notes\":[\"a\",\"b\"]},\"dest\":{\"root\":\"notes\",\"name\":\"$DIGEST_FILE\"}}"
+  compiled=$(printf 'Notes\n- a\n- b')
+  rm -f "$TEMPLATES/$DIGEST_TEMPLATE"
+  call demo host.template.apply "$digest_args"
+  check "the compiled demo template renders and passes note.digest" carries '"changed":true'
+  check "the digest carries the compiled text" digest_is "$compiled"
+  install -d -m 0750 -o root -g keel "$TEMPLATES/note"
+  printf 'Notes from the override: {{ title }}\n' >"$TEMPLATES/$DIGEST_TEMPLATE"
+  call demo host.template.apply "$digest_args"
+  check "an override under $TEMPLATES wins over the compiled text" digest_is "Notes from the override: Notes"
+  rm -f "$TEMPLATES/$DIGEST_TEMPLATE"
+  call demo host.template.apply "$digest_args"
+  check "the compiled text returns without the override" digest_is "$compiled"
+  call demo note.digest.stat "{\"name\":\"$DIGEST_FILE\"}"
+  check "note.digest.stat reads the digest under its policy class" carries '"lines":3'
+  call dns note.digest.stat "{\"name\":\"$DIGEST_FILE\"}"
+  check "a product without the class note answers host.error.policy" carries '"key":"host.error.policy"'
+}
+
 named_present() {
   command -v named >/dev/null 2>&1 && command -v named-checkconf >/dev/null 2>&1
 }
@@ -198,6 +356,15 @@ cleanup() {
   if id -u "$PROOF_USER" >/dev/null 2>&1; then
     userdel "$PROOF_USER"
   fi
+  rm -f "$CRON_DIR/$CRON_FILE" "$TEMPLATES/$DIGEST_TEMPLATE"
+  rmdir "$TEMPLATES/note" 2>/dev/null || true
+  rm -rf "$NOTES_DIR"
+  if [ -e "$PKG_MARKER" ]; then
+    say "purging the $PROOF_PACKAGE the proof installed"
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y -q "$PROOF_PACKAGE" || true
+    rm -f "$PKG_MARKER"
+  fi
+  restore_policy
   if [ -e "$MARKER" ]; then
     say "purging the bind9 the proof installed"
     systemctl stop "$NAMED_UNIT" || true
@@ -212,6 +379,8 @@ cleanup() {
   ls -l "$ZONES_DIR/$ZONE_FILE" "$TEMPLATES/bind/zone.j2" 2>&1 || true
   say "probe: dpkg -l bind9"
   dpkg -l bind9 2>&1 | tail -n 1 || true
+  say "probe: notes root, cron drop-in and policy backup"
+  ls -ld "$NOTES_DIR" "$CRON_DIR/$CRON_FILE" "$POLICY_BACKUP" 2>&1 || true
   say "the host proof is cleaned up"
 }
 
@@ -220,9 +389,10 @@ main() {
   [ -x "$KEEL" ] || fail "$KEEL is not the installed binary"
   command -v python3 >/dev/null 2>&1 || fail "python3 is needed for the client"
   [ -f "$POLICY" ] || fail "$POLICY is missing"
-  grep -qE 'named\.check: \["named-checkconf", "-z"\]' "$POLICY" || fail "$POLICY has no named.check in its checks; add named.check: [\"named-checkconf\", \"-z\"] and restart $UNIT"
   [ -n "$(policy_range)" ] || fail "$POLICY carries no uid_range"
   systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  use_proof_policy
+  check "the proof policy names named.check" grep -qF 'named.check: ["named-checkconf", "-z"]' "$POLICY"
 
   check "$UNIT runs as root" unit_runs_as_root
   check "the agent listens on $SOCKET" test -S "$SOCKET"
@@ -290,12 +460,16 @@ main() {
   check "a name with a separator answers host.error.policy" carries '"key":"host.error.policy"'
   call bill host.service.reload '{"name":"sshd"}'
   check "a unit outside services answers host.error.policy" carries '"key":"host.error.policy"'
+
+  prove_catalogue
   sleep 1
   local journal
   journal=$(journal_since "$since")
   check "the refusal is in the journal with its request id" grep -qE "request_id=host-vm-$refused_id .*outcome=host.error.policy" <<<"$journal"
   check "the accepted apply is in the journal with its request id" grep -qE "op=host.template.apply actor=host-vm level=owner request_id=host-vm-[0-9]+ product=dns .*outcome=ok" <<<"$journal"
   check "the failed check is in the journal" grep -qF "outcome=host.error.validate_failed" <<<"$journal"
+  check "the demo agent operation is in the journal with its policy class" grep -qE "op=note.digest.stat actor=host-vm level=owner request_id=host-vm-[0-9]+ product=demo class=note .*outcome=ok" <<<"$journal"
+  check "the package change is in the journal" grep -qE "op=host.pkg.(install|get) .*outcome=ok" <<<"$journal"
 
   local nobody
   nobody=$(runuser -u nobody -- python3 -c "$CLIENT" "$SOCKET" '{"id":1}' 2>&1 || true)

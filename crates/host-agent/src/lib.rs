@@ -9,4 +9,6 @@ mod process;
 mod protocol;
 
 pub use agent::{Agent, AgentError, Bound, DEFAULT_TEMPLATES, DEFAULT_USER};
+pub use ops::{Operation, OperationCall, Template};
 pub use policy::{Policy, PolicyError};
+pub use protocol::Failure;

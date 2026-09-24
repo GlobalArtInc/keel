@@ -14,6 +14,7 @@ use crate::context::Context;
 use crate::error::Result;
 use crate::function::FunctionDef;
 use crate::guard::Guard;
+use crate::host::{AgentOp, ConfigTemplate};
 use crate::services::{ServiceKey, Services};
 use crate::ui::ViewSpec;
 
@@ -524,6 +525,22 @@ impl Registrar {
     }
 
     pub fn contribute<T: Any + Send + Sync>(&mut self, contribution: T) -> &mut Self {
+        let any: &dyn Any = &contribution;
+        if let Some(op) = any.downcast_ref::<AgentOp>() {
+            self.check_prefix("agent operation", op.name());
+            let taken = self
+                .contributions
+                .of::<AgentOp>()
+                .any(|other| other.name() == op.name());
+            self.check_unique("agent operation", op.name(), taken);
+        }
+        if let Some(template) = any.downcast_ref::<ConfigTemplate>() {
+            let taken = self
+                .contributions
+                .of::<ConfigTemplate>()
+                .any(|other| other.id() == template.id());
+            self.check_unique("configuration template", template.id(), taken);
+        }
         self.contributions.add(contribution);
         self
     }
@@ -621,6 +638,16 @@ impl Registrar {
             stop: self.stop,
             invoker: self.invoker,
         })
+    }
+
+    fn check_unique(&mut self, kind: &'static str, name: &str, taken: bool) {
+        if taken {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind,
+                name: name.to_owned(),
+            });
+        }
     }
 
     fn check_prefix(&mut self, kind: &'static str, name: &str) {
@@ -876,6 +903,33 @@ mod tests {
                 "module dns: start hook \"start\" is registered twice",
                 "module dns: stop hook \"stop\" is registered twice",
                 "module dns: invoker \"invoker\" is registered twice",
+            ]
+        );
+    }
+
+    #[test]
+    fn agent_operations_carry_the_module_prefix_and_ids_are_contributed_once_per_module() {
+        fn stat(
+            _: &dyn crate::host::AgentScope,
+            name: String,
+        ) -> std::result::Result<String, crate::host::AgentOpError> {
+            Ok(name)
+        }
+        let mut r = Registrar::new("vm");
+        r.contribute(AgentOp::new::<String, String>("vm.libvirt.create", stat))
+            .contribute(AgentOp::new::<String, String>("vm.libvirt.create", stat))
+            .contribute(AgentOp::new::<String, String>("host.fs.write", stat))
+            .contribute(ConfigTemplate::new("libvirt/domain.xml.j2", "x"))
+            .contribute(ConfigTemplate::new("libvirt/domain.xml.j2", "y"))
+            .contribute(ConfigTemplate::new("bind/zone.j2", "z"));
+        let errors = r.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            [
+                "module vm: agent operation \"vm.libvirt.create\" is registered twice",
+                "module vm: agent operation \"host.fs.write\" does not carry the module prefix",
+                "module vm: configuration template \"libvirt/domain.xml.j2\" is registered twice",
             ]
         );
     }

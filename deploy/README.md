@@ -169,9 +169,20 @@ they exist:
   host policy of `agent.yaml` on `/run/keel/agent.sock`: the socket admits the account `keel`
   alone, checked by peer credentials, and every operation of the catalogue (`host.user.*`,
   `host.group.*` inside `uid_range`, `host.fs.*` and `host.template.apply` under `file_roots`,
-  `host.service.*` for the units in `services`) is one line in `journalctl -u keel-privileged`
-  with the actor, the request id and the outcome; a request outside the policy is refused with
-  `host.error.policy` and appears there too. The kernel does not connect to the socket yet:
+  `host.service.*` for the units in `services`, `host.pkg.*` over `apt-get`, `apt-cache` and
+  `dpkg-query` with each name taken as that package and never as a pattern or a trailing `+`
+  or `-` action, `host.cron.*` writing the product's drop-ins under `/etc/cron.d` whose jobs
+  run an entry of `exec_allow` as `keel` or as the product's own users, `host.quota.*` over `setquota` and `repquota`, answering
+  `host.error.unavailable` on a host without them, and `host.exec` for the entries of
+  `exec_allow`, a binary name run without arguments or `name: [binary, arguments…]` run with
+  exactly those) is one line in `journalctl -u keel-privileged` with the actor, the request id
+  and the outcome; a request outside the policy is refused with `host.error.policy` and appears
+  there too. The agent also executes the operations and renders the configuration templates the
+  compiled products contribute: a template is read from `/etc/keel/templates/<id>` when the
+  operator put one there and from the binary otherwise, and a product operation runs only for a
+  product whose section of `agent.yaml` grants its policy class under `classes`, as in
+  `demo: { drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }`; its journal line
+  carries `class=`. The kernel does not connect to the socket yet:
   the `host` module and its executor arrive with the rest of the host layer of M4, and until
   then `keel doctor` reports the agent as not in use. `hack/host-vm.sh` proves the agent on a
   machine installed by `install.sh`. After the installer exits the privileged unit is the only

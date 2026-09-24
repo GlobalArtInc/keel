@@ -36,6 +36,7 @@ fn filter(from_env: Option<EnvFilter>) -> Result<EnvFilter, JournalError> {
 pub(crate) fn operation(
     peer: u32,
     request: &Request,
+    class: Option<&str>,
     outcome: &Result<Value, Failure>,
     elapsed: Duration,
 ) {
@@ -48,6 +49,7 @@ pub(crate) fn operation(
             level = %request.actor.level,
             request_id = %request.request_id,
             product = %request.product,
+            class = class.map(tracing::field::display),
             peer_uid = peer,
             outcome = %"ok",
             elapsed_ms,
@@ -59,6 +61,7 @@ pub(crate) fn operation(
             level = %request.actor.level,
             request_id = %request.request_id,
             product = %request.product,
+            class = class.map(tracing::field::display),
             peer_uid = peer,
             outcome = %failure.key,
             detail = ?clip(&failure.detail),
