@@ -106,17 +106,26 @@ for forbidden in keel-kernel keel-sdk keel-system keel-testkit keel; do
 done
 echo "keel-conformance graph checked"
 
-dev=$(cargo tree -p keel-dev -e normal,build,dev --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$dev" != "keel-types " ]; then
-  echo "keel-dev depends on workspace crates other than keel-types: $dev" >&2
+dev=$(cargo tree -p keel-dev -e normal,build --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$dev" != "keel-release keel-types " ]; then
+  echo "keel-dev depends on workspace crates other than keel-release and keel-types: $dev" >&2
   fail=1
 fi
 for forbidden in keel-kernel keel-sdk keel-system keel-testkit keel; do
-  if cargo tree -p keel-dev -e normal,build,dev --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+  if cargo tree -p keel-dev -e normal,build --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
     echo "keel-dev reaches $forbidden through its dependencies" >&2
     fail=1
   fi
 done
+tests=$(cargo tree -p keel-dev -e normal,build,dev --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$tests" != "keel-release keel-sdk keel-system keel-testkit keel-types " ]; then
+  echo "the tests of keel-dev depend on workspace crates other than keel-release, keel-sdk, keel-system, keel-testkit and keel-types: $tests" >&2
+  fail=1
+fi
+if cargo tree -p keel-dev -e normal,build,dev --prefix none | awk '{print $1}' | grep -qx keel; then
+  echo "the tests of keel-dev reach the facade keel" >&2
+  fail=1
+fi
 echo "keel-dev graph checked"
 
 facade=$(cargo tree -p keel -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')

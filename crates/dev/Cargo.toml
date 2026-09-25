@@ -1,6 +1,6 @@
 [package]
 name = "keel-dev"
-description = "The developer CLI: the JSON Schema of the wire contract, the per-level descriptor dump of a started binary, the OpenAPI description written from it, the custom-views share and the translation pipeline over the dump, typed with keel-types alone"
+description = "The developer CLI: the JSON Schema of the wire contract, the per-level descriptor dump of a started binary, the OpenAPI description written from it, the custom-views share, the translation pipeline over the dump and the issuing of leases, typed with keel-types alone and signing with keel-release"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
@@ -11,7 +11,9 @@ name = "keel-dev"
 path = "src/main.rs"
 
 [dependencies]
+chrono = { workspace = true }
 clap = { workspace = true }
+keel-release = { workspace = true }
 keel-types = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
@@ -25,3 +27,6 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
+keel-sdk = { workspace = true }
+keel-system = { workspace = true, features = ["license"] }
+keel-testkit = { workspace = true }

@@ -11,7 +11,7 @@
     "generate": "node tools/generate.mjs && node tools/icons.mjs && node tools/boot.mjs",
     "lint": "eslint . && tsc -p e2e/tsconfig.json",
     "test": "node --no-sparkplug node_modules/jest/bin/jest.js",
-    "build": "ng build keel && ng build demo && ng build dns && ng build shell && node tools/theme-boot.mjs dist/shell && node tools/compress.mjs dist/shell",
+    "build": "ng build keel && ng build demo && ng build dns && ng build shell && node tools/theme-boot.mjs dist/shell && node tools/product-chunks.mjs dist/shell && node tools/compress.mjs dist/shell",
     "format": "prettier --check .",
     "storybook": "ng run keel:storybook",
     "build-storybook": "ng run keel:build-storybook",

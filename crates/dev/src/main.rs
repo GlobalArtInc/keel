@@ -1,5 +1,6 @@
 mod descriptors;
 mod i18n;
+mod license;
 mod openapi;
 mod types;
 mod views;
@@ -8,6 +9,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use keel_types::Id;
 
 use descriptors::Login;
 
@@ -59,6 +61,39 @@ enum Command {
         about = "The translation pipeline: the keys of the dump per project, the pull of the projects into the dictionaries and the check for gaps"
     )]
     I18n(I18n),
+    #[command(
+        subcommand,
+        about = "The license key pair and the long offline leases the operator issues with its private half"
+    )]
+    License(License),
+}
+
+#[derive(Subcommand)]
+enum License {
+    #[command(about = "Writes a new license key pair as license.key (mode 0600) and license.pub")]
+    Keygen {
+        #[arg(long, value_name = "DIR")]
+        out: PathBuf,
+        #[arg(long, default_value = "keel license key", value_name = "TEXT")]
+        comment: String,
+    },
+    #[command(
+        about = "Writes a lease bound to an instance id, listing each product at an edition, signed with the private half of a license key"
+    )]
+    Issue {
+        #[arg(long, value_name = "FILE")]
+        key: PathBuf,
+        #[arg(long, value_name = "ID")]
+        instance: Id,
+        #[arg(long = "product", value_name = "ID:EDITION", required = true)]
+        products: Vec<license::Product>,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        days: u32,
+        #[arg(long)]
+        grace: u32,
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -161,6 +196,8 @@ enum Error {
     Openapi(#[from] openapi::Error),
     #[error(transparent)]
     I18n(#[from] i18n::Error),
+    #[error(transparent)]
+    License(#[from] license::Error),
 }
 
 async fn run(command: Command) -> Result<bool, Error> {
@@ -230,6 +267,27 @@ async fn run(command: Command) -> Result<bool, Error> {
             print!("{missing}");
             println!("{}", missing.summary());
             Ok(missing.green())
+        }
+        Command::License(License::Keygen { out, comment }) => {
+            println!("{}", license::keygen(&out, &comment)?);
+            Ok(true)
+        }
+        Command::License(License::Issue {
+            key,
+            instance,
+            products,
+            days,
+            grace,
+            out,
+        }) => {
+            let terms = license::Terms {
+                instance,
+                products,
+                days,
+                grace,
+            };
+            println!("{}", license::issue(&key, terms, chrono::Utc::now(), &out)?);
+            Ok(true)
         }
     }
 }

@@ -99,15 +99,11 @@ jobs:
           fi
           target/x86_64-unknown-linux-musl/release/keel --version
 
-      - name: The binary with the demo bundle and the frontend is under 40 MB
-        run: |
-          size=$(stat -c %s target/x86_64-unknown-linux-musl/release/keel)
-          mb=$(awk -v bytes="$size" 'BEGIN { printf "%.1f", bytes / 1000000 }')
-          echo "keel with the demo bundle and the frontend: $size bytes ($mb MB)"
-          if [ "$size" -ge 40000000 ]; then
-            echo "the binary is 40 MB or larger" >&2
-            exit 1
-          fi
+      - name: The size check refuses a binary above its cap
+        run: hack/check-size-test.sh
+
+      - name: The binary is within the cap of hack/size-cap
+        run: hack/check-size.sh target/x86_64-unknown-linux-musl/release/keel
 
       - name: Package
         run: |

@@ -1,6 +1,7 @@
+use std::path::Path;
 use std::sync::Arc;
 
-use keel_release::{KeyRing, ReleaseError, SecretKey, Signed};
+use keel_release::{KeyRing, PublicKey, ReleaseError, SecretKey, Signed};
 use keel_sdk::system::LicenseKey;
 use serde_json::Value;
 
@@ -10,6 +11,11 @@ pub struct Issuer {
 }
 
 struct ThrowawayKey(KeyRing);
+
+pub fn verifying_key(public: &Path) -> Result<Arc<dyn LicenseKey>, ReleaseError> {
+    let ring = KeyRing::new(PublicKey::read(public)?, Vec::new());
+    Ok(Arc::new(ThrowawayKey(ring)))
+}
 
 impl Issuer {
     pub fn generate() -> Result<Self, ReleaseError> {

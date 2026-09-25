@@ -131,7 +131,8 @@
               "node_modules/@fontsource/ibm-plex-mono/400.css",
               "node_modules/@globalart/phoenix-ui/styles/phoenix-ui.css"
             ],
-            "allowedCommonJsDependencies": ["qrcode"]
+            "allowedCommonJsDependencies": ["qrcode"],
+            "namedChunks": true
           },
           "configurations": {
             "production": {

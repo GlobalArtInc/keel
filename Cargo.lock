@@ -2288,7 +2288,12 @@ name = "keel-dev"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "chrono",
  "clap",
+ "keel-release",
+ "keel-sdk",
+ "keel-system",
+ "keel-testkit",
  "keel-types",
  "reqwest",
  "rustls",
