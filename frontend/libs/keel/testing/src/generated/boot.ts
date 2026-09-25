@@ -82,7 +82,7 @@ export const BOOT_ONE: Boot = {
     totp: false,
   },
   features: [],
-  license: null,
+  license: { state: 'none', expiresAt: null, graceEndsAt: null },
   menu: [
     {
       id: 'demo',
@@ -182,6 +182,13 @@ export const BOOT_ONE: Boot = {
           func: 'notify.channel.list',
           kind: 'list',
           icon: 'mail',
+        },
+        {
+          path: 'system/license',
+          label: 'license.get.title',
+          func: 'license.get',
+          kind: 'get',
+          icon: 'key-round',
         },
         {
           path: 'system/updates',
