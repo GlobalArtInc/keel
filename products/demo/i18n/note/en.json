@@ -56,6 +56,25 @@
       "owner": "Owner",
       "source": "Source"
     },
+    "report": {
+      "band": {
+        "tags": "Tags"
+      },
+      "chart": {
+        "created": "Notes created per day",
+        "share": "Share of the tags",
+        "tags": "Notes per tag"
+      },
+      "column": {
+        "notes": "Notes",
+        "tag": "Tag"
+      },
+      "from": "Created from",
+      "tags": {
+        "title": "Tag report"
+      },
+      "to": "Created until"
+    },
     "tag": {
       "column": {
         "count": "Count",

@@ -31,7 +31,6 @@ async fn zones_of(harness: &Harness, who: Who) -> Vec<f64> {
 async fn the_zone_count_is_sampled_per_account_every_hour() {
     let site = Site::new();
     let harness = composed(&site)
-        .module(&keel_system::stats::MODULE)
         .clock("2026-09-25T00:00:00Z".parse().expect("an instant"))
         .boot()
         .await;

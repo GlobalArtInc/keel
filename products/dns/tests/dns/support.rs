@@ -113,6 +113,7 @@ pub(crate) fn composed(site: &Site) -> Builder {
         .module(&keel_system::tasks::MODULE)
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
+        .module(&keel_system::stats::MODULE)
         .section("dns", site.section())
         .agent(&site.policy())
 }

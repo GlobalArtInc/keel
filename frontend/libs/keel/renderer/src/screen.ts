@@ -47,6 +47,7 @@ import { KeelActionComponent } from './action/action.component';
 import { KeelFormScreenComponent } from './form/form-screen.component';
 import { KeelListComponent } from './list/list.component';
 import { KeelObjectComponent } from './object/object.component';
+import { KeelReportComponent } from './report/report.component';
 import { NOT_FOUND_KEY, SCREEN_UNSUPPORTED_KEY, VIEW_MISSING_KEY, describeError } from './messages';
 import {
   injectKeelViews,
@@ -132,6 +133,7 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
     KeelFormScreenComponent,
     KeelListComponent,
     KeelObjectComponent,
+    KeelReportComponent,
     KeelActionComponent,
     KeelWizardComponent,
   ],
@@ -178,6 +180,9 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
           }
           @case ('get') {
             <keel-object [descriptor]="descriptor()" [params]="typedParams()" />
+          }
+          @case ('report') {
+            <keel-report [descriptor]="descriptor()" [params]="typedParams()" />
           }
           @case ('action') {
             <keel-action

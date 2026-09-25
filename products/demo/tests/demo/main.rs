@@ -3,6 +3,7 @@ mod day_boundary;
 mod lifecycle;
 mod note;
 mod problems;
+mod report;
 mod runtime;
 mod tasks;
 mod tokens;

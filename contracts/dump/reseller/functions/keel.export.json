@@ -33,6 +33,16 @@
       "format": {
         "$ref": "#/$defs/ExportFormat",
         "default": "csv"
+      },
+      "band": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "additionalProperties": true
       }
     },
     "required": [

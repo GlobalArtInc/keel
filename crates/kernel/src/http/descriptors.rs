@@ -8,7 +8,7 @@ use axum::{Extension, Json};
 use keel_sdk::KeelError;
 use keel_sdk::runtime::property_names;
 use keel_types::descriptor::MemberAccess;
-use keel_types::{Access, Descriptor, Level, Principal};
+use keel_types::{Access, Column, Descriptor, Level, Principal};
 use serde_json::{Map, Value};
 
 use super::Shared;
@@ -75,15 +75,11 @@ impl<'a> Projection<'a> {
         }
         let fields = property_names(&descriptor.params);
         if let Some(ui) = &mut descriptor.ui {
-            ui.columns
-                .retain(|column| self.member_visible(column.access.as_ref()));
-            for column in &mut ui.columns {
-                if column.edit.as_ref().is_some_and(|edit| {
-                    !self.callable(&edit.function) || self.degraded(&edit.function)
-                }) {
-                    column.edit = None;
-                }
+            self.columns(&mut ui.columns);
+            for band in &mut ui.bands {
+                self.columns(&mut band.columns);
             }
+            ui.charts.retain(|chart| self.callable(&chart.series));
             ui.actions.retain(|action| {
                 action
                     .function
@@ -120,6 +116,19 @@ impl<'a> Projection<'a> {
             }
         }
         descriptor
+    }
+
+    fn columns(&self, columns: &mut Vec<Column>) {
+        columns.retain(|column| self.member_visible(column.access.as_ref()));
+        for column in columns {
+            if column
+                .edit
+                .as_ref()
+                .is_some_and(|edit| !self.callable(&edit.function) || self.degraded(&edit.function))
+            {
+                column.edit = None;
+            }
+        }
     }
 
     fn degraded(&self, name: &str) -> bool {

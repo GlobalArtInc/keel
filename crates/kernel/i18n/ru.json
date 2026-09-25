@@ -56,6 +56,7 @@
       }
     },
     "action": {
+      "apply": "Применить",
       "back": "Назад",
       "create": "Создать",
       "delete": "Удалить",
@@ -141,9 +142,11 @@
       "download_route": "Функция {function} отдаёт файл; получите его по адресу {route}",
       "download_stored_inline": "Сохранённая выгрузка пишется только внутри задачи",
       "enrich_not_object": "Хук модуля {module} на {function} дополнил параметры не объектом",
+      "export_band": "В отчёте {function} нет раздела {band}",
       "export_columns": "Колонки {column} нет в списке {function}",
       "export_output": "Не удалось записать выгрузку",
       "export_page": "Список {function} ответил страницей, которую выгрузка не может прочитать",
+      "export_report": "Отчёт {function} не вернул раздел {band} списком строк",
       "file_encoding": "Файл не является текстом в UTF-8",
       "file_too_large": "Файл больше {limit} байт",
       "file_type": "Тип файла {type} не принимается; ожидается один из {types}",
@@ -218,11 +221,13 @@
       "write_call_without_transaction": "Вызов записи потерял транзакцию"
     },
     "export": {
+      "band": "Раздел",
       "columns": "Колонки",
       "format": "Формат",
       "format.csv": "CSV",
       "format.json": "JSON",
       "func": "Список",
+      "params": "Параметры отчёта",
       "query": "Запрос"
     },
     "id": "Идентификатор",
@@ -321,6 +326,9 @@
         "disabled": "Выключен",
         "enabled": "Включён"
       }
+    },
+    "report": {
+      "empty": "Нет данных за этот период"
     },
     "restart": {
       "progress": {

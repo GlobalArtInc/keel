@@ -39,9 +39,9 @@ pub use task::{
     TaskProgress, TaskRef, TaskState, UnknownTaskState,
 };
 pub use ui::{
-    Action, ActionRole, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails, ConfirmInput,
-    Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,
-    Total,
+    Action, ActionRole, ChartType, Column, ColumnFilter, ColumnType, Confirm, ConfirmDetails,
+    ConfirmInput, Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult,
+    ScreenUi, Tone, Total,
 };
 
 pub const PROTOCOL: u32 = 1;

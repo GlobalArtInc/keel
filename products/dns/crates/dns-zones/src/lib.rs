@@ -7,6 +7,7 @@ mod hooks;
 mod lifecycle;
 mod problems;
 mod provider;
+mod report;
 mod stats;
 mod zone;
 
@@ -35,7 +36,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "dns",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &["host", "notify"],
+    requires: &["host", "notify", "stats"],
     migrations: Some(&MIGRATIONS),
     init,
 };
@@ -54,12 +55,18 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::create())
         .function(functions::edit())
         .function(functions::delete())
+        .function(report::zones())
         .permission("dns.zone.read", &[Level::User, Level::Reseller])
         .permission("dns.zone.manage", &[Level::User, Level::Reseller])
         .menu(
             MenuNode::new("dns/zones", "dns.zone.list")
                 .icon("globe")
                 .order(10),
+        )
+        .menu(
+            MenuNode::new("dns/report", report::REPORT)
+                .icon("chart-line")
+                .order(40),
         )
         .within("dns.zone.create", hooks::enforce_limit)
         .contribute(ConfigSection::new::<DnsConfig>(SECTION))

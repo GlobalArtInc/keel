@@ -105,6 +105,13 @@ export const BOOT_ONE: Boot = {
           kind: 'list',
           icon: 'tag',
         },
+        {
+          path: 'demo/report',
+          label: 'note.report.tags.title',
+          func: 'note.report.tags',
+          kind: 'report',
+          icon: 'chart-bar',
+        },
       ],
     },
     {

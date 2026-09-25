@@ -73,6 +73,13 @@
           "func": "note.tag.list",
           "kind": "list",
           "icon": "tag"
+        },
+        {
+          "path": "demo/report",
+          "label": "note.report.tags.title",
+          "func": "note.report.tags",
+          "kind": "report",
+          "icon": "chart-bar"
         }
       ]
     },
@@ -95,6 +102,13 @@
           "func": "dns.template.list",
           "kind": "list",
           "icon": "layers"
+        },
+        {
+          "path": "dns/report",
+          "label": "dns.report.zones.title",
+          "func": "dns.report.zones",
+          "kind": "report",
+          "icon": "chart-line"
         }
       ]
     },

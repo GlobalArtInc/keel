@@ -3,7 +3,7 @@ mod function;
 mod json;
 
 use keel_sdk::KeelError;
-use keel_types::{Descriptor, ExportFormat};
+use keel_types::{Column, Descriptor, ExportFormat};
 use serde_json::{Map, Value};
 
 use crate::http::catalogue;
@@ -15,6 +15,7 @@ pub use csv::Csv;
 pub use function::{CLASS, EXPORT_TASK_ROWS, FUNCTION, function};
 
 pub const COLUMNS_KEY: &str = "keel.error.export_columns";
+const BAND_KEY: &str = "keel.error.export_band";
 pub const CSV_TYPE: &str = "text/csv; charset=utf-8";
 pub const JSON_TYPE: &str = "application/json";
 
@@ -34,15 +35,19 @@ fn content_type(format: ExportFormat) -> &'static str {
     }
 }
 
-fn columns_of(
-    descriptor: &Descriptor,
-    requested: Option<&[String]>,
-) -> Result<Vec<String>, KeelError> {
-    let visible: Vec<String> = descriptor
+fn list_columns(descriptor: &Descriptor) -> &[Column] {
+    descriptor
         .ui
         .as_ref()
-        .map(|ui| ui.columns.iter().map(|column| column.key.clone()).collect())
-        .unwrap_or_default();
+        .map_or(&[], |ui| ui.columns.as_slice())
+}
+
+fn columns_of(
+    function: &str,
+    columns: &[Column],
+    requested: Option<&[String]>,
+) -> Result<Vec<String>, KeelError> {
+    let visible: Vec<String> = columns.iter().map(|column| column.key.clone()).collect();
     let Some(requested) = requested else {
         return Ok(visible);
     };
@@ -52,7 +57,7 @@ fn columns_of(
             return Err(KeelError::validation(COLUMNS_KEY)
                 .field("columns")
                 .param("column", key.as_str())
-                .param("function", descriptor.name.as_str()));
+                .param("function", function));
         }
         if !columns.contains(key) {
             columns.push(key.clone());
@@ -145,8 +150,9 @@ mod tests {
     #[test]
     fn the_columns_default_to_the_projected_list_and_a_named_subset_must_be_part_of_it() {
         let descriptor = descriptor(&[("title", None), ("accountId", Some(Level::Reseller))]);
+        let columns = list_columns(&descriptor);
         assert_eq!(
-            columns_of(&descriptor, None).unwrap(),
+            columns_of("note.list", columns, None).unwrap(),
             ["title", "accountId"]
         );
         let picked = vec![
@@ -155,21 +161,27 @@ mod tests {
             "title".to_owned(),
         ];
         assert_eq!(
-            columns_of(&descriptor, Some(&picked)).unwrap(),
+            columns_of("note.list", columns, Some(&picked)).unwrap(),
             ["accountId", "title"]
         );
         let unknown = vec!["body".to_owned()];
-        let error = columns_of(&descriptor, Some(&unknown)).unwrap_err();
+        let error = columns_of("note.list", columns, Some(&unknown)).unwrap_err();
         assert_eq!(error.key(), COLUMNS_KEY);
         assert_eq!(error.field_path(), Some("columns"));
         assert_eq!(error.params()["column"], json!("body"));
+        assert_eq!(error.params()["function"], json!("note.list"));
         assert_eq!(error.status(), 422);
         let bare = Descriptor {
             ui: None,
             ..descriptor
         };
-        assert!(columns_of(&bare, None).unwrap().is_empty());
-        assert!(columns_of(&bare, Some(&unknown)).is_err());
+        assert!(list_columns(&bare).is_empty());
+        assert!(
+            columns_of("note.list", list_columns(&bare), None)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(columns_of("note.list", list_columns(&bare), Some(&unknown)).is_err());
     }
 
     #[test]

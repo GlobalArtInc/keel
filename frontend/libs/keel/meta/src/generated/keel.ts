@@ -51,6 +51,17 @@ export type Expr =
     };
 export type ExportFormat = 'csv' | 'json';
 export type ActorVia = 'su' | 'socket' | 'peer';
+export type ColumnType =
+  'text' | 'number' | 'link' | 'status' | 'toggle' | 'date' | 'datetime' | 'boolean';
+export type Total = 'sum' | 'avg' | 'min' | 'max' | 'count';
+export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+export type ColumnFilter =
+  | {
+      options: string[];
+    }
+  | {
+      remote: string;
+    };
 export type LicenseState = 'none' | 'valid' | 'grace' | 'read_only';
 export type Kind =
   | 'list'
@@ -78,6 +89,7 @@ export type ErrorCode =
   | 'unavailable'
   | 'peer'
   | 'internal';
+export type ChartType = 'line' | 'bar' | 'pie';
 export type Check =
   | 'domain'
   | 'ip'
@@ -91,17 +103,6 @@ export type Check =
   | 'path'
   | 'quoted'
   | 'caa';
-export type ColumnType =
-  'text' | 'number' | 'link' | 'status' | 'toggle' | 'date' | 'datetime' | 'boolean';
-export type Total = 'sum' | 'avg' | 'min' | 'max' | 'count';
-export type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
-export type ColumnFilter =
-  | {
-      options: string[];
-    }
-  | {
-      remote: string;
-    };
 export type Control =
   | 'input'
   | 'password'
@@ -182,6 +183,36 @@ export interface ConfirmDetails {
 }
 export interface Badge {
   problem: string;
+}
+export interface Band {
+  id: string;
+  columns: Column[];
+  formats?: ExportFormat[];
+}
+export interface Column {
+  key: string;
+  type: ColumnType;
+  to?: Link | null;
+  sortable?: boolean;
+  primary?: boolean;
+  total?: Total | null;
+  map?: {
+    [k: string]: Tone;
+  } | null;
+  filter?: ColumnFilter | null;
+  edit?: InlineEdit | null;
+  access?: MemberAccess | null;
+}
+export interface Link {
+  screen: string;
+  params?: Record<string, unknown>;
+}
+export interface InlineEdit {
+  function: string;
+}
+export interface MemberAccess {
+  level?: Level | null;
+  permission?: string | null;
 }
 export interface Boot {
   keel: Platform;
@@ -270,6 +301,12 @@ export interface FieldError {
   key?: string | null;
   params?: Record<string, unknown>;
 }
+export interface Chart {
+  id: string;
+  type: ChartType;
+  series: string;
+  params?: Record<string, unknown>;
+}
 export interface CheckBy {
   field: string;
   cases: {
@@ -286,31 +323,6 @@ export interface Choice {
 export interface Choices {
   data: Choice[];
   more: boolean;
-}
-export interface Column {
-  key: string;
-  type: ColumnType;
-  to?: Link | null;
-  sortable?: boolean;
-  primary?: boolean;
-  total?: Total | null;
-  map?: {
-    [k: string]: Tone;
-  } | null;
-  filter?: ColumnFilter | null;
-  edit?: InlineEdit | null;
-  access?: MemberAccess | null;
-}
-export interface Link {
-  screen: string;
-  params?: Record<string, unknown>;
-}
-export interface InlineEdit {
-  function: string;
-}
-export interface MemberAccess {
-  level?: Level | null;
-  permission?: string | null;
 }
 export interface Context {
   fields?: Record<string, unknown>;
@@ -351,6 +363,8 @@ export interface ScreenUi {
   };
   multi?: string[];
   result?: ScreenResult | null;
+  bands?: Band[];
+  charts?: Chart[];
 }
 export interface Empty {
   title: string;

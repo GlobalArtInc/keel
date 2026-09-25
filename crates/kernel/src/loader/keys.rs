@@ -66,23 +66,19 @@ pub fn of(descriptor: &Descriptor, patched: &BTreeMap<String, String>) -> Vec<De
         );
     }
     for column in &ui.columns {
+        keys.column(column);
+    }
+    for band in &ui.bands {
+        keys.push(&format!("band {}", band.id), &format!("band.{}", band.id));
+        for column in &band.columns {
+            keys.column(column);
+        }
+    }
+    for chart in &ui.charts {
         keys.push(
-            &format!("column {}", column.key),
-            &format!("column.{}", column.key),
+            &format!("chart {}", chart.id),
+            &format!("chart.{}", chart.id),
         );
-        let mut values: Vec<&str> = Vec::new();
-        if let Some(ColumnFilter::Options { options }) = &column.filter {
-            values.extend(options.iter().map(String::as_str));
-        }
-        if let Some(map) = &column.map {
-            values.extend(map.keys().map(String::as_str));
-        }
-        for value in values {
-            keys.push(
-                &format!("column {} value {value}", column.key),
-                &format!("{}.{value}", column.key),
-            );
-        }
     }
     keys.derived
 }
@@ -94,6 +90,26 @@ struct Keys {
 }
 
 impl Keys {
+    fn column(&mut self, column: &keel_types::Column) {
+        self.push(
+            &format!("column {}", column.key),
+            &format!("column.{}", column.key),
+        );
+        let mut values: Vec<&str> = Vec::new();
+        if let Some(ColumnFilter::Options { options }) = &column.filter {
+            values.extend(options.iter().map(String::as_str));
+        }
+        if let Some(map) = &column.map {
+            values.extend(map.keys().map(String::as_str));
+        }
+        for value in values {
+            self.push(
+                &format!("column {} value {value}", column.key),
+                &format!("{}.{value}", column.key),
+            );
+        }
+    }
+
     fn push(&mut self, member: &str, tail: &str) {
         self.push_under(None, member, tail);
     }
@@ -209,6 +225,7 @@ fn enum_values(schema: &Value, defs: Option<&Map<String, Value>>, depth: usize) 
 #[cfg(test)]
 mod tests {
     use keel_sdk::prelude::*;
+    use keel_sdk::ui::{Band, Chart, Report};
     use keel_types::ColumnType;
 
     use super::*;
@@ -337,6 +354,43 @@ mod tests {
         assert!(of(&bare, &BTreeMap::new()).is_empty());
         assert_eq!(entity_prefix("base.item.get"), "base.item");
         assert_eq!(entity_prefix("bare"), "bare");
+    }
+
+    #[test]
+    fn a_report_derives_band_chart_and_band_column_keys() {
+        let descriptor = function::<Nothing, Nothing>("base.report.items")
+            .kind(Kind::Report)
+            .unowned()
+            .ui(Report::new("base.report.items.title")
+                .band(
+                    Band::new("kinds")
+                        .column(
+                            Column::new("kind", ColumnType::Status).map([("heavy", Tone::Warning)]),
+                        )
+                        .column(Column::new("count", ColumnType::Number).total(Total::Sum)),
+                )
+                .chart(Chart::new(
+                    "trend",
+                    keel_types::ChartType::Line,
+                    "base.report.series",
+                )))
+            .handler(|_: Call<Nothing>| async { Ok(Nothing {}) })
+            .descriptor()
+            .unwrap();
+        let listed: Vec<String> = of(&descriptor, &BTreeMap::new())
+            .into_iter()
+            .map(|key| key.key)
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                "base.report.band.kinds",
+                "base.report.column.kind",
+                "base.report.kind.heavy",
+                "base.report.column.count",
+                "base.report.chart.trend",
+            ]
+        );
     }
 
     #[test]

@@ -1,0 +1,173 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: note.report.tags
+  level: user
+---
+{
+  "keel": 1,
+  "name": "note.report.tags",
+  "module": "note",
+  "kind": "report",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "note.read"
+  },
+  "params": {
+    "title": "Period",
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "to": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      }
+    }
+  },
+  "result": {
+    "title": "TagsReport",
+    "type": "object",
+    "properties": {
+      "bands": {
+        "$ref": "#/$defs/TagsBands"
+      },
+      "charts": {
+        "$ref": "#/$defs/TagsCharts"
+      }
+    },
+    "required": [
+      "bands",
+      "charts"
+    ],
+    "$defs": {
+      "TagsBands": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/TagNotes"
+            }
+          }
+        },
+        "required": [
+          "tags"
+        ]
+      },
+      "TagNotes": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "tag",
+          "notes"
+        ]
+      },
+      "TagsCharts": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "$ref": "#/$defs/Period"
+          },
+          "tags": {
+            "$ref": "#/$defs/Period"
+          },
+          "share": {
+            "$ref": "#/$defs/Period"
+          }
+        },
+        "required": [
+          "created",
+          "tags",
+          "share"
+        ]
+      },
+      "Period": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          }
+        }
+      }
+    }
+  },
+  "ui": {
+    "title": "note.report.tags.title",
+    "bands": [
+      {
+        "id": "tags",
+        "columns": [
+          {
+            "key": "tag",
+            "type": "text",
+            "primary": true
+          },
+          {
+            "key": "notes",
+            "type": "number",
+            "total": "sum"
+          }
+        ],
+        "formats": [
+          "csv"
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "created",
+        "type": "line",
+        "series": "note.report.series",
+        "params": {
+          "by": "day"
+        }
+      },
+      {
+        "id": "tags",
+        "type": "bar",
+        "series": "note.report.series",
+        "params": {
+          "by": "tag"
+        }
+      },
+      {
+        "id": "share",
+        "type": "pie",
+        "series": "note.report.series",
+        "params": {
+          "by": "tag"
+        }
+      }
+    ]
+  }
+}

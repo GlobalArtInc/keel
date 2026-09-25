@@ -185,6 +185,30 @@
         "problem"
       ]
     },
+    "Band": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Column"
+          }
+        },
+        "formats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExportFormat"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "columns"
+      ]
+    },
     "Boot": {
       "type": "object",
       "properties": {
@@ -543,6 +567,37 @@
       "required": [
         "code",
         "key"
+      ]
+    },
+    "Chart": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/ChartType"
+        },
+        "series": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "series"
+      ]
+    },
+    "ChartType": {
+      "type": "string",
+      "enum": [
+        "line",
+        "bar",
+        "pie"
       ]
     },
     "Check": {
@@ -2070,6 +2125,18 @@
               "type": "null"
             }
           ]
+        },
+        "bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Band"
+          }
+        },
+        "charts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Chart"
+          }
         }
       },
       "required": [

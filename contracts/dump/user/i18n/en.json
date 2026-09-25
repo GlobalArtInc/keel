@@ -58,6 +58,7 @@
         }
       },
       "action": {
+        "apply": "Apply",
         "back": "Back",
         "create": "New",
         "delete": "Delete",
@@ -143,9 +144,11 @@
         "download_route": "The function {function} streams a file; fetch it at {route}",
         "download_stored_inline": "A stored download can only be written inside a task",
         "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",
+        "export_band": "The report {function} has no band {band}",
         "export_columns": "The column {column} is not part of the list {function}",
         "export_output": "The export could not be written",
         "export_page": "The list {function} answered a page the export cannot read",
+        "export_report": "The report {function} did not answer the band {band} as a list of rows",
         "file_encoding": "The file is not UTF-8 text",
         "file_too_large": "The file is above {limit} bytes",
         "file_type": "The file type {type} is not accepted; expected one of {types}",
@@ -220,11 +223,13 @@
         "write_call_without_transaction": "A write call lost its transaction"
       },
       "export": {
+        "band": "Band",
         "columns": "Columns",
         "format": "Format",
         "format.csv": "CSV",
         "format.json": "JSON",
         "func": "List",
+        "params": "Report parameters",
         "query": "Query"
       },
       "id": "Id",
@@ -323,6 +328,9 @@
           "disabled": "Disabled",
           "enabled": "Enabled"
         }
+      },
+      "report": {
+        "empty": "No data for this period"
       },
       "restart": {
         "progress": {
@@ -1043,7 +1051,160 @@
       },
       "test": "Test email from the channel {channel}"
     },
+    "license": {
+      "action": {
+        "install": "Install a lease",
+        "refresh": "Refresh"
+      },
+      "column": {
+        "expiresAt": "Expires",
+        "graceEndsAt": "Grace ends",
+        "instanceId": "Instance",
+        "issuedAt": "Issued",
+        "products": "Products",
+        "state": "State"
+      },
+      "error": {
+        "clock": "The license clock kept by the installation cannot be read",
+        "instance": "The lease is issued for the installation {instance}, not for this one",
+        "lease": "The signed document is not a lease: {reason}",
+        "not_started": "The license module has not started yet",
+        "signature": "The lease is not signed with the license key: {reason}",
+        "stored": "The stored lease is not a signed text: {value}"
+      },
+      "expired": "The lease expired on {expiresAt} and its grace ended on {graceEndsAt}; the installation is read-only until a new lease is installed",
+      "expiring": "The lease expired on {expiresAt}; everything keeps working until {graceEndsAt}, then the installation turns read-only",
+      "get": {
+        "title": "License"
+      },
+      "install": {
+        "title": "Install a lease"
+      },
+      "lease": "Signed lease",
+      "product_unlisted": "The lease does not list the product {product}; its modules are read-only and its data is kept",
+      "state": {
+        "grace": "In grace",
+        "none": "No lease",
+        "read_only": "Read-only",
+        "valid": "Valid"
+      }
+    },
+    "settings": {
+      "action": {
+        "set": "Change"
+      },
+      "brand": {
+        "action": {
+          "create": "New white-label",
+          "delete": "Delete",
+          "logo": "Logo",
+          "set": "Edit"
+        },
+        "chroma": "Chroma (0 to 0.4)",
+        "chroma.empty": "From the product",
+        "column": {
+          "chroma": "Chroma",
+          "host": "Host name",
+          "hue": "Hue",
+          "logo": "Logo",
+          "name": "Name",
+          "updatedAt": "Updated"
+        },
+        "empty": "No host name carries its own white-label; the installation shows the brand of its product",
+        "host": "Host name",
+        "hue": "Hue (0 to 359)",
+        "hue.empty": "From the product",
+        "list": {
+          "title": "White-label by host name"
+        },
+        "logo": "Logo (SVG)",
+        "logo.title": "Logo of a host name",
+        "name": "Name",
+        "page": {
+          "main": "White-label"
+        },
+        "set": {
+          "title": "White-label of a host name"
+        }
+      },
+      "column": {
+        "key": "Key",
+        "level": "Level",
+        "module": "Module",
+        "scope": "Set for",
+        "value": "Value"
+      },
+      "empty": "No settings are defined",
+      "error": {
+        "brand_svg": "The logo must be an SVG document without a script element: {reason}",
+        "level": "The setting {key} is at level {level}, above your level {caller}",
+        "not_started": "The settings module has not started",
+        "pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
+        "pref_columns_many": "At most {max} columns preferences are kept per principal",
+        "pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
+        "pref_lang": "The language {lang} is not served by this installation",
+        "pref_owner": "The owner has no preferences; it acts over the socket",
+        "pref_text": "The value must be a short text",
+        "pref_tz": "The time zone {tz} is not known",
+        "schema": "The schema of the setting {key} does not compile"
+      },
+      "key": "Key",
+      "level": {
+        "admin": "Administrator",
+        "reseller": "Reseller",
+        "user": "User"
+      },
+      "list": {
+        "title": "Settings"
+      },
+      "pref": {
+        "key": "Preference",
+        "set": {
+          "title": "Preference"
+        },
+        "value": "Value"
+      },
+      "set": {
+        "title": "Setting"
+      },
+      "value": "Value"
+    },
+    "stats": {
+      "error": {
+        "days": "The retention {key} holds {value}, which is not a number of days",
+        "duplicate": "The statistic {key} is contributed more than once",
+        "instant": "The instant {at} cannot be divided into periods",
+        "interval": "The statistic {key} is collected every {seconds} seconds; the interval must be a whole number of minutes",
+        "key": "No statistic {key} is available to you",
+        "not_started": "The stats module has not started yet",
+        "points": "The period holds more than {max} points; choose a coarser resolution or a shorter period",
+        "range": "The period must end after it starts",
+        "subject": "The statistic {key} has no subject {subject} available to you"
+      }
+    },
     "dns": {
+      "report": {
+        "account": "Account",
+        "band": {
+          "accounts": "Zones by account"
+        },
+        "chart": {
+          "zones": "Zones over time"
+        },
+        "column": {
+          "accountId": "Account",
+          "created": "Created in the period",
+          "zones": "Zones at the end of the period"
+        },
+        "error": {
+          "period": "The period ends on {to}, before it starts on {from}"
+        },
+        "from": "First day",
+        "to": "Last day",
+        "zones": {
+          "title": "Zone report"
+        }
+      },
       "zone": {
         "account": "Account",
         "action": {
@@ -1193,137 +1354,6 @@
         "records": "Records; {zone}, {ip} and {ip6} are replaced when a zone is created"
       }
     },
-    "license": {
-      "action": {
-        "install": "Install a lease",
-        "refresh": "Refresh"
-      },
-      "column": {
-        "expiresAt": "Expires",
-        "graceEndsAt": "Grace ends",
-        "instanceId": "Instance",
-        "issuedAt": "Issued",
-        "products": "Products",
-        "state": "State"
-      },
-      "error": {
-        "clock": "The license clock kept by the installation cannot be read",
-        "instance": "The lease is issued for the installation {instance}, not for this one",
-        "lease": "The signed document is not a lease: {reason}",
-        "not_started": "The license module has not started yet",
-        "signature": "The lease is not signed with the license key: {reason}",
-        "stored": "The stored lease is not a signed text: {value}"
-      },
-      "expired": "The lease expired on {expiresAt} and its grace ended on {graceEndsAt}; the installation is read-only until a new lease is installed",
-      "expiring": "The lease expired on {expiresAt}; everything keeps working until {graceEndsAt}, then the installation turns read-only",
-      "get": {
-        "title": "License"
-      },
-      "install": {
-        "title": "Install a lease"
-      },
-      "lease": "Signed lease",
-      "product_unlisted": "The lease does not list the product {product}; its modules are read-only and its data is kept",
-      "state": {
-        "grace": "In grace",
-        "none": "No lease",
-        "read_only": "Read-only",
-        "valid": "Valid"
-      }
-    },
-    "settings": {
-      "action": {
-        "set": "Change"
-      },
-      "brand": {
-        "action": {
-          "create": "New white-label",
-          "delete": "Delete",
-          "logo": "Logo",
-          "set": "Edit"
-        },
-        "chroma": "Chroma (0 to 0.4)",
-        "chroma.empty": "From the product",
-        "column": {
-          "chroma": "Chroma",
-          "host": "Host name",
-          "hue": "Hue",
-          "logo": "Logo",
-          "name": "Name",
-          "updatedAt": "Updated"
-        },
-        "empty": "No host name carries its own white-label; the installation shows the brand of its product",
-        "host": "Host name",
-        "hue": "Hue (0 to 359)",
-        "hue.empty": "From the product",
-        "list": {
-          "title": "White-label by host name"
-        },
-        "logo": "Logo (SVG)",
-        "logo.title": "Logo of a host name",
-        "name": "Name",
-        "page": {
-          "main": "White-label"
-        },
-        "set": {
-          "title": "White-label of a host name"
-        }
-      },
-      "column": {
-        "key": "Key",
-        "level": "Level",
-        "module": "Module",
-        "scope": "Set for",
-        "value": "Value"
-      },
-      "empty": "No settings are defined",
-      "error": {
-        "brand_svg": "The logo must be an SVG document without a script element: {reason}",
-        "level": "The setting {key} is at level {level}, above your level {caller}",
-        "not_started": "The settings module has not started",
-        "pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
-        "pref_columns_many": "At most {max} columns preferences are kept per principal",
-        "pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
-        "pref_lang": "The language {lang} is not served by this installation",
-        "pref_owner": "The owner has no preferences; it acts over the socket",
-        "pref_text": "The value must be a short text",
-        "pref_tz": "The time zone {tz} is not known",
-        "schema": "The schema of the setting {key} does not compile"
-      },
-      "key": "Key",
-      "level": {
-        "admin": "Administrator",
-        "reseller": "Reseller",
-        "user": "User"
-      },
-      "list": {
-        "title": "Settings"
-      },
-      "pref": {
-        "key": "Preference",
-        "set": {
-          "title": "Preference"
-        },
-        "value": "Value"
-      },
-      "set": {
-        "title": "Setting"
-      },
-      "value": "Value"
-    },
-    "stats": {
-      "error": {
-        "days": "The retention {key} holds {value}, which is not a number of days",
-        "duplicate": "The statistic {key} is contributed more than once",
-        "instant": "The instant {at} cannot be divided into periods",
-        "interval": "The statistic {key} is collected every {seconds} seconds; the interval must be a whole number of minutes",
-        "key": "No statistic {key} is available to you",
-        "not_started": "The stats module has not started yet",
-        "points": "The period holds more than {max} points; choose a coarser resolution or a shorter period",
-        "range": "The period must end after it starts",
-        "subject": "The statistic {key} has no subject {subject} available to you"
-      }
-    },
     "task": {
       "action": {
         "cancel": "Cancel",
@@ -1460,6 +1490,25 @@
         "options": "Options",
         "owner": "Owner",
         "source": "Source"
+      },
+      "report": {
+        "band": {
+          "tags": "Tags"
+        },
+        "chart": {
+          "created": "Notes created per day",
+          "share": "Share of the tags",
+          "tags": "Notes per tag"
+        },
+        "column": {
+          "notes": "Notes",
+          "tag": "Tag"
+        },
+        "from": "Created from",
+        "tags": {
+          "title": "Tag report"
+        },
+        "to": "Created until"
       },
       "tag": {
         "column": {

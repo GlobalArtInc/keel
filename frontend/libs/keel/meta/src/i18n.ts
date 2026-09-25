@@ -1,4 +1,4 @@
-import type { Descriptor } from './generated';
+import type { Column, Descriptor } from './generated';
 import { isObject, type JsonObject } from './json';
 
 export const SHARED_PREFIX = 'keel';
@@ -41,19 +41,32 @@ export function derivedKeys(descriptor: Descriptor): DerivedKey[] {
     keys.push(`action ${action.id}`, `action.${action.id}`);
   }
   for (const column of ui.columns ?? []) {
-    keys.push(`column ${column.key}`, `column.${column.key}`);
-    const values: string[] = [];
-    if (column.filter && 'options' in column.filter) {
-      values.push(...column.filter.options);
-    }
-    if (column.map) {
-      values.push(...Object.keys(column.map).sort());
-    }
-    for (const value of values) {
-      keys.push(`column ${column.key} value ${value}`, `${column.key}.${value}`);
+    pushColumn(keys, column);
+  }
+  for (const band of ui.bands ?? []) {
+    keys.push(`band ${band.id}`, `band.${band.id}`);
+    for (const column of band.columns) {
+      pushColumn(keys, column);
     }
   }
+  for (const chart of ui.charts ?? []) {
+    keys.push(`chart ${chart.id}`, `chart.${chart.id}`);
+  }
   return keys.derived;
+}
+
+function pushColumn(keys: Keys, column: Column): void {
+  keys.push(`column ${column.key}`, `column.${column.key}`);
+  const values: string[] = [];
+  if (column.filter && 'options' in column.filter) {
+    values.push(...column.filter.options);
+  }
+  if (column.map) {
+    values.push(...Object.keys(column.map).sort());
+  }
+  for (const value of values) {
+    keys.push(`column ${column.key} value ${value}`, `${column.key}.${value}`);
+  }
 }
 
 export function entityPrefix(func: string): string {

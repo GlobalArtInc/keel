@@ -1310,35 +1310,56 @@ impl References<'_> {
             }
         }
         for column in &ui.columns {
-            if let Some(edit) = &column.edit {
-                self.function(&format!("column {} edit", column.key), &edit.function, None);
+            self.column("column", column);
+        }
+        for band in &ui.bands {
+            let member = format!("band {} column", band.id);
+            for column in &band.columns {
+                self.column(&member, column);
             }
-            if let Some(ColumnFilter::Remote { remote }) = &column.filter {
-                self.function(
-                    &format!("column {} filter", column.key),
-                    remote,
-                    Some(Kind::Options),
-                );
-            }
-            if let Some(link) = &column.to {
-                self.function(&format!("column {} to", column.key), &link.screen, None);
-            }
-            if let Some(permission) = column
-                .access
-                .as_ref()
-                .and_then(|access| access.permission.as_ref())
-            {
-                self.permission(
-                    &format!("column {} access.permission", column.key),
-                    permission,
-                );
-            }
+        }
+        for chart in &ui.charts {
+            self.function(
+                &format!("chart {} series", chart.id),
+                &chart.series,
+                Some(Kind::Get),
+            );
         }
         if let Some(action) = ui.empty.as_ref().and_then(|empty| empty.action.as_ref()) {
             self.action("ui.empty.action", action, &actions);
         }
         for action in &ui.row_actions {
             self.action("ui.row_actions", action, &actions);
+        }
+    }
+
+    fn column(&mut self, member: &str, column: &keel_types::Column) {
+        if let Some(edit) = &column.edit {
+            self.function(
+                &format!("{member} {} edit", column.key),
+                &edit.function,
+                None,
+            );
+        }
+        if let Some(ColumnFilter::Remote { remote }) = &column.filter {
+            self.function(
+                &format!("{member} {} filter", column.key),
+                remote,
+                Some(Kind::Options),
+            );
+        }
+        if let Some(link) = &column.to {
+            self.function(&format!("{member} {} to", column.key), &link.screen, None);
+        }
+        if let Some(permission) = column
+            .access
+            .as_ref()
+            .and_then(|access| access.permission.as_ref())
+        {
+            self.permission(
+                &format!("{member} {} access.permission", column.key),
+                permission,
+            );
         }
     }
 
@@ -1442,8 +1463,9 @@ mod tests {
     use futures::future::BoxFuture;
     use keel_sdk::prelude::*;
     use keel_sdk::runtime::{CallHandle, Invoker, UiError};
+    use keel_sdk::ui::{Band, Chart, Report};
     use keel_sdk::{DescriptorPatch, Registrar};
-    use keel_types::ColumnType;
+    use keel_types::{ChartType, ColumnType};
     use schemars::json_schema;
 
     use super::*;
@@ -2270,9 +2292,21 @@ mod tests {
                 .ui(Form::new("dangling.item.wrong.title").read("dangling.item.list"))
                 .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
         )
+        .function(
+            function::<Nothing, Nothing>("dangling.report.sums")
+                .kind(Kind::Report)
+                .unowned()
+                .ui(Report::new("dangling.report.sums.title")
+                    .band(Band::new("totals").column(Column::new("weight", ColumnType::Link).to("dangling.item.open", [])))
+                    .chart(Chart::new("trend", ChartType::Line, "dangling.report.series"))
+                    .chart(Chart::new("share", ChartType::Pie, "dangling.item.list")))
+                .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
+        )
         .menu(MenuNode::new("system/dangling", "dangling.item.nowhere"))
         .i18n("en", r#"{ "dangling": { "item": { "edit": { "title": "E" }, "list": { "title": "L" }, "wrong": { "title": "W" }, "empty": "N",
-                                          "action": { "new": "New", "drop": "Drop" }, "column": { "weight": "Weight" } } } }"#);
+                                          "action": { "new": "New", "drop": "Drop" }, "column": { "weight": "Weight" } },
+                                "report": { "sums": { "title": "S" }, "band": { "totals": "T" }, "column": { "weight": "W" },
+                                            "chart": { "trend": "Tr", "share": "Sh" } } } }"#);
         Ok(())
     }
 
@@ -2296,6 +2330,9 @@ mod tests {
                 "function dangling.item.list: ui.empty.action names the action phantom, which the screen does not have",
                 "function dangling.item.list: ui.row_actions names the action ghost, which the screen does not have",
                 "function dangling.item.wrong: ui.read names dangling.item.list, which is a list function, not get",
+                "function dangling.report.sums: band totals column weight to names dangling.item.open, which is not registered",
+                "function dangling.report.sums: chart trend series names dangling.report.series, which is not registered",
+                "function dangling.report.sums: chart share series names dangling.item.list, which is a list function, not get",
                 "module dangling: menu node system/dangling points at dangling.item.nowhere, which is not registered",
             ]
         );

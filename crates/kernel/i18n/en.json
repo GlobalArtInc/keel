@@ -56,6 +56,7 @@
       }
     },
     "action": {
+      "apply": "Apply",
       "back": "Back",
       "create": "New",
       "delete": "Delete",
@@ -141,9 +142,11 @@
       "download_route": "The function {function} streams a file; fetch it at {route}",
       "download_stored_inline": "A stored download can only be written inside a task",
       "enrich_not_object": "A hook of {module} on {function} enriched the parameters with a non-object",
+      "export_band": "The report {function} has no band {band}",
       "export_columns": "The column {column} is not part of the list {function}",
       "export_output": "The export could not be written",
       "export_page": "The list {function} answered a page the export cannot read",
+      "export_report": "The report {function} did not answer the band {band} as a list of rows",
       "file_encoding": "The file is not UTF-8 text",
       "file_too_large": "The file is above {limit} bytes",
       "file_type": "The file type {type} is not accepted; expected one of {types}",
@@ -218,11 +221,13 @@
       "write_call_without_transaction": "A write call lost its transaction"
     },
     "export": {
+      "band": "Band",
       "columns": "Columns",
       "format": "Format",
       "format.csv": "CSV",
       "format.json": "JSON",
       "func": "List",
+      "params": "Report parameters",
       "query": "Query"
     },
     "id": "Id",
@@ -321,6 +326,9 @@
         "disabled": "Disabled",
         "enabled": "Enabled"
       }
+    },
+    "report": {
+      "empty": "No data for this period"
     },
     "restart": {
       "progress": {

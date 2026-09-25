@@ -33,6 +33,10 @@ pub struct ScreenUi {
     pub multi: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<ScreenResult>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bands: Vec<Band>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub charts: Vec<Chart>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -219,6 +223,32 @@ pub enum ScreenResult {
     Download,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Band {
+    pub id: String,
+    pub columns: Vec<Column>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub formats: Vec<ExportFormat>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Chart {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: ChartType,
+    pub series: String,
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub params: Map<String, Value>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChartType {
+    Line,
+    Bar,
+    Pie,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,6 +264,56 @@ mod tests {
         assert!(serde_json::from_value::<ConfirmInput>(json!("name")).is_err());
         assert!(serde_json::from_value::<ScreenResult>(json!("reload")).is_err());
         assert!(serde_json::from_value::<ColumnFilter>(json!({ "values": ["a"] })).is_err());
+        assert!(serde_json::from_value::<ChartType>(json!("doughnut")).is_err());
+    }
+
+    #[test]
+    fn report_ui_round_trips() {
+        let report = ScreenUi {
+            title: "dns.report.zones.title".into(),
+            bands: vec![Band {
+                id: "accounts".into(),
+                columns: vec![Column {
+                    key: "zones".into(),
+                    kind: ColumnType::Number,
+                    to: None,
+                    sortable: false,
+                    primary: false,
+                    total: Some(Total::Sum),
+                    map: None,
+                    filter: None,
+                    edit: None,
+                    access: None,
+                }],
+                formats: vec![ExportFormat::Csv],
+            }],
+            charts: vec![Chart {
+                id: "zones".into(),
+                kind: ChartType::Line,
+                series: "stats.series".into(),
+                params: Map::from_iter([("key".to_owned(), json!("dns.zones"))]),
+            }],
+            ..Default::default()
+        };
+        let wire = serde_json::to_value(&report).unwrap();
+        assert_eq!(
+            wire,
+            json!({
+                "title": "dns.report.zones.title",
+                "bands": [{
+                    "id": "accounts",
+                    "columns": [{ "key": "zones", "type": "number", "total": "sum" }],
+                    "formats": ["csv"]
+                }],
+                "charts": [{
+                    "id": "zones",
+                    "type": "line",
+                    "series": "stats.series",
+                    "params": { "key": "dns.zones" }
+                }]
+            })
+        );
+        assert_eq!(serde_json::from_value::<ScreenUi>(wire).unwrap(), report);
     }
 
     #[test]

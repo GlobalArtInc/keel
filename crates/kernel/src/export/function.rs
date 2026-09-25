@@ -5,11 +5,12 @@ use keel_sdk::list::DEFAULT_MAX_PAGE_SIZE;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::TASKS_UNAVAILABLE_KEY;
 use keel_sdk::{Download, DownloadOutcome, KeelError, TaskHandle};
+use keel_types::ui::Band;
 use keel_types::{Descriptor, ExportFormat, Kind, ListQuery, Page};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::json::Json;
-use super::{Csv, columns_of, content_type, extension, labels};
+use super::{BAND_KEY, Csv, columns_of, content_type, extension, labels, list_columns};
 use crate::dispatcher::{CallerHandle, guards};
 use crate::http::Projection;
 use crate::registry::Registry;
@@ -18,6 +19,7 @@ pub const FUNCTION: &str = "keel.export";
 pub const EXPORT_TASK_ROWS: u32 = 10_000;
 pub const CLASS: &str = "export";
 const OUTPUT_KEY: &str = "keel.error.export_output";
+const REPORT_KEY: &str = "keel.error.export_report";
 
 #[derive(Clone, Deserialize, Serialize, JsonSchema)]
 struct ExportParams {
@@ -28,6 +30,10 @@ struct ExportParams {
     columns: Option<Vec<String>>,
     #[serde(default)]
     format: ExportFormat,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    band: Option<String>,
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    params: Map<String, Value>,
 }
 
 struct Target {
@@ -47,8 +53,15 @@ pub fn function() -> FunctionDef {
 
 async fn export(call: Call<ExportParams>) -> Result<DownloadOutcome> {
     let target = resolve(&call)?;
+    if target.descriptor.kind == Kind::Report {
+        return export_band(&call, &target).await;
+    }
     let params = call.params();
-    let columns = columns_of(&target.descriptor, params.columns.as_deref())?;
+    let columns = columns_of(
+        &params.func,
+        list_columns(&target.descriptor),
+        params.columns.as_deref(),
+    )?;
     let mut query = params.query.clone();
     query.page = 1;
     query.page_size = target.page_size;
@@ -97,6 +110,75 @@ async fn export(call: Call<ExportParams>) -> Result<DownloadOutcome> {
     }
 }
 
+async fn export_band(call: &Call<ExportParams>, target: &Target) -> Result<DownloadOutcome> {
+    let params = call.params();
+    let band = band_of(&target.descriptor, params.band.as_deref())?;
+    let columns = columns_of(&params.func, &band.columns, params.columns.as_deref())?;
+    let answer = call
+        .invoke(&params.func, Value::Object(params.params.clone()))
+        .await?;
+    let rows = rows_of(&params.func, &band.id, answer)?;
+    let labels = labels(
+        &target.registry,
+        &call.principal().lang,
+        &params.func,
+        &columns,
+    );
+    let now = call.require::<dyn Clock>()?.now();
+    let date = now.with_timezone(&call.tz()).date_naive();
+    let filename = format!(
+        "{}-{}-{date}.{}",
+        params.func,
+        band.id,
+        extension(params.format)
+    );
+    let writer = Writer {
+        format: params.format,
+        columns,
+        labels,
+        picked: params.columns.is_some(),
+    };
+    let mut buffer = Vec::new();
+    let mut json = writer.begin(&mut buffer)?;
+    for row in rows {
+        buffer.extend_from_slice(writer.line(&mut json, row).as_bytes());
+    }
+    finish(json, &mut buffer)?;
+    Ok(Download::bytes(filename, content_type(params.format), buffer).into())
+}
+
+fn band_of<'a>(descriptor: &'a Descriptor, band: Option<&str>) -> Result<&'a Band> {
+    let wanted = band.unwrap_or_default();
+    descriptor
+        .ui
+        .as_ref()
+        .and_then(|ui| ui.bands.iter().find(|candidate| candidate.id == wanted))
+        .ok_or_else(|| {
+            KeelError::validation(BAND_KEY)
+                .field("band")
+                .param("band", wanted)
+                .param("function", descriptor.name.as_str())
+        })
+}
+
+fn rows_of(func: &str, band: &str, answer: Value) -> Result<Vec<Value>> {
+    let refused = || {
+        KeelError::internal(REPORT_KEY)
+            .param("function", func)
+            .param("band", band)
+    };
+    let Value::Object(mut answer) = answer else {
+        return Err(refused());
+    };
+    let Some(Value::Object(mut bands)) = answer.remove("bands") else {
+        return Err(refused());
+    };
+    match bands.remove(band) {
+        Some(Value::Array(rows)) => Ok(rows),
+        _ => Err(refused()),
+    }
+}
+
 fn resolve(call: &Call<ExportParams>) -> Result<Target> {
     let func = call.params().func.as_str();
     let not_found =
@@ -106,7 +188,7 @@ fn resolve(call: &Call<ExportParams>) -> Result<Target> {
     })?;
     let function = registry
         .function(func)
-        .filter(|function| function.def().kind() == Kind::List)
+        .filter(|function| matches!(function.def().kind(), Kind::List | Kind::Report))
         .ok_or_else(not_found)?;
     let projection = Projection::new(&registry, call.principal());
     projection.admit(function).map_err(|_| not_found())?;
@@ -153,33 +235,14 @@ async fn write_all<W: Write>(
 ) -> Result<()> {
     let total = first.total;
     let page_size = query.page_size;
-    let mut json = match writer.format {
-        ExportFormat::Csv => {
-            let labels: Vec<&str> = writer.labels.iter().map(String::as_str).collect();
-            out.write_all(Csv::record(labels).as_bytes())
-                .map_err(output_failed)?;
-            None
-        }
-        ExportFormat::Json => {
-            let (json, head) = Json::begin();
-            out.write_all(head.as_bytes()).map_err(output_failed)?;
-            Some(json)
-        }
-    };
-    let picked = writer.picked.then_some(writer.columns.as_slice());
+    let mut json = writer.begin(out)?;
     let mut page = first;
     let mut written: u64 = 0;
     loop {
         let count = page.data.len();
         for row in page.data {
-            let text = match &mut json {
-                Some(json) => json.row(picked, row),
-                None => {
-                    let cells = Csv::row(&writer.columns, &row);
-                    Csv::record(cells.iter().map(String::as_str))
-                }
-            };
-            out.write_all(text.as_bytes()).map_err(output_failed)?;
+            out.write_all(writer.line(&mut json, row).as_bytes())
+                .map_err(output_failed)?;
         }
         written += count as u64;
         if let Some(task) = task {
@@ -195,6 +258,38 @@ async fn write_all<W: Write>(
         query.page += 1;
         page = fetch(call, &call.params().func, &query).await?;
     }
+    finish(json, out)
+}
+
+impl Writer {
+    fn begin<W: Write>(&self, out: &mut W) -> Result<Option<Json>> {
+        match self.format {
+            ExportFormat::Csv => {
+                let labels: Vec<&str> = self.labels.iter().map(String::as_str).collect();
+                out.write_all(Csv::record(labels).as_bytes())
+                    .map_err(output_failed)?;
+                Ok(None)
+            }
+            ExportFormat::Json => {
+                let (json, head) = Json::begin();
+                out.write_all(head.as_bytes()).map_err(output_failed)?;
+                Ok(Some(json))
+            }
+        }
+    }
+
+    fn line(&self, json: &mut Option<Json>, row: Value) -> String {
+        match json {
+            Some(json) => json.row(self.picked.then_some(self.columns.as_slice()), row),
+            None => {
+                let cells = Csv::row(&self.columns, &row);
+                Csv::record(cells.iter().map(String::as_str))
+            }
+        }
+    }
+}
+
+fn finish<W: Write>(json: Option<Json>, out: &mut W) -> Result<()> {
     if let Some(json) = json {
         out.write_all(json.end().as_bytes())
             .map_err(output_failed)?;

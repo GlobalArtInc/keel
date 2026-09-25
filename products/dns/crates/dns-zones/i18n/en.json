@@ -1,5 +1,27 @@
 {
   "dns": {
+    "report": {
+      "account": "Account",
+      "band": {
+        "accounts": "Zones by account"
+      },
+      "chart": {
+        "zones": "Zones over time"
+      },
+      "column": {
+        "accountId": "Account",
+        "created": "Created in the period",
+        "zones": "Zones at the end of the period"
+      },
+      "error": {
+        "period": "The period ends on {to}, before it starts on {from}"
+      },
+      "from": "First day",
+      "to": "Last day",
+      "zones": {
+        "title": "Zone report"
+      }
+    },
     "zone": {
       "account": "Account",
       "action": {

@@ -1,0 +1,191 @@
+{
+  "keel": 1,
+  "name": "dns.report.zones",
+  "module": "dns",
+  "kind": "report",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.read",
+    "feature": "dns.zones"
+  },
+  "params": {
+    "title": "ZonesQuery",
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "to": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date"
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "admin",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "ZonesReport",
+    "type": "object",
+    "properties": {
+      "bands": {
+        "$ref": "#/$defs/ZonesBands"
+      },
+      "charts": {
+        "$ref": "#/$defs/ZonesCharts"
+      }
+    },
+    "required": [
+      "bands",
+      "charts"
+    ],
+    "$defs": {
+      "ZonesBands": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AccountZones"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ]
+      },
+      "AccountZones": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "zones": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "accountId",
+          "zones",
+          "created"
+        ]
+      },
+      "ZonesCharts": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "$ref": "#/$defs/SeriesWindow"
+          }
+        },
+        "required": [
+          "zones"
+        ]
+      },
+      "SeriesWindow": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.report.zones.title",
+    "bands": [
+      {
+        "id": "accounts",
+        "columns": [
+          {
+            "key": "accountId",
+            "type": "text",
+            "primary": true
+          },
+          {
+            "key": "zones",
+            "type": "number",
+            "total": "sum"
+          },
+          {
+            "key": "created",
+            "type": "number",
+            "total": "sum"
+          }
+        ],
+        "formats": [
+          "csv",
+          "json"
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "zones",
+        "type": "line",
+        "series": "stats.series",
+        "params": {
+          "key": "dns.zones",
+          "resolution": "day"
+        }
+      }
+    ]
+  }
+}

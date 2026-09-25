@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use keel_types::expr::ParseError;
 use keel_types::ui::{
-    Action as WireAction, Column as WireColumn, ColumnFilter, ColumnType, Confirm, ConfirmDetails,
-    Empty, ExportFormat, FieldUi, InlineEdit, Link, ScreenPage, ScreenResult, ScreenUi, Tone,
-    Total,
+    Action as WireAction, Band as WireBand, Chart as WireChart, ChartType, Column as WireColumn,
+    ColumnFilter, ColumnType, Confirm, ConfirmDetails, Empty, ExportFormat, FieldUi, InlineEdit,
+    Link, ScreenPage, ScreenResult, ScreenUi, Tone, Total,
 };
 use keel_types::{Access, Expr, Level, MemberAccess};
 use serde_json::{Map, Value};
@@ -525,6 +525,97 @@ impl From<List> for UiDef {
 }
 
 #[derive(Clone, Debug)]
+pub struct Report {
+    def: UiDef,
+}
+
+impl Report {
+    pub fn new(title: &str) -> Self {
+        Self {
+            def: UiDef {
+                screen: ScreenUi {
+                    title: title.to_owned(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn band(mut self, band: Band) -> Self {
+        self.def.screen.bands.push(band.inner);
+        self
+    }
+
+    pub fn chart(mut self, chart: Chart) -> Self {
+        self.def.screen.charts.push(chart.inner);
+        self
+    }
+}
+
+impl From<Report> for UiDef {
+    fn from(report: Report) -> Self {
+        report.def
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Band {
+    inner: WireBand,
+}
+
+impl Band {
+    pub fn new(id: &str) -> Self {
+        Self {
+            inner: WireBand {
+                id: id.to_owned(),
+                columns: Vec::new(),
+                formats: Vec::new(),
+            },
+        }
+    }
+
+    pub fn column(mut self, column: Column) -> Self {
+        self.inner.columns.push(column.inner);
+        self
+    }
+
+    pub fn formats<I>(mut self, formats: I) -> Self
+    where
+        I: IntoIterator<Item = ExportFormat>,
+    {
+        self.inner.formats = formats.into_iter().collect();
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Chart {
+    inner: WireChart,
+}
+
+impl Chart {
+    pub fn new(id: &str, kind: ChartType, series: &str) -> Self {
+        Self {
+            inner: WireChart {
+                id: id.to_owned(),
+                kind,
+                series: series.to_owned(),
+                params: Map::new(),
+            },
+        }
+    }
+
+    pub fn params<'a, I>(mut self, params: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        self.inner.params = string_map(params);
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Column {
     inner: WireColumn,
 }
@@ -777,6 +868,47 @@ mod tests {
             .recompute("dns.zone.recompute")
             .multi(["ttl"])
             .into()
+    }
+
+    #[test]
+    fn a_report_carries_its_bands_and_charts_in_order() {
+        let def: UiDef = Report::new("dns.report.zones.title")
+            .band(
+                Band::new("accounts")
+                    .column(Column::new("accountId", ColumnType::Text).primary())
+                    .column(Column::new("zones", ColumnType::Number).total(Total::Sum))
+                    .formats([ExportFormat::Csv, ExportFormat::Json]),
+            )
+            .chart(
+                Chart::new("zones", ChartType::Line, "stats.series")
+                    .params([("key", "dns.zones"), ("resolution", "day")]),
+            )
+            .chart(Chart::new("share", ChartType::Pie, "dns.report.share"))
+            .into();
+        let screen = def.compile(&BTreeSet::new()).expect("compiles");
+        assert_eq!(
+            serde_json::to_value(&screen).expect("json"),
+            json!({
+                "title": "dns.report.zones.title",
+                "bands": [{
+                    "id": "accounts",
+                    "columns": [
+                        { "key": "accountId", "type": "text", "primary": true },
+                        { "key": "zones", "type": "number", "total": "sum" }
+                    ],
+                    "formats": ["csv", "json"]
+                }],
+                "charts": [
+                    {
+                        "id": "zones",
+                        "type": "line",
+                        "series": "stats.series",
+                        "params": { "key": "dns.zones", "resolution": "day" }
+                    },
+                    { "id": "share", "type": "pie", "series": "dns.report.share" }
+                ]
+            })
+        );
     }
 
     #[test]

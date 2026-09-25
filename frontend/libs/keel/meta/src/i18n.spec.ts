@@ -76,6 +76,39 @@ describe('derivedKeys', () => {
     });
   });
 
+  it('derives the band, band column and chart keys of a report as the kernel does', () => {
+    const report: Descriptor = {
+      keel: 1,
+      name: 'base.report.items',
+      module: 'base',
+      kind: 'report',
+      mode: 'read',
+      access: { level: 'user' },
+      params: { type: 'object' },
+      result: { type: 'object' },
+      ui: {
+        title: 'base.report.items.title',
+        bands: [
+          {
+            id: 'kinds',
+            columns: [
+              { key: 'kind', type: 'status', map: { heavy: 'warning' } },
+              { key: 'count', type: 'number', total: 'sum' },
+            ],
+          },
+        ],
+        charts: [{ id: 'trend', type: 'line', series: 'base.report.series' }],
+      },
+    };
+    expect(derivedKeys(report).map((derived) => derived.key)).toEqual([
+      'base.report.band.kinds',
+      'base.report.column.kind',
+      'base.report.kind.heavy',
+      'base.report.column.count',
+      'base.report.chart.trend',
+    ]);
+  });
+
   it('a form without pages derives every property but the key, and a screenless function none', () => {
     const edit = descriptor('descriptor-dns-zone-edit.json');
     const flat: Descriptor = { ...edit, ui: { title: 'dns.zone.edit.title' } };

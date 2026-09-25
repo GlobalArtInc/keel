@@ -573,6 +573,8 @@ async fn the_note_descriptors_match_their_snapshots_per_level() {
                 "note.import.check",
                 "note.list",
                 "note.recompute",
+                "note.report.series",
+                "note.report.tags",
                 "note.tag.list",
             ]
         };

@@ -3509,6 +3509,108 @@
         }
       }
     },
+    "/api/v1/call/dns.report.zones": {
+      "post": {
+        "operationId": "dns.report.zones",
+        "tags": [
+          "dns"
+        ],
+        "x-keel": {
+          "kind": "report",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.zone.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ZonesQuery",
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  },
+                  "account": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "admin",
+                      "options": "keel.account.options"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ZonesReport",
+                      "type": "object",
+                      "properties": {
+                        "bands": {
+                          "$ref": "#/components/schemas/ZonesBands"
+                        },
+                        "charts": {
+                          "$ref": "#/components/schemas/ZonesCharts"
+                        }
+                      },
+                      "required": [
+                        "bands",
+                        "charts"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/dns.template.create": {
       "post": {
         "operationId": "dns.template.create",
@@ -5714,6 +5816,16 @@
                     "format": {
                       "$ref": "#/components/schemas/ExportFormat",
                       "default": "csv"
+                    },
+                    "band": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "params": {
+                      "type": "object",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -5799,6 +5911,16 @@
                   "format": {
                     "$ref": "#/components/schemas/ExportFormat",
                     "default": "csv"
+                  },
+                  "band": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": true
                   }
                 },
                 "required": [
@@ -7716,6 +7838,185 @@
                       },
                       "required": [
                         "values"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/note.report.series": {
+      "post": {
+        "operationId": "note.report.series",
+        "tags": [
+          "note"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "note.read"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SeriesQuery",
+                "type": "object",
+                "properties": {
+                  "by": {
+                    "$ref": "#/components/schemas/By"
+                  },
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  }
+                },
+                "required": [
+                  "by"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Series",
+                      "type": "object",
+                      "properties": {
+                        "points": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/note.report.series.result.Point"
+                          }
+                        }
+                      },
+                      "required": [
+                        "points"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/note.report.tags": {
+      "post": {
+        "operationId": "note.report.tags",
+        "tags": [
+          "note"
+        ],
+        "x-keel": {
+          "kind": "report",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "note.read"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Period",
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  },
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TagsReport",
+                      "type": "object",
+                      "properties": {
+                        "bands": {
+                          "$ref": "#/components/schemas/TagsBands"
+                        },
+                        "charts": {
+                          "$ref": "#/components/schemas/TagsCharts"
+                        }
+                      },
+                      "required": [
+                        "bands",
+                        "charts"
                       ]
                     },
                     "meta": {
@@ -9978,7 +10279,7 @@
                         "points": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/Point"
+                            "$ref": "#/components/schemas/stats.series.result.Point"
                           }
                         }
                       },
@@ -11834,6 +12135,27 @@
           "deleting"
         ]
       },
+      "AccountZones": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "zones": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "accountId",
+          "zones",
+          "created"
+        ]
+      },
       "ActorVia": {
         "type": "string",
         "enum": [
@@ -12031,6 +12353,13 @@
           "logo",
           "updatedAt",
           "updatedBy"
+        ]
+      },
+      "By": {
+        "type": "string",
+        "enum": [
+          "tag",
+          "day"
         ]
       },
       "CallError": {
@@ -12707,43 +13036,24 @@
           "interrupted"
         ]
       },
-      "Point": {
+      "Period": {
         "type": "object",
         "properties": {
-          "at": {
-            "type": "string",
-            "format": "date-time"
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
           },
-          "value": {
-            "type": "number",
-            "format": "double"
-          },
-          "min": {
-            "type": "number",
-            "format": "double"
-          },
-          "max": {
-            "type": "number",
-            "format": "double"
-          },
-          "sum": {
-            "type": "number",
-            "format": "double"
-          },
-          "count": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
           }
-        },
-        "required": [
-          "at",
-          "value",
-          "min",
-          "max",
-          "sum",
-          "count"
-        ]
+        }
       },
       "Principal": {
         "type": "object",
@@ -13112,6 +13422,33 @@
           "tls"
         ]
       },
+      "SeriesWindow": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
       "SessionRow": {
         "type": "object",
         "properties": {
@@ -13317,6 +13654,56 @@
         "required": [
           "tag",
           "count"
+        ]
+      },
+      "TagNotes": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "tag",
+          "notes"
+        ]
+      },
+      "TagsBands": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TagNotes"
+            }
+          }
+        },
+        "required": [
+          "tags"
+        ]
+      },
+      "TagsCharts": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "tags": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "share": {
+            "$ref": "#/components/schemas/Period"
+          }
+        },
+        "required": [
+          "created",
+          "tags",
+          "share"
         ]
       },
       "TaskLink": {
@@ -13677,6 +14064,31 @@
           "updatedAt"
         ]
       },
+      "ZonesBands": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountZones"
+            }
+          }
+        },
+        "required": [
+          "accounts"
+        ]
+      },
+      "ZonesCharts": {
+        "type": "object",
+        "properties": {
+          "zones": {
+            "$ref": "#/components/schemas/SeriesWindow"
+          }
+        },
+        "required": [
+          "zones"
+        ]
+      },
       "auth.token.create.params.Scope": {
         "oneOf": [
           {
@@ -13752,6 +14164,32 @@
           "tags",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "note.report.series.result.Point": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "value"
         ]
       },
       "notify.channel.list.result.Channel": {
@@ -13924,6 +14362,44 @@
         "enum": [
           "installation",
           "account"
+        ]
+      },
+      "stats.series.result.Point": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "sum": {
+            "type": "number",
+            "format": "double"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "at",
+          "value",
+          "min",
+          "max",
+          "sum",
+          "count"
         ]
       },
       "update.apply.result.Channel": {

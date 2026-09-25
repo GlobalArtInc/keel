@@ -21,7 +21,9 @@ export interface TableState {
 
 export interface ExportRequest {
   func: string;
-  query: ListQuery;
+  query?: ListQuery;
+  band?: string;
+  params?: Record<string, unknown>;
   columns: string[];
   format: ExportFormat;
 }

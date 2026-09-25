@@ -17,8 +17,9 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Authenticated, Authenticator, CallExt, Client, Credential, SessionChange};
+use keel_sdk::ui::{Band, Chart, Report};
 use keel_testkit::TestDatabase;
-use keel_types::{ErrorCode, Scope, Via};
+use keel_types::{ChartType, ErrorCode, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -30,7 +31,10 @@ const CUSTOMER: &str = "01J8A0000000000000000000A2";
 const FORWARDED_FOR: &str = "x-forwarded-for";
 const FORWARDED_HOST: &str = "x-forwarded-host";
 
-const EN: &str = r#"{ "probe": { "greeting": "Hello", "only_en": "English only" } }"#;
+const EN: &str = r#"{ "probe": { "greeting": "Hello", "only_en": "English only",
+    "report": { "sums": { "title": "Sums" }, "band": { "rows": "Rows" },
+                "column": { "name": "Name", "secret": "Secret" },
+                "chart": { "mine": "Mine", "all": "All" } } } }"#;
 const RU: &str = r#"{ "probe": { "greeting": "ru:Hello" } }"#;
 const KERNEL_RU: &str = include_str!("../../i18n/ru.json");
 
@@ -178,6 +182,32 @@ fn init(r: &mut Registrar) -> Result<()> {
             .kind(Kind::Action)
             .level(Level::Admin)
             .unowned()
+            .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
+    )
+    .function(
+        function::<Nothing, Nothing>("probe.series")
+            .kind(Kind::Get)
+            .level(Level::Admin)
+            .unowned()
+            .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
+    )
+    .function(
+        function::<Nothing, Nothing>("probe.report.sums")
+            .kind(Kind::Report)
+            .level(Level::User)
+            .unowned()
+            .ui(Report::new("probe.report.sums.title")
+                .band(
+                    Band::new("rows")
+                        .column(Column::new("name", ColumnType::Text))
+                        .column(
+                            Column::new("secret", ColumnType::Number)
+                                .level(Level::Admin)
+                                .total(Total::Sum),
+                        ),
+                )
+                .chart(Chart::new("mine", ChartType::Line, "probe.ping"))
+                .chart(Chart::new("all", ChartType::Bar, "probe.series")))
             .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
     )
     .function(
@@ -928,6 +958,50 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .await;
     assert_eq!(below.status, StatusCode::FORBIDDEN);
     assert_eq!(below.code(), ErrorCode::Forbidden);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_report_projects_its_band_columns_and_charts_by_level() {
+    let bench = bench().await;
+    let seen = |descriptor: &Value| -> (Vec<String>, Vec<String>) {
+        let ui = &descriptor["ui"];
+        let columns = ui["bands"][0]["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|column| column["key"].as_str().unwrap().to_owned())
+            .collect();
+        let charts = ui["charts"]
+            .as_array()
+            .map(|charts| {
+                charts
+                    .iter()
+                    .map(|chart| chart["id"].as_str().unwrap().to_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        (columns, charts)
+    };
+    let as_user = bench
+        .get("/api/v1/functions/probe.report.sums", Some(&user()))
+        .await;
+    assert_eq!(as_user.status, StatusCode::OK, "{}", as_user.body);
+    assert_eq!(as_user.body["kind"], json!("report"));
+    assert_eq!(
+        seen(&as_user.body),
+        (vec!["name".to_owned()], vec!["mine".to_owned()])
+    );
+    let as_admin = bench
+        .get("/api/v1/functions/probe.report.sums", Some(&admin()))
+        .await;
+    assert_eq!(
+        seen(&as_admin.body),
+        (
+            vec!["name".to_owned(), "secret".to_owned()],
+            vec!["mine".to_owned(), "all".to_owned()]
+        )
+    );
     bench.finish().await;
 }
 

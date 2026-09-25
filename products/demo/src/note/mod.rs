@@ -6,6 +6,7 @@ mod import;
 mod item;
 mod lifecycle;
 mod problems;
+mod report;
 mod tags;
 
 use keel::prelude::*;
@@ -16,7 +17,7 @@ pub const MAX_LINE: usize = 200;
 pub const LOCKED_PREFIX: &str = "locked";
 pub const DELETE_BATCH_THRESHOLD: u32 = 10;
 pub const GROUP_BATCH_THRESHOLD: u32 = 10;
-pub const FUNCTIONS: [&str; 10] = [
+pub const FUNCTIONS: [&str; 12] = [
     "note.list",
     "note.get",
     "note.edit",
@@ -27,6 +28,8 @@ pub const FUNCTIONS: [&str; 10] = [
     "note.import.check",
     "note.tag.list",
     "note.export",
+    "note.report.tags",
+    "note.report.series",
 ];
 
 pub use export::{
@@ -118,6 +121,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(import::check())
         .function(tags::list())
         .function(export::export())
+        .function(report::report())
+        .function(report::series())
         .permission("note.read", &[Level::User, Level::Reseller])
         .permission("note.manage", &[Level::User, Level::Reseller])
         .menu(
@@ -134,6 +139,11 @@ fn init(r: &mut Registrar) -> Result<()> {
             MenuNode::new("demo/tags", "note.tag.list")
                 .icon("tag")
                 .order(20),
+        )
+        .menu(
+            MenuNode::new("demo/report", report::REPORT)
+                .icon("chart-bar")
+                .order(30),
         )
         .i18n("en", include_str!("../../i18n/note/en.json"))
         .i18n("ru", include_str!("../../i18n/note/ru.json"))
@@ -172,6 +182,8 @@ mod tests {
                 ("note.import.check", Kind::Action, Mode::Read),
                 ("note.tag.list", Kind::List, Mode::Read),
                 ("note.export", Kind::Action, Mode::Read),
+                ("note.report.tags", Kind::Report, Mode::Read),
+                ("note.report.series", Kind::Get, Mode::Read),
             ]
         );
         let names: Vec<&str> = functions.iter().map(|(name, _, _)| *name).collect();
@@ -197,7 +209,7 @@ mod tests {
             .map(|permission| permission.key.as_str())
             .collect();
         assert_eq!(keys, ["note.read", "note.manage"]);
-        assert_eq!(registrations.menu.len(), 2);
+        assert_eq!(registrations.menu.len(), 3);
         assert_eq!(registrations.menu[0].path(), "demo/notes");
         assert_eq!(registrations.menu[0].func(), "note.list");
         assert_eq!(registrations.menu[0].badge_problem(), Some(OVERDUE_PROBLEM));
@@ -209,6 +221,8 @@ mod tests {
         assert_eq!(sources, [OVERDUE_PROBLEM]);
         assert_eq!(registrations.menu[1].path(), "demo/tags");
         assert_eq!(registrations.menu[1].func(), "note.tag.list");
+        assert_eq!(registrations.menu[2].path(), "demo/report");
+        assert_eq!(registrations.menu[2].func(), report::REPORT);
         let languages: Vec<&str> = registrations
             .i18n
             .iter()

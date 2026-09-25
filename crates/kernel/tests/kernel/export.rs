@@ -7,6 +7,7 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::TASKS_UNAVAILABLE_KEY;
 use keel_sdk::system::{Caller, CallerOptions, TaskRunner, TaskSink, TaskSpec};
+use keel_sdk::ui::{Band, Report};
 use keel_sdk::{TaskHandle, types::TaskState};
 use keel_testkit::{Harness, Who};
 use keel_types::{ErrorCode, Scope};
@@ -17,7 +18,9 @@ const EN: &str = r#"{ "stock": {
     "item": { "list": { "title": "Items" }, "column": { "name": "Name", "qty": "Quantity", "accountId": "Account" } },
     "secret": { "list": { "title": "Secrets" }, "column": { "name": "Name" } },
     "big": { "list": { "title": "Big" }, "column": { "name": "Name" } },
-    "count": { "title": "Count" }
+    "count": { "title": "Count" },
+    "report": { "levels": { "title": "Levels" }, "band": { "items": "Items" }, "min": "At least",
+                "column": { "name": "Name", "qty": "Quantity", "accountId": "Account" } }
 } }"#;
 const RU: &str = r#"{ "stock": { "item": { "column": { "qty": "Количество" } } } }"#;
 
@@ -36,6 +39,22 @@ struct Nothing {}
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Counted {
     counted: u64,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Floor {
+    #[serde(default)]
+    min: u64,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct Levels {
+    bands: LevelBands,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct LevelBands {
+    items: Vec<Item>,
 }
 
 type Stocked = BTreeMap<Id, Vec<(String, u64)>>;
@@ -74,29 +93,56 @@ impl ListSource for Stock {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((call.principal().id, query.clone()));
-        let stocked: Vec<(Id, Vec<(String, u64)>)> = ROWS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .map(|(account, rows)| (*account, rows.clone()))
-            .collect();
-        let mut rows = Vec::new();
-        for (account, stocked) in stocked {
-            if !call.account_scope().includes(call.db(), account).await? {
-                continue;
-            }
-            rows.extend(stocked.into_iter().map(|(name, qty)| Item {
-                name,
-                qty,
-                account_id: account.to_string(),
-            }));
-        }
+        let mut rows = visible(call).await?;
         if !query.search.is_empty() {
             rows.retain(|row| row.name.contains(&query.search));
         }
-        rows.sort_by(|a, b| a.account_id.cmp(&b.account_id).then(a.name.cmp(&b.name)));
         Ok(slice(rows, query))
     }
+}
+
+async fn visible<P>(call: &Call<P>) -> Result<Vec<Item>> {
+    let stocked: Vec<(Id, Vec<(String, u64)>)> = ROWS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .map(|(account, rows)| (*account, rows.clone()))
+        .collect();
+    let mut rows = Vec::new();
+    for (account, stocked) in stocked {
+        if !call.account_scope().includes(call.db(), account).await? {
+            continue;
+        }
+        rows.extend(stocked.into_iter().map(|(name, qty)| Item {
+            name,
+            qty,
+            account_id: account.to_string(),
+        }));
+    }
+    rows.sort_by(|a, b| a.account_id.cmp(&b.account_id).then(a.name.cmp(&b.name)));
+    Ok(rows)
+}
+
+fn levels() -> FunctionDef {
+    function::<Floor, Levels>("stock.report.levels")
+        .kind(Kind::Report)
+        .level(Level::User)
+        .unowned()
+        .ui(Report::new("stock.report.levels.title").band(
+            Band::new("items")
+                .column(Column::new("name", ColumnType::Text))
+                .column(Column::new("qty", ColumnType::Number).total(Total::Sum))
+                .column(Column::new("accountId", ColumnType::Text).level(Level::Reseller))
+                .formats([ExportFormat::Csv, ExportFormat::Json]),
+        ))
+        .handler(|call: Call<Floor>| async move {
+            let min = call.params().min;
+            let mut items = visible(&call).await?;
+            items.retain(|item| item.qty >= min);
+            Ok(Levels {
+                bands: LevelBands { items },
+            })
+        })
 }
 
 struct Big;
@@ -276,6 +322,7 @@ fn items() -> FunctionDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     r.function(items())
+        .function(levels())
         .function(
             function::<ListQuery, Page<Item>>("stock.secret.list")
                 .kind(Kind::List)
@@ -601,6 +648,85 @@ async fn an_export_above_the_row_threshold_answers_a_task_ref_and_writes_the_fil
     assert_eq!(error.params["rows"], json!(BIG_TOTAL));
     assert_eq!(error.params["threshold"], json!(EXPORT_TASK_ROWS));
     bare.finish().await;
+}
+
+#[keel_testkit::tokio::test]
+async fn a_band_of_a_report_exports_with_the_reports_parameters_and_its_projected_columns() {
+    let harness = Harness::new().module(&STOCK).boot().await;
+    let accounts = harness.fixtures().accounts.clone();
+    stock(accounts.a1, &[("apple", 3), ("berry", 5), ("cherry", 7)]);
+    stock(accounts.a2, &[("date", 9)]);
+    stock(accounts.unrelated, &[("fig", 11)]);
+    let http = harness.http().await;
+
+    let csv = http
+        .post(
+            Who::A1,
+            ROUTE,
+            &json!({ "func": "stock.report.levels", "band": "items", "params": { "min": 4 } }),
+        )
+        .await;
+    assert_eq!(csv.status, 200, "{}", csv.body);
+    assert_eq!(csv.header("content-type"), Some(CSV_TYPE));
+    assert_eq!(
+        csv.header("content-disposition"),
+        Some(
+            format!(
+                "attachment; filename=\"stock.report.levels-items-{}.csv\"",
+                today(&harness)
+            )
+            .as_str()
+        )
+    );
+    assert_eq!(
+        csv_lines(&csv.body),
+        ["Name,Quantity", "berry,5", "cherry,7"]
+    );
+
+    let json = http
+        .post(
+            Who::Reseller,
+            ROUTE,
+            &json!({ "func": "stock.report.levels", "band": "items", "format": "json", "columns": ["accountId", "qty"] }),
+        )
+        .await;
+    assert_eq!(json.status, 200, "{}", json.body);
+    let rows: Value = serde_json::from_str(&json.body).expect("one JSON array");
+    let rows = rows.as_array().expect("an array");
+    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert!(rows.contains(&json!({ "accountId": accounts.a2.to_string(), "qty": 9 })));
+    assert!(
+        rows.iter()
+            .all(|row| row.as_object().map(|row| row.len()) == Some(2))
+    );
+
+    let unknown = http
+        .post(
+            Who::A1,
+            ROUTE,
+            &json!({ "func": "stock.report.levels", "band": "shelves" }),
+        )
+        .await;
+    assert_eq!(unknown.status, 422, "{}", unknown.body);
+    let error = &unknown.json()["error"];
+    assert_eq!(error["fields"][0]["path"], json!("band"));
+    assert_eq!(error["fields"][0]["key"], json!("keel.error.export_band"));
+    assert_eq!(error["fields"][0]["params"]["band"], json!("shelves"));
+
+    let above = http
+        .post(
+            Who::A1,
+            ROUTE,
+            &json!({ "func": "stock.report.levels", "band": "items", "columns": ["accountId"] }),
+        )
+        .await;
+    assert_eq!(above.status, 422, "{}", above.body);
+    assert_eq!(
+        above.json()["error"]["fields"][0]["key"],
+        json!(COLUMNS_KEY)
+    );
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
 }
 
 #[keel_testkit::tokio::test]
