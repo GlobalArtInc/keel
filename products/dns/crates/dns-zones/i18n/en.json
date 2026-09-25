@@ -22,6 +22,11 @@
         "title": "Zone report"
       }
     },
+    "widget": {
+      "zones": {
+        "title": "Zones"
+      }
+    },
     "zone": {
       "account": "Account",
       "action": {

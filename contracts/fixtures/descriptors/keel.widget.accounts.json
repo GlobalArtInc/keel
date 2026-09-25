@@ -1,0 +1,59 @@
+{
+  "keel": 1,
+  "name": "keel.widget.accounts",
+  "module": "keel",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "keel.account.read"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "StatValue",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "number",
+        "format": "double"
+      },
+      "unit": {
+        "type": "string"
+      },
+      "series": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "subject": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "value",
+      "unit"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.widget.accounts.title"
+  }
+}

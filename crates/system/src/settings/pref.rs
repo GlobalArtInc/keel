@@ -6,12 +6,15 @@ use keel_sdk::sea_orm::sea_query::OnConflict;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 use keel_sdk::serde_json;
 use keel_sdk::system::{LanguageSource, PreferenceSource, Preferences};
+use keel_sdk::types::DashboardLayout;
 
 use super::entity::pref;
 
 pub const LANG: &str = "lang";
 pub const TZ: &str = "tz";
 pub const THEME: &str = "theme";
+const DASHBOARD: &str = "dashboard.layout";
+const DASHBOARD_MAX_ENTRIES: usize = 64;
 const COLUMNS_PREFIX: &str = "columns.";
 const THEME_MAX_LEN: usize = 32;
 const FUNCTION_MAX_LEN: usize = 128;
@@ -66,6 +69,9 @@ impl Prefs {
         if key.starts_with(COLUMNS_PREFIX) {
             return check_columns(value);
         }
+        if key == DASHBOARD {
+            return check_dashboard(value);
+        }
         let text = value
             .as_str()
             .ok_or_else(|| KeelError::validation("settings.error.pref_text").field("value"))?;
@@ -108,6 +114,27 @@ fn check_columns(value: &Value) -> Result<()> {
     Ok(())
 }
 
+fn check_dashboard(value: &Value) -> Result<()> {
+    let refused = || KeelError::validation("settings.error.pref_dashboard").field("value");
+    let layout = DashboardLayout::deserialize(value).map_err(|_| refused())?;
+    let well_formed = [&layout.order, &layout.hidden].into_iter().all(|widgets| {
+        widgets.len() <= DASHBOARD_MAX_ENTRIES
+            && widgets.iter().all(|function| is_function(function))
+    });
+    if !well_formed {
+        return Err(refused());
+    }
+    Ok(())
+}
+
+fn is_function(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= FUNCTION_MAX_LEN
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
+}
+
 fn refuse_owner(principal: &Principal) -> Result<()> {
     if principal.level >= Level::Owner {
         return Err(KeelError::forbidden("settings.error.pref_owner"));
@@ -135,14 +162,8 @@ async fn check_columns_rows(db: &Db, principal: Id, key: &str) -> Result<()> {
 }
 
 fn check_key(key: &str) -> Result<()> {
-    let known = matches!(key, LANG | TZ | THEME)
-        || key.strip_prefix(COLUMNS_PREFIX).is_some_and(|function| {
-            !function.is_empty()
-                && function.len() <= FUNCTION_MAX_LEN
-                && function
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.')
-        });
+    let known = matches!(key, LANG | TZ | THEME | DASHBOARD)
+        || key.strip_prefix(COLUMNS_PREFIX).is_some_and(is_function);
     if known {
         Ok(())
     } else {
@@ -214,6 +235,12 @@ pub fn set(prefs: Arc<Prefs>) -> FunctionDef {
 
 #[async_trait]
 impl PreferenceSource for Prefs {
+    async fn dashboard(&self, principal: Id, db: &Db) -> Result<Option<DashboardLayout>> {
+        Ok(stored(db, principal, DASHBOARD)
+            .await?
+            .and_then(|value| DashboardLayout::deserialize(value).ok()))
+    }
+
     async fn preferences(&self, principal: Id, db: &Db) -> Result<Preferences> {
         let rows = pref::Entity::find()
             .filter(pref::Column::PrincipalId.eq(principal.to_string()))
@@ -246,11 +273,12 @@ mod tests {
     }
 
     #[test]
-    fn the_keys_are_lang_tz_theme_and_columns_of_a_function() {
+    fn the_keys_are_lang_tz_theme_the_dashboard_layout_and_columns_of_a_function() {
         for key in [
             LANG,
             TZ,
             THEME,
+            DASHBOARD,
             "columns.note.list",
             "columns.keel.account.list",
         ] {
@@ -258,6 +286,7 @@ mod tests {
         }
         for key in [
             "widgets",
+            "dashboard",
             "columns.",
             "columns.Note.List",
             "columns.note list",
@@ -330,6 +359,41 @@ mod tests {
                 panic!("{value} should be refused");
             };
             assert_eq!(error.key(), "settings.error.pref_columns");
+            assert_eq!(error.field_path(), Some("value"));
+        }
+    }
+
+    #[test]
+    fn a_dashboard_layout_names_at_most_64_functions_in_its_order_and_hidden_lists() {
+        let prefs = Prefs::default();
+        prefs.check(DASHBOARD, &json!({})).expect("an empty layout");
+        prefs
+            .check(
+                DASHBOARD,
+                &json!({ "order": ["dns.widget.zones", "keel.widget.accounts"], "hidden": ["notify.problem.list"] }),
+            )
+            .expect("an order and a hidden widget");
+        let many: Vec<String> = (0..DASHBOARD_MAX_ENTRIES)
+            .map(|n| format!("w.f{n}"))
+            .collect();
+        prefs
+            .check(DASHBOARD, &json!({ "order": many, "hidden": many }))
+            .expect("the entry cap is inclusive");
+        for value in [
+            json!("dns.widget.zones"),
+            json!(["dns.widget.zones"]),
+            json!({ "order": "dns.widget.zones" }),
+            json!({ "order": [1] }),
+            json!({ "order": ["Dns.Widget"] }),
+            json!({ "hidden": [""] }),
+            json!({ "hidden": ["x".repeat(FUNCTION_MAX_LEN + 1)] }),
+            json!({ "order": vec!["w.f"; DASHBOARD_MAX_ENTRIES + 1] }),
+            json!({ "order": [], "widths": {} }),
+        ] {
+            let Err(error) = prefs.check(DASHBOARD, &value) else {
+                panic!("{value} should be refused");
+            };
+            assert_eq!(error.key(), "settings.error.pref_dashboard");
             assert_eq!(error.field_path(), Some("value"));
         }
     }

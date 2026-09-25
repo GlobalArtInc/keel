@@ -54,7 +54,7 @@ function load<T>(name: string): T {
 }
 
 function demoBoot(): Boot {
-  const boot = load<Boot>('boot-none.json');
+  const boot: Boot = { ...load<Boot>('boot-none.json'), dashboard: [] };
   boot.menu.unshift({
     id: 'demo',
     product: 'demo',

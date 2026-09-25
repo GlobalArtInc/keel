@@ -191,7 +191,16 @@
       ]
     }
   ],
-  "dashboard": [],
+  "dashboard": [
+    {
+      "kind": "stat",
+      "func": "keel.widget.accounts"
+    },
+    {
+      "kind": "stat",
+      "func": "dns.widget.zones"
+    }
+  ],
   "views": [],
   "meta": "m-0000000000000000",
   "problems": {

@@ -77,7 +77,7 @@ function load<T>(name: string): T {
 }
 
 function resellerBoot(): Boot {
-  return load<Boot>('boot-none.json');
+  return { ...load<Boot>('boot-none.json'), dashboard: [] };
 }
 
 function delegatedBoot(): Boot {

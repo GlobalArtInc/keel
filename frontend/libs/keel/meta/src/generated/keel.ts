@@ -283,6 +283,7 @@ export interface BootWidget {
   kind: WidgetKind;
   func: string;
   limit?: number | null;
+  hidden?: boolean;
 }
 export interface BootProblems {
   open: number;
@@ -335,6 +336,10 @@ export interface ContextPrincipal {
 }
 export interface ContextScreen {
   params?: Record<string, unknown>;
+}
+export interface DashboardLayout {
+  order?: string[];
+  hidden?: string[];
 }
 export interface Descriptor {
   keel: number;
@@ -487,6 +492,12 @@ export interface Principal {
   externalId?: string | null;
   origin?: string | null;
   lang: string;
+}
+export interface StatValue {
+  value: number;
+  unit: string;
+  series?: string | null;
+  subject?: Id | null;
 }
 export interface TaskLink {
   id: Id;

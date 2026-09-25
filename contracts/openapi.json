@@ -4219,6 +4219,95 @@
         }
       }
     },
+    "/api/v1/call/dns.widget.zones": {
+      "post": {
+        "operationId": "dns.widget.zones",
+        "tags": [
+          "dns"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.zone.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "StatValue",
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "number",
+                          "format": "double"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "series": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "subject": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "unit"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/dns.zone.create": {
       "post": {
         "operationId": "dns.zone.create",
@@ -6831,6 +6920,94 @@
           }
         },
         "security": []
+      }
+    },
+    "/api/v1/call/keel.widget.accounts": {
+      "post": {
+        "operationId": "keel.widget.accounts",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "keel.account.read"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "StatValue",
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "number",
+                          "format": "double"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "series": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "subject": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "unit"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/api/v1/call/license.get": {

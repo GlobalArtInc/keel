@@ -219,8 +219,15 @@ fn rail_init(r: &mut Registrar) -> Result<()> {
             .ui(List::new("rail.problem.list.title").column(Column::new("title", ColumnType::Text)))
             .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) }),
     )
+    .function(
+        function::<Value, Value>("rail.problem.count")
+            .kind(Kind::Get)
+            .level(Level::Admin)
+            .unowned()
+            .handler(|_: Call<Value>| async { Ok(json!({ "value": 1, "unit": "count" })) }),
+    )
     .contribute(DashboardWidget::list("rail.problem.list", 5))
-    .contribute(DashboardWidget::new(WidgetKind::Stat, "rail.problem.list").level(Level::Owner))
+    .contribute(DashboardWidget::new(WidgetKind::Stat, "rail.problem.count").level(Level::Owner))
     .provide::<dyn ProblemCounter>(Arc::new(CountingDouble))
     .i18n(
         "en",
@@ -244,7 +251,9 @@ fn dangling_init(r: &mut Registrar) -> Result<()> {
         WidgetKind::Stat,
         "dangling.widget.missing",
     ))
-    .contribute(DashboardWidget::list("keel.account.get", 5));
+    .contribute(DashboardWidget::list("keel.account.get", 5))
+    .contribute(DashboardWidget::new(WidgetKind::Stat, "keel.account.list"))
+    .contribute(DashboardWidget::list("keel.account.list", 5));
     Ok(())
 }
 
@@ -516,7 +525,13 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
     assert!(boot.meta.starts_with("m-"), "{}", boot.meta);
     assert_eq!(boot.features, ["probe.items", "probe.export"]);
     assert!(boot.views.is_empty());
-    assert!(boot.dashboard.is_empty());
+    assert_eq!(
+        boot.dashboard
+            .iter()
+            .map(|widget| widget.func.as_str())
+            .collect::<Vec<_>>(),
+        ["keel.widget.accounts"]
+    );
     assert!(boot.license.is_none());
     assert!(boot.problems.is_none());
     let over_http = bench
@@ -927,13 +942,23 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
     let admin = bench
         .boot(Some(&format!("admin:{}", Id::ROOT_ACCOUNT)))
         .await;
+    let accounts = BootWidget {
+        kind: WidgetKind::Stat,
+        func: "keel.widget.accounts".into(),
+        limit: None,
+        hidden: false,
+    };
     assert_eq!(
         admin.dashboard,
-        [BootWidget {
-            kind: WidgetKind::List,
-            func: "rail.problem.list".into(),
-            limit: Some(5),
-        }]
+        [
+            accounts.clone(),
+            BootWidget {
+                kind: WidgetKind::List,
+                func: "rail.problem.list".into(),
+                limit: Some(5),
+                hidden: false,
+            }
+        ]
     );
     assert_eq!(
         admin.problems,
@@ -951,7 +976,10 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
         .await;
     assert_eq!(
         wire.body["dashboard"],
-        json!([{ "kind": "list", "func": "rail.problem.list", "limit": 5 }])
+        json!([
+            { "kind": "stat", "func": "keel.widget.accounts" },
+            { "kind": "list", "func": "rail.problem.list", "limit": 5 }
+        ])
     );
     assert_eq!(wire.body["problems"], json!({ "open": 1, "critical": 0 }));
     let user = bench.boot(Some(&format!("user:{CUSTOMER}"))).await;
@@ -961,16 +989,28 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
     assert!(guest.dashboard.is_empty());
     assert_eq!(guest.problems, Some(BootProblems::default()));
     let over_socket = bench.over_socket().await;
-    assert_eq!(over_socket.dashboard.len(), 2);
-    assert_eq!(over_socket.dashboard[0], admin.dashboard[0]);
-    assert_eq!(over_socket.dashboard[1].kind, WidgetKind::Stat);
+    let funcs: Vec<&str> = over_socket
+        .dashboard
+        .iter()
+        .map(|widget| widget.func.as_str())
+        .collect();
+    assert_eq!(
+        funcs,
+        [
+            "keel.widget.accounts",
+            "rail.problem.list",
+            "rail.problem.count"
+        ]
+    );
+    assert_eq!(over_socket.dashboard[..2], admin.dashboard[..]);
+    assert_eq!(over_socket.dashboard[2].kind, WidgetKind::Stat);
     assert_eq!(over_socket.problems, admin.problems);
     bench.finish().await;
     let bare = start(Composition::new().module(&GATE)).await;
     let owner = bare
         .boot(Some(&format!("owner:{}", Id::ROOT_ACCOUNT)))
         .await;
-    assert!(owner.dashboard.is_empty());
+    assert_eq!(owner.dashboard, [accounts]);
     assert!(owner.problems.is_none());
     let wire = bare
         .get(
@@ -979,7 +1019,10 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
             None,
         )
         .await;
-    assert_eq!(wire.body["dashboard"], json!([]));
+    assert_eq!(
+        wire.body["dashboard"],
+        json!([{ "kind": "stat", "func": "keel.widget.accounts" }])
+    );
     assert_eq!(wire.body["problems"], Value::Null);
     bare.finish().await;
     let database = TestDatabase::create().await;
@@ -989,7 +1032,7 @@ async fn dashboard_widgets_and_problem_counts_come_from_the_contributions_and_st
         .expect_err("a widget over a missing function fails the freeze");
     assert_eq!(
         error.to_string(),
-        "the registries cannot be frozen:\n  - a stat dashboard widget points at dangling.widget.missing, which is not registered\n  - a list dashboard widget points at keel.account.get, which is not a list function"
+        "the registries cannot be frozen:\n  - a stat dashboard widget points at dangling.widget.missing, which is not registered\n  - a list dashboard widget points at keel.account.get, which is not a list function\n  - a stat dashboard widget points at keel.account.list, which is not a get function\n  - a list dashboard widget points at keel.account.list, which is already on the dashboard"
     );
     storage.close().await.expect("the pool closes");
     database.finish().await;

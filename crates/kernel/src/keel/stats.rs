@@ -7,7 +7,7 @@ use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue}
 
 use super::accounts::SYSTEM_KIND;
 
-const ACCOUNTS: &str = "keel.accounts";
+pub(super) const ACCOUNTS: &str = "keel.accounts";
 const PRINCIPALS: &str = "keel.principals";
 const INTERVAL: Duration = Duration::from_secs(3_600);
 

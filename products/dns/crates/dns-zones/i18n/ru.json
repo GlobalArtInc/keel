@@ -22,6 +22,11 @@
         "title": "Отчёт по зонам"
       }
     },
+    "widget": {
+      "zones": {
+        "title": "Зоны"
+      }
+    },
     "zone": {
       "account": "Аккаунт",
       "action": {

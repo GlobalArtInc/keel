@@ -386,8 +386,16 @@
       },
       "boot_failed": "The installation did not answer; reload the page",
       "home": {
+        "drag": "Drag to reorder",
+        "empty": "Every widget is hidden",
+        "hide": "Hide",
         "open": "Open",
-        "title": "Overview"
+        "restore": "Restore widget",
+        "sparkline": "Last 7 days",
+        "title": "Overview",
+        "unit": {
+          "count": "Total"
+        }
       },
       "language": {
         "en": "English",
@@ -495,6 +503,11 @@
     },
     "view": {
       "missing": "The screen {view} belongs to {product}, whose views are not part of this shell"
+    },
+    "widget": {
+      "accounts": {
+        "title": "Accounts"
+      }
     }
   },
   "menu": {

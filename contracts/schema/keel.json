@@ -531,6 +531,9 @@
           ],
           "format": "uint32",
           "minimum": 0
+        },
+        "hidden": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -921,6 +924,26 @@
         "key_value",
         "transfer"
       ]
+    },
+    "DashboardLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "hidden": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
     },
     "Descriptor": {
       "type": "object",
@@ -2163,6 +2186,38 @@
       "enum": [
         "asc",
         "desc"
+      ]
+    },
+    "StatValue": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "format": "double"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "series": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
       ]
     },
     "TaskLink": {

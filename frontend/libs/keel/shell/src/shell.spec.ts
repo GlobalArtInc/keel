@@ -17,7 +17,10 @@ import { PhxThemeService } from '@globalart/phoenix-ui';
 import { throwError, type Observable } from 'rxjs';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
-const BOOT = JSON.parse(readFileSync(join(FIXTURES, 'boot-none.json'), 'utf8')) as Boot;
+const BOOT: Boot = {
+  ...(JSON.parse(readFileSync(join(FIXTURES, 'boot-none.json'), 'utf8')) as Boot),
+  dashboard: [],
+};
 
 const MESSAGES = {
   menu: { system: 'System' },

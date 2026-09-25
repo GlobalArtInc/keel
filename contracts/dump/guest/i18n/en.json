@@ -388,8 +388,16 @@
         },
         "boot_failed": "The installation did not answer; reload the page",
         "home": {
+          "drag": "Drag to reorder",
+          "empty": "Every widget is hidden",
+          "hide": "Hide",
           "open": "Open",
-          "title": "Overview"
+          "restore": "Restore widget",
+          "sparkline": "Last 7 days",
+          "title": "Overview",
+          "unit": {
+            "count": "Total"
+          }
         },
         "language": {
           "en": "English",
@@ -497,6 +505,11 @@
       },
       "view": {
         "missing": "The screen {view} belongs to {product}, whose views are not part of this shell"
+      },
+      "widget": {
+        "accounts": {
+          "title": "Accounts"
+        }
       }
     },
     "menu": {
@@ -1141,7 +1154,8 @@
         "not_started": "The settings module has not started",
         "pref_columns": "The columns preference is an object whose members list column keys, at most 64 keys of 64 characters each, within 4 KiB",
         "pref_columns_many": "At most {max} columns preferences are kept per principal",
-        "pref_key": "The preference {key} is not one of lang, tz, theme or columns.<function>",
+        "pref_dashboard": "The dashboard layout is an object with an order and a hidden list, each of at most 64 function names",
+        "pref_key": "The preference {key} is not one of lang, tz, theme, dashboard.layout or columns.<function>",
         "pref_lang": "The language {lang} is not served by this installation",
         "pref_owner": "The owner has no preferences; it acts over the socket",
         "pref_text": "The value must be a short text",
@@ -1203,6 +1217,11 @@
         "to": "Last day",
         "zones": {
           "title": "Zone report"
+        }
+      },
+      "widget": {
+        "zones": {
+          "title": "Zones"
         }
       },
       "zone": {

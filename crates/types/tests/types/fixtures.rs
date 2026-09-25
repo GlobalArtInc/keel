@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use keel_types::{
     Boot, Check, Context, Descriptor, Envelope, ErrorCode, Event, Expr, FilterOp, Kind, Level,
-    ListQuery, Mode, Page,
+    ListQuery, Mode, Page, WidgetKind,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -275,7 +275,8 @@ fn event_fixture_round_trips() {
 }
 
 #[test]
-fn boot_none_fixture_round_trips_with_no_product_no_view_and_the_platform_group_alone() {
+fn boot_none_fixture_round_trips_with_no_product_no_view_the_platform_group_alone_and_the_accounts_widget()
+ {
     let boot: Boot = round_trip(load("boot-none.json"));
     assert_eq!(boot.keel.api, keel_types::DESCRIPTOR_VERSION);
     assert!(boot.products.is_empty());
@@ -294,7 +295,12 @@ fn boot_none_fixture_round_trips_with_no_product_no_view_and_the_platform_group_
     assert_eq!(groups, [("system", None)]);
     assert!(boot.menu[0].items.iter().all(|item| item.kind.is_some()));
     assert!(boot.features.is_empty());
-    assert!(boot.dashboard.is_empty());
+    let widgets: Vec<(WidgetKind, &str)> = boot
+        .dashboard
+        .iter()
+        .map(|widget| (widget.kind, widget.func.as_str()))
+        .collect();
+    assert_eq!(widgets, [(WidgetKind::Stat, "keel.widget.accounts")]);
     assert!(boot.license.is_none());
     assert!(boot.problems.is_none());
 }

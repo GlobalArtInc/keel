@@ -193,7 +193,11 @@ keelTest.describe('notes', () => {
 
   keelTest('the import wizard refuses a long line and imports three', async ({ page, keel }) => {
     await keel.asUser();
-    await page.goto(NOTE_LIST);
+    await page
+      .locator('keel-layout phx-sidebar-item[data-func="note.list"]')
+      .getByRole('link')
+      .click();
+    await expect(page).toHaveURL(new RegExp(`${NOTE_LIST}$`));
     await page.goto(NOTE_IMPORT);
     const wizard = page.locator('keel-wizard[data-wizard="note.import"]');
     await expect(wizard).toHaveAttribute('data-step', 'source');

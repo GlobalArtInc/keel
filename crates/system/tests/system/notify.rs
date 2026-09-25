@@ -436,7 +436,10 @@ async fn a_raised_problem_notifies_the_admins_once_counts_in_boot_and_feeds_the_
     assert_eq!(admin["problems"], json!({ "open": 1, "critical": 0 }));
     assert_eq!(
         admin["dashboard"],
-        json!([{ "kind": "list", "func": PROBLEM_LIST, "limit": WIDGET_LIMIT }])
+        json!([
+            { "kind": "stat", "func": "keel.widget.accounts" },
+            { "kind": "list", "func": PROBLEM_LIST, "limit": WIDGET_LIMIT }
+        ])
     );
     let paths: Vec<&str> = admin["menu"]
         .as_array()

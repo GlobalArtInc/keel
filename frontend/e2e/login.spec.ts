@@ -3,6 +3,7 @@ import { URI, type TOTP } from 'otpauth';
 
 const CREDENTIALS_MESSAGE = 'The login or the password is wrong';
 const NOTE_LIST = '/f/note.list';
+const ZONES_WIDGET = 'dns.widget.zones';
 const SECURITY = '/f/auth.totp.enroll';
 
 const STEP_MARGIN_MS = 5_000;
@@ -37,9 +38,12 @@ keelTest.describe('login', () => {
     await keel.asUser();
   });
 
-  keelTest('alice logs in and out', async ({ page, keel }) => {
+  keelTest('alice logs in to the overview and out', async ({ page, keel }) => {
     await keel.asUser();
-    await expect(page).toHaveURL(new RegExp(`${NOTE_LIST}$`));
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.locator(`keel-home phx-widget-card[data-widget-func="${ZONES_WIDGET}"]`),
+    ).toBeVisible();
     await page.locator('keel-rail [data-rail="user"] button').click();
     const menu = page.locator('phx-user-menu');
     await expect(menu).toContainText(E2E_LOGINS.user);

@@ -1,11 +1,11 @@
 use chrono_tz::Tz;
 use keel_sdk::system::{
-    Features, ManifestPatch, ManifestSource, ProblemCounter, SecondFactorSource,
+    Features, ManifestPatch, ManifestSource, PreferenceSource, ProblemCounter, SecondFactorSource,
 };
 use keel_sdk::{DashboardWidget, Db, KeelError, ProductManifest};
 use keel_types::{
-    Boot, BootBrand, BootLicense, BootPrincipal, BootProblems, BootProduct, BootWidget, Level,
-    Principal,
+    Boot, BootBrand, BootLicense, BootPrincipal, BootProblems, BootProduct, BootWidget,
+    DashboardLayout, Level, Principal,
 };
 use sea_orm::DatabaseConnection;
 
@@ -119,7 +119,15 @@ pub(crate) fn views(registry: &Registry, principal: &Principal) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn dashboard(registry: &Registry, principal: &Principal) -> Vec<BootWidget> {
+fn dashboard(
+    registry: &Registry,
+    principal: &Principal,
+    layout: &DashboardLayout,
+) -> Vec<BootWidget> {
+    arrange(admitted(registry, principal), layout)
+}
+
+fn admitted(registry: &Registry, principal: &Principal) -> Vec<BootWidget> {
     let projection = Projection::new(registry, principal);
     registry
         .contributions()
@@ -136,8 +144,41 @@ pub(crate) fn dashboard(registry: &Registry, principal: &Principal) -> Vec<BootW
             kind: widget.kind(),
             func: widget.func().to_owned(),
             limit: widget.limit_value(),
+            hidden: false,
         })
         .collect()
+}
+
+fn arrange(mut widgets: Vec<BootWidget>, layout: &DashboardLayout) -> Vec<BootWidget> {
+    let rank = |widget: &BootWidget| {
+        layout
+            .order
+            .iter()
+            .position(|func| *func == widget.func)
+            .unwrap_or(layout.order.len())
+    };
+    widgets.sort_by_key(rank);
+    for widget in &mut widgets {
+        widget.hidden = layout.hidden.contains(&widget.func);
+    }
+    widgets
+}
+
+async fn layout(
+    registry: &Registry,
+    db: &DatabaseConnection,
+    principal: &Principal,
+) -> Result<DashboardLayout, KeelError> {
+    if principal.level == Level::Guest || principal.level >= Level::Owner {
+        return Ok(DashboardLayout::default());
+    }
+    let Some(source) = registry.services().get::<dyn PreferenceSource>() else {
+        return Ok(DashboardLayout::default());
+    };
+    Ok(source
+        .dashboard(principal.id, &Db::from_connection(db.clone()))
+        .await?
+        .unwrap_or_default())
 }
 
 pub(crate) async fn problems(
@@ -202,6 +243,7 @@ pub(crate) async fn payload(
     let meta = meta::version(registry, db, principal).await?;
     let totp = second_factor(registry, db, principal).await?;
     let problems = problems(registry, db, principal).await?;
+    let layout = layout(registry, db, principal).await?;
     let mut brand = brand(registry);
     if let Some(patch) = patch(registry, db, host).await? {
         apply(&mut brand, &patch);
@@ -214,7 +256,7 @@ pub(crate) async fn payload(
         features: features(registry),
         license: license(registry),
         menu: menu::project(registry, principal),
-        dashboard: dashboard(registry, principal),
+        dashboard: dashboard(registry, principal, &layout),
         views: views(registry, principal),
         meta,
         problems,
@@ -225,7 +267,7 @@ pub(crate) async fn payload(
 mod tests {
     use std::collections::BTreeMap;
 
-    use keel_types::{ErrorCode, Id, Level, Scope, Via};
+    use keel_types::{ErrorCode, Id, Level, Scope, Via, WidgetKind};
     use serde_json::json;
 
     use super::*;
@@ -302,6 +344,54 @@ mod tests {
         assert_eq!(brand.chroma, 0.3);
         assert_eq!(brand.name, "Panel Example");
         assert!(ManifestPatch::default().is_empty());
+    }
+
+    fn widget(kind: WidgetKind, func: &str) -> BootWidget {
+        BootWidget {
+            kind,
+            func: func.into(),
+            limit: None,
+            hidden: false,
+        }
+    }
+
+    #[test]
+    fn the_layout_puts_its_named_widgets_first_keeps_the_rest_in_registry_order_and_flags_the_hidden()
+     {
+        let registered = vec![
+            widget(WidgetKind::List, "notify.problem.list"),
+            widget(WidgetKind::Stat, "keel.widget.accounts"),
+            widget(WidgetKind::Stat, "dns.widget.zones"),
+            widget(WidgetKind::Stat, "dns.widget.records"),
+        ];
+        assert_eq!(
+            arrange(registered.clone(), &DashboardLayout::default()),
+            registered
+        );
+        let arranged = arrange(
+            registered,
+            &DashboardLayout {
+                order: vec![
+                    "dns.widget.zones".into(),
+                    "gone.widget".into(),
+                    "notify.problem.list".into(),
+                ],
+                hidden: vec!["notify.problem.list".into(), "gone.widget".into()],
+            },
+        );
+        let named: Vec<(&str, bool)> = arranged
+            .iter()
+            .map(|widget| (widget.func.as_str(), widget.hidden))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("dns.widget.zones", false),
+                ("notify.problem.list", true),
+                ("keel.widget.accounts", false),
+                ("dns.widget.records", false),
+            ]
+        );
     }
 
     #[test]

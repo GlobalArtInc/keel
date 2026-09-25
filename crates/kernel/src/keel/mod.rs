@@ -10,6 +10,7 @@ mod restart;
 mod setup;
 mod source;
 mod stats;
+mod widgets;
 
 use keel_sdk::prelude::*;
 use keel_sdk::{ModuleDef, Registrar};
@@ -33,7 +34,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 20] = [
+pub const FUNCTIONS: [&str; 21] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
@@ -54,6 +55,7 @@ pub const FUNCTIONS: [&str; 20] = [
     "keel.product.list",
     "keel.product.enable",
     "keel.product.disable",
+    widgets::ACCOUNTS_WIDGET,
 ];
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -87,8 +89,10 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(crate::export::function())
         .function(health::doctor_run())
         .function(health::logs_tail())
+        .function(widgets::accounts())
         .contribute(stats::accounts())
         .contribute(stats::principals())
+        .contribute(widgets::widget())
         .permission("keel.account.read", &[Level::User, Level::Reseller])
         .permission("keel.account.manage", &[Level::Reseller])
         .permission("keel.principal.read", &[Level::User, Level::Reseller])
@@ -135,7 +139,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_twenty_functions_under_the_keel_prefix() {
+    fn the_kernel_module_registers_its_twenty_one_functions_and_the_accounts_widget_under_the_keel_prefix()
+     {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let names: Vec<&str> = registrar.function_names().into_iter().collect();
@@ -147,6 +152,19 @@ mod tests {
             .expect("the registrations are valid");
         assert_eq!(registrations.permissions.len(), 4);
         assert_eq!(registrations.menu.len(), 4);
+        let widgets: Vec<(WidgetKind, &str, Option<Level>)> = registrations
+            .contributions
+            .of::<DashboardWidget>()
+            .map(|widget| (widget.kind(), widget.func(), widget.level_value()))
+            .collect();
+        assert_eq!(
+            widgets,
+            [(
+                WidgetKind::Stat,
+                "keel.widget.accounts",
+                Some(Level::Reseller)
+            )]
+        );
         let collected: Vec<(&str, u64, bool)> = registrations
             .contributions
             .of::<keel_sdk::StatCollector>()

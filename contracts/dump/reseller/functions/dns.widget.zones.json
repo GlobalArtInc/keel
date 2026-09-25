@@ -1,0 +1,60 @@
+{
+  "keel": 1,
+  "name": "dns.widget.zones",
+  "module": "dns",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.read",
+    "feature": "dns.zones"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "StatValue",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "number",
+        "format": "double"
+      },
+      "unit": {
+        "type": "string"
+      },
+      "series": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "subject": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "value",
+      "unit"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.widget.zones.title"
+  }
+}

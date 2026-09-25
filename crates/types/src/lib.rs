@@ -14,7 +14,7 @@ pub mod ui;
 
 pub use boot::{
     Badge, Boot, BootBrand, BootLicense, BootMenuGroup, BootMenuItem, BootPrincipal, BootProblems,
-    BootProduct, BootWidget, LicenseState, Platform, WidgetKind,
+    BootProduct, BootWidget, DashboardLayout, LicenseState, Platform, StatValue, WidgetKind,
 };
 pub use check::Check;
 pub use descriptor::{

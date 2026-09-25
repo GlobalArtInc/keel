@@ -955,12 +955,14 @@ impl Freezer {
             };
             checker.descriptor(&function.descriptor);
         }
+        let mut placed = BTreeSet::new();
         for widget in self.contributions.of::<DashboardWidget>() {
             let problem = match (self.known.get(widget.func()), widget.kind()) {
                 (None, _) => Some("not registered"),
-                (Some(Kind::List), WidgetKind::List) => None,
+                (Some(_), _) if !placed.insert(widget.func()) => Some("already on the dashboard"),
+                (Some(Kind::List), WidgetKind::List) | (Some(Kind::Get), WidgetKind::Stat) => None,
                 (Some(_), WidgetKind::List) => Some("not a list function"),
-                (Some(_), WidgetKind::Stat) => None,
+                (Some(_), WidgetKind::Stat) => Some("not a get function"),
             };
             if let Some(problem) = problem {
                 problems.push(FreezeProblem::WidgetFunction {
@@ -2574,7 +2576,15 @@ mod tests {
                 .count(),
             2
         );
-        assert_eq!(frozen.registry().contributions().len(), 5);
+        assert_eq!(
+            frozen
+                .registry()
+                .contributions()
+                .of::<keel_sdk::DashboardWidget>()
+                .count(),
+            1
+        );
+        assert_eq!(frozen.registry().contributions().len(), 6);
     }
 
     fn twice_init(r: &mut Registrar) -> Result<()> {

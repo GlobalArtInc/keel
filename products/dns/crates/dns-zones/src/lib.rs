@@ -9,6 +9,7 @@ mod problems;
 mod provider;
 mod report;
 mod stats;
+mod widget;
 mod zone;
 
 use keel::prelude::*;
@@ -25,6 +26,7 @@ const PRODUCT: &str = "dns";
 const DROP_IN_PREFIX: &str = "keel-dns-";
 const LIMIT: &str = "dns.zones";
 const LIMIT_DEFAULT: u64 = 50;
+const TOTAL: &str = "dns.zones.total";
 const FAILED: &str = "dns.zone.failed";
 const EXISTS: &str = "dns.zone.error.exists";
 const BACKUP: &str = "dns.zonefiles";
@@ -56,6 +58,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::edit())
         .function(functions::delete())
         .function(report::zones())
+        .function(widget::zones(LIMIT, TOTAL))
         .permission("dns.zone.read", &[Level::User, Level::Reseller])
         .permission("dns.zone.manage", &[Level::User, Level::Reseller])
         .menu(
@@ -76,6 +79,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .unlimited(true),
         )
         .contribute(stats::zones(LIMIT))
+        .contribute(stats::total(TOTAL))
+        .contribute(widget::widget())
         .contribute(lifecycle::contribution())
         .contribute(problems::source())
         .contribute(

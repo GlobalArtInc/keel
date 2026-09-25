@@ -59,7 +59,12 @@
       ]
     }
   ],
-  "dashboard": [],
+  "dashboard": [
+    {
+      "kind": "stat",
+      "func": "keel.widget.accounts"
+    }
+  ],
   "views": [],
   "meta": "m-6ee2e631ea205be4",
   "problems": null

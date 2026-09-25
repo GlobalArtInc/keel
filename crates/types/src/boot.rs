@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::descriptor::Kind;
 use crate::envelope::MetaActor;
 use crate::id::Id;
+use crate::is_false;
 use crate::level::Level;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -28,6 +29,8 @@ pub struct BootWidget {
     pub func: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hidden: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -35,6 +38,25 @@ pub struct BootWidget {
 pub enum WidgetKind {
     Stat,
     List,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardLayout {
+    #[serde(default)]
+    pub order: Vec<String>,
+    #[serde(default)]
+    pub hidden: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct StatValue {
+    pub value: f64,
+    pub unit: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<Id>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -208,10 +230,19 @@ mod tests {
             kind: WidgetKind::Stat,
             func: "dns.widget.zones".into(),
             limit: None,
+            hidden: false,
         };
         let wire = serde_json::to_value(&widget).unwrap();
         assert_eq!(wire, json!({ "kind": "stat", "func": "dns.widget.zones" }));
         assert_eq!(serde_json::from_value::<BootWidget>(wire).unwrap(), widget);
+        let hidden = BootWidget {
+            hidden: true,
+            ..widget
+        };
+        assert_eq!(
+            serde_json::to_value(&hidden).unwrap(),
+            json!({ "kind": "stat", "func": "dns.widget.zones", "hidden": true })
+        );
         let listed: BootWidget = serde_json::from_value(json!({
             "kind": "list", "func": "notify.problem.list", "limit": 5
         }))
@@ -227,6 +258,54 @@ mod tests {
             serde_json::from_value(json!({ "open": 1, "critical": 0 })).unwrap();
         assert_eq!(counted.open, 1);
         assert_eq!(counted.critical, 0);
+    }
+
+    #[test]
+    fn a_layout_names_its_order_and_hidden_widgets_and_refuses_anything_else() {
+        let layout: DashboardLayout = serde_json::from_value(json!({
+            "order": ["dns.widget.zones", "notify.problem.list"],
+            "hidden": ["keel.widget.accounts"]
+        }))
+        .unwrap();
+        assert_eq!(layout.order, ["dns.widget.zones", "notify.problem.list"]);
+        assert_eq!(layout.hidden, ["keel.widget.accounts"]);
+        assert_eq!(
+            serde_json::from_value::<DashboardLayout>(json!({})).unwrap(),
+            DashboardLayout::default()
+        );
+        assert!(serde_json::from_value::<DashboardLayout>(json!({ "widths": [] })).is_err());
+        assert!(serde_json::from_value::<DashboardLayout>(json!({ "order": [1] })).is_err());
+    }
+
+    #[test]
+    fn a_stat_value_carries_its_unit_and_names_its_series_only_when_it_has_one() {
+        let bare = StatValue {
+            value: 12.0,
+            unit: "count".into(),
+            series: None,
+            subject: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&bare).unwrap(),
+            json!({ "value": 12.0, "unit": "count" })
+        );
+        let subject: Id = "01J8A0000000000000000000A2".parse().unwrap();
+        let charted = StatValue {
+            series: Some("dns.zones".into()),
+            subject: Some(subject),
+            ..bare
+        };
+        let wire = serde_json::to_value(&charted).unwrap();
+        assert_eq!(
+            wire,
+            json!({
+                "value": 12.0,
+                "unit": "count",
+                "series": "dns.zones",
+                "subject": "01J8A0000000000000000000A2"
+            })
+        );
+        assert_eq!(serde_json::from_value::<StatValue>(wire).unwrap(), charted);
     }
 
     #[test]

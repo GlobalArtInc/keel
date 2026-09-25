@@ -3,7 +3,9 @@ use std::time::Duration;
 use keel::prelude::*;
 use keel::sdk::StatCollector;
 use keel::sdk::limit::Unit;
-use keel::sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
+use keel::sdk::sea_orm::{ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, Statement};
+
+use crate::zone;
 
 const INTERVAL: Duration = Duration::from_secs(3_600);
 const PER_ACCOUNT: &str =
@@ -23,5 +25,12 @@ pub(crate) fn zones(key: &str) -> StatCollector {
             }
         }
         Ok(counts)
+    })
+}
+
+pub(crate) fn total(key: &str) -> StatCollector {
+    StatCollector::new(key, Unit::Count, INTERVAL, |db| async move {
+        let zones = zone::Entity::find().count(&db).await?;
+        Ok(zones as f64)
     })
 }

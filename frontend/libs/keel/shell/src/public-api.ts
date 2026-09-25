@@ -181,9 +181,8 @@ export {
   HOME_TITLE_KEY,
   KeelHomeComponent,
   limitOf,
-  widgetId,
 } from './home/home.component';
-export type { WidgetState } from './home/home.component';
+export type { StatReading, WidgetState } from './home/dashboard';
 export {
   KEY_FIELD,
   SETTINGS_DEFAULT_KEY,

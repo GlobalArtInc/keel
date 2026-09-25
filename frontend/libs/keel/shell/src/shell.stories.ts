@@ -144,6 +144,21 @@ const CALLS: Record<string, CannedAnswer> = {
   'task.get': okEnvelope({ ...JOBS[0], params: {}, logTail: ['exported Alpha', 'exported Beta'] }),
   'notify.message.list': pageEnvelope(MESSAGES_ROWS),
   'notify.problem.list': pageEnvelope([PROBLEM]),
+  'keel.widget.accounts': okEnvelope({ value: 42, unit: 'count', series: 'keel.accounts' }),
+  'dns.widget.zones': okEnvelope({ value: 7, unit: 'count' }),
+  'stats.series': okEnvelope({
+    key: 'keel.accounts',
+    unit: 'count',
+    resolution: 'hour',
+    points: [38, 40, 42].map((value, day) => ({
+      at: `2026-09-2${day}T00:00:00Z`,
+      value,
+      min: value,
+      max: value,
+      sum: value,
+      count: 1,
+    })),
+  }),
 };
 
 const FIXTURE_MESSAGES = {
@@ -439,13 +454,22 @@ export const Home: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
-    const card = canvasElement.querySelector('phx-widget-card');
+    const card = canvasElement.querySelector(
+      'phx-widget-card[data-widget-func="notify.problem.list"]',
+    );
     await expect(card).toHaveTextContent('Problems');
     await expect(await canvas.findByText(PROBLEM_KEY)).toBeInTheDocument();
     await expect(canvas.getByRole('link', { name: 'Open' })).toHaveAttribute(
       'href',
       `/${SCREEN_PATH}/notify.problem.list`,
     );
+    const accounts = canvasElement.querySelector(
+      'phx-widget-card[data-widget-func="keel.widget.accounts"]',
+    );
+    await waitFor(() =>
+      expect(accounts?.querySelector('keel-sparkline')).toHaveAttribute('data-points', '3'),
+    );
+    await expect(accounts?.querySelector('phx-stat')).toHaveTextContent('42');
   },
 };
 

@@ -5,6 +5,7 @@ use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
 use keel_sdk::system::{PreferenceSource, Preferences};
 use keel_testkit::{Harness, Who, tokio};
+use keel_types::DashboardLayout;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
@@ -18,19 +19,32 @@ struct Seen {
 
 struct ByLogin;
 
+async fn login_of(principal: Id, db: &Db) -> Result<String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT login FROM keel_principal WHERE id = $1",
+            [principal.to_string().into()],
+        ))
+        .await?;
+    Ok(row
+        .ok_or_else(|| KeelError::not_found("keel.error.not_found"))?
+        .try_get("", "login")?)
+}
+
 #[async_trait]
 impl PreferenceSource for ByLogin {
+    async fn dashboard(&self, principal: Id, db: &Db) -> Result<Option<DashboardLayout>> {
+        Ok(
+            (login_of(principal, db).await? == "a1").then(|| DashboardLayout {
+                order: vec!["zone.inner".into(), "zone.gone".into()],
+                hidden: vec!["zone.read".into()],
+            }),
+        )
+    }
+
     async fn preferences(&self, principal: Id, db: &Db) -> Result<Preferences> {
-        let row = db
-            .query_one(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT login FROM keel_principal WHERE id = $1",
-                [principal.to_string().into()],
-            ))
-            .await?;
-        let login: String = row
-            .ok_or_else(|| KeelError::not_found("keel.error.not_found"))?
-            .try_get("", "login")?;
+        let login = login_of(principal, db).await?;
         Ok(match login.as_str() {
             "a1" => Preferences {
                 lang: Some("ru".into()),
@@ -82,7 +96,9 @@ fn zone_init(r: &mut Registrar) -> Result<()> {
                         nested_tz: None,
                     })
                 }),
-        );
+        )
+        .contribute(DashboardWidget::new(WidgetKind::Stat, "zone.read"))
+        .contribute(DashboardWidget::new(WidgetKind::Stat, "zone.inner"));
     Ok(())
 }
 
@@ -125,5 +141,30 @@ async fn the_transport_overlays_the_preferred_language_and_hands_the_zone_to_eve
         "{:?}",
         direct.error()
     );
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_boot_dashboard_follows_the_preferred_layout_and_flags_the_hidden_widgets() {
+    let harness = Harness::new().module(&ZONE).boot().await;
+    let http = harness.http().await;
+    let a1 = http.get(Who::A1, "/api/v1/boot").await;
+    assert_eq!(a1.status, 200, "{}", a1.body);
+    assert_eq!(
+        a1.json()["dashboard"],
+        json!([
+            { "kind": "stat", "func": "zone.inner" },
+            { "kind": "stat", "func": "zone.read", "hidden": true }
+        ])
+    );
+    let a2 = http.get(Who::A2, "/api/v1/boot").await;
+    assert_eq!(
+        a2.json()["dashboard"],
+        json!([
+            { "kind": "stat", "func": "zone.read" },
+            { "kind": "stat", "func": "zone.inner" }
+        ])
+    );
+    http.stop().await.expect("the server stops");
     harness.finish().await;
 }

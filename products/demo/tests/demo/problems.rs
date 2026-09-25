@@ -238,7 +238,10 @@ async fn an_overdue_todo_raises_note_overdue_for_its_account_after_the_poll_and_
     );
     assert_eq!(
         admin.json()["dashboard"],
-        json!([{ "kind": "list", "func": PROBLEM_LIST, "limit": 5 }])
+        json!([
+            { "kind": "stat", "func": "keel.widget.accounts" },
+            { "kind": "list", "func": PROBLEM_LIST, "limit": 5 }
+        ])
     );
     http.stop().await.expect("the server stops");
     let _ = serde_json::to_string(&reported).expect("raises serialise");

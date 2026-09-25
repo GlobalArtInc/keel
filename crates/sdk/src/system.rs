@@ -8,8 +8,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use keel_types::{
-    BootLicense, BootProblems, CallError, DownloadFile, Event, Id, Level, Mode, Principal,
-    TaskState,
+    BootLicense, BootProblems, CallError, DashboardLayout, DownloadFile, Event, Id, Level, Mode,
+    Principal, TaskState,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -140,6 +140,7 @@ pub struct Preferences {
 #[async_trait]
 pub trait PreferenceSource: Send + Sync {
     async fn preferences(&self, principal: Id, db: &Db) -> Result<Preferences>;
+    async fn dashboard(&self, principal: Id, db: &Db) -> Result<Option<DashboardLayout>>;
 }
 
 pub trait LanguageSource: Send + Sync {

@@ -256,9 +256,17 @@
   ],
   "dashboard": [
     {
+      "kind": "stat",
+      "func": "keel.widget.accounts"
+    },
+    {
       "kind": "list",
       "func": "notify.problem.list",
       "limit": 5
+    },
+    {
+      "kind": "stat",
+      "func": "dns.widget.zones"
     }
   ],
   "views": [],
