@@ -25,6 +25,8 @@ polled_tag=@polled
 setup_tag=@setup
 guest_per_minute=120
 setup_link=""
+dns_zone=cli.e2e.test
+dns_zones=(browser.e2e.test "$dns_zone" token.e2e.test)
 
 usage() {
   echo "usage: hack/e2e.sh [path/to/keel] [playwright arguments...]" >&2
@@ -177,6 +179,28 @@ problem_listed() {
     waited=$((waited + 1))
   done
   cat "$site/problems.json" >&2
+  return 1
+}
+
+zones_served() {
+  local waited=0 zone
+  local expected
+  expected=$(printf "'%s', " "${dns_zones[@]}")
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/zones.json" ctl dns.zone.list --as "$user_login" --out json \
+      && json_is "$site/zones.json" "doc['ok'] is True and [(row['name'], row['state'], row['served']) for row in doc['data']['data']] == [(name, 'active', True) for name in ($expected)]" 2>/dev/null; then
+      for zone in "${dns_zones[@]}"; do
+        if [ ! -f "$site/agent/zones/keel-dns-$zone.zone" ] || ! grep -qF "keel-dns-$zone.conf" "$site/agent/named/keel-dns-zones.conf"; then
+          echo "  the agent did not write the zone file and the include of $zone" >&2
+          return 1
+        fi
+      done
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/zones.json" >&2
   return 1
 }
 
@@ -417,12 +441,18 @@ user_account=$(json_get "$site/user-account.json" 'doc["data"]["id"]')
 create_principal "$site/reseller.json" "$reseller_login" reseller "$reseller_account" "$reseller_password"
 create_principal "$site/user.json" "$user_login" user "$user_account" "$user_password"
 echo "created the admin $admin_login through the setup link, the reseller $reseller_login in $reseller_account and the user $user_login in $user_account"
+check "ctl dns.zone.create --as alice creates the zone $dns_zone" keel_ok "$site/dns-zone.json" ctl dns.zone.create --as "$user_login" "name=$dns_zone"
+check "dns.zone.create answers the zone in alice's account" json_is "$site/dns-zone.json" "doc['ok'] is True and doc['data']['name'] == '$dns_zone' and doc['data']['accountId'] == '$user_account'"
+e2e_env+=("KEEL_E2E_DNS_ZONE=$dns_zone")
 
 echo "--- pnpm e2e"
 (
   cd "$frontend"
   env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag" "$@"
 )
+
+echo "--- the zones of the browser, the CLI and the token"
+check "the three zones are active and the agent wrote their files and includes" zones_served
 
 echo "--- the poll job, the problem and the mail"
 check "ctl notify.channel.set creates the email channel to the catcher" keel_ok "$site/channel.json" ctl notify.channel.set kind=email name=catcher enabled=true "email={\"host\":\"$smtp_host\",\"port\":$smtp_port,\"security\":\"none\",\"from\":\"keel@example.org\",\"to\":\"ops@example.org\"}"

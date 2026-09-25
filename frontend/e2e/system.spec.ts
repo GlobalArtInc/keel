@@ -185,6 +185,7 @@ keelTest.describe('system', () => {
     expect(token).toBeDefined();
 
     await page.goto('/f/auth.token.list');
+    await search(page, TOKEN_NAME);
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).first().locator('[data-column="name"]')).toHaveText(TOKEN_NAME);
     await expect(page.locator('keel-list')).not.toContainText(token ?? TOKEN_PREFIX);
