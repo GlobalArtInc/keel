@@ -1,0 +1,15 @@
+{
+  "stats": {
+    "error": {
+      "days": "The retention {key} holds {value}, which is not a number of days",
+      "duplicate": "The statistic {key} is contributed more than once",
+      "instant": "The instant {at} cannot be divided into periods",
+      "interval": "The statistic {key} is collected every {seconds} seconds; the interval must be a whole number of minutes",
+      "key": "No statistic {key} is available to you",
+      "not_started": "The stats module has not started yet",
+      "points": "The period holds more than {max} points; choose a coarser resolution or a shorter period",
+      "range": "The period must end after it starts",
+      "subject": "The statistic {key} has no subject {subject} available to you"
+    }
+  }
+}

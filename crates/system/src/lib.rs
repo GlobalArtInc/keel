@@ -12,6 +12,8 @@ pub mod license;
 pub mod notify;
 #[cfg(feature = "settings")]
 pub mod settings;
+#[cfg(feature = "stats")]
+pub mod stats;
 #[cfg(feature = "tasks")]
 pub mod tasks;
 #[cfg(feature = "update")]

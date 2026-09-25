@@ -1590,7 +1590,7 @@
                   "scope": {
                     "anyOf": [
                       {
-                        "$ref": "#/components/schemas/Scope"
+                        "$ref": "#/components/schemas/auth.token.create.params.Scope"
                       },
                       {
                         "type": "null"
@@ -9820,6 +9820,194 @@
         }
       }
     },
+    "/api/v1/call/stats.keys": {
+      "post": {
+        "operationId": "stats.keys",
+        "tags": [
+          "stats"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Keys",
+                      "type": "object",
+                      "properties": {
+                        "keys": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/KeyInfo"
+                          }
+                        }
+                      },
+                      "required": [
+                        "keys"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/stats.series": {
+      "post": {
+        "operationId": "stats.series",
+        "tags": [
+          "stats"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SeriesQuery",
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "subject": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "resolution": {
+                    "$ref": "#/components/schemas/Resolution"
+                  }
+                },
+                "required": [
+                  "key",
+                  "from",
+                  "to",
+                  "resolution"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Series",
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "resolution": {
+                          "$ref": "#/components/schemas/Resolution"
+                        },
+                        "points": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Point"
+                          }
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "unit",
+                        "resolution",
+                        "points"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/task.cancel": {
       "post": {
         "operationId": "task.cancel",
@@ -12315,6 +12503,31 @@
           "effective"
         ]
       },
+      "KeyInfo": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "scope": {
+            "$ref": "#/components/schemas/stats.keys.result.Scope"
+          }
+        },
+        "required": [
+          "key",
+          "unit",
+          "intervalSeconds",
+          "scope"
+        ]
+      },
       "Level": {
         "type": "string",
         "enum": [
@@ -12492,6 +12705,44 @@
           "failed",
           "skipped",
           "interrupted"
+        ]
+      },
+      "Point": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "sum": {
+            "type": "number",
+            "format": "double"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "at",
+          "value",
+          "min",
+          "max",
+          "sum",
+          "count"
         ]
       },
       "Principal": {
@@ -12785,6 +13036,14 @@
           "CAA"
         ]
       },
+      "Resolution": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "hour",
+          "day"
+        ]
+      },
       "RuleAction": {
         "type": "string",
         "enum": [
@@ -12839,32 +13098,6 @@
           "scheduledAt",
           "startedAt",
           "outcome"
-        ]
-      },
-      "Scope": {
-        "oneOf": [
-          {
-            "type": "string",
-            "enum": [
-              "full",
-              "read_only"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "functions": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": [
-              "functions"
-            ],
-            "additionalProperties": false
-          }
         ]
       },
       "Secret": {
@@ -13321,7 +13554,7 @@
             "type": "string"
           },
           "scope": {
-            "$ref": "#/components/schemas/Scope"
+            "$ref": "#/components/schemas/auth.token.create.params.Scope"
           },
           "ipAllow": {
             "type": "array",
@@ -13442,6 +13675,32 @@
           "served",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "auth.token.create.params.Scope": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "full",
+              "read_only"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "functions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "functions"
+            ],
+            "additionalProperties": false
+          }
         ]
       },
       "note.list.result.Note": {
@@ -13658,6 +13917,13 @@
           "source",
           "unread",
           "createdAt"
+        ]
+      },
+      "stats.keys.result.Scope": {
+        "type": "string",
+        "enum": [
+          "installation",
+          "account"
         ]
       },
       "update.apply.result.Channel": {

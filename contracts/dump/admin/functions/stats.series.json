@@ -1,0 +1,137 @@
+{
+  "keel": 1,
+  "name": "stats.series",
+  "module": "stats",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "SeriesQuery",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "subject": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "resolution": {
+        "$ref": "#/$defs/Resolution"
+      }
+    },
+    "required": [
+      "key",
+      "from",
+      "to",
+      "resolution"
+    ],
+    "$defs": {
+      "Resolution": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "hour",
+          "day"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Series",
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string"
+      },
+      "unit": {
+        "type": "string"
+      },
+      "subject": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "resolution": {
+        "$ref": "#/$defs/Resolution"
+      },
+      "points": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Point"
+        }
+      }
+    },
+    "required": [
+      "key",
+      "unit",
+      "resolution",
+      "points"
+    ],
+    "$defs": {
+      "Resolution": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "hour",
+          "day"
+        ]
+      },
+      "Point": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "min": {
+            "type": "number",
+            "format": "double"
+          },
+          "max": {
+            "type": "number",
+            "format": "double"
+          },
+          "sum": {
+            "type": "number",
+            "format": "double"
+          },
+          "count": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "at",
+          "value",
+          "min",
+          "max",
+          "sum",
+          "count"
+        ]
+      }
+    }
+  }
+}

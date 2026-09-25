@@ -1,0 +1,63 @@
+{
+  "keel": 1,
+  "name": "stats.keys",
+  "module": "stats",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Keys",
+    "type": "object",
+    "properties": {
+      "keys": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/KeyInfo"
+        }
+      }
+    },
+    "required": [
+      "keys"
+    ],
+    "$defs": {
+      "KeyInfo": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "scope": {
+            "$ref": "#/$defs/Scope"
+          }
+        },
+        "required": [
+          "key",
+          "unit",
+          "intervalSeconds",
+          "scope"
+        ]
+      },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "installation",
+          "account"
+        ]
+      }
+    }
+  }
+}

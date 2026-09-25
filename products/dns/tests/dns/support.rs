@@ -168,18 +168,22 @@ pub(crate) async fn state_becomes(harness: &Harness, id: &str, state: &str) {
 }
 
 pub(crate) async fn run_poll(harness: &Harness) {
+    run_job(harness, POLL_JOB).await;
+}
+
+pub(crate) async fn run_job(harness: &Harness, job: &str) {
     let scheduler = harness
         .registry()
         .services()
         .get::<Scheduler>()
         .expect("the cron module provides the scheduler");
     eventually("the leader takes the lock", async || scheduler.is_leader()).await;
-    let started = scheduler.run_now(POLL_JOB).await.expect("the poll starts");
+    let started = scheduler.run_now(job).await.expect("the job starts");
     let outcome = tokio::time::timeout(PATIENCE, scheduler.wait(started.run))
         .await
-        .expect("the poll ends in time")
+        .expect("the job ends in time")
         .expect("the outcome is read");
-    assert_eq!(outcome, Outcome::Ok);
+    assert_eq!(outcome, Outcome::Ok, "{job}");
 }
 
 pub(crate) fn names(reply: &Reply) -> Vec<String> {

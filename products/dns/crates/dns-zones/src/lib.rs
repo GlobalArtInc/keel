@@ -7,6 +7,7 @@ mod hooks;
 mod lifecycle;
 mod problems;
 mod provider;
+mod stats;
 mod zone;
 
 use keel::prelude::*;
@@ -67,6 +68,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .default(LIMIT_DEFAULT)
                 .unlimited(true),
         )
+        .contribute(stats::zones(LIMIT))
         .contribute(lifecycle::contribution())
         .contribute(problems::source())
         .contribute(

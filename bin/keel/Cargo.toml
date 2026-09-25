@@ -20,7 +20,7 @@ dns = ["dep:keel-dns"]
 keel = { workspace = true }
 keel-demo = { workspace = true, optional = true }
 keel-dns = { workspace = true, optional = true }
-keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup"] }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup", "stats"] }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }

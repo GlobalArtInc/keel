@@ -2529,7 +2529,15 @@ mod tests {
             .collect();
         assert_eq!(widgets, ["base", "contributing"]);
         assert_eq!(frozen.registry().contributions().of::<u8>().count(), 1);
-        assert_eq!(frozen.registry().contributions().len(), 3);
+        assert_eq!(
+            frozen
+                .registry()
+                .contributions()
+                .of::<keel_sdk::StatCollector>()
+                .count(),
+            2
+        );
+        assert_eq!(frozen.registry().contributions().len(), 5);
     }
 
     fn twice_init(r: &mut Registrar) -> Result<()> {

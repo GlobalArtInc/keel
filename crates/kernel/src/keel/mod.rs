@@ -9,6 +9,7 @@ mod products;
 mod restart;
 mod setup;
 mod source;
+mod stats;
 
 use keel_sdk::prelude::*;
 use keel_sdk::{ModuleDef, Registrar};
@@ -86,6 +87,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(crate::export::function())
         .function(health::doctor_run())
         .function(health::logs_tail())
+        .contribute(stats::accounts())
+        .contribute(stats::principals())
         .permission("keel.account.read", &[Level::User, Level::Reseller])
         .permission("keel.account.manage", &[Level::Reseller])
         .permission("keel.principal.read", &[Level::User, Level::Reseller])
@@ -144,6 +147,24 @@ mod tests {
             .expect("the registrations are valid");
         assert_eq!(registrations.permissions.len(), 4);
         assert_eq!(registrations.menu.len(), 4);
+        let collected: Vec<(&str, u64, bool)> = registrations
+            .contributions
+            .of::<keel_sdk::StatCollector>()
+            .map(|collector| {
+                (
+                    collector.key(),
+                    collector.interval().as_secs(),
+                    collector.is_per_account(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            collected,
+            [
+                ("keel.accounts", 3_600, false),
+                ("keel.principals", 3_600, false)
+            ]
+        );
         assert!(
             registrations
                 .menu

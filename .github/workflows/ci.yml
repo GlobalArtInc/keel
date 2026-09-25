@@ -250,6 +250,7 @@ jobs:
           - license
           - update
           - backup
+          - stats
           - tasks,cron,notify,update
           - tasks,backup
           - settings,audit,tasks,cron,notify,webhooks

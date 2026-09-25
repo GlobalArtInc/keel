@@ -14,6 +14,7 @@
         "crates/system/i18n/license": ["license"],
         "crates/system/i18n/notify": ["notify"],
         "crates/system/i18n/settings": ["settings"],
+        "crates/system/i18n/stats": ["stats"],
         "crates/system/i18n/tasks": ["task"],
         "crates/system/i18n/update": ["update"],
         "crates/system/i18n/webhooks": ["webhook"]

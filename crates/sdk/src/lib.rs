@@ -25,6 +25,7 @@ pub mod ui;
 
 mod call;
 mod services;
+mod stat;
 
 #[doc(hidden)]
 pub mod runtime;
@@ -66,6 +67,7 @@ pub use product::{Asset, Brand, Edition, LevelLabels, MenuGroup, ProductManifest
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
+pub use stat::StatCollector;
 pub use task::{TaskHandle, TaskOutput};
 pub use ui::{Action, ActionScreen, Column, Form, List, ObjectScreen, ViewSpec};
 
