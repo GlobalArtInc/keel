@@ -439,3 +439,107 @@ jobs:
         env:
           NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm publish --dry-run --no-git-checks
+
+  rehearsal:
+    name: dependency rehearsal
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_PASSWORD: keel
+          POSTGRES_DB: postgres
+        ports: ['5432']
+        options: >-
+          --health-cmd "pg_isready -U keel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Put cargo on the path
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Link the runner's build directory
+        run: |
+          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
+          mkdir -p "$dir"
+          rm -rf target
+          ln -sfn "$dir" target
+          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Cache the cargo download directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Find the IPv4 port of Postgres
+        run: |
+          port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$port"
+          echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -d "$KEEL_TEST_DATABASE_URL" && exit 0
+            sleep 2
+          done
+          echo "postgres did not come up" >&2
+          exit 1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install the frontend dependencies
+        working-directory: frontend
+        env:
+          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the shell the binary embeds
+        working-directory: frontend
+        run: pnpm build
+
+      - name: The binary with the dns module crates from this revision on GitHub
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
+        run: hack/rehearsal.sh "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+
+      - name: No test database remains
+        run: hack/check-test-databases.sh
