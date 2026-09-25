@@ -287,6 +287,22 @@ allots() {
   [ "$got" = "$expected" ]
 }
 
+tamper() {
+  local field=$1 source=$2 target=$3
+  sed -E -e "s/^(  \"$field\": \")Z/\\1Y/" -e t -e "s/^(  \"$field\": \")./\\1Z/" "$source" >"$target"
+}
+
+differs() {
+  local signed=$1
+  shift
+  local tampered
+  for tampered in "$@"; do
+    if cmp -s "$signed" "$tampered"; then
+      return 1
+    fi
+  done
+}
+
 if ossl=$(find_openssl); then
   echo "the signature check of install.sh is exercised with $ossl"
   rehearsal=$(mktemp -d)
@@ -296,13 +312,14 @@ if ossl=$(find_openssl); then
   printf 'archive' >"$rehearsal/archive"
   cargo run -q -p keel-release -- sign --key "$rehearsal/keys/release.key" --version 0.1.0 --archive "$rehearsal/archive" \
     --min-upgrade-from 0.1.0 --contract 1 --notes "install rehearsal" --out "$rehearsal/manifest.json" >/dev/null
-  sed -E 's/^(  "signature": ")./\1Z/' "$rehearsal/manifest.json" >"$rehearsal/signature-tampered.json"
-  sed -E 's/^(  "payload": ")./\1Z/' "$rehearsal/manifest.json" >"$rehearsal/payload-tampered.json"
+  tamper signature "$rehearsal/manifest.json" "$rehearsal/signature-tampered.json"
+  tamper payload "$rehearsal/manifest.json" "$rehearsal/payload-tampered.json"
   printf '{"version":"0.1.0"}\n' >"$rehearsal/unsigned.json"
   check "install.sh accepts a manifest signed by the given key and yields its payload" verifies "$ossl" "$rehearsal/manifest.json" "$rehearsal/keys/release.pub" "$rehearsal/payload.json"
   check "the yielded payload names the version and the sha256 of the archive" test "$(sourced "$ossl" json_string "$rehearsal/payload.json" version) $(sourced "$ossl" json_string "$rehearsal/payload.json" sha256)" = "0.1.0 $(python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$rehearsal/archive")"
   check "install.sh refuses the manifest under another key" refuses "$ossl" "$rehearsal/manifest.json" "$rehearsal/other/release.pub" "$rehearsal/refused.json"
   check "install.sh refuses the manifest under the embedded key" refuses "$ossl" "$rehearsal/manifest.json" crates/release/keys/release.pub "$rehearsal/refused.json"
+  check "the tampered signature and payload differ from the signed manifest" differs "$rehearsal/manifest.json" "$rehearsal/signature-tampered.json" "$rehearsal/payload-tampered.json"
   check "install.sh refuses a tampered signature" refuses "$ossl" "$rehearsal/signature-tampered.json" "$rehearsal/keys/release.pub" "$rehearsal/refused.json"
   check "install.sh refuses a tampered payload" refuses "$ossl" "$rehearsal/payload-tampered.json" "$rehearsal/keys/release.pub" "$rehearsal/refused.json"
   check "install.sh refuses a manifest that is not a signed envelope" refuses "$ossl" "$rehearsal/unsigned.json" "$rehearsal/keys/release.pub" "$rehearsal/refused.json"
