@@ -9,6 +9,8 @@ mod peer;
 mod policy;
 mod process;
 mod protocol;
+#[cfg(test)]
+mod stub;
 
 pub use agent::{Agent, AgentError, Bound, DEFAULT_TEMPLATES, DEFAULT_USER};
 pub use ops::{Operation, OperationCall, Template};

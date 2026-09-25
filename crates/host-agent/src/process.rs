@@ -90,21 +90,17 @@ pub(crate) fn stdout(output: &Output) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
-
     use super::*;
+    use crate::stub::write_tool;
 
     #[test]
     fn a_tool_runs_with_a_fixed_argument_vector_and_a_clean_environment() {
         let dir = tempfile::tempdir().unwrap();
         let tool = dir.path().join("tool");
-        fs::write(
+        write_tool(
             &tool,
             "#!/bin/sh\nprintf '%s|' \"$@\"\nprintf '\\n%s|%s|%s' \"$PATH\" \"$LC_ALL\" \"${SECRET:-unset}\"\n",
-        )
-        .unwrap();
-        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let output = succeed(&tool, ["one", "two words", "$(three)"]).unwrap();
         assert_eq!(
             stdout(&output),
@@ -116,16 +112,14 @@ mod tests {
     fn a_failing_tool_answers_exec_failed_with_its_output_as_the_detail() {
         let dir = tempfile::tempdir().unwrap();
         let tool = dir.path().join("tool");
-        fs::write(
+        write_tool(
             &tool,
             "#!/bin/sh\necho 'went wrong' >&2\necho 'and said so'\nexit 3\n",
-        )
-        .unwrap();
-        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let failure = succeed(&tool, ["x"]).unwrap_err();
         assert_eq!(failure.key, ERROR_EXEC_FAILED);
         assert_eq!(failure.detail, "went wrong\nand said so");
-        fs::write(&tool, "#!/bin/sh\nexit 4\n").unwrap();
+        write_tool(&tool, "#!/bin/sh\nexit 4\n");
         let failure = succeed(&tool, ["x"]).unwrap_err();
         assert_eq!(
             failure.detail,
@@ -151,12 +145,10 @@ mod tests {
     fn a_tool_gets_the_environment_it_names_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
         let tool_path = dir.path().join("tool");
-        fs::write(
+        write_tool(
             &tool_path,
             "#!/bin/sh\nprintf '%s|%s|%s' \"$DEBIAN_FRONTEND\" \"$LC_ALL\" \"${HOME:-unset}\"\n",
-        )
-        .unwrap();
-        fs::set_permissions(&tool_path, fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let output = tool(&tool_path, ["x"], &[("DEBIAN_FRONTEND", "noninteractive")]).unwrap();
         assert_eq!(stdout(&output), "noninteractive|C|unset");
     }

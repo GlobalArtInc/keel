@@ -136,16 +136,14 @@ fn become_and_exec(_target: &Target, _account: &User) -> ExecError {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
     use super::*;
+    use crate::stub::write_tool;
 
     fn stub(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
-        fs::write(&path, format!("#!/bin/sh\n{body}")).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        write_tool(&path, &format!("#!/bin/sh\n{body}"));
         path
     }
 
