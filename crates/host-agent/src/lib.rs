@@ -1,6 +1,8 @@
 mod accounts;
 mod agent;
 pub mod exec;
+#[cfg(test)]
+mod fuzz;
 pub mod journal;
 mod ops;
 mod peer;

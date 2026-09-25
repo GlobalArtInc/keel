@@ -46,7 +46,9 @@ mod privileged {
             fs::write(
                 root.join("agent.yaml"),
                 format!(
-                    "policy:\n  uid_range: {{ from: {uid}, to: {uid} }}\n  file_roots: {{ zones: {zones} }}\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools: {{ getent: {getent} }}\n",
+                    "policy:\n  uid_range: {{ from: {from}, to: {to} }}\n  file_roots: {{ zones: {zones} }}\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools: {{ getent: {getent} }}\n",
+                    from = uid.min(gid),
+                    to = uid.max(gid),
                     zones = root.join("zones").display(),
                     getent = getent.display()
                 ),

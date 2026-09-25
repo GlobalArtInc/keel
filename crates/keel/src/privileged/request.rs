@@ -1,8 +1,11 @@
-use std::fs;
-use std::io;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use keel_release::{Channel, Version};
+use nix::errno::Errno;
+use nix::fcntl::OFlag;
 use serde::Deserialize;
 
 const MAX_BYTES: u64 = 64 * 1024;
@@ -49,31 +52,14 @@ pub(crate) enum RequestError {
 
 impl Request {
     pub(crate) fn consume(path: &Path) -> Result<Self, RequestError> {
-        let metadata = fs::symlink_metadata(path).map_err(|source| match source.kind() {
-            io::ErrorKind::NotFound => RequestError::Missing(path.to_owned()),
-            _ => RequestError::Read {
-                path: path.to_owned(),
-                source,
-            },
-        })?;
-        if !metadata.file_type().is_file() {
-            remove(path)?;
-            return Err(RequestError::NotAFile {
-                path: path.to_owned(),
-            });
-        }
-        if metadata.len() > MAX_BYTES {
-            remove(path)?;
-            return Err(RequestError::TooLarge {
-                path: path.to_owned(),
-            });
-        }
-        let read = fs::read(path);
-        remove(path)?;
-        let bytes = read.map_err(|source| RequestError::Read {
-            path: path.to_owned(),
-            source,
-        })?;
+        let file = match open(path) {
+            Err(RequestError::Missing(missing)) => return Err(RequestError::Missing(missing)),
+            opened => {
+                remove(path)?;
+                opened?
+            }
+        };
+        let bytes = read(path, file)?;
         let request: Request =
             serde_json::from_slice(&bytes).map_err(|source| RequestError::Shape {
                 path: path.to_owned(),
@@ -92,6 +78,54 @@ impl Request {
     }
 }
 
+fn open(path: &Path) -> Result<File, RequestError> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
+        .open(path)
+        .map_err(|source| match source.kind() {
+            io::ErrorKind::NotFound => RequestError::Missing(path.to_owned()),
+            _ if source.raw_os_error() == Some(Errno::ELOOP as i32) => RequestError::NotAFile {
+                path: path.to_owned(),
+            },
+            _ => RequestError::Read {
+                path: path.to_owned(),
+                source,
+            },
+        })?;
+    let metadata = file.metadata().map_err(|source| RequestError::Read {
+        path: path.to_owned(),
+        source,
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(RequestError::NotAFile {
+            path: path.to_owned(),
+        });
+    }
+    if metadata.len() > MAX_BYTES {
+        return Err(RequestError::TooLarge {
+            path: path.to_owned(),
+        });
+    }
+    Ok(file)
+}
+
+fn read(path: &Path, file: File) -> Result<Vec<u8>, RequestError> {
+    let mut bytes = Vec::new();
+    file.take(MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|source| RequestError::Read {
+            path: path.to_owned(),
+            source,
+        })?;
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(RequestError::TooLarge {
+            path: path.to_owned(),
+        });
+    }
+    Ok(bytes)
+}
+
 fn remove(path: &Path) -> Result<(), RequestError> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -105,7 +139,59 @@ fn remove(path: &Path) -> Result<(), RequestError> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use super::*;
+
+    const REQUEST: &str = r#"{"version":"1.3.0","channel":"stable","requested_by":"admin"}"#;
+
+    #[test]
+    fn a_request_that_grows_after_its_check_is_refused_at_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update.request");
+        fs::write(&path, REQUEST).unwrap();
+        let file = open(&path).unwrap();
+        let mut grown = OpenOptions::new().append(true).open(&path).unwrap();
+        grown.write_all(&vec![b' '; MAX_BYTES as usize]).unwrap();
+        assert!(matches!(
+            read(&path, file),
+            Err(RequestError::TooLarge { path: refused }) if refused == path
+        ));
+    }
+
+    #[test]
+    fn a_request_swapped_for_a_link_after_its_check_is_read_from_the_checked_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update.request");
+        fs::write(&path, REQUEST).unwrap();
+        let file = open(&path).unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        fs::write(
+            &elsewhere,
+            r#"{"version":"0.0.1","channel":"beta","requested_by":"intruder"}"#,
+        )
+        .unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&elsewhere, &link).unwrap();
+        fs::rename(&link, &path).unwrap();
+        assert_eq!(read(&path, file).unwrap(), REQUEST.as_bytes());
+        assert!(matches!(
+            open(&path),
+            Err(RequestError::NotAFile { path: refused }) if refused == path
+        ));
+    }
+
+    #[test]
+    fn a_fifo_at_the_request_path_is_refused_without_blocking_and_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("update.request");
+        nix::unistd::mkfifo(&path, nix::sys::stat::Mode::from_bits_truncate(0o600)).unwrap();
+        assert!(matches!(
+            Request::consume(&path),
+            Err(RequestError::NotAFile { path: refused }) if refused == path
+        ));
+        assert!(fs::symlink_metadata(&path).is_err());
+    }
 
     #[test]
     fn the_design_request_parses_and_is_removed_once_read() {

@@ -48,7 +48,8 @@ the installed policy back. It installs bind9 from the distribution when no
 named is present and records that for --cleanup. As the user keel it sends frames of
 the agent protocol to $SOCKET: an operating-system user is created
 inside the uid range of the policy and runs a program through
-"keel agent-exec"; a zone is rendered from a template override under
+"keel agent-exec" with its own group alone, no variable of the caller and /
+as its directory, refused once its primary group lies outside the range; a zone is rendered from a template override under
 $TEMPLATES, validated with named-checkconf, reloaded into named and
 answered by dig; the same apply answers changed: false; a broken template is
 refused with host.error.validate_failed while the file stays byte-identical
@@ -437,6 +438,21 @@ main() {
   seen=$("$KEEL" agent-exec --uid 0 --policy "$POLICY" -- /usr/bin/id -u 2>&1 || true)
   say "  keel agent-exec --uid 0 -- /usr/bin/id -u -> $seen"
   check "keel agent-exec refuses a uid outside the range" grep -qF 'outside the uid_range' <<<"$seen"
+  local gid
+  gid=$(id -g "$PROOF_USER" 2>/dev/null || true)
+  seen=$("$KEEL" agent-exec --uid "$uid" --policy "$POLICY" -- /usr/bin/id -G 2>&1 || true)
+  say "  keel agent-exec --uid $uid -- /usr/bin/id -G -> $seen"
+  check "keel agent-exec keeps the account's own group alone" test "$seen" = "$gid"
+  seen=$(KEEL_PROOF_SECRET=leaked "$KEEL" agent-exec --uid "$uid" --policy "$POLICY" -- /usr/bin/env 2>&1 || true)
+  say "  keel agent-exec --uid $uid -- /usr/bin/env -> $(tr '\n' ' ' <<<"$seen")"
+  check "keel agent-exec passes no variable of the caller" test "$(cut -d= -f1 <<<"$seen" | sort | tr '\n' ' ')" = "HOME LC_ALL LOGNAME PATH USER "
+  seen=$("$KEEL" agent-exec --uid "$uid" --policy "$POLICY" -- /bin/pwd 2>&1 || true)
+  check "keel agent-exec starts the program in /" test "$seen" = "/"
+  usermod -g 0 "$PROOF_USER"
+  seen=$("$KEEL" agent-exec --uid "$uid" --policy "$POLICY" -- /usr/bin/id -u 2>&1 || true)
+  usermod -g "$gid" "$PROOF_USER"
+  say "  keel agent-exec --uid $uid with the primary group 0 -> $seen"
+  check "keel agent-exec refuses an account whose group is outside the range" grep -qF 'has the group 0, outside the uid_range' <<<"$seen"
 
   call dns host.template.apply "$(zone_args 1 192.0.2.10)"
   check "host.template.apply answers changed: true" carries '"changed":true'

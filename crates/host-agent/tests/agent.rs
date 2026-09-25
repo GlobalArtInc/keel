@@ -1190,12 +1190,99 @@ fn a_planted_symlink_is_never_followed_by_a_file_write() {
         &site.call(
             "host.fs.write",
             "dns",
-            json!({ "dest": linked, "content": "zone\n", "mode": "0666" }),
+            json!({ "dest": linked, "content": "zone\n", "mode": "0644" }),
         ),
         "host.error.policy",
     );
     assert_eq!(fs::read_to_string(&sentinel).unwrap(), "sentinel");
     assert_eq!(fs::metadata(&sentinel).unwrap().mode() & 0o7777, 0o600);
+}
+
+#[test]
+fn every_catalogue_operation_refuses_an_argument_it_does_not_know() {
+    let mut site = Site::start("unknown-argument");
+    for op in [
+        "host.user.create",
+        "host.user.delete",
+        "host.user.get",
+        "host.user.list",
+        "host.group.create",
+        "host.group.delete",
+        "host.group.get",
+        "host.group.list",
+        "host.fs.write",
+        "host.fs.read",
+        "host.fs.remove",
+        "host.fs.mkdir",
+        "host.fs.list",
+        "host.service.reload",
+        "host.service.restart",
+        "host.service.list",
+        "host.template.apply",
+        "host.pkg.install",
+        "host.pkg.remove",
+        "host.pkg.get",
+        "host.pkg.refresh",
+        "host.cron.write",
+        "host.cron.remove",
+        "host.cron.list",
+        "host.quota.set",
+        "host.quota.list",
+        "host.exec",
+    ] {
+        let answer = site.call(op, "panel", json!({ "argv": ["/bin/sh", "-c", "id"] }));
+        let detail = refused(&answer, "host.error.args");
+        assert!(detail.contains("unknown field `argv`"), "{op}: {detail}");
+    }
+    assert!(site.calls().is_empty(), "{:?}", site.calls());
+}
+
+#[test]
+fn a_file_the_agent_places_is_never_writable_by_every_account() {
+    let mut site = Site::start("world-write");
+    let file = json!({ "root": "zones", "name": "keel-dns-open" });
+    let written = site.call(
+        "host.fs.write",
+        "dns",
+        json!({ "dest": file, "content": "x\n", "mode": "0666" }),
+    );
+    let detail = refused(&written, "host.error.policy");
+    assert!(detail.contains("lets every account"), "{detail}");
+    let applied = site.call(
+        "host.template.apply",
+        "dns",
+        json!({
+            "template": "bind/zone.j2",
+            "vars": { "origin": "a.org", "serial": 1, "records": [] },
+            "dest": file,
+            "mode": "0646",
+        }),
+    );
+    refused(&applied, "host.error.policy");
+    assert!(!site.zone("keel-dns-open").exists());
+    let dir = json!({ "root": "www", "name": "keel-panel-open" });
+    refused(
+        &site.call(
+            "host.fs.mkdir",
+            "panel",
+            json!({ "dest": dir, "mode": "0777" }),
+        ),
+        "host.error.policy",
+    );
+    assert!(!site.root().join("www/keel-panel-open").exists());
+    let sticky = site.call(
+        "host.fs.mkdir",
+        "panel",
+        json!({ "dest": dir, "mode": "1777" }),
+    );
+    assert_eq!(sticky["data"], json!({ "created": true }), "{sticky}");
+    assert_eq!(
+        fs::metadata(site.root().join("www/keel-panel-open"))
+            .unwrap()
+            .mode()
+            & 0o7777,
+        0o1777
+    );
 }
 
 #[test]

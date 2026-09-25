@@ -5,7 +5,7 @@ use std::process::{Command, Output, Stdio};
 
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_UNAVAILABLE, Failure};
 
-const PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+pub(crate) const PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 pub(crate) fn run<I, S>(program: &Path, args: I) -> Result<Output, Failure>
 where

@@ -446,6 +446,45 @@ fn rollback_switches_to_the_previous_version_within_the_contract_and_refuses_acr
 }
 
 #[test]
+fn an_update_request_moves_down_only_to_the_previous_version_within_its_contract() {
+    let site = Site::new();
+    site.install_current("0.1.0", 1);
+    site.publish("0.1.0", 1, "0.0.1", Channel::Stable);
+    site.publish("0.2.0", 1, "0.1.0", Channel::Stable);
+    site.publish("1.0.0", 2, "0.1.0", Channel::Stable);
+    site.request(r#"{"version":"1.0.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("1.0.0"));
+    assert_eq!(site.previous(), Some(site.binary_of("0.1.0")));
+    site.clear_systemctl_calls();
+
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::FAILURE);
+    assert!(!site.version_dir("0.2.0").exists());
+    site.request(r#"{"version":"0.1.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::FAILURE);
+    assert_eq!(site.current(), site.binary_of("1.0.0"));
+    assert_eq!(site.previous(), Some(site.binary_of("0.1.0")));
+    assert!(site.systemctl_calls().is_empty());
+
+    let backup = site.path("lib/backups/pre-update.tar.zst");
+    fs::create_dir_all(backup.parent().unwrap()).unwrap();
+    fs::write(&backup, b"backup").unwrap();
+    assert_eq!(site.rollback(Some(&backup)), ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("0.1.0"));
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.previous(), Some(site.binary_of("0.1.0")));
+    site.clear_systemctl_calls();
+
+    site.request(r#"{"version":"0.1.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("0.1.0"));
+    assert_eq!(site.previous(), Some(site.binary_of("0.2.0")));
+    assert_eq!(site.systemctl_calls(), restart_sequence());
+}
+
+#[test]
 fn the_request_carries_no_command_the_root_side_obeys() {
     let site = Site::new();
     site.install_current("0.1.0", 1);

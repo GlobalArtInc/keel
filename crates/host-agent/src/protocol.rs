@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub(crate) const LINE_LIMIT: usize = 1024 * 1024;
+pub(crate) const FIELD_LIMIT: usize = 1024;
 
 pub(crate) const ERROR_FRAME: &str = "host.error.frame";
 pub(crate) const ERROR_UNKNOWN_OP: &str = "host.error.unknown_op";
@@ -121,6 +122,12 @@ pub(crate) fn parse_request(line: &[u8]) -> Result<Request, (u64, Failure)> {
                 Failure::new(ERROR_FRAME, format!("{name} is empty")),
             ));
         }
+        if value.len() > FIELD_LIMIT {
+            return Err((
+                request.id,
+                Failure::new(ERROR_FRAME, format!("{name} is over {FIELD_LIMIT} bytes")),
+            ));
+        }
         if value
             .chars()
             .any(|character| character.is_whitespace() || character.is_control())
@@ -223,6 +230,81 @@ mod tests {
                 format!("{field} carries whitespace or a control character")
             );
         }
+    }
+
+    fn frame(field: &str, value: Value) -> Value {
+        let mut request = json!({
+            "id": 5,
+            "op": "host.fs.read",
+            "actor": { "login": "alice", "level": "user" },
+            "request_id": "req-1",
+            "product": "dns",
+        });
+        match field {
+            "actor.login" => request["actor"]["login"] = value,
+            other => request[other] = value,
+        }
+        request
+    }
+
+    #[test]
+    fn a_frame_field_over_the_field_limit_is_refused_before_it_reaches_the_journal() {
+        for field in ["op", "actor.login", "request_id", "product"] {
+            let at_limit = frame(field, json!("a".repeat(FIELD_LIMIT)));
+            assert!(
+                parse_request(at_limit.to_string().as_bytes()).is_ok(),
+                "{field}"
+            );
+            let over = frame(field, json!("a".repeat(FIELD_LIMIT + 1)));
+            let (id, failure) = parse_request(over.to_string().as_bytes()).unwrap_err();
+            assert_eq!(id, 5, "{field}");
+            assert_eq!(failure.key, ERROR_FRAME);
+            assert_eq!(
+                failure.detail,
+                format!("{field} is over {FIELD_LIMIT} bytes")
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_nested_past_the_depth_limit_is_refused_as_a_frame_without_overflowing() {
+        let depth = 100_000;
+        let args = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let line = format!(
+            r#"{{"id":6,"op":"host.fs.read","actor":{{"login":"a","level":"user"}},"request_id":"r","product":"dns","args":{args}}}"#
+        );
+        let (_, failure) = parse_request(line.as_bytes()).unwrap_err();
+        assert_eq!(failure.key, ERROR_FRAME);
+        assert!(
+            failure.detail.contains("recursion limit"),
+            "{}",
+            failure.detail
+        );
+        let shallow = format!("{}{}", "[".repeat(100), "]".repeat(100));
+        let line = format!(
+            r#"{{"id":6,"op":"host.fs.read","actor":{{"login":"a","level":"user"}},"request_id":"r","product":"dns","args":{shallow}}}"#
+        );
+        assert!(parse_request(line.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn a_frame_naming_a_field_twice_is_refused_so_no_reader_sees_another_product() {
+        let line = br#"{"id":8,"op":"host.fs.read","actor":{"login":"a","level":"user"},"request_id":"r","product":"dns","product":"panel"}"#;
+        let (id, failure) = parse_request(line).unwrap_err();
+        assert_eq!(id, 8);
+        assert_eq!(failure.key, ERROR_FRAME);
+        assert!(
+            failure.detail.contains("duplicate field `product`"),
+            "{}",
+            failure.detail
+        );
+        let line = br#"{"id":8,"op":"host.fs.read","actor":{"login":"a","level":"user","login":"b"},"request_id":"r","product":"dns"}"#;
+        let (_, failure) = parse_request(line).unwrap_err();
+        assert!(
+            failure.detail.contains("duplicate field `login`"),
+            "{}",
+            failure.detail
+        );
     }
 
     #[test]

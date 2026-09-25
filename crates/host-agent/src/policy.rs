@@ -42,7 +42,7 @@ pub enum PolicyError {
     EmptyPrefix { product: String, prefix: String },
     #[error("the user_prefix {prefix} of the product {product} is not a prefix of an account name")]
     UserPrefix { product: String, prefix: String },
-    #[error("uid_range {from}..{to} is not a range above 0")]
+    #[error("uid_range {from}..{to} is not a range above 0 that stays below {max}", max = u32::MAX)]
     UidRange { from: u32, to: u32 },
     #[error("the tool {tool} has an empty path")]
     EmptyTool { tool: &'static str },
@@ -241,7 +241,7 @@ impl Policy {
         let file: File = serde_yaml_ng::from_str(text).map_err(PolicyError::Parse)?;
         let policy = file.policy;
         if let Some(range) = policy.uid_range
-            && (range.from == 0 || range.from > range.to)
+            && (range.from == 0 || range.from > range.to || range.to == u32::MAX)
         {
             return Err(PolicyError::UidRange {
                 from: range.from,
@@ -353,6 +353,7 @@ impl Policy {
 
 fn valid_unit_name(name: &str) -> bool {
     !name.is_empty()
+        && !name.starts_with('-')
         && name.len() <= 255
         && name
             .chars()
@@ -578,5 +579,39 @@ policy:
             Policy::load(&dir.path().join("missing.yaml")).unwrap_err(),
             PolicyError::Read { .. }
         ));
+    }
+
+    #[test]
+    fn a_uid_range_reaching_the_id_that_means_unchanged_is_refused() {
+        let error =
+            Policy::parse("policy:\n  uid_range: { from: 100000, to: 4294967295 }\n").unwrap_err();
+        assert!(matches!(
+            error,
+            PolicyError::UidRange {
+                from: 100_000,
+                to: u32::MAX
+            }
+        ));
+        assert_eq!(
+            error.to_string(),
+            "uid_range 100000..4294967295 is not a range above 0 that stays below 4294967295"
+        );
+        let policy =
+            Policy::parse("policy:\n  uid_range: { from: 100000, to: 4294967294 }\n").unwrap();
+        assert!(!policy.uid_range().unwrap().contains(u32::MAX));
+    }
+
+    #[test]
+    fn a_service_named_like_an_option_never_reaches_systemctl() {
+        for name in ["-Hroot@elsewhere", "--force", "-"] {
+            let text = format!("policy:\n  services: [\"{name}\"]\n");
+            assert!(
+                matches!(Policy::parse(&text).unwrap_err(), PolicyError::ServiceName(refused) if refused == name),
+                "{name}"
+            );
+        }
+        let policy =
+            Policy::parse("policy:\n  services: [nginx, php8.3-fpm, getty@tty1]\n").unwrap();
+        assert!(policy.allows_service("getty@tty1"));
     }
 }

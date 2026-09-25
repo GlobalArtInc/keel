@@ -9,6 +9,10 @@ use nix::fcntl::OFlag;
 use super::{Call, DIR_MODE_LIMIT, FILE_MODE_LIMIT, parse_mode};
 use crate::protocol::Failure;
 
+const READ_LIMIT: u64 = 8 * 1024 * 1024;
+const OTHER_WRITE: u32 = 0o002;
+const STICKY: u32 = 0o1000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Kind {
     File,
@@ -27,6 +31,13 @@ impl Kind {
         match self {
             Self::File => FILE_MODE_LIMIT,
             Self::Dir => DIR_MODE_LIMIT,
+        }
+    }
+
+    fn admits(self, mode: u32) -> bool {
+        match self {
+            Self::File => mode & OTHER_WRITE == 0,
+            Self::Dir => mode & OTHER_WRITE == 0 || mode & STICKY != 0,
         }
     }
 }
@@ -67,6 +78,11 @@ impl Placement {
             })?,
             None => kind.default_mode(),
         };
+        if !kind.admits(mode) {
+            return Err(Failure::policy(format!(
+                "the mode {mode:04o} lets every account of the host write what the agent places"
+            )));
+        }
         let owner = ownership(call, owner, group)?;
         Ok(Self { mode, owner })
     }
@@ -116,7 +132,7 @@ fn ownership(
 impl Previous {
     pub(super) fn read(target: &Path) -> Result<Option<Self>, Failure> {
         let not_a_file = || Failure::policy(format!("{} is not a regular file", target.display()));
-        let mut file = match OpenOptions::new()
+        let file = match OpenOptions::new()
             .read(true)
             .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
             .open(target)
@@ -134,9 +150,22 @@ impl Previous {
         if !meta.is_file() {
             return Err(not_a_file());
         }
+        let too_large = || {
+            Failure::policy(format!(
+                "{} is over {READ_LIMIT} bytes, more than the agent reads",
+                target.display()
+            ))
+        };
+        if meta.len() > READ_LIMIT {
+            return Err(too_large());
+        }
         let mut content = Vec::new();
-        file.read_to_end(&mut content)
+        file.take(READ_LIMIT + 1)
+            .read_to_end(&mut content)
             .map_err(|error| Failure::io(target.display(), &error))?;
+        if content.len() as u64 > READ_LIMIT {
+            return Err(too_large());
+        }
         Ok(Some(Self {
             content,
             mode: meta.mode() & 0o7777,
@@ -212,6 +241,42 @@ pub(super) fn rollback(target: &Path, previous: Option<&Previous>) -> Result<(),
 mod tests {
     use super::*;
     use crate::protocol::ERROR_POLICY;
+
+    #[test]
+    fn a_placement_never_lets_every_account_write_a_file_or_an_unsticky_directory() {
+        for mode in [0o644, 0o640, 0o664, 0o600, 0o755, 0o1644] {
+            assert!(Kind::File.admits(mode), "{mode:o}");
+        }
+        for mode in [0o666, 0o777, 0o646, 0o1777] {
+            assert!(!Kind::File.admits(mode), "{mode:o}");
+        }
+        for mode in [0o755, 0o775, 0o2775, 0o1777, 0o3777] {
+            assert!(Kind::Dir.admits(mode), "{mode:o}");
+        }
+        for mode in [0o777, 0o757, 0o2777] {
+            assert!(!Kind::Dir.admits(mode), "{mode:o}");
+        }
+    }
+
+    #[test]
+    fn a_file_over_the_read_limit_is_refused_without_being_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("keel-dns-big.zone");
+        File::create(&target)
+            .unwrap()
+            .set_len(READ_LIMIT + 1)
+            .unwrap();
+        let failure = Previous::read(&target).unwrap_err();
+        assert_eq!(failure.key, ERROR_POLICY);
+        assert!(
+            failure.detail.contains("more than the agent reads"),
+            "{}",
+            failure.detail
+        );
+        File::create(&target).unwrap().set_len(READ_LIMIT).unwrap();
+        let previous = Previous::read(&target).unwrap().unwrap();
+        assert_eq!(previous.content.len() as u64, READ_LIMIT);
+    }
 
     #[test]
     fn a_file_is_placed_through_a_temporary_beside_it_and_rolled_back_to_what_was_there() {

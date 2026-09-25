@@ -20,4 +20,5 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 keel-kernel = { workspace = true }
 keel-sdk = { workspace = true }
+proptest = { workspace = true }
 tempfile = { workspace = true }

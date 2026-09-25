@@ -15,6 +15,7 @@ use super::request::Request;
 const MANIFEST_LIMIT: u64 = 1024 * 1024;
 const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
 const UNPACKED_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+const REFUSED_MODE_BITS: u32 = 0o7022;
 const BINARY: &str = "keel";
 const MANIFEST: &str = "manifest.json";
 const UNITS: &str = "deploy/systemd";
@@ -67,6 +68,14 @@ pub(crate) enum UpdateError {
     },
     #[error("{version} is the version bin/current points at")]
     AlreadyCurrent { version: Version },
+    #[error(
+        "{version} is below the current {current} and is not the version bin/previous points at ({previous}); a request moves down only to the previous version"
+    )]
+    NotPrevious {
+        version: Version,
+        current: Version,
+        previous: String,
+    },
     #[error("{link} does not point into {versions}/<version>/{BINARY}: {target}")]
     LinkShape {
         link: PathBuf,
@@ -96,10 +105,12 @@ pub(crate) enum UpdateError {
     EntryKind { path: PathBuf, kind: EntryType },
     #[error("the archive entry {0} escapes the release directory")]
     EntryEscapes(PathBuf),
-    #[error("the archive entry {path} carries mode {mode:o} with a setuid, setgid or sticky bit")]
+    #[error(
+        "the archive entry {path} carries mode {mode:o} with a setuid, setgid or sticky bit or a write bit for group or others"
+    )]
     EntryMode { path: PathBuf, mode: u32 },
-    #[error("the archive unpacks to more than {UNPACKED_LIMIT} bytes")]
-    TooLarge,
+    #[error("the archive unpacks to more than {0} bytes")]
+    TooLarge(u64),
     #[error("could not read the archive: {0}")]
     Archive(#[source] io::Error),
     #[error("could not {action} {path}: {source}")]
@@ -183,6 +194,9 @@ impl Runner {
             });
         }
         manifest.admits(&current.version)?;
+        if request.version < current.version {
+            self.admits_descent(&current, &manifest)?;
+        }
         println!(
             "update: the manifest of {} verified (contract {}, min_upgrade_from {})",
             manifest.version, manifest.contract, manifest.min_upgrade_from
@@ -202,7 +216,7 @@ impl Runner {
         println!("update: the archive matches sha256 {digest}");
         let unpacked = staging.path().join("release");
         let unpack_into = unpacked.clone();
-        tokio::task::spawn_blocking(move || unpack(&archive, &unpack_into))
+        tokio::task::spawn_blocking(move || unpack(&archive, &unpack_into, UNPACKED_LIMIT))
             .await
             .map_err(UpdateError::Join)??;
         let unpacked_manifest = unpacked.join(MANIFEST);
@@ -272,6 +286,32 @@ impl Runner {
             units,
             restore: restore.map(Path::to_owned),
         })
+    }
+
+    fn admits_descent(&self, current: &Link, target: &Manifest) -> Result<(), UpdateError> {
+        let previous_link = self.previous_link();
+        let previous = if previous_link.is_symlink() {
+            Some(self.read_link(&previous_link)?.version)
+        } else {
+            None
+        };
+        if previous.as_ref() != Some(&target.version) {
+            return Err(UpdateError::NotPrevious {
+                version: target.version.clone(),
+                current: current.version.clone(),
+                previous: previous.map_or_else(|| "none".to_owned(), |version| version.to_string()),
+            });
+        }
+        let current_contract = self.installed_manifest(&current.version)?.contract;
+        if current_contract != target.contract {
+            return Err(UpdateError::AcrossContract {
+                current: current.version.clone(),
+                current_contract,
+                previous: target.version.clone(),
+                previous_contract: target.contract,
+            });
+        }
+        Ok(())
     }
 
     async fn verified(&self, relative: &str) -> Result<Manifest, UpdateError> {
@@ -435,7 +475,7 @@ fn write_replacing(dest: &Path, content: &[u8], mode: u32) -> Result<(), UpdateE
     fs::rename(&staged, dest).map_err(io_error("replace", dest))
 }
 
-fn unpack(archive: &Path, dest: &Path) -> Result<(), UpdateError> {
+fn unpack(archive: &Path, dest: &Path, limit: u64) -> Result<(), UpdateError> {
     fs::create_dir_all(dest).map_err(io_error("create", dest))?;
     let file = fs::File::open(archive).map_err(io_error("open", archive))?;
     let decoder = zstd::Decoder::new(file).map_err(UpdateError::Archive)?;
@@ -447,17 +487,16 @@ fn unpack(archive: &Path, dest: &Path) -> Result<(), UpdateError> {
     for entry in tar.entries().map_err(UpdateError::Archive)? {
         let mut entry = entry.map_err(UpdateError::Archive)?;
         let path = entry.path().map_err(UpdateError::Archive)?.into_owned();
-        let size = entry.header().size().map_err(UpdateError::Archive)?;
-        unpacked = unpacked.saturating_add(size);
-        if unpacked > UNPACKED_LIMIT {
-            return Err(UpdateError::TooLarge);
+        unpacked = unpacked.saturating_add(entry.size());
+        if unpacked > limit {
+            return Err(UpdateError::TooLarge(limit));
         }
         let kind = entry.header().entry_type();
         if !matches!(kind, EntryType::Regular | EntryType::Directory) {
             return Err(UpdateError::EntryKind { path, kind });
         }
         let mode = entry.header().mode().map_err(UpdateError::Archive)?;
-        if mode & 0o7000 != 0 {
+        if mode & REFUSED_MODE_BITS != 0 {
             return Err(UpdateError::EntryMode { path, mode });
         }
         if path
@@ -539,7 +578,7 @@ mod tests {
             dir.path(),
         );
         let dest = dir.path().join("out");
-        unpack(&archive, &dest).unwrap();
+        unpack(&archive, &dest, UNPACKED_LIMIT).unwrap();
         assert_eq!(fs::read(dest.join("keel")).unwrap(), b"#!/bin/sh\n");
         assert_eq!(
             fs::metadata(dest.join("keel"))
@@ -553,7 +592,7 @@ mod tests {
 
         let without = archive_with(&[("other", EntryType::Regular, b"x")], dir.path());
         assert!(matches!(
-            unpack(&without, &dir.path().join("out2")),
+            unpack(&without, &dir.path().join("out2"), UNPACKED_LIMIT),
             Err(UpdateError::NoBinary)
         ));
 
@@ -565,7 +604,7 @@ mod tests {
             dir.path(),
         );
         assert!(matches!(
-            unpack(&link, &dir.path().join("out3")),
+            unpack(&link, &dir.path().join("out3"), UNPACKED_LIMIT),
             Err(UpdateError::EntryKind {
                 kind: EntryType::Symlink,
                 ..
@@ -580,7 +619,7 @@ mod tests {
             dir.path(),
         );
         assert!(matches!(
-            unpack(&escaping, &dir.path().join("out4")),
+            unpack(&escaping, &dir.path().join("out4"), UNPACKED_LIMIT),
             Err(UpdateError::EntryEscapes(path)) if path == Path::new("../outside")
         ));
         assert!(!dir.path().join("outside").exists());
@@ -591,7 +630,7 @@ mod tests {
         );
         let out6 = dir.path().join("out6");
         assert!(matches!(
-            unpack(&setuid, &out6),
+            unpack(&setuid, &out6, UNPACKED_LIMIT),
             Err(UpdateError::EntryMode { path, mode: 0o4755 }) if path == Path::new("keel")
         ));
         assert!(!out6.join("keel").exists());
@@ -604,15 +643,107 @@ mod tests {
             dir.path(),
         );
         assert!(matches!(
-            unpack(&setgid, &dir.path().join("out7")),
+            unpack(&setgid, &dir.path().join("out7"), UNPACKED_LIMIT),
             Err(UpdateError::EntryMode { mode: 0o2755, .. })
         ));
 
         let broken = dir.path().join("broken.tar.zst");
         fs::write(&broken, b"not zstd").unwrap();
         assert!(matches!(
-            unpack(&broken, &dir.path().join("out5")),
+            unpack(&broken, &dir.path().join("out5"), UNPACKED_LIMIT),
             Err(UpdateError::Archive(_))
+        ));
+    }
+
+    fn pax_record(key: &str, value: &str) -> Vec<u8> {
+        let body = format!(" {key}={value}\n");
+        let mut length = body.len() + 1;
+        while format!("{length}{body}").len() != length {
+            length += 1;
+        }
+        format!("{length}{body}").into_bytes()
+    }
+
+    fn archive_with_pax_size(dir: &Path, hidden: usize) -> PathBuf {
+        let path = dir.join("pax.tar.zst");
+        let file = fs::File::create(&path).unwrap();
+        let mut builder = tar::Builder::new(zstd::Encoder::new(file, 3).unwrap());
+        let mut header = tar::Header::new_ustar();
+        header.set_mode(0o755);
+        header.set_size(10);
+        builder
+            .append_data(&mut header, "keel", &b"#!/bin/sh\n"[..])
+            .unwrap();
+        let record = pax_record("size", &hidden.to_string());
+        let mut pax = tar::Header::new_ustar();
+        pax.set_entry_type(EntryType::XHeader);
+        pax.set_path("PaxHeaders/big").unwrap();
+        pax.set_mode(0o644);
+        pax.set_size(record.len() as u64);
+        pax.set_cksum();
+        builder.append(&pax, &record[..]).unwrap();
+        let mut big = tar::Header::new_ustar();
+        big.set_path("big").unwrap();
+        big.set_mode(0o644);
+        big.set_size(0);
+        big.set_cksum();
+        builder.append(&big, &vec![b'x'; hidden][..]).unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+        path
+    }
+
+    #[test]
+    fn an_entry_whose_pax_size_overrides_its_header_counts_against_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = archive_with_pax_size(dir.path(), 4096);
+        let out = dir.path().join("small");
+        assert!(matches!(
+            unpack(&archive, &out, 1024),
+            Err(UpdateError::TooLarge(1024))
+        ));
+        assert!(!out.join("big").exists());
+        let roomy = dir.path().join("roomy");
+        unpack(&archive, &roomy, 8192).unwrap();
+        assert_eq!(fs::metadata(roomy.join("big")).unwrap().len(), 4096);
+    }
+
+    #[test]
+    fn an_entry_writable_by_group_or_others_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        for (index, mode) in [0o775, 0o757, 0o666, 0o777].into_iter().enumerate() {
+            let archive = archive_with_modes(
+                &[
+                    ("keel", EntryType::Regular, 0o755, b"#!/bin/sh\n"),
+                    (
+                        "deploy/agent.yaml",
+                        EntryType::Regular,
+                        mode,
+                        b"policy: {}\n",
+                    ),
+                ],
+                dir.path(),
+            );
+            let out = dir.path().join(format!("out{index}"));
+            assert!(
+                matches!(
+                    unpack(&archive, &out, UNPACKED_LIMIT),
+                    Err(UpdateError::EntryMode { ref path, mode: refused })
+                        if path == Path::new("deploy/agent.yaml") && refused == mode
+                ),
+                "{mode:o}"
+            );
+            assert!(!out.join("deploy/agent.yaml").exists());
+        }
+        let dirs = archive_with_modes(
+            &[
+                ("keel", EntryType::Regular, 0o755, b"x"),
+                ("deploy/", EntryType::Directory, 0o775, b""),
+            ],
+            dir.path(),
+        );
+        assert!(matches!(
+            unpack(&dirs, &dir.path().join("dirs"), UNPACKED_LIMIT),
+            Err(UpdateError::EntryMode { mode: 0o775, .. })
         ));
     }
 
