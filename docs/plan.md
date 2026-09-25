@@ -5827,6 +5827,556 @@ the package versions, `hack/check-docs.sh`.
 - `hack/check-docs.sh` is green with the M4 names; every "Done when" item of M4 is ticked or
   marked operator-run in the new checklist; `keel --version` answers `0.2.0`.
 
+## M5 work breakdown
+
+M5 is split into twenty-five PR-sized steps in eight groups; a step is one change to `main` and
+is done when its acceptance holds on the runner. The groups run in the order written except
+where a step names what it waits for: the license (1a to 1c) first, because the lease replaces
+the feature set M4 stubbed and decides which products may be enabled; phoenix-ui batch 3 (2a,
+2b) next, in the globalart repository, because the stream renderer, the configuration editor
+and two hosting forms need its components; `stats` (3) before the renderers (4a to 4d) that
+chart it; the password reset (5) before `panel`, the first product whose users reach the panel
+without an operator; the `panel` bundle in nine steps (6a to 6i), one per module, `hosting-web`
+and the bridge to `dns` early because the sites, certificates, mail and backups hang off them;
+the two custom views (7a, 7b) once the functions they drive exist; and the installer, the
+review and the closure (8a to 8c). Every step that touches the operating system proves itself
+unprivileged against stubs and the in-process agent of the testkit, as in M4, and names a
+script under `hack/` for the operator's VM run with the real daemons; the VM transcripts and
+the Let's Encrypt certificate are recorded in the exit checklist. Steps 1a to 8b touch nothing
+under `docs/`; a step that decides something the design leaves open says so in its commit
+message and step 8c amends the documents. The terminal and VNC of `panel`, and with them the
+free-form raw route `r.raw`, are not in this milestone: its two custom views are the file
+manager and the configuration editor, which the `upload` and `download` kinds and ordinary
+functions serve. `dns-peer` is built as the remote side of the bridge answering `unavailable`
+until M6 pairs a neighbour; the license server stays an open question and leases are issued by
+hand with `keel-dev license issue`.
+
+### 1a. the license module and the lease
+
+**Goal.** The system module `license` of [design/05-modules.md](design/05-modules.md): the lease
+is an Ed25519-signed JSON document — `instance_id`, `issued_at`, `expires_at`, `grace_days`, and
+`products: [{ id, edition }]` — verified against the license key compiled into the binary (a
+second key pair beside the release key of M4, public half in `crates/release/keys/license.pub`,
+reusing the signing and verifying code of `keel-release`), bound to the installation's
+`instance_id` and stored in `keel_kv`. `keel license install <file>` over the socket and
+`license.install` (admin) verify and store it; `license.get` answers the state (`none`,
+`valid`, `grace`, `expired`, `read_only`), the products with their editions, the expiry and the
+grace end. The SDK gains editions on `ProductManifest`: `editions: &[Edition { id, features }]`,
+the features of an edition being the ones its bundle declares for it; the lease's products and
+editions give the installation's feature set, which replaces the M4 implementation of
+`dyn Features` when `license` is loaded, and `/boot.features` and `/boot.license` carry it.
+`license: None` in the composition keeps the M4 behaviour (every feature of every enabled
+product) for internal builds and the test fixtures. The `dns` bundle declares the editions
+`lite` and `pro`; `pro` adds the feature `dns.dnssec`, which gates `dns.zone.dnssec.get`, a read
+of the zone's signing state that answers `unsigned` until DNSSEC signing arrives later; the
+`demo` bundle declares one edition carrying all its features.
+
+**Touches.** `crates/system/src/license/` (new module, feature `license`, in the matrix),
+`crates/sdk/src/manifest.rs` (`Edition`), `crates/kernel/src/boot.rs`,
+`crates/release/keys/license.pub` (new), `crates/keel/src/cli.rs`, `products/dns/`,
+`products/demo/src/`, `contracts/`.
+
+**Out of scope.** Degradation and the enable gate (1b); issuing leases (1c); a license server.
+
+**Acceptance.**
+
+- `crates/system/tests/system/license.rs`: `a_lease_signed_with_the_license_key_installs_and_a_changed_byte_does_not`,
+  `a_lease_for_another_instance_id_is_refused`, `the_feature_set_is_the_union_of_the_listed_editions`,
+  `license_none_keeps_every_feature_of_every_enabled_product`.
+- `products/dns/tests/dns/editions.rs`: `a_lite_lease_hides_dns_zone_dnssec_get_from_the_menu_and_it_answers_license`
+  (402), and a `pro` lease shows and serves it.
+
+### 1b. grace, read-only degradation and the enable gate
+
+**Goal.** Time and consequences of the lease: monotonic time kept in `keel_kv` — the largest
+wall-clock value the installation has seen, advanced by a cron job and at every start — so a
+clock moved backwards cannot revive an expired lease; the states `valid` until `expires_at`,
+`grace` for `grace_days` after it (everything works and the problem `license.expiring` is
+raised), and `read_only` after the grace: mutating functions (every function whose mode is not
+`Read`) answer `keel.error.license` (402), reads, login and `license.install` keep working.
+`keel.product.enable` refuses a product the lease does not list with `keel.error.license`; an
+enabled product that a newly installed lease no longer lists turns read-only for its modules
+alone with the problem `license.product_unlisted`, the rest of the installation unaffected, and
+nothing is ever deleted. The degradation is a guard in the dispatcher beside the feature guard
+of M4, so descriptors project the mutating actions as disabled with the reason.
+
+**Touches.** `crates/system/src/license/`, `crates/kernel/src/dispatcher/guards.rs`,
+`crates/kernel/src/keel/products.rs`, `crates/kernel/src/http/descriptors.rs`, `contracts/`.
+
+**Out of scope.** The license server and online renewal.
+
+**Acceptance.**
+
+- `crates/system/tests/system/license_time.rs` on a shifted clock of the testkit:
+  `the_installation_works_until_expires_then_in_grace_then_read_only`,
+  `a_clock_moved_backwards_does_not_revive_an_expired_lease`,
+  `read_only_keeps_reads_login_and_license_install`.
+- `crates/keel/tests/license.rs`: `a_lease_that_lists_dns_alone_refuses_keel_product_enable_panel`
+  (with a fixture product standing for `panel` until 6a),
+  `an_enabled_product_the_new_lease_drops_turns_read_only_with_a_problem`.
+
+### 1c. issuing leases and the size cap of the release binary
+
+**Goal.** `keel-dev license keygen --out <dir>` and `keel-dev license issue --key <file>
+--instance <id> --product dns:pro --product panel:lite --days 365 --grace 30 --out <file>`, the
+operator's tool for the long offline leases of the first releases; the key pair for production
+is generated by the operator and its private half never enters the repository, while the tests
+use a throwaway pair and a test-only verifying key injected through the testkit. The cap of the
+release binary, which [design/11-decisions.md](design/11-decisions.md) sets at the start of M5:
+the Build workflow measures the stripped musl release binary carrying `demo`, `dns` and the
+empty `panel` bundle skeleton against a cap written in `hack/size-cap` — the current size plus
+the headroom `panel` needs, the step records both numbers — and fails above it; the shell's
+product chunks are loaded lazily so a composition without a product's frontend pays nothing.
+
+**Touches.** `crates/dev/src/license.rs` (new), `hack/size-cap` (new), `.github/workflows/build.yml`,
+`frontend/apps/shell/` (lazy product chunks), `crates/testkit/`.
+
+**Out of scope.** A license server; the storage of the production private key (operator).
+
+**Acceptance.**
+
+- `crates/dev/tests/license.rs`: `an_issued_lease_verifies_with_the_matching_key_and_installs`.
+- The Build workflow fails when the release binary exceeds `hack/size-cap` (checked by a
+  script test that feeds it a larger size); the frontend build emits one chunk per product.
+
+### 2a. phoenix-ui batch 3: the code editor and the log view
+
+**Goal.** In the globalart repository (`platform/frontend/libs/phoenix-ui`): `phx-code-editor`,
+a text editor with line numbers, syntax highlighting for the configuration languages `panel`
+edits (nginx, ini, yaml, json, shell) and a read-only mode, built on CodeMirror 6 as a
+dependency of the library, never copied; and `phx-log-view`, a virtualised, follow-the-tail view
+of log lines with levels, a pause and a filter, fed by an observable. Stories and tests as the
+library's CI requires, the README sections, the version raised to 0.4.0.
+
+**Touches.** `platform/frontend/libs/phoenix-ui/src/lib/` of globalart, its stories, README and
+package.json.
+
+**Out of scope.** The key-value field and the transfer list (2b); the pin in keel (2b).
+
+**Acceptance.**
+
+- The library's test and Storybook jobs green in globalart with stories `CodeEditor` and
+  `LogView`, each with a test that types or appends and asserts the rendered result.
+
+### 2b. phoenix-ui batch 3: the key-value field and the transfer list, the release and the pin
+
+**Goal.** `phx-key-value-field` (a form control editing a map of string pairs, with key
+validation and duplicates refused) and `phx-transfer-list` (two lists with move buttons and
+search, a form control over the chosen ids); stories and tests; the release `phoenix-ui-v0.4.0`
+tagged and published to Nexus through the library's workflow (the one push this group makes in
+globalart), confirmed with `npm view @globalart/phoenix-ui@0.4.0`; and in keel the pin raised to
+0.4.0 with the lockfile, the `/forms` library mapping the `x-keel` widgets `code`, `key_value`
+and `transfer` onto the new controls.
+
+**Touches.** globalart's library as in 2a; `frontend/package.json`, `frontend/libs/keel/forms/`,
+`crates/types/` (the widget enum), `contracts/`.
+
+**Out of scope.** Screens using them (4d, 6b, 7b).
+
+**Acceptance.**
+
+- globalart: stories `KeyValueField` and `TransferList` with tests; 0.4.0 on Nexus.
+- keel: `frontend/libs/keel/forms` tests `a_code_widget_renders_the_code_editor`,
+  `a_key_value_widget_edits_a_map`, `a_transfer_widget_edits_a_list_of_ids`.
+
+### 3. stats
+
+**Goal.** The system module `stats` of [design/05-modules.md](design/05-modules.md): the SDK
+contribution `StatCollector { key, unit, interval, collect }`, the tables `stats_sample` (key,
+subject, at, value) and `stats_agg` (key, subject, bucket, resolution `hour` or `day`, min, max,
+sum, count) with rollover — raw samples kept for a setting-defined number of days, hourly
+buckets for longer, daily beyond — and the aggregation and pruning as cron jobs; the functions
+`stats.series { key, subject?, from, to, resolution }` answering points for charts and
+`stats.keys` listing the collectors the principal may read, scoped by account for per-account
+keys. The kernel contributes `keel.accounts` and `keel.principals` counts, `dns-zones` the zone
+count per account, the fixture the dashboard and report steps need.
+
+**Touches.** `crates/system/src/stats/` (new, feature `stats`, in the matrix), `crates/sdk/`,
+`products/dns/crates/dns-zones/`, `contracts/`.
+
+**Out of scope.** Host metrics beyond what a collector reads through the executor.
+
+**Acceptance.**
+
+- `crates/system/tests/system/stats.rs`: `a_collector_is_sampled_on_its_interval_and_aggregated_into_hours_and_days`,
+  `old_samples_roll_over_into_buckets_and_are_pruned`, `a_per_account_series_is_scoped_to_the_callers_account`.
+
+### 4a. the report renderer
+
+**Goal.** The `report` kind end to end: the descriptor's `bands` (tables with totals) and
+`charts` (`line`, `bar`, `pie` over a series function) as [design/10-contracts.md](design/10-contracts.md)
+fixes them, the report renderer mapping bands onto `phx-list-table` and charts onto `phx-chart`,
+the report's parameters as a form above it (period, account for an admin), export of a band
+through `keel.export`. The first report is `dns.report.zones` (zones per account over time from
+`stats`), and the demo bundle keeps a fixture report for the renderer's own tests.
+
+**Touches.** `crates/types/` (report shapes), `crates/kernel/src/http/descriptors.rs`,
+`frontend/libs/keel/renderer/src/report/` (new), `products/dns/`, `contracts/`.
+
+**Out of scope.** Scheduled reports sent by mail.
+
+**Acceptance.**
+
+- Renderer tests: `a_report_renders_its_bands_with_totals_and_its_charts`, `the_parameters_form_refetches_the_report`.
+- `frontend/e2e/report.spec.ts`: the dns zones report opens from the menu and shows a chart.
+
+### 4b. the dashboard in full
+
+**Goal.** The dashboard of `/`: `stat` widgets (a number with its unit and a sparkline from
+`stats.series`) beside the `list` widgets of M3, laid out on `phx-widget-grid`, the widget order
+and the hidden widgets kept in the preference `dashboard.layout` through `settings.pref.*`, a
+drag to reorder and a menu to hide or restore; `DashboardWidget` contributions of kind `stat`
+from `dns-zones` (zones) and the kernel (accounts), and `/boot.dashboard` in the widget order
+the preference gives.
+
+**Touches.** `frontend/libs/keel/shell/src/home/`, `crates/kernel/src/boot.rs`,
+`crates/types/`, `products/dns/`, `contracts/`.
+
+**Out of scope.** Widgets written by products in TypeScript.
+
+**Acceptance.**
+
+- Shell tests: `a_stat_widget_shows_its_value_and_sparkline`, `the_widget_order_follows_the_preference_and_a_drag_writes_it`.
+- `frontend/e2e/dashboard.spec.ts`: reorder, reload, the order stays.
+
+### 4c. tree and master-detail
+
+**Goal.** The two layouts [design/08-frontend.md](design/08-frontend.md) names as `ui` choices:
+`tree` — a list whose rows carry a parent field, rendered as an expandable tree with lazy
+loading of children through the same list function filtered by parent — and `master-detail` — a
+list on the left and the object renderer or a child list of the selected row on the right, the
+selection in the route so it survives a reload. The account tree of the kernel
+(`keel.account.list` with `parent`) takes the tree layout and `dns.zone.list` with its records
+the master-detail layout, the first real uses.
+
+**Touches.** `frontend/libs/keel/renderer/src/tree/`, `.../master-detail/` (new),
+`crates/types/` (the `ui.layout` values), `crates/kernel/src/keel/accounts.rs` (the descriptor),
+`products/dns/`, `contracts/`.
+
+**Out of scope.** Drag and drop between tree nodes.
+
+**Acceptance.**
+
+- Renderer tests: `a_tree_loads_children_on_expand`, `master_detail_keeps_the_selection_in_the_route`.
+- `frontend/e2e/layouts.spec.ts`: the account tree expands; a zone selected in master-detail
+  shows its records and survives a reload.
+
+### 4d. the stream kind and renderer
+
+**Goal.** The `stream` kind: a function registered with `r.stream(name, handler)` yields lines
+(`{ at, level, text }`) that the kernel serves as SSE on the raw route of the function behind
+authentication and the guarded caller, with the access, audit and projection of any function;
+the stream renderer shows them in `phx-log-view` from 2a with follow, pause and filter. The first
+streams are `keel.logs.stream` (the log ring of M4, admin) and `dns.zone.log` (the provider's
+apply history of a zone), both reachable from the menu and from a row action.
+
+**Touches.** `crates/sdk/src/registrar.rs` (`stream`), `crates/kernel/src/http/` (the stream
+route), `frontend/libs/keel/renderer/src/stream/` (new), `frontend/libs/keel/client/`,
+`products/dns/crates/dns-zones/`, `contracts/`.
+
+**Out of scope.** Streams writing back (the terminal).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/streams.rs`: `a_stream_serves_lines_as_sse_behind_auth_and_audits_the_open`,
+  `a_stream_of_another_account_is_refused`.
+- Renderer test `the_stream_renderer_follows_and_pauses`; e2e opens the kernel log stream.
+
+### 5. password reset through notify
+
+**Goal.** The reset [design/05-modules.md](design/05-modules.md) moves to M5: an address per
+principal (`auth_principal_address`: principal, kind `email`, value, verified_at), set by the
+principal on the security page with a verification mail and by an admin; a delivery to one
+recipient in `notify` (`notify.send_to { principal, template, params }` over the email channel,
+internal only); the guest functions `auth.password.reset.request { login }` — always answering
+the same, rate-limited per address and per login, mailing a single-use link with a `kpr_` token
+valid for a setting-defined time to a verified address — and `auth.password.reset.confirm {
+token, password }`, which sets the password, revokes every session of the principal and
+consumes the token; the shell's "Forgot password" link and the reset form.
+
+**Touches.** `crates/system/src/auth/`, `crates/system/src/notify/`, `crates/system/i18n/`,
+`frontend/libs/keel/shell/src/login/`, `contracts/`.
+
+**Out of scope.** Reset over SMS; reset for principals without a verified address (the operator
+resets them over the socket).
+
+**Acceptance.**
+
+- `crates/system/tests/system/password_reset.rs`: `a_reset_mails_a_single_use_link_that_sets_the_password_and_revokes_sessions`,
+  `an_unknown_login_answers_the_same_and_sends_nothing`, `the_reset_request_is_rate_limited`.
+- `frontend/e2e/reset.spec.ts` against the mail catcher: request, open the link from the mail,
+  set the password, sign in.
+
+### 6a. the panel bundle and hosting-users
+
+**Goal.** `products/panel` — `MANIFEST` (id `panel`, brand KeelPanel, editions `lite` and `pro`,
+the bridge field of [design/05-modules.md](design/05-modules.md) declared but served in 6c),
+`i18n`, the `panel` section of `deploy/agent.yaml` (`user_prefix: hp_`, `drop_in_prefix:
+keel-panel-`, the `file_roots` `www`, `vhosts`, `pools`, `mail`, `certs`, the services `nginx`,
+`php*-fpm`, `postfix`, `dovecot`, `mariadb`, `vsftpd`) — and the module `hosting-users`: an
+operating-system user per hosting user (`hosting_user`: account, name, uid, home, state) created
+through `host.user.*` inside the uid range, the functions `hosting.user.list|create|edit|delete`
+owned by account, the limit `hosting.users` per account, an `AccountLifecycle` that suspends
+(locks the OS user) and removes them, and the `panel` product package in `frontend/products/panel`.
+The binary carries `panel` behind the feature `panel` in the default set.
+
+**Touches.** `products/panel/` (new), `products/panel/crates/hosting-users/` (new),
+`deploy/agent.yaml`, `bin/keel/`, `frontend/products/panel/` (new), `.github/workflows/ci.yml`,
+`contracts/`, `contracts/i18n.json` (project `keel-panel`).
+
+**Out of scope.** Sites (6b) and everything else of the bundle.
+
+**Acceptance.**
+
+- `products/panel/tests/panel/users.rs` against the in-process agent with stubs: `a_hosting_user_is_an_os_user_inside_the_uid_range_under_hp`,
+  `suspending_the_account_locks_its_users_and_deleting_removes_them`, `the_users_limit_is_enforced`.
+- `a_lease_that_lists_dns_alone_refuses_keel_product_enable_panel` of 1b runs against the real
+  `panel` bundle instead of its fixture.
+
+### 6b. hosting-web: sites on nginx and php-fpm
+
+**Goal.** The module `hosting-web`: a site (`hosting_site`: account, hosting user, domain,
+aliases, document root under the user's home, php version or none, state) rendered through
+`ConfigTemplate`s — the nginx server block `keel-panel-<site>.conf` validated by `nginx -t` and
+reloaded, the php-fpm pool `keel-panel-<site>.conf` validated by `php-fpm -t` — through the
+executor after commit, with rollback on a failed check as the agent does; the functions
+`hosting.site.list|get|create|edit|delete`, a create wizard (user, domain, php, DNS zone yes or
+no), the limit `hosting.sites`, the lifecycle. The module declares `DnsProvider` as the trait it
+requires; until 6c lands the tests provide a fake.
+
+**Touches.** `products/panel/crates/hosting-web/` (new), its templates, `products/panel/src/`.
+
+**Out of scope.** Certificates (6d); the bridge (6c).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/sites.rs`: `a_site_renders_its_server_block_and_pool_after_commit_and_reloads`,
+  `a_failing_nginx_check_leaves_the_previous_config_and_marks_the_site`,
+  `deleting_a_site_removes_its_files_and_reloads`.
+
+### 6c. dns-local, dns-peer and the bridge
+
+**Goal.** The bridge of [design/07-ecosystem.md](design/07-ecosystem.md): `Bridge { to: "dns",
+local: "dns_local", remote: "dns_peer" }` on `ProductManifest`, the loader choosing at start —
+`dns-local` when `dns` is enabled on the installation, `dns-peer` otherwise — and both modules
+providing `DnsProvider` to `hosting-web`: `dns-local` through `call.invoke` of `dns.zone.*`
+inside the hosting call's transaction under the same principal and account, so the site and its
+zone commit together and a DNS validation error comes back as a field error of the hosting
+form; `dns-peer` answering `keel.error.unavailable` with the reason that no neighbour is paired
+(M6). `keel product disable dns` while `panel` bridges to it locally is refused unless
+`--switch-remote` is passed.
+
+**Touches.** `crates/sdk/src/manifest.rs` (`Bridge`), `crates/kernel/src/loader/`,
+`products/panel/crates/dns-local/`, `products/panel/crates/dns-peer/` (new),
+`crates/kernel/src/keel/products.rs`, `contracts/`.
+
+**Out of scope.** Peers (M6).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/bridge.rs`: `a_site_with_a_zone_commits_both_in_one_transaction_under_the_same_account`,
+  `a_dns_validation_error_reaches_the_hosting_form_as_a_field_key`,
+  `without_dns_the_bridge_falls_to_dns_peer_which_answers_unavailable`,
+  `disabling_dns_under_a_local_bridge_needs_switch_remote`.
+
+### 6d. hosting-ssl: ACME
+
+**Goal.** The module `hosting-ssl`: certificates per site from an ACME directory (Let's Encrypt
+production and staging, the directory a setting), the HTTP-01 challenge served from a
+`keel-panel-acme` location in the site's server block, the account key sealed as a `Secret`,
+issuance and renewal as tasks (renewal by a daily cron job thirty days before expiry), the
+certificate and key written into the `certs` root through the executor and the server block
+re-rendered with TLS; an uploaded certificate as the alternative; the problem
+`hosting.certificate.expiring`. The create wizard of 6b gains "Let's Encrypt certificate".
+The ACME client is a pinned crate (`instant-acme` or an equal), the step says which.
+
+**Touches.** `products/panel/crates/hosting-ssl/` (new), `products/panel/crates/hosting-web/`
+(the TLS block), `Cargo.toml`.
+
+**Out of scope.** DNS-01 and wildcard certificates (later, through `dns-local`).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/ssl.rs` against a local ACME test server (pebble in a container
+  in CI, as the mail catcher is): `a_site_gets_a_certificate_over_http01_and_serves_tls`,
+  `renewal_runs_thirty_days_before_expiry`.
+- Operator-run in 8a: a site on a real domain with a Let's Encrypt certificate is served.
+
+### 6e. hosting-db
+
+**Goal.** The module `hosting-db`: MariaDB databases and database users per account
+(`hosting_database`, `hosting_db_user`), created and dropped through an `AgentOp` `mariadb.exec`
+compiled into the agent that runs a fixed statement set with quoted identifiers through the
+`mariadb` client under the policy's `exec_allow`, never a statement from a request; passwords
+as `Secret`s; grants per database; the limits; the lifecycle; the backup source dumping each
+database.
+
+**Touches.** `products/panel/crates/hosting-db/` (new), `crates/host-agent/src/ops/` (the op),
+`deploy/agent.yaml`.
+
+**Out of scope.** PostgreSQL databases (later).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/db.rs` with a stub `mariadb`: `a_database_and_user_are_created_with_quoted_identifiers`,
+  `a_name_outside_the_account_prefix_is_refused`, `deleting_the_account_drops_its_databases`.
+
+### 6f. hosting-mail
+
+**Goal.** The module `hosting-mail`: mail domains and mailboxes per account (`hosting_mail_domain`,
+`hosting_mailbox` with a password hash in the format dovecot reads, quota, aliases and
+forwards), rendered as the virtual maps of postfix and the passwd-file of dovecot through
+`ConfigTemplate`s validated by `postfix check` and `doveconf -n`, with `postmap` through
+`exec_allow`; the MX and the SPF record through the bridge when the domain has a zone; limits,
+lifecycle, the backup source of the maildirs.
+
+**Touches.** `products/panel/crates/hosting-mail/` (new), its templates, `deploy/agent.yaml`.
+
+**Out of scope.** Webmail; DKIM signing (later).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/mail.rs`: `a_mailbox_lands_in_the_virtual_maps_and_the_passwd_file`,
+  `a_domain_with_a_zone_gets_mx_and_spf_through_the_bridge`, `a_failing_postfix_check_rolls_back`.
+
+### 6g. hosting-ftp
+
+**Goal.** The module `hosting-ftp`: FTP accounts chrooted to a directory of a site
+(`hosting_ftp_user`), served by vsftpd with virtual users from a user file rendered through a
+`ConfigTemplate` and validated, mapped onto the site's operating-system user; limits and
+lifecycle.
+
+**Touches.** `products/panel/crates/hosting-ftp/` (new), its templates.
+
+**Out of scope.** SFTP-only accounts (the hosting user's shell covers them).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/ftp.rs`: `an_ftp_account_is_chrooted_under_its_site`,
+  `a_directory_outside_the_site_is_refused`.
+
+### 6h. hosting-backup
+
+**Goal.** The module `hosting-backup`: per-site backups — the site's files, its databases and
+mailboxes — as tasks into the `backups` root of the account, a schedule per site as a cron
+job, retention by count, restore of a site from an archive as a task, and the archives offered
+for download; the installation backup of M4 carries the module's own tables through
+`BackupSource`.
+
+**Touches.** `products/panel/crates/hosting-backup/` (new).
+
+**Out of scope.** Remote targets (with `keel-storage`, later).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/backup.rs`: `a_site_backup_contains_files_databases_and_mail_and_restores`,
+  `retention_keeps_the_newest_archives`.
+
+### 6i. hosting-services
+
+**Goal.** The module `hosting-services`: the services the policy lists for `panel` with their
+state, `start`, `stop`, `restart` and `reload` for an admin through `host.service.*`, the stat
+collectors of their memory and uptime, and the problem `hosting.service.down` raised by a poll.
+
+**Touches.** `products/panel/crates/hosting-services/` (new).
+
+**Out of scope.** Installing packages from the UI.
+
+**Acceptance.**
+
+- `products/panel/tests/panel/services.rs`: `a_listed_service_restarts_and_an_unlisted_one_is_refused`,
+  `a_stopped_service_raises_a_problem_the_next_poll_clears`.
+
+### 7a. the file manager
+
+**Goal.** The first custom view of `panel`, `hosting.file-manager`, registered with `r.view` and
+written in `frontend/products/panel`: browsing a hosting user's home through the functions
+`hosting.file.list|mkdir|rename|delete|chmod` and the `upload` and `download` kinds, all through
+the executor under the hosting user's uid (the agent's impersonation of M4), never outside the
+home; phoenix-ui components only.
+
+**Touches.** `products/panel/crates/hosting-users/` (the file functions), `frontend/products/panel/src/file-manager/` (new).
+
+**Out of scope.** Archives packed in the browser; editing files (7b edits configurations only).
+
+**Acceptance.**
+
+- `products/panel/tests/panel/files.rs`: `a_path_escaping_the_home_is_refused`, `files_are_written_as_the_hosting_user`.
+- `frontend/e2e/file-manager.spec.ts`: upload, rename, download, delete.
+
+### 7b. the configuration editor
+
+**Goal.** The second custom view, `hosting.config-editor`: the overrides of a site's server
+block and pool — the `ConfigTemplate` overrides of M4 per site — edited in `phx-code-editor`
+with the rendered result beside it, saved through `hosting.config.set` which renders, validates
+with the named check and reloads through the executor, answering the check's output as a field
+error on failure and keeping the previous file.
+
+**Touches.** `products/panel/crates/hosting-web/` (the config functions), `frontend/products/panel/src/config-editor/` (new).
+
+**Out of scope.** Editing arbitrary files of the host.
+
+**Acceptance.**
+
+- `products/panel/tests/panel/config.rs`: `an_override_that_fails_nginx_t_is_refused_with_the_output_on_the_field`.
+- `frontend/e2e/config-editor.spec.ts`: edit, save, see the rendered block; `keel-dev views share`
+  reports exactly two views for `panel` and a share of at most 10 %.
+
+### 8a. install --product panel, the end-to-end and the VM
+
+**Goal.** `install.sh --product panel` on a clean host (the packages `panel` needs installed by
+the installer through the package manager), `keel product enable panel` on a host running `dns`
+yielding one login with the platform brand and a group per product in the menu; `hack/e2e.sh`
+with both products: a site with a zone created by the wizard through `dns-local`, a DNS error
+on the hosting form's field; `hack/panel-vm.sh` for the operator: a clean Debian VM, the
+install, a site on a real domain with a Let's Encrypt certificate served over TLS.
+
+**Touches.** `deploy/install.sh`, `hack/e2e.sh`, `frontend/e2e/panel.spec.ts` (new),
+`hack/panel-vm.sh` (new), `hack/check-install.sh`.
+
+**Out of scope.** Upgrading a host from a foreign panel.
+
+**Acceptance.**
+
+- `frontend/e2e/panel.spec.ts` green; `hack/check-install.sh` asserts the `panel` packages and
+  units; operator-run: `hack/panel-vm.sh` transcript with the served certificate.
+
+### 8b. the security review of panel
+
+**Goal.** An adversarial pass over the modules of `panel` and the license: paths of files, FTP
+chroots and backups; template injection through domains, aliases and overrides; the `mariadb`
+statement set; mail maps; the ACME challenge location; the lease verifier and the clock; the
+reset tokens. Every finding fixed with a test that reproduces it; findings without a fix recorded
+for 8c.
+
+**Touches.** the modules of `products/panel`, `crates/system/src/license/`, `crates/system/src/auth/`.
+
+**Out of scope.** The M7 review.
+
+**Acceptance.**
+
+- Every finding is a named test in the crate it concerns.
+- `the_support_bundle_carries_no_secret_value` covers an installation with `panel`: no mailbox
+  or database password and no ACME account key appears in any entry.
+
+### 8c. M5 closure
+
+**Goal.** The document pass and the exit checklist: the choices the steps recorded amended into
+the design documents, `deploy/README.md` for `panel`, `README.md`'s M5 row, the versions raised to
+`0.3.0`, `hack/check-docs.sh` green; the `## M5 exit checklist` with the "Done when" items ticked
+by test, spec or command and the operator-run items named: the production license key pair and a
+lease issued for the demo host, the Let's Encrypt site on the VM, the tag `keel-v0.3.0` on the
+channel and the demo host updated from the button, the OwnLate project `keel-panel`.
+
+**Touches.** `docs/`, `README.md`, `deploy/README.md`, the versions.
+
+**Out of scope.** Code beyond the version bump.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` green with the M5 names; every "Done when" item of M5 ticked or marked
+  operator-run; `keel --version` answers `0.3.0`.
+
 ## How we work
 
 - The code lives in the monorepo `GlobalArtInc/keel` on the `main` branch until the SDK reaches
