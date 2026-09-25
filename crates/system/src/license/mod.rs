@@ -1,13 +1,17 @@
+mod clock;
 mod functions;
 mod grant;
 mod lease;
+mod problems;
 
 use keel_sdk::prelude::*;
 use keel_sdk::system::{Features, Installation, LicenseKey};
 
 use grant::Grant;
 
+pub use clock::{JOB_ID as CLOCK_JOB, KV_CLOCK};
 pub use lease::{ERROR_INSTANCE, ERROR_LEASE, ERROR_SIGNATURE, KV_KEY};
+pub use problems::{EXPIRED, EXPIRING, PRODUCT_UNLISTED};
 
 pub const GET: &str = "license.get";
 pub const INSTALL: &str = "license.install";
@@ -18,7 +22,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "license",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &[],
+    requires: &["cron", "notify"],
     migrations: None,
     init,
 };
@@ -29,6 +33,8 @@ fn init(r: &mut Registrar) -> Result<()> {
     r.provide::<dyn Features>(grant.clone())
         .require::<dyn LicenseKey>()
         .require::<Installation>()
+        .contribute(clock::job(grant.clone()))
+        .contribute(problems::source(grant.clone()))
         .function(functions::get(grant.clone()))
         .function(functions::install(grant))
         .menu(MenuNode::new(MENU_PATH, GET).icon(MENU_ICON).order(47))
@@ -43,7 +49,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_module_registers_its_screen_the_install_form_and_the_feature_set() {
+    fn the_module_registers_its_screen_the_install_form_the_clock_job_and_the_problems() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let registrations = registrar
@@ -67,6 +73,25 @@ mod tests {
             assert_eq!(def.access().permission, None);
             assert_eq!(def.access().feature, None);
         }
+        let install = registrations
+            .functions
+            .iter()
+            .find(|def| def.name() == INSTALL)
+            .expect("the install form");
+        assert!(install.is_exempt_from_read_only());
+        let jobs: Vec<(&str, &str)> = registrations
+            .contributions
+            .of::<crate::cron::api::CronJob>()
+            .map(|job| (job.id(), job.schedule()))
+            .collect();
+        assert_eq!(jobs, [(clock::JOB_ID, clock::SCHEDULE)]);
+        let sources: Vec<&str> = registrations
+            .contributions
+            .of::<crate::notify::api::ProblemSource>()
+            .map(|source| source.id())
+            .collect();
+        assert_eq!(sources, [problems::SOURCE]);
+        assert_eq!(MODULE.requires, ["cron", "notify"]);
         assert_eq!(registrations.menu.len(), 1);
         assert_eq!(registrations.menu[0].path(), MENU_PATH);
         assert_eq!(registrations.menu[0].func(), GET);

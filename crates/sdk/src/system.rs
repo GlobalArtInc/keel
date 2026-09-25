@@ -95,6 +95,20 @@ pub trait Features: Send + Sync {
     fn license(&self) -> Option<BootLicense> {
         None
     }
+
+    fn degradation(&self, _module: &str) -> Option<Degradation> {
+        None
+    }
+
+    fn may_enable(&self, _product: &str) -> bool {
+        true
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Degradation {
+    ReadOnly,
+    Unlisted { product: String },
 }
 
 pub trait LicenseKey: Send + Sync {

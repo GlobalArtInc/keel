@@ -30,6 +30,7 @@ pub fn su() -> FunctionDef {
         .kind(Kind::Action)
         .access(Level::Reseller, PERMISSION)
         .unowned()
+        .exempt_from_read_only()
         .handler(|call: Call<Su>| async move {
             let (client, id_hash) = session_client(&call)?;
             let caller = call.principal();
@@ -70,6 +71,7 @@ pub fn exit() -> FunctionDef {
         .kind(Kind::Action)
         .level(Level::Service)
         .unowned()
+        .exempt_from_read_only()
         .handler(|call: Call<Nothing>| async move {
             let (_, id_hash) = session_client(&call)?;
             let actor = call

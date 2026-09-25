@@ -86,6 +86,7 @@ pub fn redeem() -> FunctionDef {
         .mode(Mode::Write)
         .level(Level::Guest)
         .unowned()
+        .exempt_from_read_only()
         .ui(Form::new("auth.key.redeem.title").page("main", ["key"]))
         .handler(|call: Call<Redeem>| async move {
             let client = http_client(&call)?;

@@ -38,6 +38,8 @@ pub struct Builder {
     key: Option<Key>,
     license_key: Option<Arc<dyn LicenseKey>>,
     agent: Option<String>,
+    instance: Option<Id>,
+    enabled: Option<Vec<String>>,
 }
 
 pub enum AttachedDatabase {
@@ -184,6 +186,16 @@ impl Builder {
         self
     }
 
+    pub fn instance(mut self, id: Id) -> Self {
+        self.instance = Some(id);
+        self
+    }
+
+    pub fn enabled<'a>(mut self, ids: impl IntoIterator<Item = &'a str>) -> Self {
+        self.enabled = Some(ids.into_iter().map(str::to_owned).collect());
+        self
+    }
+
     pub async fn boot(self) -> Harness {
         match self.try_boot().await {
             Ok(harness) => harness,
@@ -224,7 +236,7 @@ impl Builder {
                 _ => sections.push((agent::SECTION.to_owned(), json!({ "socket": socket }))),
             }
         }
-        let instance = Id::generate();
+        let instance = self.instance.unwrap_or_else(Id::generate);
         let mut composition = Composition::new()
             .clock(clock.clone())
             .key(key.clone())
@@ -239,6 +251,9 @@ impl Builder {
         }
         for bundle in self.products {
             composition = composition.product(bundle);
+        }
+        if let Some(enabled) = self.enabled {
+            composition = composition.enabled(enabled);
         }
         for (key, value) in sections {
             composition = composition.section(&key, value);

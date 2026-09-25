@@ -32,6 +32,8 @@ mod cron;
 mod cron_alone;
 #[cfg(feature = "license")]
 mod license;
+#[cfg(all(feature = "license", feature = "auth"))]
+mod license_time;
 #[cfg(feature = "notify")]
 mod notify;
 #[cfg(feature = "notify")]

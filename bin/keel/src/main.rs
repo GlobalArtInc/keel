@@ -7,6 +7,7 @@ fn main() -> keel::ExitCode {
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
         .module(&keel_system::webhooks::MODULE)
+        .module(&keel_system::license::MODULE)
         .module(&keel_system::update::MODULE)
         .module(&keel_system::backup::MODULE)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"));

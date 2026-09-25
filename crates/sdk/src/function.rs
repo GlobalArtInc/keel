@@ -75,6 +75,7 @@ struct Definition {
     class: String,
     resumable: bool,
     internal: bool,
+    exempt_from_read_only: bool,
 }
 
 pub struct FunctionBuilder<P, R> {
@@ -100,6 +101,7 @@ pub fn function<P, R>(name: &str) -> FunctionBuilder<P, R> {
             class: DEFAULT_CLASS.to_owned(),
             resumable: false,
             internal: false,
+            exempt_from_read_only: false,
         },
         types: PhantomData,
     }
@@ -207,6 +209,11 @@ where
         self
     }
 
+    pub fn exempt_from_read_only(mut self) -> Self {
+        self.def.exempt_from_read_only = true;
+        self
+    }
+
     pub fn upload<F, Fut>(mut self, handler: F) -> FunctionDef
     where
         F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
@@ -258,6 +265,7 @@ where
             class: def.class,
             resumable: def.resumable,
             internal: def.internal,
+            exempt_from_read_only: def.exempt_from_read_only,
             list,
             handler,
         }
@@ -353,6 +361,7 @@ pub struct FunctionDef {
     class: String,
     resumable: bool,
     internal: bool,
+    exempt_from_read_only: bool,
     list: Option<Arc<ListSpec>>,
     handler: ErasedHandler,
 }
@@ -425,6 +434,10 @@ impl FunctionDef {
         self.internal
     }
 
+    pub fn is_exempt_from_read_only(&self) -> bool {
+        self.exempt_from_read_only
+    }
+
     pub fn handler(&self) -> &ErasedHandler {
         &self.handler
     }
@@ -494,6 +507,7 @@ impl fmt::Debug for FunctionDef {
             .field("class", &self.class)
             .field("resumable", &self.resumable)
             .field("internal", &self.internal)
+            .field("exempt_from_read_only", &self.exempt_from_read_only)
             .finish()
     }
 }
@@ -666,6 +680,14 @@ mod tests {
         let descriptor = serde_json::to_value(hidden.descriptor().unwrap()).unwrap();
         assert!(descriptor.get("internal").is_none());
         assert!(format!("{hidden:?}").contains("internal: true"));
+        assert!(!hidden.is_exempt_from_read_only());
+        let session = function::<Ping, Pong>("m.e.enter")
+            .kind(Kind::Form)
+            .exempt_from_read_only()
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert!(session.is_exempt_from_read_only());
+        let descriptor = serde_json::to_value(session.descriptor().unwrap()).unwrap();
+        assert!(descriptor.get("exempt_from_read_only").is_none());
     }
 
     #[test]

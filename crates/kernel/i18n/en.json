@@ -162,7 +162,7 @@
       "invoke_unavailable": "Nested calls are not available here",
       "invoke_write_outside_transaction": "The write function {function} cannot be invoked from a read call",
       "level": "The level {level} is required",
-      "license": "The feature is not licensed",
+      "license": "The license does not allow this action",
       "limit_exceeded": "The limit is reached",
       "list": {
         "filter_value": "The value {value} does not fit the field",

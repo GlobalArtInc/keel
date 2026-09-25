@@ -43,10 +43,13 @@
     "totp": false
   },
   "features": [
-    "dns.zones",
-    "dns.dnssec"
+    "dns.zones"
   ],
-  "license": null,
+  "license": {
+    "state": "none",
+    "expiresAt": null,
+    "graceEndsAt": null
+  },
   "menu": [
     {
       "id": "demo",

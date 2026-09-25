@@ -687,6 +687,7 @@ impl Inner {
         guards::feature(&self.registry, access)?;
         if entered {
             guards::scope(function.name(), function.def().mode(), handle.principal())?;
+            guards::degraded(&self.registry, function.def(), handle.principal())?;
             if !self.registry.guards().is_empty() {
                 let probe = handle.call(params.clone());
                 for guard in self.registry.guards() {
@@ -717,6 +718,7 @@ impl Inner {
         guards::permission(&self.registry, &descriptor.access, handle.principal())?;
         guards::feature(&self.registry, &descriptor.access)?;
         guards::scope(function.name(), def.mode(), handle.principal())?;
+        guards::degraded(&self.registry, def, handle.principal())?;
         if !self.registry.guards().is_empty() {
             let probe = handle.call(params.clone());
             for guard in self.registry.guards() {

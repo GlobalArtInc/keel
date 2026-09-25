@@ -162,7 +162,7 @@
       "invoke_unavailable": "Вложенные вызовы здесь недоступны",
       "invoke_write_outside_transaction": "Функцию записи {function} нельзя вызвать из вызова чтения",
       "level": "Требуется уровень {level}",
-      "license": "Функция не лицензирована",
+      "license": "Лицензия не разрешает это действие",
       "limit_exceeded": "Лимит исчерпан",
       "list": {
         "filter_value": "Значение {value} не подходит полю",

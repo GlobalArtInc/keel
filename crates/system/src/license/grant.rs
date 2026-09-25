@@ -1,10 +1,11 @@
-use std::sync::{OnceLock, PoisonError, RwLock};
+use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
-use keel_sdk::system::{ContextExt, Features, Installation, LicenseKey};
+use keel_sdk::system::{ContextExt, Degradation, Features, Installation, LicenseKey};
 use keel_sdk::types::{BootLicense, LicenseState};
 
+use super::clock;
 use super::lease::{self, Lease};
 
 pub(super) const ERROR_NOT_STARTED: &str = "license.error.not_started";
@@ -13,6 +14,7 @@ pub(super) const ERROR_NOT_STARTED: &str = "license.error.not_started";
 pub(super) struct Grant {
     started: OnceLock<Started>,
     lease: RwLock<Option<Lease>>,
+    seen: Mutex<Option<DateTime<Utc>>>,
 }
 
 struct Started {
@@ -31,7 +33,15 @@ impl Grant {
         if self.started.set(started).is_err() {
             tracing::warn!("the license module was started twice; the first start stands");
         }
-        self.load(&ctx.db()).await
+        let db = ctx.db();
+        self.advance(&db).await?;
+        self.load(&db).await
+    }
+
+    pub(super) async fn advance(&self, db: &Db) -> Result<()> {
+        let stored = clock::advance(db, self.now()?).await?;
+        self.observe(stored);
+        Ok(())
     }
 
     pub(super) async fn load(&self, db: &Db) -> Result<()> {
@@ -75,7 +85,14 @@ impl Grant {
     }
 
     pub(super) fn now(&self) -> Result<DateTime<Utc>> {
-        Ok(self.started()?.clock.now())
+        Ok(self.observe(self.started()?.clock.now()))
+    }
+
+    fn observe(&self, at: DateTime<Utc>) -> DateTime<Utc> {
+        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        let latest = seen.map_or(at, |seen| seen.max(at));
+        *seen = Some(latest);
+        latest
     }
 
     fn started(&self) -> Result<&Started> {
@@ -84,7 +101,7 @@ impl Grant {
             .ok_or_else(|| KeelError::internal(ERROR_NOT_STARTED))
     }
 
-    fn products(&self) -> &[&'static ProductManifest] {
+    pub(super) fn products(&self) -> &[&'static ProductManifest] {
         self.started
             .get()
             .map(|started| started.installation.products.as_slice())
@@ -146,5 +163,32 @@ impl Features for Grant {
     fn license(&self) -> Option<BootLicense> {
         let now = self.now().ok()?;
         Some(boot_license(self.lease().as_ref(), now))
+    }
+
+    fn degradation(&self, module: &str) -> Option<Degradation> {
+        let lease = self.lease()?;
+        if lease.state(self.now().ok()?) == LicenseState::ReadOnly {
+            return Some(Degradation::ReadOnly);
+        }
+        let carriers: Vec<&ProductManifest> = self
+            .products()
+            .iter()
+            .copied()
+            .filter(|product| product.module_ids().any(|id| id == module))
+            .collect();
+        if carriers
+            .iter()
+            .any(|product| lease.edition(product.id).is_some())
+        {
+            return None;
+        }
+        carriers.first().map(|product| Degradation::Unlisted {
+            product: product.id.to_owned(),
+        })
+    }
+
+    fn may_enable(&self, product: &str) -> bool {
+        self.lease()
+            .is_none_or(|lease| lease.edition(product).is_some())
     }
 }

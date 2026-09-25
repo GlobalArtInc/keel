@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use keel_sdk::runtime::{Db, Ownership, PermissionDef};
-use keel_sdk::system::{Features, PermissionCatalogue};
+use keel_sdk::system::{Degradation, Features, PermissionCatalogue};
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
 use keel_types::{Access, Id, Level, Mode, Principal, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
@@ -9,7 +9,8 @@ use serde_json::Value;
 
 use crate::registry::Registry;
 
-const LICENSE: &str = "keel.error.license";
+pub(crate) const LICENSE: &str = "keel.error.license";
+const READ_ONLY: &str = "read_only";
 
 pub fn level(access: &Access, principal: &Principal) -> Result<(), KeelError> {
     if principal.level >= access.level {
@@ -47,6 +48,29 @@ pub(crate) fn needs(registry: &Registry, features: &[String]) -> Result<(), Keel
     match features.iter().find(|feature| !enabled(registry, feature)) {
         Some(feature) => Err(unlicensed(feature)),
         None => Ok(()),
+    }
+}
+
+pub(crate) fn degraded(
+    registry: &Registry,
+    def: &FunctionDef,
+    principal: &Principal,
+) -> Result<(), KeelError> {
+    if def.mode() == Mode::Read || principal.via == Via::Internal {
+        return Ok(());
+    }
+    let Some(features) = registry.services().get::<dyn Features>() else {
+        return Ok(());
+    };
+    match features.degradation(def.module()) {
+        None => Ok(()),
+        Some(Degradation::ReadOnly) if def.is_exempt_from_read_only() => Ok(()),
+        Some(Degradation::ReadOnly) => Err(KeelError::license(LICENSE)
+            .param("function", def.name())
+            .param("state", READ_ONLY)),
+        Some(Degradation::Unlisted { product }) => Err(KeelError::license(LICENSE)
+            .param("function", def.name())
+            .param("product", product)),
     }
 }
 

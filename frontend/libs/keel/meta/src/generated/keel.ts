@@ -171,6 +171,7 @@ export interface Action {
   confirm?: Confirm | null;
   hidden_if?: Expr | null;
   formats?: ExportFormat[];
+  disabled?: string | null;
 }
 export interface ConfirmDetails {
   destructive?: boolean;

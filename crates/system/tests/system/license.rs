@@ -108,6 +108,8 @@ async fn licensed(issuer: &Issuer) -> Harness {
         .product(&ORBIT)
         .product(&COMET)
         .product(&NOVA)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
         .module(&MODULE)
         .license_key(issuer.key())
         .clock(now())

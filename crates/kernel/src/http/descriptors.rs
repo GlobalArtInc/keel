@@ -78,11 +78,9 @@ impl<'a> Projection<'a> {
             ui.columns
                 .retain(|column| self.member_visible(column.access.as_ref()));
             for column in &mut ui.columns {
-                if column
-                    .edit
-                    .as_ref()
-                    .is_some_and(|edit| !self.callable(&edit.function))
-                {
+                if column.edit.as_ref().is_some_and(|edit| {
+                    !self.callable(&edit.function) || self.degraded(&edit.function)
+                }) {
                     column.edit = None;
                 }
             }
@@ -96,6 +94,15 @@ impl<'a> Projection<'a> {
                         .as_deref()
                         .is_none_or(|screen| self.callable(screen))
             });
+            for action in &mut ui.actions {
+                let degraded = [action.function.as_deref(), action.screen.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .any(|name| self.degraded(name));
+                if degraded {
+                    action.disabled = Some(guards::LICENSE.to_owned());
+                }
+            }
             let kept: BTreeSet<&str> = ui.actions.iter().map(|action| action.id.as_str()).collect();
             ui.row_actions.retain(|id| kept.contains(id.as_str()));
             if let Some(empty) = &mut ui.empty
@@ -113,6 +120,12 @@ impl<'a> Projection<'a> {
             }
         }
         descriptor
+    }
+
+    fn degraded(&self, name: &str) -> bool {
+        self.registry.function(name).is_some_and(|function| {
+            guards::degraded(self.registry, function.def(), self.principal).is_err()
+        })
     }
 
     fn member_visible(&self, access: Option<&MemberAccess>) -> bool {

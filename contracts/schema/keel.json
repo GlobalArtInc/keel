@@ -137,6 +137,12 @@
           "items": {
             "$ref": "#/$defs/ExportFormat"
           }
+        },
+        "disabled": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

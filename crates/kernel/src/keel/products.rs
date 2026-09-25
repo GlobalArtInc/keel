@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
-use keel_sdk::system::{TaskRunner, TaskSpec};
+use keel_sdk::system::{Features, TaskRunner, TaskSpec};
 
 use super::restart::{CLASS as RESTART_CLASS, RESTART};
+use crate::dispatcher::guards;
 use crate::products::{self, Composed, EnabledSet, ProductsError};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -125,6 +126,9 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
             .field("id")
             .param("id", id));
     }
+    if wanted == ProductState::Enabled {
+        gate(call, id)?;
+    }
     let tx = call.tx()?;
     let changed = match wanted {
         ProductState::Enabled => {
@@ -149,6 +153,15 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
         changed,
         restart: changed,
     })
+}
+
+fn gate(call: &Call<ProductPick>, id: &str) -> Result<()> {
+    match call.require::<dyn Features>() {
+        Ok(features) if !features.may_enable(id) => {
+            Err(KeelError::license(guards::LICENSE).param("product", id))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn request_restart(call: &Call<ProductPick>, wanted: ProductState, id: &str) -> Result<()> {

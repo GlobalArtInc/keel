@@ -645,6 +645,7 @@ impl Action {
                 confirm: None,
                 hidden_if: None,
                 formats: Vec::new(),
+                disabled: None,
             },
             hidden_if: None,
         }

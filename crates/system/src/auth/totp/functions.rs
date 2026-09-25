@@ -174,6 +174,7 @@ pub fn verify(attempts: Arc<Attempts>, lockout: Arc<Lockout>) -> FunctionDef {
         .mode(Mode::Write)
         .level(Level::Guest)
         .unowned()
+        .exempt_from_read_only()
         .ui(Form::new("auth.totp.verify.title").page("main", ["challenge", "code"]))
         .handler(move |call: Call<Verify>| {
             let attempts = attempts.clone();

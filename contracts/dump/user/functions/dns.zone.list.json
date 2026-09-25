@@ -200,21 +200,11 @@
         "params": {
           "zone_id": "$id"
         }
-      },
-      {
-        "id": "dnssec",
-        "role": "child",
-        "screen": "dns.zone.dnssec.get",
-        "icon": "shield-check",
-        "params": {
-          "id": "$id"
-        }
       }
     ],
     "row_actions": [
       "edit",
       "records",
-      "dnssec",
       "delete"
     ],
     "empty": {

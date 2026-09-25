@@ -1,0 +1,109 @@
+{
+  "keel": 1,
+  "name": "license.install",
+  "module": "license",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Install",
+    "type": "object",
+    "properties": {
+      "lease": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536
+      }
+    },
+    "required": [
+      "lease"
+    ]
+  },
+  "result": {
+    "title": "Status",
+    "type": "object",
+    "properties": {
+      "state": {
+        "$ref": "#/$defs/LicenseState"
+      },
+      "instanceId": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "products": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Product"
+        }
+      },
+      "issuedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "expiresAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "graceEndsAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "state",
+      "products"
+    ],
+    "$defs": {
+      "LicenseState": {
+        "type": "string",
+        "enum": [
+          "none",
+          "valid",
+          "grace",
+          "read_only"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "edition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edition"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "license.install.title"
+  }
+}

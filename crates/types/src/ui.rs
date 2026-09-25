@@ -130,6 +130,8 @@ pub struct Action {
     pub hidden_if: Option<Expr>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formats: Vec<ExportFormat>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

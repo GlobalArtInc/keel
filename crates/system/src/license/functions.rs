@@ -95,6 +95,7 @@ pub(super) fn install(grant: Arc<Grant>) -> FunctionDef {
         .kind(Kind::Form)
         .level(Level::Admin)
         .unowned()
+        .exempt_from_read_only()
         .ui(Form::new("license.install.title"))
         .handler(move |call: Call<Install>| {
             let grant = grant.clone();

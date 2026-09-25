@@ -164,7 +164,7 @@
         "invoke_unavailable": "Nested calls are not available here",
         "invoke_write_outside_transaction": "The write function {function} cannot be invoked from a read call",
         "level": "The level {level} is required",
-        "license": "The feature is not licensed",
+        "license": "The license does not allow this action",
         "limit_exceeded": "The limit is reached",
         "list": {
           "filter_value": "The value {value} does not fit the field",
@@ -1175,6 +1175,44 @@
           "owner": "Owner"
         },
         "records": "Records; {zone}, {ip} and {ip6} are replaced when a zone is created"
+      }
+    },
+    "license": {
+      "action": {
+        "install": "Install a lease",
+        "refresh": "Refresh"
+      },
+      "column": {
+        "expiresAt": "Expires",
+        "graceEndsAt": "Grace ends",
+        "instanceId": "Instance",
+        "issuedAt": "Issued",
+        "products": "Products",
+        "state": "State"
+      },
+      "error": {
+        "clock": "The license clock kept by the installation cannot be read",
+        "instance": "The lease is issued for the installation {instance}, not for this one",
+        "lease": "The signed document is not a lease: {reason}",
+        "not_started": "The license module has not started yet",
+        "signature": "The lease is not signed with the license key: {reason}",
+        "stored": "The stored lease is not a signed text: {value}"
+      },
+      "expired": "The lease expired on {expiresAt} and its grace ended on {graceEndsAt}; the installation is read-only until a new lease is installed",
+      "expiring": "The lease expired on {expiresAt}; everything keeps working until {graceEndsAt}, then the installation turns read-only",
+      "get": {
+        "title": "License"
+      },
+      "install": {
+        "title": "Install a lease"
+      },
+      "lease": "Signed lease",
+      "product_unlisted": "The lease does not list the product {product}; its modules are read-only and its data is kept",
+      "state": {
+        "grace": "In grace",
+        "none": "No lease",
+        "read_only": "Read-only",
+        "valid": "Valid"
       }
     },
     "settings": {

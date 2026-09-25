@@ -4423,82 +4423,6 @@
         }
       }
     },
-    "/api/v1/call/dns.zone.dnssec.get": {
-      "post": {
-        "operationId": "dns.zone.dnssec.get",
-        "tags": [
-          "dns"
-        ],
-        "x-keel": {
-          "kind": "get",
-          "mode": "read",
-          "access": {
-            "level": "user",
-            "permission": "dns.zone.read",
-            "feature": "dns.dnssec"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "title": "Pick",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "$ref": "#/components/schemas/Id"
-                  }
-                },
-                "required": [
-                  "id"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The call completed; data is shaped by the result schema of the function.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    },
-                    "data": {
-                      "title": "Dnssec",
-                      "type": "object",
-                      "properties": {
-                        "state": {
-                          "$ref": "#/components/schemas/Signing"
-                        }
-                      },
-                      "required": [
-                        "state"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "ok",
-                    "data",
-                    "meta"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/api/v1/call/dns.zone.edit": {
       "post": {
         "operationId": "dns.zone.edit",
@@ -6785,6 +6709,224 @@
           }
         },
         "security": []
+      }
+    },
+    "/api/v1/call/license.get": {
+      "post": {
+        "operationId": "license.get",
+        "tags": [
+          "license"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Status",
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "$ref": "#/components/schemas/LicenseState"
+                        },
+                        "instanceId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Product"
+                          }
+                        },
+                        "issuedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "expiresAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "graceEndsAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "products"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/license.install": {
+      "post": {
+        "operationId": "license.install",
+        "tags": [
+          "license"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Install",
+                "type": "object",
+                "properties": {
+                  "lease": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536
+                  }
+                },
+                "required": [
+                  "lease"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Status",
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "$ref": "#/components/schemas/LicenseState"
+                        },
+                        "instanceId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Product"
+                          }
+                        },
+                        "issuedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "expiresAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "graceEndsAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "products"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/api/v1/call/note.delete": {
@@ -12184,6 +12326,15 @@
           "owner"
         ]
       },
+      "LicenseState": {
+        "type": "string",
+        "enum": [
+          "none",
+          "valid",
+          "grace",
+          "read_only"
+        ]
+      },
       "ListQuery": {
         "type": "object",
         "properties": {
@@ -12475,6 +12626,21 @@
           "open",
           "raisedAt",
           "updatedAt"
+        ]
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "edition": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "edition"
         ]
       },
       "ProductRow": {
@@ -12814,12 +12980,6 @@
         "enum": [
           "warning",
           "critical"
-        ]
-      },
-      "Signing": {
-        "type": "string",
-        "enum": [
-          "unsigned"
         ]
       },
       "Sort": {

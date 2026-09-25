@@ -182,6 +182,7 @@ pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {
         .mode(Mode::Write)
         .level(Level::Guest)
         .unowned()
+        .exempt_from_read_only()
         .ui(Form::new("auth.login.title").page("main", ["login", "password"]))
         .handler(move |call: Call<Login>| {
             let state = state.clone();
@@ -282,6 +283,7 @@ pub fn logout() -> FunctionDef {
         .kind(Kind::Action)
         .level(Level::Service)
         .unowned()
+        .exempt_from_read_only()
         .handler(|call: Call<Nothing>| async move {
             let (_, id_hash) = session_client(&call)?;
             let now = call.require::<dyn Clock>()?.now();
