@@ -365,6 +365,8 @@ pub enum FreezeProblem {
         key: String,
         found: String,
     },
+    #[error("function {function}: {problem}")]
+    Layout { function: String, problem: String },
 }
 
 fn access(access: &Access) -> String {
@@ -1186,6 +1188,7 @@ impl References<'_> {
         if let Some(ui) = &descriptor.ui {
             self.screen(ui);
             self.multi(descriptor, ui);
+            self.layout(descriptor.kind, ui);
         }
         if descriptor.kind == Kind::Upload && descriptor.ui.is_none() {
             self.problems.push(FreezeProblem::UploadWithoutForm {
@@ -1234,6 +1237,44 @@ impl References<'_> {
             self.problems.push(FreezeProblem::MultiWithout {
                 function: self.function.to_owned(),
                 missing: "ui.read",
+            });
+        }
+    }
+
+    fn layout(&mut self, kind: Kind, ui: &ScreenUi) {
+        let Some(layout) = ui.layout else {
+            return;
+        };
+        let mut problems = Vec::new();
+        if kind != Kind::List {
+            problems.push(format!(
+                "ui.layout {} needs a list function, not {}",
+                layout.as_str(),
+                self::kind(kind)
+            ));
+        }
+        if let Some(parent) = &ui.parent
+            && !ui.columns.iter().any(|column| column.key == *parent)
+        {
+            problems.push(format!(
+                "ui.parent names {parent}, which is not a column of the list"
+            ));
+        }
+        if let Some(detail) = &ui.detail {
+            match self.known.get(&detail.screen) {
+                None => self.function("ui.detail screen", &detail.screen, None),
+                Some(Kind::Get | Kind::List) => {}
+                Some(found) => problems.push(format!(
+                    "ui.detail screen names {}, which is a {} function, not get or list",
+                    detail.screen,
+                    self::kind(*found)
+                )),
+            }
+        }
+        for problem in problems {
+            self.problems.push(FreezeProblem::Layout {
+                function: self.function.to_owned(),
+                problem,
             });
         }
     }
@@ -2336,6 +2377,78 @@ mod tests {
                 "function dangling.report.sums: chart trend series names dangling.report.series, which is not registered",
                 "function dangling.report.sums: chart share series names dangling.item.list, which is a list function, not get",
                 "module dangling: menu node system/dangling points at dangling.item.nowhere, which is not registered",
+            ]
+        );
+    }
+
+    fn layered_init(r: &mut Registrar) -> Result<()> {
+        let list = |name: &str, ui: List| {
+            function::<ListQuery, Page<Item>>(name)
+                .kind(Kind::List)
+                .unowned()
+                .ui(ui)
+                .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) })
+        };
+        r.function(list(
+            "layered.item.list",
+            List::new("layered.item.list.title")
+                .column(Column::new("title", ColumnType::Text))
+                .column(Column::new("parentId", ColumnType::Text))
+                .tree("parentId"),
+        ))
+        .function(list(
+            "layered.item.split",
+            List::new("layered.item.split.title")
+                .column(Column::new("title", ColumnType::Text))
+                .master_detail("layered.item.list", [("parent", "$id")]),
+        ))
+        .function(list(
+            "layered.item.orphan",
+            List::new("layered.item.orphan.title")
+                .column(Column::new("title", ColumnType::Text))
+                .tree("parentId"),
+        ))
+        .function(list(
+            "layered.item.stray",
+            List::new("layered.item.stray.title")
+                .column(Column::new("title", ColumnType::Text))
+                .master_detail("layered.item.save", []),
+        ))
+        .function(list(
+            "layered.item.lost",
+            List::new("layered.item.lost.title")
+                .column(Column::new("title", ColumnType::Text))
+                .master_detail("layered.item.nowhere", []),
+        ))
+        .function(
+            function::<Nothing, Nothing>("layered.item.save")
+                .kind(Kind::Form)
+                .unowned()
+                .ui(List::new("layered.item.save.title")
+                    .column(Column::new("title", ColumnType::Text))
+                    .tree("title"))
+                .handler(|_: Call<Nothing>| async { Ok(Nothing {}) }),
+        )
+        .i18n(
+            "en",
+            r#"{ "layered": { "item": { "list": { "title": "L" }, "split": { "title": "S" }, "orphan": { "title": "O" },
+                                          "stray": { "title": "St" }, "lost": { "title": "Lo" }, "save": { "title": "Sa" },
+                                          "column": { "title": "T", "parentId": "P" } } } }"#,
+        );
+        Ok(())
+    }
+
+    module!(LAYERED, "layered", [], layered_init);
+
+    #[test]
+    fn a_layout_names_a_parent_column_or_a_detail_screen_of_a_list() {
+        assert_eq!(
+            problems(&[&LAYERED], &[]),
+            [
+                "function layered.item.lost: ui.detail screen names layered.item.nowhere, which is not registered",
+                "function layered.item.orphan: ui.parent names parentId, which is not a column of the list",
+                "function layered.item.save: ui.layout tree needs a list function, not form",
+                "function layered.item.stray: ui.detail screen names layered.item.save, which is a form function, not get or list",
             ]
         );
     }

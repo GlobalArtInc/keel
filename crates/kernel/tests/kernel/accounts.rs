@@ -209,6 +209,59 @@ fn ids(ids: &[Id]) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn the_account_tree_opens_at_the_top_of_the_callers_reach_and_lists_the_children_of_a_row() {
+    let bench = bench().await;
+    let root = Id::ROOT_ACCOUNT;
+    let level = |parent: Value| json!({ "scope": { "parentId": parent } });
+    let tree = |principal: Principal, parent: Value| {
+        let bench = &bench;
+        async move {
+            let reply = bench
+                .call(&principal, "keel.account.list", level(parent))
+                .await;
+            let mut found: Vec<String> = column(data(&reply), "id")
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+            found.sort();
+            found
+        }
+    };
+    let reseller = || principal(Level::Reseller, bench.reseller);
+    assert_eq!(tree(admin(), Value::Null).await, ids(&[root]));
+    assert_eq!(
+        tree(admin(), json!(root)).await,
+        ids(&[bench.reseller, bench.other])
+    );
+    assert_eq!(
+        tree(admin(), json!(bench.reseller)).await,
+        ids(&[bench.customer])
+    );
+    assert_eq!(tree(reseller(), Value::Null).await, ids(&[bench.reseller]));
+    assert_eq!(
+        tree(reseller(), json!(bench.reseller)).await,
+        ids(&[bench.customer])
+    );
+    assert_eq!(tree(reseller(), json!(root)).await, ids(&[bench.reseller]));
+    assert_eq!(
+        tree(principal(Level::User, bench.customer), Value::Null).await,
+        ids(&[bench.customer])
+    );
+    let refused = bench
+        .call(&admin(), "keel.account.list", level(json!(7)))
+        .await;
+    assert_eq!(code(&refused), ErrorCode::Validation);
+    assert_eq!(
+        field(&refused),
+        (
+            "scope.parentId".to_owned(),
+            "keel.account.error.parent_scope".to_owned()
+        )
+    );
+    bench.finish().await;
+}
+
+#[tokio::test]
 async fn account_list_shows_the_subtree_to_a_reseller_the_own_account_to_a_user_and_everything_to_the_owner()
  {
     let bench = bench().await;

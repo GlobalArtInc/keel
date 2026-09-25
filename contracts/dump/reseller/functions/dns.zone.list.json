@@ -224,6 +224,13 @@
     "invalidate_on": [
       "dns.zone.*",
       "dns.record.*"
-    ]
+    ],
+    "layout": "master-detail",
+    "detail": {
+      "screen": "dns.record.list",
+      "params": {
+        "zone_id": "$id"
+      }
+    }
   }
 }

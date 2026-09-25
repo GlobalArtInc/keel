@@ -9,7 +9,7 @@ import {
   output,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, type ParamMap } from '@angular/router';
+import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import {
   KeelBoot,
   KeelCallError,
@@ -46,6 +46,13 @@ import {
 import { KeelActionComponent } from './action/action.component';
 import { KeelFormScreenComponent } from './form/form-screen.component';
 import { KeelListComponent } from './list/list.component';
+import { KeelMasterDetailComponent } from './master-detail/master-detail.component';
+import {
+  SELECTED_PARAM,
+  sameParams,
+  selectionOf,
+  withoutSelection,
+} from './master-detail/selection';
 import { KeelObjectComponent } from './object/object.component';
 import { KeelReportComponent } from './report/report.component';
 import { NOT_FOUND_KEY, SCREEN_UNSUPPORTED_KEY, VIEW_MISSING_KEY, describeError } from './messages';
@@ -57,6 +64,7 @@ import {
   type KeelView,
   type KeelViewContext,
 } from './views';
+import { KeelTreeComponent } from './tree/tree.component';
 import { KeelWizardComponent } from './wizard/wizard.component';
 
 export type ScreenState =
@@ -132,6 +140,8 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
     PhxNotFoundComponent,
     KeelFormScreenComponent,
     KeelListComponent,
+    KeelTreeComponent,
+    KeelMasterDetailComponent,
     KeelObjectComponent,
     KeelReportComponent,
     KeelActionComponent,
@@ -160,7 +170,23 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
       @case ('screen') {
         @switch (descriptor().kind) {
           @case ('list') {
-            <keel-list [descriptor]="descriptor()" [params]="typedParams()" />
+            @switch (layout()) {
+              @case ('tree') {
+                <keel-tree [descriptor]="descriptor()" [params]="typedParams()" />
+              }
+              @case ('master-detail') {
+                <keel-master-detail
+                  [descriptor]="descriptor()"
+                  [params]="typedParams()"
+                  [selected]="selected()"
+                  [detail]="detailScreen"
+                  (selectedChange)="select($event)"
+                />
+              }
+              @default {
+                <keel-list [descriptor]="descriptor()" [params]="typedParams()" />
+              }
+            }
           }
           @case ('form') {
             <keel-form-screen
@@ -210,6 +236,9 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
         }
       }
     }
+    <ng-template #detailScreen let-target>
+      <keel-screen [func]="target.screen" [params]="target.params" />
+    </ng-template>
   `,
   styles: `
     .loading {
@@ -243,6 +272,7 @@ export class KeelScreenComponent {
   private readonly tabs = inject(PhxTabsService);
   private readonly injector = inject(Injector);
   private readonly views = injectKeelViews();
+  private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly query = this.route
     ? toSignal(this.route.queryParamMap.pipe(map(paramsOf)), { initialValue: NO_PARAMS })
@@ -253,8 +283,13 @@ export class KeelScreenComponent {
     return isObject(given) ? given : this.query();
   });
 
+  private readonly resolvedParams = computed(() => withoutSelection(this.screenParams()), {
+    equal: sameParams,
+  });
+  protected readonly selected = computed(() => selectionOf(this.screenParams()));
+
   readonly state = toSignal(
-    combineLatest([toObservable(this.func), toObservable(this.screenParams)]).pipe(
+    combineLatest([toObservable(this.func), toObservable(this.resolvedParams)]).pipe(
       switchMap(([func, params]) => this.resolve(func, params).pipe(startWith(LOADING))),
     ),
     { initialValue: LOADING },
@@ -276,6 +311,7 @@ export class KeelScreenComponent {
   });
   protected readonly descriptor = computed(() => this.screen().descriptor);
   protected readonly typedParams = computed(() => this.screen().params);
+  protected readonly layout = computed(() => this.descriptor().ui?.layout ?? null);
   protected readonly failure = computed(() => {
     const state = this.state();
     if (state.phase !== 'failed') {
@@ -301,6 +337,17 @@ export class KeelScreenComponent {
   protected readonly unsupportedText = computed(() =>
     this.i18n.t(SCREEN_UNSUPPORTED_KEY, { kind: this.descriptor().kind }),
   );
+
+  protected select(id: string): void {
+    if (isObject(this.params()) || this.route === null) {
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { [SELECTED_PARAM]: id },
+      queryParamsHandling: 'merge',
+    });
+  }
 
   private resolve(func: string, params: Record<string, unknown>): Observable<ScreenState> {
     const view = viewOf(this.views, func);

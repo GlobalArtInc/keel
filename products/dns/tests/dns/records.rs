@@ -440,3 +440,40 @@ async fn records_of_a_zone_over_the_limit_are_refused() {
     );
     harness.finish().await;
 }
+
+#[tokio::test]
+async fn the_zone_list_shows_the_records_of_the_selected_zone_beside_it() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let chosen = create(&harness, Who::A1, "chosen.example").await;
+    let other = create(&harness, Who::A1, "other.example").await;
+    for (zone, name) in [(&chosen, "www"), (&chosen, "mail"), (&other, "ftp")] {
+        record(
+            &harness,
+            Who::A1,
+            json!({ "zone": zone, "type": "A", "name": name, "value": "192.0.2.7" }),
+        )
+        .await;
+    }
+
+    let http = harness.http().await;
+    let list = http.get(Who::A1, "/api/v1/functions/dns.zone.list").await;
+    assert_eq!(list.status, 200, "{}", list.body);
+    let ui = &list.json()["ui"];
+    assert_eq!(ui["layout"], json!("master-detail"));
+    assert_eq!(
+        ui["detail"],
+        json!({ "screen": "dns.record.list", "params": { "zone_id": "$id" } })
+    );
+    http.stop().await.expect("the server stops");
+
+    let detail = harness
+        .call(
+            Who::A1,
+            "dns.record.list",
+            json!({ "scope": { "zone_id": chosen }, "sort": { "key": "name", "dir": "asc" } }),
+        )
+        .await;
+    assert_eq!(crate::support::names(&detail), ["mail", "www"]);
+    harness.finish().await;
+}

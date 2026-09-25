@@ -4,10 +4,11 @@ import type { Locator, Page } from '@playwright/test';
 interface SystemScreen {
   label: string;
   func: string;
+  tree?: boolean;
 }
 
 const SCREENS: readonly SystemScreen[] = [
-  { label: 'Accounts', func: 'keel.account.list' },
+  { label: 'Accounts', func: 'keel.account.list', tree: true },
   { label: 'Principals', func: 'keel.principal.list' },
   { label: 'Products', func: 'keel.product.list' },
   { label: 'Settings', func: 'settings.list' },
@@ -62,6 +63,12 @@ keelTest.describe('system', () => {
     for (const screen of SCREENS) {
       await page.locator('phx-sidebar').getByRole('link', { name: screen.label }).click();
       await expect(page).toHaveURL(new RegExp(`/f/${screen.func.replaceAll('.', '\\.')}$`));
+      if (screen.tree === true) {
+        const tree = page.locator(`keel-tree[data-tree="${screen.func}"]`);
+        await expect(tree.getByRole('heading', { level: 1 })).toHaveText(screen.label);
+        await expect(tree.getByRole('tree', { name: screen.label })).toBeVisible();
+        continue;
+      }
       const list = page.locator(`keel-list[data-list="${screen.func}"]`);
       await expect(list.getByRole('heading', { level: 1 })).toHaveText(screen.label);
       await expect(list.getByText(/^Total: \d+$/)).toBeVisible();

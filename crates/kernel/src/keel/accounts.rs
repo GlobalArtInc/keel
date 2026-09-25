@@ -30,6 +30,8 @@ const HAS_CHILDREN: &str = "keel.account.error.has_children";
 const DELETING: &str = "keel.account.error.deleting";
 const ROWS_REMAIN: &str = "keel.account.error.rows_remain";
 const ROW_PARAM: &str = "$id";
+const PARENT: &str = "parentId";
+const PARENT_SCOPE: &str = "keel.account.error.parent_scope";
 const REMOVE_LIMITS: &str = "DELETE FROM keel_limit WHERE account_id = $1";
 const REMOVE_PRINCIPALS: &str = "DELETE FROM keel_principal WHERE account_id = $1";
 const REMOVE_ACCOUNT: &str = "DELETE FROM keel_account WHERE id = $1";
@@ -101,7 +103,7 @@ pub fn list() -> FunctionDef {
                     .filter_options(["active", "suspended", "deleting"]),
             )
             .column(
-                Column::new("parentId", ColumnType::Text)
+                Column::new(PARENT, ColumnType::Text)
                     .level(Level::Reseller)
                     .filter_remote("keel.account.options"),
             )
@@ -144,9 +146,43 @@ pub fn list() -> FunctionDef {
             )
             .row_actions(["edit", "suspend", "resume", "delete"])
             .empty("keel.account.empty", Some("create"))
-            .invalidate_on(["keel.account.*"]))
+            .invalidate_on(["keel.account.*"])
+            .tree(PARENT))
         .default_sort("id", SortDir::Asc)
-        .source(entity_source::<account::Entity>())
+        .source(Accounts)
+}
+
+struct Accounts;
+
+#[async_trait]
+impl ListSource for Accounts {
+    type Row = account::Model;
+
+    async fn fetch(&self, call: &Call<ListQuery>, spec: &ListSpec) -> Result<Page<account::Model>> {
+        let scope = call.account_scope();
+        let mut select = scope.apply(account::Entity::find());
+        match call.params().scope.get(PARENT) {
+            None => {}
+            Some(Value::Null) => select = select.filter(top_of(scope)),
+            Some(Value::String(parent)) => {
+                select = select.filter(account::Column::ParentId.eq(parent.as_str()));
+            }
+            Some(_) => {
+                return Err(KeelError::validation(PARENT_SCOPE).field(format!("scope.{PARENT}")));
+            }
+        }
+        fetch_page(select, call, spec).await
+    }
+}
+
+fn top_of(scope: &AccountScope) -> Condition {
+    match scope {
+        AccountScope::All => Condition::all().add(account::Column::ParentId.is_null()),
+        AccountScope::Own(id) | AccountScope::Subtree(id) => {
+            Condition::all().add(account::Column::Id.eq(id.to_string()))
+        }
+        AccountScope::Nothing => Condition::any(),
+    }
 }
 
 pub fn get() -> FunctionDef {

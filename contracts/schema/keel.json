@@ -1660,6 +1660,13 @@
         "upload"
       ]
     },
+    "Layout": {
+      "type": "string",
+      "enum": [
+        "tree",
+        "master-detail"
+      ]
+    },
     "Level": {
       "type": "string",
       "enum": [
@@ -2160,6 +2167,32 @@
           "items": {
             "$ref": "#/$defs/Chart"
           }
+        },
+        "layout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Layout"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Link"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

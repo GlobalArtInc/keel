@@ -16,6 +16,7 @@ const DNSSEC: &str = "dns.dnssec";
 const DNSSEC_GET: &str = "dns.zone.dnssec.get";
 const SUBJECT: &str = "dns.zone";
 const RECORDS: &str = "dns.record.list";
+const RECORDS_PARENT: &str = "zone_id";
 const RECORD_CREATE: &str = "dns.record.create";
 const TEMPLATES: &str = "dns.template.options";
 const TEMPLATE_RECORD: &str = "dns.zone.error.template";
@@ -173,7 +174,7 @@ pub(crate) fn list() -> FunctionDef {
             .action(
                 Action::new("records", ActionRole::Child)
                     .screen(RECORDS)
-                    .params([("zone_id", "$id")])
+                    .params([(RECORDS_PARENT, "$id")])
                     .icon("list"),
             )
             .action(
@@ -184,7 +185,8 @@ pub(crate) fn list() -> FunctionDef {
             )
             .row_actions(["edit", "records", "dnssec", "delete"])
             .empty("dns.zone.empty", Some("create"))
-            .invalidate_on(["dns.zone.*", "dns.record.*"]))
+            .invalidate_on(["dns.zone.*", "dns.record.*"])
+            .master_detail(RECORDS, [(RECORDS_PARENT, "$id")]))
         .default_sort("name", SortDir::Asc)
         .source(entity_source::<zone::Entity>())
 }

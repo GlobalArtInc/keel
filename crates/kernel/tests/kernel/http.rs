@@ -902,6 +902,8 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .await;
     let list = &as_user.body;
     assert_eq!(columns(list), ["id", "kind", "state", "createdAt"]);
+    assert!(list["ui"].get("layout").is_none(), "{}", list["ui"]);
+    assert!(list["ui"].get("parent").is_none(), "{}", list["ui"]);
     assert!(actions(list).is_empty(), "{}", list["ui"]);
     assert!(list["ui"].get("row_actions").is_none(), "{}", list["ui"]);
     assert!(
@@ -917,6 +919,8 @@ async fn descriptors_are_projected_by_level_and_permission() {
         columns(list),
         ["id", "kind", "state", "parentId", "createdAt"]
     );
+    assert_eq!(list["ui"]["layout"], json!("tree"));
+    assert_eq!(list["ui"]["parent"], json!("parentId"));
     assert_eq!(
         actions(list),
         ["create", "edit", "suspend", "resume", "delete"]

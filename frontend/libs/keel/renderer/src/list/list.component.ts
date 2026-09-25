@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   Injector,
+  booleanAttribute,
   computed,
   effect,
   inject,
   input,
   linkedSignal,
+  output,
   signal,
   untracked,
 } from '@angular/core';
@@ -250,6 +252,9 @@ export class KeelListComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
   readonly compact = input<number | null>(null);
+  readonly picking = input(false, { transform: booleanAttribute });
+
+  readonly picked = output<string>();
 
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
@@ -387,7 +392,7 @@ export class KeelListComponent {
     }));
   });
   readonly defaultAction = computed(() => defaultActionOf(this.descriptor()));
-  readonly clickable = computed(() => this.defaultAction() !== null);
+  readonly clickable = computed(() => this.picking() || this.defaultAction() !== null);
   readonly emptyAction = computed(() => emptyActionOf(this.descriptor()));
   readonly emptyTitle = computed(() => {
     const empty = this.descriptor().ui?.empty ?? null;
@@ -602,6 +607,10 @@ export class KeelListComponent {
   }
 
   protected onRowClick(event: PhxRowEvent<Row>): void {
+    if (this.picking()) {
+      this.picked.emit(String(event.row[this.key()]));
+      return;
+    }
     const action = this.defaultAction();
     if (action !== null && !isHidden(action, event.row, this.rowScope())) {
       this.run(action, [event.row]);

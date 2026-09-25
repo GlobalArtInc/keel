@@ -110,6 +110,9 @@ export {
 } from './list/invalidate';
 export { SEARCH_PARAM, scopeOf, searchOf } from './list/scope';
 export { KeelListComponent } from './list/list.component';
+export { KeelTreeComponent } from './tree/tree.component';
+export { KeelMasterDetailComponent } from './master-detail/master-detail.component';
+export type { KeelDetailContext } from './master-detail/master-detail.component';
 export type { CompactRows, ReadonlyToggle } from './list/list.component';
 export {
   DEFAULT_FORMATS,

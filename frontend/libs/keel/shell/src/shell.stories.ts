@@ -252,7 +252,7 @@ export const NoProduct: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await canvas.findByText('customer');
+    await canvas.findByRole('tree', { name: 'Accounts' });
     await expect(brandTextOf(canvasElement)).toBe('Keel');
     await expect(canvasElement.querySelector('phx-brand-logo img')).toBeNull();
     await expect(sectionsOf(canvasElement)).toEqual([
@@ -290,7 +290,7 @@ export const TwoProducts: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await canvas.findByText('customer');
+    await canvas.findByRole('tree', { name: 'Accounts' });
     await expect(brandTextOf(canvasElement)).toBe('Keel');
     await expect(canvasElement.querySelector('phx-brand-logo img')).toBeNull();
     await expect(sectionsOf(canvasElement)).toEqual([

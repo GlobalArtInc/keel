@@ -120,6 +120,7 @@ export type Control =
   | 'transfer';
 export type Mode = 'read' | 'write';
 export type ScreenResult = 'redirect' | 'task' | 'download';
+export type Layout = 'tree' | 'master-detail';
 export type Envelope =
   | {
       ok: true;
@@ -370,6 +371,9 @@ export interface ScreenUi {
   result?: ScreenResult | null;
   bands?: Band[];
   charts?: Chart[];
+  layout?: Layout | null;
+  parent?: string | null;
+  detail?: Link | null;
 }
 export interface Empty {
   title: string;

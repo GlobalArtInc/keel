@@ -212,6 +212,8 @@
     },
     "invalidate_on": [
       "keel.account.*"
-    ]
+    ],
+    "layout": "tree",
+    "parent": "parentId"
   }
 }

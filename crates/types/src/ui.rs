@@ -37,6 +37,12 @@ pub struct ScreenUi {
     pub bands: Vec<Band>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub charts: Vec<Chart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<Layout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<Link>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -249,6 +255,22 @@ pub enum ChartType {
     Pie,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Layout {
+    Tree,
+    MasterDetail,
+}
+
+impl Layout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Layout::Tree => "tree",
+            Layout::MasterDetail => "master-detail",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +287,42 @@ mod tests {
         assert!(serde_json::from_value::<ScreenResult>(json!("reload")).is_err());
         assert!(serde_json::from_value::<ColumnFilter>(json!({ "values": ["a"] })).is_err());
         assert!(serde_json::from_value::<ChartType>(json!("doughnut")).is_err());
+        assert!(serde_json::from_value::<Layout>(json!("tabs")).is_err());
+    }
+
+    #[test]
+    fn layouts_name_their_parent_field_or_detail_screen() {
+        let tree = ScreenUi {
+            title: "keel.account.list.title".into(),
+            layout: Some(Layout::Tree),
+            parent: Some("parentId".into()),
+            ..Default::default()
+        };
+        let wire = serde_json::to_value(&tree).unwrap();
+        assert_eq!(
+            wire,
+            json!({ "title": "keel.account.list.title", "layout": "tree", "parent": "parentId" })
+        );
+        assert_eq!(serde_json::from_value::<ScreenUi>(wire).unwrap(), tree);
+        let split = ScreenUi {
+            title: "dns.zone.list.title".into(),
+            layout: Some(Layout::MasterDetail),
+            detail: Some(Link {
+                screen: "dns.record.list".into(),
+                params: Map::from_iter([("zone_id".to_owned(), json!("$id"))]),
+            }),
+            ..Default::default()
+        };
+        let wire = serde_json::to_value(&split).unwrap();
+        assert_eq!(
+            wire,
+            json!({
+                "title": "dns.zone.list.title",
+                "layout": "master-detail",
+                "detail": { "screen": "dns.record.list", "params": { "zone_id": "$id" } }
+            })
+        );
+        assert_eq!(serde_json::from_value::<ScreenUi>(wire).unwrap(), split);
     }
 
     #[test]

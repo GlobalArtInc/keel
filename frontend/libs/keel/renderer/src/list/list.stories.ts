@@ -375,9 +375,9 @@ export const Accounts: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText('customer')).toBeInTheDocument();
+    await expect(await canvas.findByRole('tree', { name: 'Accounts' })).toBeInTheDocument();
     await expect(canvas.getByRole('heading', { name: 'Accounts' })).toBeInTheDocument();
-    await expect(canvas.getByText('Suspended')).toBeInTheDocument();
+    await expect(canvas.getByText(id('A2'))).toBeInTheDocument();
   },
 };
 

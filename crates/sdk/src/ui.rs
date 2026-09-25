@@ -4,7 +4,7 @@ use keel_types::expr::ParseError;
 use keel_types::ui::{
     Action as WireAction, Band as WireBand, Chart as WireChart, ChartType, Column as WireColumn,
     ColumnFilter, ColumnType, Confirm, ConfirmDetails, Empty, ExportFormat, FieldUi, InlineEdit,
-    Link, ScreenPage, ScreenResult, ScreenUi, Tone, Total,
+    Layout, Link, ScreenPage, ScreenResult, ScreenUi, Tone, Total,
 };
 use keel_types::{Access, Expr, Level, MemberAccess};
 use serde_json::{Map, Value};
@@ -516,6 +516,24 @@ impl List {
         self.def.screen.invalidate_on = patterns.into_iter().map(Into::into).collect();
         self
     }
+
+    pub fn tree(mut self, parent: &str) -> Self {
+        self.def.screen.layout = Some(Layout::Tree);
+        self.def.screen.parent = Some(parent.to_owned());
+        self
+    }
+
+    pub fn master_detail<'a, I>(mut self, screen: &str, params: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a str, &'a str)>,
+    {
+        self.def.screen.layout = Some(Layout::MasterDetail);
+        self.def.screen.detail = Some(Link {
+            screen: screen.to_owned(),
+            params: string_map(params),
+        });
+        self
+    }
 }
 
 impl From<List> for UiDef {
@@ -907,6 +925,34 @@ mod tests {
                     },
                     { "id": "share", "type": "pie", "series": "dns.report.share" }
                 ]
+            })
+        );
+    }
+
+    #[test]
+    fn a_list_takes_the_tree_or_the_master_detail_layout() {
+        let tree: UiDef = List::new("keel.account.list.title")
+            .column(Column::new("parentId", ColumnType::Text))
+            .tree("parentId")
+            .into();
+        assert_eq!(
+            serde_json::to_value(tree.compile(&BTreeSet::new()).expect("compiles")).expect("json"),
+            json!({
+                "title": "keel.account.list.title",
+                "columns": [{ "key": "parentId", "type": "text" }],
+                "layout": "tree",
+                "parent": "parentId"
+            })
+        );
+        let split: UiDef = List::new("dns.zone.list.title")
+            .master_detail("dns.record.list", [("zone_id", "$id")])
+            .into();
+        assert_eq!(
+            serde_json::to_value(split.compile(&BTreeSet::new()).expect("compiles")).expect("json"),
+            json!({
+                "title": "dns.zone.list.title",
+                "layout": "master-detail",
+                "detail": { "screen": "dns.record.list", "params": { "zone_id": "$id" } }
             })
         );
     }

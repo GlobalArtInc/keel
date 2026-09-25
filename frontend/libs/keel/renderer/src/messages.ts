@@ -5,6 +5,7 @@ export const RETRY_KEY = 'keel.action.retry';
 export const APPLY_KEY = 'keel.action.apply';
 export const EXPORT_KEY = 'keel.action.export';
 export const REPORT_EMPTY_KEY = 'keel.report.empty';
+export const DETAIL_EMPTY_KEY = 'keel.detail.empty';
 export const DONE_KEY = 'keel.action.done';
 export const BACK_KEY = 'keel.action.back';
 export const NEXT_KEY = 'keel.action.next';

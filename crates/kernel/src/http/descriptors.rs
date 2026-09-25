@@ -8,7 +8,7 @@ use axum::{Extension, Json};
 use keel_sdk::KeelError;
 use keel_sdk::runtime::property_names;
 use keel_types::descriptor::MemberAccess;
-use keel_types::{Access, Column, Descriptor, Level, Principal};
+use keel_types::{Access, Column, Descriptor, Level, Principal, ScreenUi};
 use serde_json::{Map, Value};
 
 use super::Shared;
@@ -80,6 +80,7 @@ impl<'a> Projection<'a> {
                 self.columns(&mut band.columns);
             }
             ui.charts.retain(|chart| self.callable(&chart.series));
+            cut_layout(ui, |name| self.callable(name));
             ui.actions.retain(|action| {
                 action
                     .function
@@ -262,6 +263,22 @@ pub(super) async fn one(
     reply::cached(Json(descriptor).into_response(), &version)
 }
 
+fn cut_layout(ui: &mut ScreenUi, callable: impl Fn(&str) -> bool) {
+    let parent_seen = ui
+        .parent
+        .as_ref()
+        .is_none_or(|parent| ui.columns.iter().any(|column| column.key == *parent));
+    let detail_callable = ui
+        .detail
+        .as_ref()
+        .is_none_or(|detail| callable(&detail.screen));
+    if !parent_seen || !detail_callable {
+        ui.layout = None;
+        ui.parent = None;
+        ui.detail = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -304,5 +321,35 @@ mod tests {
         let item = &object["$defs"]["Item"];
         assert!(item["properties"].get("secret_note").is_none());
         assert_eq!(item["required"], json!(["ip"]));
+    }
+
+    #[test]
+    fn a_layout_leaves_with_the_parent_column_or_the_detail_screen_it_needs() {
+        let tree: ScreenUi = serde_json::from_value(json!({
+            "title": "t",
+            "columns": [{ "key": "id", "type": "text" }, { "key": "parentId", "type": "text" }],
+            "layout": "tree",
+            "parent": "parentId"
+        }))
+        .unwrap();
+        let mut kept = tree.clone();
+        cut_layout(&mut kept, |_| false);
+        assert_eq!(kept, tree);
+        let mut cut = tree.clone();
+        cut.columns.retain(|column| column.key != "parentId");
+        cut_layout(&mut cut, |_| true);
+        assert_eq!((cut.layout, cut.parent), (None, None));
+        let split: ScreenUi = serde_json::from_value(json!({
+            "title": "t",
+            "layout": "master-detail",
+            "detail": { "screen": "dns.record.list", "params": { "zone_id": "$id" } }
+        }))
+        .unwrap();
+        let mut kept = split.clone();
+        cut_layout(&mut kept, |name| name == "dns.record.list");
+        assert_eq!(kept, split);
+        let mut cut = split;
+        cut_layout(&mut cut, |_| false);
+        assert_eq!((cut.layout, cut.detail), (None, None));
     }
 }
