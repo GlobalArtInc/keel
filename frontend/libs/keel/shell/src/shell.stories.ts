@@ -164,13 +164,26 @@ function speaking(boot: Boot, lang: string): Boot {
   return boot.principal ? { ...boot, principal: { ...boot.principal, lang } } : boot;
 }
 
+function demoOnly(boot: Boot): Boot {
+  const others = new Set(
+    boot.products.filter((product) => product.id !== 'demo').map((product) => product.id),
+  );
+  return {
+    ...boot,
+    products: boot.products.filter((product) => !others.has(product.id)),
+    brand: KEEL_BOOT.one.brand,
+    features: boot.features.filter((feature) => !others.has(feature.split('.')[0] ?? '')),
+    menu: boot.menu.filter((group) => !others.has(group.product ?? '')),
+  };
+}
+
 function actingBoot(): Boot {
   const alice = KEEL_PRINCIPALS.user;
   const root = KEEL_PRINCIPALS.admin;
   if (alice === null || root === null) {
     throw new Error('the user and admin fixtures are principals');
   }
-  return { ...keelDump('user').boot, principal: actingAs(alice, root) };
+  return { ...demoOnly(keelDump('user').boot), principal: actingAs(alice, root) };
 }
 
 interface ShownSection {
@@ -301,6 +314,7 @@ export const Login: Story = {
   decorators: [
     withKeel({
       level: 'guest',
+      boot: demoOnly(keelDump('guest').boot),
       calls: {
         'auth.login': errorEnvelope({ code: 'unauthenticated', key: 'auth.error.credentials' }),
       },
