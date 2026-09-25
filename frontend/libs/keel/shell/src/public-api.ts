@@ -238,4 +238,4 @@ export { KeelTotpEnrollComponent } from './security/enroll.component';
 export type { EnrollStage } from './security/enroll.component';
 export { KeelTotpDisableComponent } from './security/disable.component';
 
-export const KEEL_SHELL_VERSION = '0.1.0';
+export const KEEL_SHELL_VERSION = '0.2.0';

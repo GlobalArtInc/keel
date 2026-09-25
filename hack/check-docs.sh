@@ -70,6 +70,29 @@ M3_NAMES = {
     "KeelMultiFormComponent": "export class KeelMultiFormComponent",
 }
 
+M4_NAMES = {
+    "HostExecutor": "pub trait HostExecutor",
+    "Origin": "pub struct Origin",
+    "AgentOp": "pub struct AgentOp",
+    "ConfigTemplate": "pub struct ConfigTemplate",
+    "BackupSource": "pub struct BackupSource",
+    "Backups": "pub trait Backups",
+    "AccountLifecycle": "pub struct AccountLifecycle",
+    "LimitDef": "pub struct LimitDef",
+    "check_limit": "fn check_limit",
+    "SSE_MAX_CLIENTS": "SSE_MAX_CLIENTS",
+    "checkBy": "checkBy",
+    "keel.setup.admin": '"keel.setup.admin"',
+    "keel.doctor.run": '"keel.doctor.run"',
+    "keel.logs.tail": '"keel.logs.tail"',
+    "min_upgrade_from": "min_upgrade_from",
+    "uid_range": "uid_range",
+    "exec_allow": "exec_allow",
+    "drop_in_prefix": "drop_in_prefix",
+    "keel-release": 'name = "keel-release"',
+    "keel-host-agent": 'name = "keel-host-agent"',
+}
+
 CODE_ROOTS = {"crates": ["crates"], "crates/ or frontend/libs/keel": ["crates", "frontend/libs/keel"]}
 
 
@@ -97,6 +120,7 @@ def check_names(milestone, names, roots_label):
 check_names("M1", M1_NAMES, "crates")
 check_names("M2", M2_NAMES, "crates/ or frontend/libs/keel")
 check_names("M3", M3_NAMES, "crates/ or frontend/libs/keel")
+check_names("M4", M4_NAMES, "crates")
 
 
 def section(text, heading):
@@ -189,6 +213,7 @@ def check_checklist(milestone, test_roots):
 check_checklist("M1", ["crates", "products"])
 check_checklist("M2", ["crates", "products", "bin"])
 check_checklist("M3", ["crates", "products", "bin"])
+check_checklist("M4", ["crates", "products", "bin"])
 
 with open("README.md") as handle:
     readme = handle.read()

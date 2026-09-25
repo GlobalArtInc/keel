@@ -19,8 +19,9 @@ database, distinguished by their module prefix; there is nothing per product in 
 Database access goes through sea-orm 1.1 (`sqlx-postgres`, `runtime-tokio-rustls`); modules
 contain no raw sqlx. The connection pool belongs to `keel-kernel`. `keel-sdk` knows nothing about
 the pool: a module receives only the transaction of the current call through `call.tx()`. The
-`keel-storage` crate is the library of backup targets (local, S3) and has nothing to do with the
-database; see [09-operations.md](09-operations.md).
+`keel-storage` crate, from M5, is the library of remote backup targets (S3) and has nothing to do
+with the database; M4 writes backups to the local directory without it, see
+[09-operations.md](09-operations.md).
 
 A single engine for the whole line means one SQL dialect, one migrator without extensions, and one
 test matrix instead of the whole class of tests that would have to run against two engines. The

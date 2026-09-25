@@ -5839,8 +5839,10 @@ the package versions, `hack/check-docs.sh`.
   --workspace --all-targets -- -D warnings`, `cargo test --workspace` against the Postgres server
   `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit` against
   the container the testkit starts, `cargo run -p keel-dev -- types --out contracts/schema --check`,
-  `cargo test -p keel-bin --no-default-features`, `cargo build -p keel-bin`, `hack/prove-binary.sh
-  target/debug/keel`, `hack/check-install.sh target/debug/keel`, `hack/conformance.sh
+  `cargo test -p keel-bin --no-default-features`, `cargo build -p keel-bin --no-default-features
+  --features demo`, `cargo build -p keel-bin --no-default-features --features dns`, `cargo build
+  -p keel-bin`, `hack/prove-binary.sh target/debug/keel`, `hack/check-install.sh
+  target/debug/keel`, `hack/check-release.sh target/debug/keel`, `hack/conformance.sh
   target/debug/keel`, `hack/descriptors.sh target/debug/keel`, `cargo run -p keel-dev -- i18n
   missing --dump contracts/dump`, `pnpm exec playwright install chromium` once and `hack/e2e.sh
   target/debug/keel`, then `hack/check-test-databases.sh`, `hack/check-deps.sh` and
@@ -5851,11 +5853,15 @@ the package versions, `hack/check-docs.sh`.
   storybook-static --port 6006 --silent &`, `pnpm exec wait-on http://127.0.0.1:6006/index.json` and
   `pnpm test-storybook`, `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish
   --dry-run --no-git-checks`. The job `system` runs the `keel-system` matrix, `cargo clippy` and
-  `cargo test -p keel-system --no-default-features --features <set>` over fourteen sets — each of
-  the seven modules alone, the crate without each of the M1 modules and without `tasks` in turn, and
-  the three nested prefixes `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against
-  Postgres and the mail catcher, and the Build workflow the musl release with its size check, after
-  `keel-dev i18n pull` when the translation token is present.
+  `cargo test -p keel-system --no-default-features --features <set>` over eighteen sets — each of
+  the nine modules alone, `tasks,cron,notify,update` and `tasks,backup`, the seven modules of M3
+  without each of the M1 modules and without `tasks` in turn, and the three nested prefixes
+  `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against Postgres and the mail
+  catcher. The job `rehearsal` builds the shell with `pnpm install --frozen-lockfile` and `pnpm
+  build` in `frontend/`, then runs `hack/rehearsal.sh "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"`
+  and `hack/check-test-databases.sh` against Postgres. The Build workflow builds the musl release
+  with its size check, after `keel-dev i18n pull` when the translation token is present, and
+  `release.yml` publishes an annotated `keel-v*` tag to the release channel.
 - A gap in `ru` is a red build: `keel-dev i18n missing` runs in the job `check` after
   `hack/descriptors.sh`, and the dictionaries are the per-language source between pulls.
 - English everywhere in the repository: code, documentation, tests, CI, commit messages.
@@ -6088,23 +6094,21 @@ once it holds, the `keel-demo` ones with the date-free note "confirmed by hand o
       in `products/demo/tests/demo/note.rs`.
 - [x] On a VM the spike, running as an unprivileged uid, creates an OS user and a vhost through
       the agent, and an invalid template is rolled back: the transcript of step 10 in the message
-      of commit `205b8fb` records the run of `hack/spike-vm.sh` on `keel-demo` — the call as
+      of commit `205b8fb` records the run of the spike's script `spike-vm.sh` on `keel-demo` — the call as
       `nobody` refused with `refused peer_uid=65534 admitted_uid=999`, `host.user.create`
       answering `created: true` and `id -u kd_spike` working, the vhost written and answering the
       known body, the apply with `listen eighty` answering `host.error.validate_failed` with
       nginx's message and the vhost byte-identical to the previous one, and `--cleanup` leaving
-      no trace; nothing under `bin/spike`, `deploy/spike.yaml` or `hack/spike-vm.sh` changed
-      between that commit and the closing one. The mechanism is checked in CI by
-      `bin/spike/tests/agent.rs`
-      (`a_peer_with_another_uid_is_closed_without_an_answer_and_the_refusal_is_logged`,
-      `a_valid_template_is_rendered_swapped_in_validated_and_reloaded_and_a_repeat_changes_nothing`,
-      `a_failed_check_restores_the_previous_file_and_answers_validate_failed_with_the_detail`,
-      `a_failed_reload_restores_the_file_reloads_again_and_answers_reload_failed`,
-      `a_foreign_root_an_unprefixed_name_or_user_and_an_unknown_product_are_refused_as_policy`,
-      `useradd_runs_with_the_shell_and_its_failure_answers_exec_failed_with_its_output`), and the
-      Build workflow ships the musl `keel-spike` with its unit, policy, templates and
-      `hack/spike-vm.sh` as the artifact `keel-spike-x86_64-linux-musl`, from which the operator
-      may repeat the run on `keel-demo` at will; that repeat is not a condition of this tick.
+      no trace; nothing of the spike changed between that commit and the M2 closing one. The
+      mechanism was checked in CI by the spike's own tests and shipped by the Build workflow as
+      the artifact `keel-spike-x86_64-linux-musl` until the close of M4 removed the spike, its
+      script and the artifact; `keel-host-agent` carries the mechanism since, in
+      `crates/host-agent/tests/agent.rs` (`a_peer_that_is_not_the_configured_uid_is_refused`,
+      `template_apply_renders_swaps_validates_reloads_and_reports_changed`,
+      `a_failing_check_rolls_the_file_back_and_a_failing_reload_reloads_again`,
+      `a_request_whose_product_has_no_section_is_refused`,
+      `users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix`), proven on a
+      machine by `hack/host-vm.sh`.
 - [x] The binary with the embedded frontend is under 40 MB: the Build workflow's step "The binary
       with the demo bundle and the frontend is under 40 MB" prints the size of the musl release
       build and fails at 40,000,000 bytes; the closing commit's build measures 19,822,864 bytes
@@ -6174,7 +6178,8 @@ once it holds, the `keel-demo` ones with the date-free note "confirmed by hand o
       -p keel-testkit` against the container, `cargo test -p keel-bin --no-default-features`
       without the demo, and `hack/check-test-databases.sh` finds no database left behind.
 - [x] `hack/check-deps.sh` is green: `keel-dev` depends on `keel-types` alone and `keel-spike` on
-      no workspace crate, next to the M0 and M1 rules.
+      no workspace crate, next to the M0 and M1 rules; the second rule left with the spike at the
+      close of M4.
 - [x] `hack/check-docs.sh` is green: every M2 name it carries is found under `docs/design/` and
       under `crates/` or `frontend/libs/keel`, every Rust test this checklist cites is defined,
       every `*.spec.ts` it cites exists under `frontend/`, every command it cites exists, and the
@@ -6466,3 +6471,228 @@ so the milestone that needs them picks them up.
       platform constant `SSE_MAX_CLIENTS`, the re-check of the credential at keep-alive,
       `meta.invalidate` on a permission change and the `events` group of the conformance suite;
       the replay window, the scope filter and `Last-Event-ID` of step 6a stand as built.
+
+## M4 exit checklist
+
+Every ticked item below is checked by CI on `main` — the tests of the workspace with the fuzzing
+properties of the frame parser and the manifest verifier, the eighteen-set `keel-system` matrix
+against Postgres and the mail catcher, the builds of `keel-bin` with each bundle alone,
+`hack/prove-binary.sh`, `hack/check-install.sh`, `hack/check-release.sh`, `hack/conformance.sh`,
+`hack/descriptors.sh`, `keel-dev i18n missing` and `hack/e2e.sh` against the built binary over
+https, the job `rehearsal`, the job `frontend`, and `hack/check-docs.sh` over this checklist. What
+needs root, the real service manager, bind or the published channel is proven by the operator on
+virtual machines and on `keel-demo` with the scripts under `hack/` that `deploy/README.md` lists
+under "Proving on a machine"; those items are left unticked and named, and each is ticked once it
+holds, with the date-free note "confirmed by hand" and the machine. A "Done when" item that has a
+CI half and a machine half is split into a ticked item and an operator-run one. The findings of
+the security review left without a fix are listed last, unticked.
+
+- [x] The installer installs from the signed channel, allots the uid range, writes the policy,
+      installs the four units, creates no administrator and prints the setup link, and no unit
+      but the privileged ones runs as root: `hack/check-install.sh target/debug/keel` (the
+      signature check against a rehearsal pair and its refusals, the uid allotment against a stub
+      `getent`, `Type=notify`, the users of the units, the path unit, every subcommand, flag and
+      function the scripts and `deploy/README.md` call); the kernel half in
+      `the_setup_link_creates_the_first_administrator_once_and_the_function_is_gone_after` and
+      `the_runtime_sends_ready_and_watchdog_over_the_notify_socket` in `crates/keel/tests/setup.rs`;
+      the link followed once in the browser by `frontend/e2e/setup.spec.ts` through `hack/e2e.sh
+      target/debug/keel`. The script is bash, so the command of the "Done when" item is written
+      `curl | bash -s -- --product dns`; a plain `sh` stops with one line naming bash.
+- [ ] On a fresh Debian or Ubuntu virtual machine, `curl | bash -s -- --product dns` installs keel
+      with `dns` enabled and `ps -eo user,comm` shows root only under `keel privileged` —
+      operator-run: `hack/install-vm.sh prepare <archive> <dir>` on the development machine and
+      `hack/install-vm.sh run <dir> --product dns` on the machine, or `hack/dns-vm.sh install
+      <archive>`, which also prepares bind.
+- [x] `keel product disable` leaves the tables of the bundle orphaned and `enable` brings them back
+      without re-running an applied migration, on a running installation through the restart
+      exit 75: `disable_leaves_the_tables_and_enable_reruns_no_applied_migration` and
+      `enable_on_a_running_installation_requests_a_restart_after_the_dump` in
+      `crates/keel/tests/products.rs`; `hack/prove-binary.sh target/debug/keel` switches `demo`
+      off and on on its running site and asserts the dump, the tables, the ledger and the audit
+      trail. The mechanism knows no product; `dns` joins it on the machine below.
+- [ ] `keel product disable dns` and `enable dns` on the machine installed with `--product dns`
+      leave the `dns_*` tables orphaned and bring them back — operator-run: `hack/product-vm.sh
+      dns dns.zone.list`.
+- [x] A zone is created from the UI, from the CLI and with an API token:
+      `frontend/e2e/dns.spec.ts` ("alice creates a zone and its record through the list and the
+      form", the zone created with a `kat_` token, "the zones of the browser, the CLI and the token
+      land in one list") through `hack/e2e.sh target/debug/keel`, which creates the CLI zone with
+      `ctl dns.zone.create --as alice` and waits for the three zones to be served by the stub
+      agent; the module in
+      `a_zone_created_by_a_user_renders_its_file_and_include_after_commit_and_lists_under_its_account`,
+      `a_zone_over_the_account_limit_is_refused_before_the_transaction` and
+      `deleting_the_account_removes_its_zones_and_their_files` in
+      `products/dns/tests/dns/zones.rs`, the records in
+      `a_record_of_every_type_validates_its_value_and_lands_in_the_rendered_zone`,
+      `an_invalid_value_is_refused_on_the_field_before_the_transaction`,
+      `every_change_bumps_the_serial_once_per_transaction` and
+      `records_of_a_zone_over_the_limit_are_refused` in `products/dns/tests/dns/records.rs`, the
+      templates in `a_zone_created_with_a_template_receives_its_expanded_records`,
+      `a_template_of_another_account_is_not_offered_and_not_applied` and
+      `the_platform_templates_are_present_after_the_first_start` in
+      `products/dns/tests/dns/templates.rs`.
+- [x] A broken template is rolled back without downtime: the agent renders, swaps, checks with the
+      file in place, reloads and restores the previous file when the check or the reload fails,
+      in `template_apply_renders_swaps_validates_reloads_and_reports_changed`,
+      `a_failing_check_rolls_the_file_back_and_a_failing_reload_reloads_again` and
+      `an_unchanged_render_answers_changed_false_and_touches_nothing` in
+      `crates/host-agent/tests/agent.rs`, `a_template_override_under_etc_wins_over_the_compiled_text`
+      in `crates/host-agent/tests/catalogue.rs`; the zone keeps its row, turns to `error` and
+      raises its problem in
+      `a_failing_check_leaves_the_row_but_marks_the_zone_with_the_error_and_the_problem` in
+      `products/dns/tests/dns/zones.rs`.
+- [ ] On the machine with bind, zones created over the control socket and with a token are
+      answered by `dig`, and a broken `bind/zone.j2` under `/etc/keel/templates` turns the zone to
+      `error` while the zone file stays byte-identical and `named` keeps its process, its serial
+      and its answers throughout — operator-run: `hack/dns-vm.sh run --browser-zone <name>` after
+      the administrator created `<name>` on the Zones screen.
+- [x] The update path in CI: the root half in
+      `an_update_request_installs_the_signed_version_switches_current_and_restarts`,
+      `a_request_naming_an_unsigned_or_tampered_version_leaves_current_untouched`,
+      `rollback_switches_to_the_previous_version_within_the_contract_and_refuses_across_it`,
+      `the_request_carries_no_command_the_root_side_obeys` and
+      `an_update_request_moves_down_only_to_the_previous_version_within_its_contract` in
+      `crates/keel/tests/privileged.rs`; the manifest in
+      `a_manifest_signed_with_the_release_key_verifies_and_a_changed_byte_does_not`,
+      `a_manifest_signed_with_a_previous_key_still_verifies`,
+      `an_archive_whose_sha256_differs_from_the_manifest_is_refused` and
+      `a_version_below_min_upgrade_from_is_refused` in `crates/release`; the kernel half in
+      `check_compares_the_running_version_with_the_channel_head_and_reads_min_upgrade_from`,
+      `apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_principal`,
+      `apply_refuses_a_version_below_min_upgrade_from_and_across_a_contract`,
+      `rollback_writes_a_rollback_request` and
+      `the_daily_check_raises_update_available_and_the_running_version_clears_it` in
+      `crates/system/tests/system/update.rs`; the release workflow in
+      `the_release_workflow_triggers_on_release_tags_alone` and
+      `the_channel_file_names_a_contract_and_a_floor_the_workspace_version_admits` in
+      `crates/release/tests/channel.rs`, and its dry run fed to the root half by
+      `hack/check-release.sh target/debug/keel`. `keel --version` of the closing commit answers
+      `keel 0.2.0`.
+- [ ] The tag `keel-v0.2.0`, annotated, runs `release.yml` and publishes `0.2.0` to the stable
+      channel: `https://dl.globalart.hu/keel/stable/manifest.json` names `0.2.0` and `keel-release
+      verify` accepts it — operator-run, after the Nexus raw repository `keel-releases`, its role,
+      the deploy account `keel-release`, the secrets `KEEL_RELEASE_KEY` and
+      `KEEL_RELEASE_NEXUS_PASSWORD` and the route `dl.globalart.hu` exist.
+- [ ] `keel-demo`, installed at `0.1.0` from the channel, is updated to `0.2.0` from the button of
+      the screen "Updates" and rolled back once with the button, keeping its database — operator-run
+      on `keel-demo`; `hack/update-vm.sh prepare <archive> <dir>`, `run <dir>` and `kernel <dir>`
+      rehearse the same path against a rehearsal channel.
+- [x] A backup restores on another installation with the second factor working:
+      `a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_boot_and_logs_in_with_the_same_totp`,
+      `a_backup_without_the_key_restores_but_the_sealed_values_do_not_open`,
+      `restore_refuses_an_archive_naming_a_bundle_the_binary_does_not_carry` and
+      `a_backup_source_contribution_lands_in_the_archive_and_comes_back` in
+      `crates/keel/tests/backup.rs`; `hack/prove-binary.sh target/debug/keel` takes a backup over
+      the CLI and lists its manifest.
+- [ ] The backup of one virtual machine, taken with `--with-secret-key`, restores on a second
+      machine installed with the same products, and a principal with TOTP logs in there with a
+      fresh code — operator-run: `hack/backup-vm.sh take <archive>` on the first machine and
+      `hack/backup-vm.sh restore <archive>` on the second, the second factor checked by hand.
+- [x] An operation outside `file_roots` is refused by the agent and lands in the audit trail:
+      `a_file_operation_outside_file_roots_is_refused_and_audited`,
+      `a_request_whose_product_has_no_section_is_refused` and
+      `a_peer_that_is_not_the_configured_uid_is_refused` in `crates/host-agent/tests/agent.rs`;
+      the kernel side joins the journal on the request id in
+      `a_module_applies_a_template_through_the_executor_and_the_agent_audits_the_request_id` in
+      `crates/host/tests/executor.rs`.
+- [ ] On a machine installed by `install.sh`, the agent creates an account inside the range that
+      runs a program, renders, checks, reloads and serves a zone, rolls a broken template back
+      without a restart of `named`, and refuses an operation outside `file_roots`, found in
+      `journalctl -u keel-privileged` — operator-run: `hack/host-vm.sh`, then `hack/host-vm.sh
+      --cleanup`.
+- [x] The rest of the catalogue and the kernel's client:
+      `users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix`,
+      `files_are_written_through_a_temporary_and_listed_under_the_product_prefix`,
+      `service_operations_reach_listed_units_through_systemctl_alone` and
+      `no_setfsuid_and_no_credential_change_on_a_worker_thread` in
+      `crates/host-agent/tests/agent.rs`; `exec_runs_only_allowlisted_binaries_with_their_fixed_arguments`,
+      `pkg_install_calls_the_package_manager_and_reports_what_changed`,
+      `cron_writes_a_drop_in_under_the_product_prefix_and_removes_it`,
+      `a_product_agent_op_is_executed_under_its_policy_class_and_audited` and
+      `two_templates_with_one_id_fail_the_freeze` in `crates/host-agent/tests/catalogue.rs`;
+      `a_module_requiring_host_without_a_provider_fails_the_freeze`,
+      `an_agent_error_surfaces_in_the_envelope_as_its_key_with_the_detail` and
+      `without_host_loaded_the_kernel_never_connects_to_the_socket` in
+      `crates/host/tests/executor.rs`.
+- [x] `doctor`, `support-bundle` and the log ring:
+      `doctor_is_green_on_a_fresh_site_and_names_a_missing_unit_a_bad_mode_and_an_orphaned_module`,
+      `logs_tail_answers_the_newest_entries_in_order` and `the_support_bundle_carries_no_secret_value`
+      in `crates/keel/tests/doctor.rs`.
+- [ ] `keel doctor` is green against the real units, directories and database of an installation,
+      names `secret.key` after a bad mode, and the support bundle carries no password or token —
+      operator-run: `hack/doctor-vm.sh`.
+- [x] The feature guard without a lease:
+      `a_function_of_a_feature_not_in_the_set_answers_license_and_is_cut_from_the_projection_and_the_menu`
+      and `the_m4_feature_set_names_every_feature_of_every_enabled_product` in
+      `crates/kernel/tests/kernel/features.rs`; the `features` group of `hack/conformance.sh
+      target/debug/keel` answers 402 for a probe function behind a disabled feature.
+- [x] The two items M3 left undone. `keel.account.delete` as a task over `AccountLifecycle` with
+      `suspend` and `resume`:
+      `delete_runs_as_a_task_walking_on_delete_in_requires_order_and_removes_the_row_last`,
+      `a_failing_on_delete_leaves_the_account_deleting_with_the_error_on_the_task` and
+      `suspend_and_resume_switch_the_state_and_walk_the_contributions_after_commit` in
+      `crates/kernel/tests/kernel/lifecycle.rs`, with `dns` the first `on_delete`; the modules of
+      `keel-system` contribute none yet, which `docs/design/03-access.md` records. The per-session
+      cap of the event stream and the re-check at keep-alive:
+      `the_fifth_stream_of_a_session_closes_the_first_with_retry_zero` and
+      `a_revoked_session_is_closed_at_the_next_keep_alive` in
+      `crates/kernel/tests/kernel/events.rs`, and the `events` group of `hack/conformance.sh
+      target/debug/keel`.
+- [x] The dependency rehearsal: the job `rehearsal` runs `hack/rehearsal.sh <git-url> <revision>`
+      on every push to `main`, which builds `bin/keel` with `keel-dns-zones`, `keel-dns-records`
+      and `keel-dns-templates` from the pushed revision by git, runs their tests and
+      `hack/prove-binary.sh` against that binary, and refuses three tampered commits in which a
+      module crate reaches a workspace path.
+- [x] The binary with each bundle alone compiles: `cargo build -p keel-bin --no-default-features
+      --features demo` and `cargo build -p keel-bin --no-default-features --features dns`.
+- [x] The security review of the privileged path: every finding it fixed is a named test in the
+      crate it concerns — `the_program_run_under_another_uid_gets_a_clean_environment_and_the_root_directory`,
+      `a_uid_whose_account_carries_a_group_outside_the_range_is_refused_before_the_exec` and
+      `a_lookup_answering_another_account_than_the_uid_asked_is_refused` in
+      `crates/host-agent/src/exec.rs`; `a_uid_range_reaching_the_id_that_means_unchanged_is_refused`
+      and `a_service_named_like_an_option_never_reaches_systemctl` in
+      `crates/host-agent/src/policy.rs`;
+      `a_placement_never_lets_every_account_write_a_file_or_an_unsticky_directory` and
+      `a_file_over_the_read_limit_is_refused_without_being_read` in
+      `crates/host-agent/src/ops/files.rs`, with
+      `a_file_the_agent_places_is_never_writable_by_every_account` end to end;
+      `a_frame_field_over_the_field_limit_is_refused_before_it_reaches_the_journal`,
+      `a_frame_nested_past_the_depth_limit_is_refused_as_a_frame_without_overflowing` and
+      `a_frame_naming_a_field_twice_is_refused_so_no_reader_sees_another_product` in
+      `crates/host-agent/src/protocol.rs`;
+      `a_request_that_grows_after_its_check_is_refused_at_the_limit`,
+      `a_request_swapped_for_a_link_after_its_check_is_read_from_the_checked_file` and
+      `a_fifo_at_the_request_path_is_refused_without_blocking_and_removed` in
+      `crates/keel/src/privileged/request.rs`;
+      `an_entry_whose_pax_size_overrides_its_header_counts_against_the_limit` and
+      `an_entry_writable_by_group_or_others_is_refused` in `crates/keel/src/privileged/update.rs`;
+      `an_update_request_moves_down_only_to_the_previous_version_within_its_contract` in
+      `crates/keel/tests/privileged.rs`. The frame parser and the manifest verifier are fuzzed by
+      bounded properties in the ordinary test run, since the runner has no nightly toolchain:
+      `any_bytes_parse_to_a_request_or_fail_as_a_frame`,
+      `a_frame_is_accepted_exactly_when_its_fields_follow_the_rules` in
+      `crates/host-agent/src/fuzz.rs`, `any_bytes_are_refused_by_the_verifier_without_a_panic` and
+      `a_changed_bit_of_the_payload_or_the_signature_never_verifies` in
+      `crates/release/tests/fuzz.rs`.
+- [x] `hack/check-deps.sh` is green: `keel-release` stays free of workspace crates and of the async
+      and http stack, a module crate depends only on `keel-sdk`, the `api` of what it requires and
+      the module crates of its own bundle, next to the rules of M0 to M3; the rule for the spike
+      left with it.
+- [x] `hack/check-docs.sh` is green: every M4 name it carries is found under `docs/design/` and
+      under `crates/`, every Rust test and spec this checklist cites is defined or exists, every
+      command it cites exists, and the README's check lists, the "How we work" section and
+      `ci.yml` agree, the job `rehearsal` and the eighteen-set matrix included.
+- [ ] The OwnLate project `keel-dns` exists in the translation service with the dictionaries of
+      `dns-zones`, `dns-records` and `dns-templates`, its id set as the repository variable
+      `KEEL_OWNLATE_PROJECT_DNS` the Build workflow's `keel-dev i18n pull` reads, after which the pull leaves the committed
+      dictionaries unchanged — operator-run.
+- [ ] Left without a fix by the security review, for the milestone that needs each: a process the
+      agent runs has no timeout, so a check or package manager that never exits holds the serial
+      lock and every later host operation waits (timeouts per tool belong in the policy);
+      `host.pkg.*` has no allowlist, so any package of the configured sources can be installed or
+      removed; the owner of a placement may be any account of the host, since `bind` has to own
+      zone files; the channel accepts `http://` and a head manifest carries no expiry, so a man in
+      the middle can replay an older signed head or withhold one, though not forge one; the
+      unpacker has no bound on the number of entries, a finding that needs the signing key; the
+      arguments of a product operation are the product's types, which the SDK does not hold to
+      `deny_unknown_fields`, the subject of the M7 review.

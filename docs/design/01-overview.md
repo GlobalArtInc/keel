@@ -175,7 +175,7 @@ The kernel imports neither `keel-system` nor `keel-host`.
 | L4 Libraries | `keel-host`, `keel-host-agent`, `keel-storage`, `keel-client` | knowledge of nginx or bind as such; templates are brought by the product |
 | L5 Products | `products/demo`, `products/dns`, `products/panel` (bundles and their module crates); `bin/keel` (the composition) | own transports, own auth, own error format, own updates; users outside `keel_principal`; a process, a database, a session or an account tree of their own |
 | L6 Frontend | `@globalart/keel` (entry points), `frontend/apps/shell` (the one shell application) | the design system (external phoenix-ui); runtime loading of UI plugins |
-| L7 Tools | `keel-dev` (`types`, `descriptors dump \| diff \| check`, `views share`, `openapi`, `i18n extract \| missing \| pull`), `keel-conformance`, `hack/`, and the M2 host spike `bin/spike` (`keel-spike`, replaced by `keel-host-agent` in M4) | not part of the `keel` binary |
+| L7 Tools | `keel-dev` (`types`, `descriptors dump \| diff \| check`, `views share`, `openapi`, `i18n extract \| missing \| pull`), `keel-conformance`, `keel-release` (`keygen`, `sign`, `verify`), `hack/` | not part of the `keel` binary |
 
 The facade crate `keel` sits between products and the layers below it: it re-exports the SDK
 (`keel::sdk`, `keel::prelude`, `keel::ModuleDef`, `keel::ProductManifest`; the function builder
@@ -229,30 +229,32 @@ lists them with the product they belong to, not as a fixed path.
 | `crates/system` | `keel-system`: system modules, one cargo feature per module |
 | `crates/host` | `keel-host`: `HostExecutor` client and the `host` module |
 | `crates/host-agent` | `keel-host-agent`: the agent side, run as the `privileged` subcommand |
-| `crates/storage` | `keel-storage`: local and S3 backup targets, encryption |
+| `crates/release` | `keel-release`: the release manifest, its Ed25519 signature and the verifier the root side and the facade share, the bin `keel-release` (`keygen`, `sign`, `verify`), the public release keys under `keys/` and `channel.json` with the `contract` and `min_upgrade_from` of the next release; from M4 |
+| `crates/storage` | `keel-storage`: the S3 backup target and the encryption of remote archives, from M5; M4 writes backups to the local directory without it |
 | `crates/client` | `keel-client`: Rust client for a peer installation |
 | `crates/testkit` | `keel-testkit` |
 | `crates/conformance` | `keel-conformance` (bin) |
 | `crates/dev` | `keel-dev` (bin): `types`, `descriptors dump \| diff \| check`, `views share`, `openapi` and, under `src/i18n/`, `i18n extract \| missing \| pull`; depends on `keel-types` alone |
 | `crates/keel` | `keel`: the facade (lib): `Runtime` with the subcommands, `Running`, `Config`, `Change`, `ProductState`, re-exports of the SDK and the types; `embed_frontend!` from M2 |
 | `bin/keel` | `keel-bin`: the binary `keel`; the explicit composition of every module and every bundle; the only crate that depends on product crates; cargo feature `demo` |
-| `bin/spike` | `keel-spike`: the M2 host spike — a root agent admitting one uid by peer credentials with `host.user.create` and `host.template.apply` under a policy in the shape of `agent.yaml`, its client, unit, policy and templates; depends on no workspace crate; proven by `hack/spike-vm.sh` on `keel-demo` and replaced by `keel-host-agent` in M4 |
 | `products/demo` | dogfood bundle without host access, a lib crate: `MANIFEST` and the `note` module; compiled in only with the `demo` feature |
 | `products/dns` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`, the product's section of `agent.yaml`; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
 | `products/panel` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
 | `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing` and the nested `testing/playwright`), `apps/shell` (the one shell application), `products/<id>` (an Angular library per product with custom views; `demo` at M2), `.storybook/`, `e2e/` (the Playwright suite) and `tools/` (the generators, the theme boot script, the brotli twins, the version stamp) |
 | `contracts/` | `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots); from M2 `schema/` (the JSON Schema of `keel-types`), `dump/` (the projected contract of the binary per level), `icons.json` (the phoenix icon set the kernel embeds) and the generated `openapi.json`, all committed for diffs; from M3 `i18n.json`, the translation projects with their dictionary directories and key prefixes; later `protocol.md`, the prose of the contract |
 | `plugins/` | Python plugin SDK and example plugins |
-| `deploy/` | `install.sh`, systemd units, sample `config.yaml` and `agent.yaml` with a section per product, the public release keys |
-| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `conformance.sh`, `check-docs.sh` and `check-install.sh` from M1; `descriptors.sh`, `e2e.sh` and `spike-vm.sh` from M2; `vm-test.sh` and `release.py` with the operator plane |
+| `deploy/` | `install.sh`, `uninstall.sh`, the four systemd units under `systemd/`, `config-sample.yaml` and `agent.yaml` with a section per first-party product; `README.md`, the operator's manual of the installer |
+| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `conformance.sh`, `check-docs.sh` and `check-install.sh` from M1; `descriptors.sh` and `e2e.sh` from M2; `check-release.sh`, `release.py` and `rehearsal.sh` from M4, with `agent.sh` (the in-process agent the scripts start) and the operator's proofs on a virtual machine: `install-vm.sh`, `update-vm.sh`, `backup-vm.sh`, `doctor-vm.sh`, `product-vm.sh`, `host-vm.sh` and `dns-vm.sh` |
 | `docs/` | operator, module developer, plugin protocol, descriptor and migration documentation |
-| `.github/workflows/` | `ci.yml`, `build.yml` (the musl artifact and the size check), `publish-npm.yml`; `release.yml` with the operator plane |
+| `.github/workflows/` | `ci.yml`, `build.yml` (the musl artifact and the size check), `publish-npm.yml`, and from M4 `release.yml`, which publishes a `keel-v*` tag to the channel |
 
 Crates are created lazily: about fourteen in total, seven at M0, which needs `keel-types`,
 `keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`,
 plus the probe module `crates/sdk-probe` (`keel-sdk-probe`) that CI builds against `keel-sdk`
 alone ([05-modules.md](05-modules.md)); M1 adds `keel-system` and `keel-conformance`; M2 adds
-`keel-dev` and, outside the workspace's dependency graph, the spike `keel-spike`. A product
+`keel-dev` and, outside the workspace's dependency graph, the spike `keel-spike`, which M4
+removed; M4 adds `keel-release`, `keel-host`, `keel-host-agent` and the `dns` bundle with its
+module crates `keel-dns-zones`, `keel-dns-records` and `keel-dns-templates`. A product
 without custom screens keeps no frontend code at all; the one shell application renders its
 screens from descriptors.
 

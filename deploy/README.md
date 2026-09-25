@@ -1,9 +1,11 @@
 # Installing keel
 
 `install.sh` is the one way a keel installation reaches a host. It installs from the signed
-release channel of the design and creates nothing the design leaves to the kernel; this file says
-what the script does today, the design of the whole operator plane is in
-[../docs/design/09-operations.md](../docs/design/09-operations.md).
+release channel and creates nothing the design leaves to the kernel. This file is the operator's
+manual of an installation: the installer, the processes and the host agent, KeelDNS on bind,
+updates, backups, diagnostics and what the operator proves on a machine. The design of the whole
+operator plane is in [../docs/design/09-operations.md](../docs/design/09-operations.md) and the
+root boundary in [../docs/design/06-host.md](../docs/design/06-host.md).
 
 ## Requirements
 
@@ -156,80 +158,17 @@ On a failure after the host was changed the units are stopped, disabled and remo
 place and `uninstall.sh --purge` clears them before another attempt. Steps 3 to 5 are
 idempotent, so a partially prepared host can be purged and installed again.
 
-## What it does not do yet
+## What runs, and as whom
 
-These parts of the operator plane are designed but not built; the installer does not pretend
-they exist:
+| Unit | User | What it runs |
+|---|---|---|
+| `keel.service` | `keel` | `keel serve`: the kernel, the TLS listener, the control socket `/run/keel/core.sock` and the modules |
+| `keel-privileged.service` | root | `keel privileged --socket /run/keel/agent.sock --policy /etc/keel/agent.yaml`: the one root code path, serving the update policy and the host agent |
+| `keel-update.path` | root | watches `/var/lib/keel/update.request` and starts the oneshot below |
+| `keel-update.service` | root | `keel privileged update --from-request`, the root half of an update |
 
-- TLS beyond the generated pair. The listener speaks TLS alone with the self-signed certificate
-  the binary writes under `/var/lib/keel/tls/` at first start, or with the pair `tls.cert` and
-  `tls.key` of `config.yaml` name; ACME, the expiry problem and the certificate button of the
-  settings arrive later. The installer generates nothing for TLS itself.
-- The kernel side of the host policy. `keel-privileged.service` runs as root and serves the
-  host policy of `agent.yaml` on `/run/keel/agent.sock`: the socket admits the account `keel`
-  alone, checked by peer credentials, and every operation of the catalogue (`host.user.*`,
-  `host.group.*` inside `uid_range`, `host.fs.*` and `host.template.apply` under `file_roots`,
-  `host.service.*` for the units in `services`, `host.pkg.*` over `apt-get`, `apt-cache` and
-  `dpkg-query` with each name taken as that package and never as a pattern or a trailing `+`
-  or `-` action, `host.cron.*` writing the product's drop-ins under `/etc/cron.d` whose jobs
-  run an entry of `exec_allow` as `keel` or as the product's own users, `host.quota.*` over `setquota` and `repquota`, answering
-  `host.error.unavailable` on a host without them, and `host.exec` for the entries of
-  `exec_allow`, a binary name run without arguments or `name: [binary, arguments…]` run with
-  exactly those) is one line in `journalctl -u keel-privileged` with the actor, the request id
-  and the outcome; a request outside the policy is refused with `host.error.policy` and appears
-  there too. The agent also executes the operations and renders the configuration templates the
-  compiled products contribute: a template is read from `/etc/keel/templates/<id>` when the
-  operator put one there and from the binary otherwise, and a product operation runs only for a
-  product whose section of `agent.yaml` grants its policy class under `classes`, as in
-  `demo: { drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }`; its journal line
-  carries `class=`. The kernel does not connect to the socket yet:
-  the `host` module and its executor arrive with the rest of the host layer of M4, and until
-  then `keel doctor` reports the agent as not in use. `hack/host-vm.sh` proves the agent on a
-  machine installed by `install.sh`. After the installer exits the privileged unit is the only
-  process of keel running as root, which `ps -eo user,comm | grep keel` shows.
-- The update button. The root half of an update is in place: `keel-update.path` watches
-  `/var/lib/keel/update.request`, and `keel-update.service` runs `keel privileged update
-  --from-request`, which reads the version, the channel and the requesting principal from the
-  request and nothing else, downloads `versions/<ver>/manifest.json` and the archive from
-  `https://dl.globalart.hu/keel/`, verifies the Ed25519 signature of the manifest against the
-  release key compiled into the binary, the archive's sha256 against the manifest and the
-  version against `min_upgrade_from` of the channel head, unpacks into
-  `/opt/keel/versions/<ver>/`, switches `bin/current` (keeping `bin/previous`), refreshes the
-  unit files from the release's `deploy/systemd/` and restarts `keel-privileged.service` and
-  `keel.service`; `keel privileged update rollback` switches back within the same `contract`
-  and refuses across one unless `--restore <archive>` names the pre-update backup, in which
-  case `keel.service` is stopped for the restore instead of restarted. The kernel half is the
-  `update` module: the screen "Updates" under the system group and `keel update check` read the
-  head of the channel named by the setting `update.channel` (`stable` or `beta`) at the address
-  of the `update.channel_url` key of `config.yaml` (default `https://dl.globalart.hu/keel/`),
-  and `update.apply` from its button or `keel update apply [--wait]` runs as a task that drains
-  the task queue, takes the pre-update dump with `COPY … TO STDOUT` into
-  `/var/lib/keel/backups/pre-update-<version>-<instant>/`, one file per table, and writes
-  `update.request`; the task ends `done` and the root unit takes over. `update.rollback` and
-  `keel update rollback` write the same request for the version the installation was updated
-  from, within the same `contract`. `hack/update-vm.sh` rehearses the root half on a machine
-  with a rehearsal key and a channel directory (`run`), and the kernel half through
-  `keel update apply --wait` against that channel served over HTTP (`kernel`). The button
-  itself is proven against a published 0.2 at the closure of M4.
-- `rollback --restore` still stops the service and leaves the restore of the named archive to
-  the operator, who runs `keel restore` as the user `keel` and starts the service again;
-  `backup` and `restore` themselves are in place (see below).
-
-`keel doctor`, run as the user `keel`, checks the installation end to end and prints one line
-per check with `ok`, `warn` or `fail`, exit 1 when a check fails: the data, configuration and
-install directories with their owners and modes, `secret.key`, the TLS pair and its expiry, the
-three units with their users through `systemctl`, the database (server version, socket, role
-rights), the migration ledgers against the binary, the host agent, the license (not required
-until M5), free space, that every enabled product is carried by the binary, the orphaned modules
-and accounts left in `deleting`. The same checks are the screen "Health" under the system group
-(`keel.doctor.run`), with the design's paths; the CLI takes `--opt`, `--unit-dir`, `--systemctl`
-and `--agent-socket` for a rehearsal in another tree. `keel support-bundle [--out <path>]` writes
-`<data_dir>/support/keel-support-<version>-<instant>.tar.zst` with `config.yaml` redacted (the
-database password, every `secret` field of a module section, and the password-like keys of a
-section no loaded module claims), `agent.yaml`, the last 10 000 log entries of the running service
-(`keel.logs.tail` over the control socket), the migration ledgers, the tail of the audit table,
-the open problems, the `/readyz` answer (the kernel exposes no metrics yet) and the doctor report.
-`hack/doctor-vm.sh` proves both on a machine installed by `install.sh`.
+After the installer exits, `keel privileged` is the only process of keel running as root, which
+`ps -eo user,comm | grep keel` shows.
 
 `keel.service` is `Type=notify` with `NotifyAccess=main` and `WatchdogSec=60`: `keel serve`
 writes the notify socket named by `NOTIFY_SOCKET` directly, no library between, `READY=1` once
@@ -237,11 +176,152 @@ the migrations ran and the port answers, `WATCHDOG=1` every half of `WATCHDOG_US
 runs, and `STOPPING=1` when it starts to drain; a kernel that stops answering is restarted by the
 service manager after 60 s. `TimeoutStartSec=300` gives the migrations of a large installation
 time to run before the first `READY=1`. An abstract notify socket (a name starting with `@`) is
-logged and not written; the service manager uses a path. `MemoryMax=50%` is the hardening value
-the design leaves to the unit: half of the host's physical memory, so that a leaking kernel is
-stopped before it starves Postgres and the operating system, and the same unit fits every host
-size. An operator who needs another limit sets it in a drop-in, `systemctl edit keel`, which an
-update does not overwrite.
+logged and not written; the service manager uses a path. `RestartForceExitStatus=75` and
+`SuccessExitStatus=75` make the exit status 75, the restart a product switch requests, a restart
+the journal does not count as a failure. `MemoryMax=50%` is the hardening value the design leaves
+to the unit: half of the host's physical memory, so that a leaking kernel is stopped before it
+starves Postgres and the operating system, and the same unit fits every host size. An operator
+who needs another limit sets it in a drop-in, `systemctl edit keel`, which an update does not
+overwrite.
+
+## The host agent
+
+`keel-privileged.service` serves the host policy of `/etc/keel/agent.yaml` on
+`/run/keel/agent.sock`. The socket admits the account `keel` alone, checked by peer credentials
+(`--user` names another account for a rehearsal). Every operation of the catalogue is one line in
+`journalctl -u keel-privileged` with the actor, the request id and the outcome, and a request
+outside the policy is refused with `host.error.policy` and appears there too:
+
+- `host.user.*` and `host.group.*` inside `uid_range`, under the product's `user_prefix`; an
+  account whose primary group lies outside the range is refused, and a program run as one of
+  these accounts (`keel agent-exec`, a re-exec of the binary) starts with a cleared environment,
+  the fixed `PATH`, `LC_ALL=C`, the account's `HOME`, `USER` and `LOGNAME`, in `/`;
+- `host.fs.*` and `host.template.apply` under `file_roots`, addressed by a root key and a name
+  with the product's `drop_in_prefix`, written through a temporary file and a rename, never
+  following a symbolic link, never setuid, never writable by every account, and read up to
+  8 MiB;
+- `host.service.*` for the units listed in `services`, through `systemctl` as a process;
+- `host.pkg.*` over `apt-get`, `apt-cache` and `dpkg-query`, with each name taken as that package
+  and never as a pattern or a trailing `+` or `-` action;
+- `host.cron.*` writing the product's drop-ins under `/etc/cron.d`, whose jobs run an entry of
+  `exec_allow` as `keel` or as the product's own users;
+- `host.quota.*` over `setquota` and `repquota`, answering `host.error.unavailable` on a host
+  without them;
+- `host.exec` for the entries of `exec_allow`, a binary name run without arguments or `name:
+  [binary, arguments…]` run with exactly those.
+
+The agent also executes the operations and renders the configuration templates the compiled
+products contribute. A template is read from `/etc/keel/templates/<id>` when the operator put one
+there and from the binary otherwise, rendered, swapped into place, checked with the named check
+of `checks` with the file in place, reloaded, and rolled back when the check or the reload fails,
+so a broken template never reaches the running service. A product operation runs only for a
+product whose section of `agent.yaml` grants its policy class under `classes`, as in
+`demo: { drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }`; its journal line
+carries `class=`.
+
+The kernel reaches the agent through the `host` module, which a product loads by naming it: `dns`
+does, `demo` does not. Its section of `config.yaml` is `host: { socket, timeout_seconds }`, by
+default `/run/keel/agent.sock` and 60 seconds; the kernel connects only when a module calls, and
+an agent error reaches the form as its key (`host.error.*`) with the tool's output as the detail.
+While no enabled product loads `host`, `keel doctor` reports the agent as not in use.
+
+`agent.yaml` is the operator's file: the installer writes it from the release's
+`deploy/agent.yaml` with the allotted `uid_range`, keeps an existing one, and an update never
+touches it. Its shared keys are `uid_range`, `file_roots`, `services`, `checks` and `exec_allow`;
+under `products`, one section per product id carries `user_prefix`, `drop_in_prefix` and
+`classes`. The file has no secret and travels verbatim in the support bundle.
+
+## Running KeelDNS
+
+`--product dns` installs the bundle; bind itself is the operator's, and neither the installer
+nor the kernel wires it. The defaults of the `dns` section of `config.yaml` follow the Debian
+layout of bind:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `zones_dir` | `/etc/bind/zones` | where the zone files `keel-dns-<zone>.zone` are written; the `zones` root of `file_roots` |
+| `include_dir` | `/etc/bind/keel` | where `keel-dns-zones.conf`, the index of the zones, is written; the `named` root of `file_roots` |
+| `nameserver` | `localhost` | the primary name server of the SOA and NS records |
+| `hostmaster` | `hostmaster.localhost` | the mailbox of the SOA record |
+
+Before the first zone, the host needs bind with its tools, both directories, the index and its
+include line, so that `named-checkconf -z`, the check `named.check` of `agent.yaml`, passes:
+
+```
+apt-get install -y bind9 bind9-utils bind9-dnsutils
+install -d -m 0755 -o root -g bind /etc/bind/zones /etc/bind/keel
+install -m 0644 -o root -g root /dev/null /etc/bind/keel/keel-dns-zones.conf
+echo 'include "/etc/bind/keel/keel-dns-zones.conf";' >> /etc/bind/named.conf.local
+named-checkconf -z && systemctl reload named
+```
+
+A zone is then created on the Zones screen, over the control socket or with an API token; its
+file is rendered after the transaction commits, checked, and bind reloaded:
+
+```
+runuser -u keel -- keel ctl dns.zone.create --as <login> name=example.test
+runuser -u keel -- keel ctl dns.zone.list --as <login> --out table
+dig @127.0.0.1 example.test SOA
+```
+
+A zone whose check fails turns to `error` with the tool's output, raises the problem
+`dns.zone.failed`, and leaves the previous file and the running bind as they were.
+
+## Updates
+
+The screen "Updates" of the system group shows the running version and the head of the channel
+the setting `update.channel` names (`stable` or `beta`), read from the `update.channel_url` key of
+`config.yaml` (default `https://dl.globalart.hu/keel/`); a daily job raises the problem
+`update.available`. Its button, or the command below, runs `update.apply` as a task: it drains the
+task queue, takes the pre-update dump with `COPY … TO STDOUT` into
+`/var/lib/keel/backups/pre-update-<version>-<instant>/`, one file per table, and writes
+`update.request`; the task ends `done` and the root unit takes over:
+
+```
+runuser -u keel -- keel update check
+runuser -u keel -- keel update apply --wait
+runuser -u keel -- keel update rollback
+```
+
+`keel-update.service` reads the version, the channel and the requesting principal from the request
+and nothing else, downloads `versions/<ver>/manifest.json` and the archive, verifies the Ed25519
+signature of the manifest against the release key compiled into the binary, the archive's sha256
+against the manifest and the version against `min_upgrade_from` of the channel head, unpacks into
+`/opt/keel/versions/<ver>/`, switches `bin/current` and keeps the version it left as
+`bin/previous`, refreshes the unit files from the release's `deploy/systemd/` and restarts
+`keel-privileged.service` and `keel.service`. The new binary migrates before its port opens.
+
+`update.rollback`, its button and `keel update rollback` write the same request for the version
+the installation was updated from, within the same `contract`; the root side installs a lower
+version only when `bin/previous` points at it. Across a contract, the rollback is the operator's,
+with the backup taken before the update:
+
+```
+/opt/keel/bin/current privileged update rollback --restore /var/lib/keel/backups/<archive>.tar.zst
+runuser -u keel -- keel restore /var/lib/keel/backups/<archive>.tar.zst --with-secret-key
+systemctl start keel
+```
+
+`--restore` stops `keel.service` instead of restarting it and prints the restore the operator
+runs next. The channel's `http://` addresses are admitted for a rehearsal channel with a warning:
+the signature protects what is installed either way.
+
+## Doctor and the support bundle
+
+`keel doctor`, run as the user `keel`, checks the installation end to end and prints one line
+per check with `ok`, `warn` or `fail`, exit 1 when a check fails: the data, configuration and
+install directories with their owners and modes, `secret.key`, the TLS pair and its expiry, the
+units with their users through `systemctl`, the database (server version, socket, role rights),
+the migration ledgers against the binary, the host agent, the license (not required until M5),
+free space, that every enabled product is carried by the binary, the orphaned modules and the
+accounts left in `deleting`. The same checks are the screen "Health" under the system group
+(`keel.doctor.run`), with the design's paths; the CLI takes `--opt`, `--unit-dir`, `--systemctl`
+and `--agent-socket` for a rehearsal in another tree. `keel support-bundle [--out <path>]` writes
+`<data_dir>/support/keel-support-<version>-<instant>.tar.zst` with `config.yaml` redacted (the
+database password, every `secret` field of a module section, and the password-like keys of a
+section no loaded module claims), `agent.yaml`, the last 10 000 log entries of the running service
+(`keel.logs.tail` over the control socket), the migration ledgers, the tail of the audit table,
+the open problems, the `/readyz` answer (the kernel exposes no metrics yet) and the doctor report.
 
 ## Configuration keys
 
@@ -257,11 +337,14 @@ lists there. The kernel starts without the file, and an empty file is the same a
 | `socket` | `/run/keel/core.sock` | control socket `keel ctl` talks to; admitted for the unix user `keel` alone |
 | `data_dir` | `/var/lib/keel` | `secret.key`, `instance.id` and everything the kernel stores outside the database |
 | `database` | `postgres:///keel?host=/run/postgresql` | connection URL; peer authentication on the unix socket, or a TCP URL with `${KEEL_DB_PASS}` substituted from the environment |
-| `tls` | `{ cert: "", key: "", acme: "" }` | `cert` and `key` name an operator's PEM pair, both or neither; empty means the pair the binary generates under `<data_dir>/tls` at first start; `acme` is refused until M4 |
+| `tls` | `{ cert: "", key: "", acme: "" }` | `cert` and `key` name an operator's PEM pair, both or neither; empty means the pair the binary generates under `<data_dir>/tls` at first start; a non-empty `acme` fails the start, since ACME is left to a later milestone |
 | `trusted_proxies` | `[]` | CIDRs of reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Host` the kernel believes; a bare address stands for its `/32` or `/128` |
 | `log` | `{ level: info, format: json }` | `tracing` level and output format; `json` lines go to the journal under systemd, `text` is for a terminal |
 
-Unknown top-level keys are sections for modules (`ConfigSection`); a section no loaded module
+Unknown top-level keys are sections for modules (`ConfigSection`): `update: { channel_url }` of
+the `update` module, `host: { socket, timeout_seconds }` of the `host` module (see "The host
+agent") and `dns: { zones_dir, include_dir, nameserver, hostmaster }` of KeelDNS (see "Running
+KeelDNS"). A section no loaded module
 claims is logged and ignored. A misspelt key inside `tls` or `log`, an unusable `listen` or
 `database` value, or a file that is not YAML fails the start naming the file and the key.
 
@@ -324,7 +407,8 @@ hashes, so an archive without the key holds nothing that opens a session, and on
 values (the second factor's seed, channel passwords) need it. `keel backup inspect <archive>`
 prints the manifest. The same backup runs from the screen "Backups" of the system group or with
 `keel ctl backup.create` as a task that writes under `/var/lib/keel/backups/` and offers the
-archive for download.
+archive for download. Archives stay in that local directory; copying them off the host is the
+operator's until the S3 target of M5.
 
 `keel restore <archive> [--with-secret-key]` runs as the user `keel` with the service stopped.
 It refuses an archive of another major version or one newer than the binary, and one naming a
@@ -387,13 +471,49 @@ touched. The Postgres server itself is never removed.
 
 ## Trying the installer in a container
 
-The container refusal exists because the update path-unit of M4 does not work there; for a
+The container refusal exists because the update path unit and the host agent do not work there; for a
 throwaway test bed with systemd as PID 1 (`--privileged --cgroupns=host` with `/sys/fs/cgroup`
 mounted) `KEEL_INSTALL_ALLOW_CONTAINER=1` skips that one check and prints a warning. It is for
 testing the script, never for running an installation.
 
+## Proving on a machine
+
+What needs root, a real service manager or a real bind is proven by the operator on a virtual
+machine with the scripts under `hack/`, run from a checkout; each prints what it checks and exits
+non-zero on the first failure, and its transcript is what the exit checklist of the milestone
+records.
+
+| Script | What it proves |
+|---|---|
+| `hack/install-vm.sh prepare <archive> <dir>`, then `run <dir> --product <id>` on the machine | `curl \| bash` from a rehearsal channel signed with a rehearsal pair on a fresh machine: the units, the processes running as root, the policy and the setup link; `curl \| sh` stops with the bash line |
+| `hack/update-vm.sh prepare <archive> <dir>`, then `run <dir>` and `kernel <dir>` | the root half of an update and its rollback through the path unit, and the kernel half through `keel update apply --wait` against the rehearsal channel |
+| `hack/backup-vm.sh take <archive>` on one machine, `restore <archive>` on another | a backup with `--with-secret-key` restored on a second installation of the same products; the second factor is checked by hand afterwards |
+| `hack/doctor-vm.sh [dir]` | `keel doctor` green against the real units, a bad mode named, and a support bundle free of secrets |
+| `hack/product-vm.sh <id> [<function>]` | `keel product disable` and `enable` on the running service: the exit 75, the restart, the dump, the orphaned tables and the function answering again |
+| `hack/host-vm.sh [--cleanup]` | the agent: an account inside the range running a program, a zone rendered, checked, reloaded and served, a broken template rolled back without a restart of `named`, and an operation outside `file_roots` refused and found in the journal |
+| `hack/dns-vm.sh install <archive>`, then `run [--browser-zone <name>]` | KeelDNS on bind: zones created over the control socket and with a token answered by `dig`, and a broken zone template rolled back while `named` keeps answering |
+
+## Left to later milestones
+
+- ACME for the listener's certificate, the certificate button of the settings and the problem of
+  a certificate about to expire; until then the pair is the generated one or the operator's.
+- The license: the lease check before `keel product enable` and the edition ceiling of account
+  limits arrive with M5; until then every bundle the binary carries may be enabled.
+- Backup targets other than the local directory: the S3 target and the crate `keel-storage` move
+  to M5.
+- A timeout per tool in the agent, an allowlist of packages for `host.pkg.*`, a bound on the
+  owner of a placement, an expiry of the channel head, and a bound on the number of entries of an
+  archive: the findings of the M4 security review recorded without a fix.
+- The restore across a contract is run by hand after `rollback --restore`, as shown above.
+- Deleting an account whose principals hold passwords, sessions or settings fails with
+  `keel.account.error.rows_remain` until the system modules contribute their `on_delete`.
+- Call counters and latency histograms; the support bundle carries `/readyz` in their place.
+
 ## Checks CI runs
 
+`hack/check-release.sh` packages the built binary with `hack/release.py --dry-run` into a
+directory, verifies the signed manifests, the archive and its digest, and feeds the dry run's
+channel to `keel privileged update --from-request` in a temporary tree with a stub `systemctl`.
 `hack/check-install.sh` runs `bash -n` and shellcheck over the scripts, checks that `--help`
 prints the usage, that the four unit files exist, are installed and removed by the scripts, that
 `keel.service`, `keel-privileged.service` and `keel-update.path` are enabled, that

@@ -119,7 +119,7 @@ generated into a TypeScript union for `@globalart/keel/meta`:
 | `control`     | Closed set of form controls (`tags`, `password`, … as used by `x-ui.control`).                                          |
 | `column.type` | Closed set with an explicit mapping onto phoenix-ui's `PhxColumn.type` (`link`, `number`, `status`, `toggle`, `text`, …). |
 | `action.role` | `new` · `edit` · `delete` · `group` · `button` · `child` · `external` · `export` · `upload` · `download` · `refresh`   |
-| `check`       | Validation presets: `domain`, `ip`, `cidr`, `email`, `int`, `name`, `port`, `path`, and others.                         |
+| `check`       | Validation presets: `domain`, `ip`, `ipv4`, `ipv6`, `cidr`, `email`, `int`, `name`, `port`, `path`, `quoted`, `caa`, and others. `checkBy { field, cases }` picks the preset by the value of a sibling field, as the record type picks the check of a record's value. |
 
 Icons are strings, but every icon named in a descriptor action, a menu node or a menu group is
 checked at start-up against the icon set of phoenix-ui, embedded from `contracts/icons.json`, which
@@ -409,7 +409,10 @@ violation is reported under the keyword that failed, `code: schema.<keyword>` wi
 `key: keel.schema.<keyword>` (`schema.required`, `schema.type`, `schema.minimum`); a `check`
 preset applies to a string field and to every string item of an array field, at any depth of
 the parameters, and fails with `code: check.<preset>`, `key: keel.check.<preset>`, the JSON
-path of the value (`records[1].ip`) and the offending `value` in `params`. A
+path of the value (`records[1].ip`) and the offending `value` in `params`. A field with
+`checkBy { field, cases }` is checked with the preset its sibling's value selects; the freeze
+refuses a `checkBy` naming no sibling, and a form checks such a field again when the sibling
+changes. A
 `secret` field is accepted on input and masked everywhere on output, including the audit record:
 the kernel replaces its value with `***` in every response, in the record an `Idempotency-Key`
 replays from and in the audit event, whatever type the handler returned it as. A `once` field is
@@ -542,8 +545,10 @@ Per function, declared on the definition:
 
 Globally: the body limit on a request, a platform constant of 1 MiB rather than a configuration
 key, whose one exception is the multipart body of an `upload`, bounded by the sum of its file
-fields' `maxBytes` plus 64 KiB for the `params` part; and `sse_max_clients` on concurrent event
-streams, still to be built beside the per-session cap of the stream.
+fields' `maxBytes` plus 64 KiB for the `params` part; and `SSE_MAX_CLIENTS`, a platform constant
+of 4 concurrent event streams per credential ([10-contracts.md](10-contracts.md)). A global limit
+on the streams of the whole installation is not built; the per-credential cap bounds what one
+login can hold.
 
 ### Error codes by stage
 

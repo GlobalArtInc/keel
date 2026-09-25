@@ -125,22 +125,3 @@ jobs:
             dist/*.sha256
           retention-days: 14
           if-no-files-found: error
-
-      - name: Build the host spike
-        run: |
-          cargo build --release --target x86_64-unknown-linux-musl -p keel-spike
-          if ldd target/x86_64-unknown-linux-musl/release/keel-spike 2>&1 | grep -q '=>'; then
-            echo "the spike links shared libraries" >&2
-            exit 1
-          fi
-          mkdir -p dist/spike
-          cp target/x86_64-unknown-linux-musl/release/keel-spike dist/spike/
-          cp -r bin/spike/deploy bin/spike/templates hack/spike-vm.sh dist/spike/
-
-      - name: Upload the host spike
-        uses: actions/upload-artifact@v4
-        with:
-          name: keel-spike-x86_64-linux-musl
-          path: dist/spike
-          retention-days: 14
-          if-no-files-found: error

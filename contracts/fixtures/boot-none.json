@@ -1,6 +1,6 @@
 {
   "keel": {
-    "version": "0.1.0",
+    "version": "0.2.0",
     "api": 1
   },
   "products": [],
@@ -61,6 +61,6 @@
   ],
   "dashboard": [],
   "views": [],
-  "meta": "m-5f46174c7eee4a4e",
+  "meta": "m-6ee2e631ea205be4",
   "problems": null
 }

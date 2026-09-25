@@ -77,8 +77,16 @@ per connection by the account scope of the principal: a `data.invalidate` is sen
 event's `subject.accountId` lies within the scope, an event without one reaches admins alone, so
 a user receives `data.invalidate` only for its own objects; a live frame reaches its own
 principal, a reseller whose subtree holds its account and every admin, never another user. A
-guest is answered `401` as an envelope. The per-session cap and the re-check of the credential at
-keep-alive are still to be built. The peers feed is a separate path, not the browser stream.
+guest is answered `401` as an envelope. A credential holds at most `SSE_MAX_CLIENTS`, 4, streams at
+once, keyed by a SHA-256 of the session cookie or the bearer token, so a token is capped like a
+session and a stream under `su` counts against the session that holds it; the stream beyond the
+cap evicts the oldest stream of that credential, which ends with a final frame carrying
+`retry: 0` and the comment `superseded`, and a stream that closes by itself frees its slot. At
+every keep-alive the stream runs the authenticator chain again with its credential: an
+unauthenticated answer closes it without a final frame, so a logout, a revoked session or an
+expired token loses its stream within one keep-alive period, any other error is logged and the
+stream stays, and the principal the check answers rescopes the stream. An open stream keeps its
+session from expiring idle. The peers feed is a separate path, not the browser stream.
 
 ### Conventions shared by every shape
 

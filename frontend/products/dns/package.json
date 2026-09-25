@@ -1,6 +1,6 @@
 {
   "name": "@globalart/keel-dns",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The KeelDNS product package: the dns product id, its brand and its menu group icon for the shell, with no custom views",
   "repository": {

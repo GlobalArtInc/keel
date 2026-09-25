@@ -1,6 +1,0 @@
-policy:
-  file_roots: { vhosts: /etc/nginx/conf.d }
-  services: [nginx]
-  checks: { nginx.test: ["nginx", "-t"] }
-  products:
-    demo: { user_prefix: kd_, drop_in_prefix: keel-demo- }

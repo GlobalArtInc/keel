@@ -18,7 +18,7 @@ plain struct with static slices; there is no trait to implement and no macro to 
 
 | Field        | Meaning |
 |--------------|---------|
-| `id`         | Module identifier: a lowercase ASCII identifier, `[a-z][a-z0-9_]*`, because it prefixes every table, function, permission key, setting and i18n key the module owns; the loader refuses any other id. |
+| `id`         | Module identifier: a lowercase ASCII identifier, `[a-z][a-z0-9_]*`, because it prefixes every table, function, permission key, setting and i18n key the module owns; the loader refuses any other id. A dotted name may also spell each underscore of the id as a dot: `dns_record` registers `dns.record.*` and owns the table `dns_record`, while `dns.zone.*` stays foreign to it. The owning module of a function is the module that registered it, not the first segment of its name, and a raw route keeps one path per function, `/api/v1/x/<module>/<rest>`. |
 | `version`    | Crate version, `env!("CARGO_PKG_VERSION")`. |
 | `sdk`        | The `keel_sdk::VERSION` the crate was compiled against; compared with the kernel's at boot. |
 | `requires`   | Ids of the modules this one depends on. The list fixes migration order, which `api` modules may be imported and which foreign keys are allowed. |
@@ -60,11 +60,13 @@ Which bundles are enabled is recorded in `keel_kv` under `products`
 change it — through `keel.product.enable` and `keel.product.disable`, `admin`-level `.unowned()`
 functions of the `keel` module that check the lease and end with a restart request, or directly
 against the database while the service is stopped — and the change takes effect at the next
-start. At M0 the subcommand knows only the direct path and refuses to run while the service
-answers on the socket; the functions exist, take `{ id }`, refuse an id the binary does not
-carry as a `validation` error on `id`, answer `{ id, state, changed, restart }` with `restart`
-true whenever the stored set changed, and neither check a lease nor restart anything until M4
-and M5 bring both. `keel.product.list` answers a page of
+start. The functions take `{ id }`, refuse an id the binary does not carry as a `validation`
+error on `id`, and answer `{ id, state, changed, restart }` with `restart` true whenever the
+stored set changed. Since M4 the subcommand calls them over the socket while the service runs,
+and a change queues the restart: the kernel drains, takes the pre-change dump and exits with the
+status the unit restarts on ([09-operations.md](09-operations.md)); the screen's two actions
+carry confirmations of their own that name the restart. The lease check waits for M5; until then
+every bundle the binary carries may be enabled. `keel.product.list` answers a page of
 `{ id, name, version, state, enabledAt, enabledBy }` over every bundle the binary carries,
 disabled ones included, with row actions `enable` and `disable`; the compiled-in bundles are a
 kernel-private service, not part of the SDK.
@@ -238,7 +240,9 @@ contribution is consumed.
   `keel-sdk-probe` is such a module, kept in the workspace with `keel-sdk` as its only
   dependency so that CI proves the rule on every build.
 - Every table, function, permission key, setting and i18n key of a module carries the module id
-  as its prefix.
+  as its prefix, literally or with its underscores read as dots.
+- A module crate of a product may depend on the `api` module of another module crate of the same
+  bundle it names in `requires`, which is how `dns-records` reaches `dns-zones`.
 - Foreign keys between modules exist only inside a declared `requires` relation and towards
   `keel_account` and `keel_principal`. Another module's data is read through `call.invoke` or a
   service, never through SQL ([04-storage.md](04-storage.md)).
@@ -448,7 +452,8 @@ where the feature is plural: `task` (`task.list`, `task_job`), `plugin` (`plugin
 | `notify` | In-app notifications, problem registry, delivery channels | M3 |
 | `webhooks` | Outgoing subscriptions to events | M3 |
 | `license` | Editions, features, limits, offline verification | M5 |
-| `update`, `backup` | Update, rollback, backup, restore, `doctor` | M4 |
+| `update` | Channel check, update as a task, rollback, the pre-update dump | M4 |
+| `backup` | Backup as a task, the list of archives, restore at the next start | M4 |
 | `plugins` | Extensions without a rebuild, in any language | M7 |
 | `peers` | Neighbouring products | M6 |
 | `svc` | Services for billing | M6 |
@@ -702,7 +707,8 @@ function attribute ([06-host.md](06-host.md)).
   a problem is raised; the rest of the installation is unaffected.
 - Monotonic time in `keel_kv` protects against clock changes.
 - `license: None` switches the mechanism off, which is how internal builds run without a key.
-  Until M5 the feature guard runs without a lease.
+  Until M5 the feature guard runs without a lease, over every feature of every edition of the
+  enabled products ([03-access.md](03-access.md)).
 - The edition ceiling for account limits is per product and comes from here
   ([03-access.md](03-access.md)).
 - The first releases are expected to run on long offline leases issued by hand; when the license
@@ -715,9 +721,20 @@ function attribute ([06-host.md](06-host.md)).
   version X. Anti-rollback uses the minimum version in the channel manifest. Before an update the
   queue drains and a logical dump of the database is taken.
 - An update moves every enabled product at once, because there is one binary and one version.
-- A backup is `tar.zst` with a manifest, `BackupSource` contributions from modules, targets
-  through `keel-storage`, and `--with-secret-key` under a passphrase.
-- `doctor` belongs here as well. The full procedure, restore and support bundle are in
+- A backup is `tar.zst` with a manifest, `BackupSource` contributions from modules and
+  `--with-secret-key` under a passphrase. `BackupSource::new(name, write).restore(read)`: both
+  hooks receive the source's directory in the archive, a pool `Db` and the data directory; the
+  freeze refuses a name without its module's prefix and one claimed by two modules. The kernel
+  provides `dyn Backups` as a platform service, so the module reaches the archive writer without
+  depending on the kernel. The archive has one target in M4, the local directory
+  `<data_dir>/backups/`; the S3 target and the crate `keel-storage` move to M5 with
+  `hosting-backup`, the first module that needs a remote target.
+- The module carries `backup.create` (a task whose archive `task.download` serves),
+  `backup.list` (the screen "Backups", the archives with their manifests) and `backup.restore`
+  (a task that checks the archive and writes the restore request the next start consumes).
+- `doctor` and the log tail are functions of the kernel module `keel`, `keel.doctor.run` and
+  `keel.logs.tail` behind the screen "Health", because the registrar admits a function only
+  under its module's prefix. The full procedure, restore and support bundle are in
   [09-operations.md](09-operations.md).
 
 ### plugins

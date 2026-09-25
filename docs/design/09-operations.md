@@ -71,6 +71,7 @@ The binary exposes the following subcommands:
 | `privileged`     | root         | the single privileged code path: policies `update` and `host`        |
 | `migrate`        | `keel`       | migration operations                                                 |
 | `product`        | `keel`       | lists, enables and disables product bundles                          |
+| `update`         | `keel`       | checks the channel, applies an update or rolls back, over the control socket |
 | `backup`         | `keel`       | produces the backup archive                                          |
 | `restore`        | `keel`       | restores an archive with the service stopped                         |
 | `doctor`         | `keel`       | checks the installation                                              |
@@ -78,10 +79,17 @@ The binary exposes the following subcommands:
 
 `product` is a client of `keel.product.*` over the control socket while the service runs (the
 call checks the lease and requests a restart), and a direct write of `keel_kv.products` under the
-`keelinst` lock while it is stopped; the enabled set is read once at boot. At M0 only the direct
-path exists: `product enable|disable` refuses to run while something answers on the socket, and
-the socket path, the lease check and the restart are the operator plane's work in M4 and M5
-([05-modules.md](05-modules.md)). `product list` prints every bundle the binary carries as
+`keelinst` lock while it is stopped; the enabled set is read once at boot. The direct path came
+first, in M0; the socket path and the restart came with the operator plane of M4, and the lease
+check waits for the `license` module of M5 ([05-modules.md](05-modules.md)). The restart is a
+distinguished exit status: the switch queues the internal task `keel.restart`, which drains the
+task queue, takes the pre-change dump into `backups/pre-restart-<version>-<instant>/` and then
+makes the kernel exit with status `75`; `keel.service` carries `RestartForceExitStatus=75` and
+`SuccessExitStatus=75`, so the service manager starts it again and the journal does not count
+the exit as a failure. A restart requested before the running process started is answered as
+already applied, and a second request while one is pending is a conflict; without a task runner
+in the composition the function still answers `restart: true` and the change takes effect at the
+next start. `product list` prints every bundle the binary carries as
 `<id>\t<enabled|disabled>\t<version>`, and an enabled id the binary does not carry as
 `not carried by this binary`; `serve` refuses to start in that state, naming the id and the
 bundles it knows. `migrate` runs the kernel's migrations, then those of the loaded modules, and
@@ -177,10 +185,13 @@ through `keel-host`.
 | `keel.service`            | `keel` | the kernel (`serve`); `Type=notify`, `WatchdogSec`     |
 | `keel-privileged.service` | root   | the privileged code path (`privileged`)                |
 | `keel-update.path`        | root   | watches `update.request` and triggers the update       |
+| `keel-update.service`     | root   | the oneshot the path unit starts (`privileged update`) |
 
 The kernel unit is hardened: `NoNewPrivileges`, `ProtectSystem=strict`, a capability bounding set
-of `CAP_NET_BIND_SERVICE` only, `MemoryMax` and `LimitNOFILE`. Unit files ship with the release
-and are refreshed by the update.
+of `CAP_NET_BIND_SERVICE` only, `MemoryMax=50%` and `LimitNOFILE`. Unit files ship with the
+release under `deploy/systemd/` and are refreshed by the update; the installer enables
+`keel.service`, `keel-privileged.service` and `keel-update.path`, and the oneshot carries no
+install section, since it must never run at boot.
 
 `keel.service`:
 
@@ -189,9 +200,13 @@ and are refreshed by the update.
 Type=notify
 User=keel
 Group=keel
+NotifyAccess=main
 ExecStart=/opt/keel/bin/current serve
 Restart=always
 WatchdogSec=60
+TimeoutStartSec=300
+RestartForceExitStatus=75
+SuccessExitStatus=75
 StateDirectory=keel
 RuntimeDirectory=keel
 NoNewPrivileges=yes
@@ -200,7 +215,13 @@ ProtectHome=yes
 ReadWritePaths=/var/lib/keel /run/keel
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+MemoryMax=50%
 ```
+
+`keel serve` writes the notify socket named by `NOTIFY_SOCKET` itself, no library between:
+`READY=1` once the migrations ran and the port answers, `WATCHDOG=1` every half of
+`WATCHDOG_USEC`, `STOPPING=1` when it drains. `TimeoutStartSec=300` leaves the migrations of a
+large installation time before the first `READY=1`.
 
 `keel-privileged.service`, always installed; it serves the host catalogue only while an enabled
 product names `host` and the `update` policy otherwise:
@@ -212,23 +233,37 @@ User=root
 Restart=always
 ```
 
-`keel-update.path`, present in every installation, starts a root oneshot service when
-`update.request` appears:
+`keel-update.path`, present in every installation, starts the root oneshot `keel-update.service`
+when `update.request` appears:
 
 ```
 [Path]
 PathExists=/var/lib/keel/update.request
+Unit=keel-update.service
+```
+
+```
 [Service]
 Type=oneshot
+User=root
 ExecStart=/opt/keel/bin/current privileged update --from-request
+TimeoutStartSec=900
 ```
 
 The request carries the version, the channel and the requesting principal, for example
 `{"version":"1.3.0","channel":"stable","requested_by":"admin"}`; the root side downloads
 `versions/1.3.0`, verifies the Ed25519 signature and the sha256, switches the symlink, refreshes
-the unit files from the release and restarts the service. The design fixes the three unit names,
-the file the path unit watches and the order of steps in the update; the flag spellings above are
-illustrative. The host agent's policy file `agent.yaml`,
+the unit files from the release and restarts `keel-privileged.service` together with
+`keel.service`, so the privileged process is always the build of the kernel. The design fixes the
+four unit files, the file the path unit watches and the order of steps in the update. The flag
+spellings are those of `keel privileged --help`: `--socket` and `--policy` with the defaults
+above, `--user keel`, the one account the agent socket admits, and `--templates
+/etc/keel/templates`, the operator's template overrides; `update --from-request` with
+`--request`, `--channel-url` (an `https://` or `http://` base, a `file://` URL or an absolute
+directory), `--opt`, `--unit-dir`, `--systemctl` and `--release-key`, which exist so that a test
+or a rehearsal drives the whole sequence in another tree with a stub `systemctl` and a channel
+directory; and `update rollback [--restore <archive>]`. Everything the root side does is fixed by
+its flags, never by the request. The host agent's policy file `agent.yaml`,
 its operation catalogue and its impersonation rules are described in [06-host.md](06-host.md).
 
 ## Installation and first start
@@ -241,7 +276,10 @@ container (see above), then performs, in order:
    installed.
 3. The Postgres role `keel` and the database `keel`.
 4. The unix user and group `keel`, including the uid range the host agent is allowed to manage
-   ([06-host.md](06-host.md)).
+   ([06-host.md](06-host.md)): the first block of 65536 uids from 100000 upwards that no account
+   and no subordinate range of `/etc/subuid` or `/etc/subgid` touches, written into
+   `/etc/keel/agent.yaml` as `policy.uid_range: { from, to }` together with the section of every
+   first-party product from the `deploy/agent.yaml` the release carries.
 5. The directories listed above.
 6. The systemd units.
 7. Nothing for TLS: the binary generates the self-signed pair itself at first start, and the
@@ -263,18 +301,21 @@ product's modules migrate before the port opens.
 
 `uninstall.sh --purge` removes the installation together with its data.
 
-The installer lives under `deploy/` ahead of M4, in the subset the current binary supports:
-the clean-host and container checks, Postgres from the distribution, the role and the
-database, the unix user, the directories, `keel.service`, the enabled products and the first
-administrator created over the control socket in place of the setup link; it waits for `/readyz`
-over https with the generated certificate and prints the https address, the certificate path and
-the fingerprint. Signature verification, the privileged unit, the update path-unit and
-`keel.setup.admin` join it with the milestones that build them, and `deploy/README.md` names
-what is missing at any time. Until the kernel speaks `sd_notify`, the shipped unit is
-`Type=simple` without `WatchdogSec` and the installer waits for `/readyz`.
+The installer is `deploy/install.sh`, complete since M4, and `deploy/README.md` is its manual.
+It is a bash script: `hack/release.py` embeds the public release key into it and publishes it at
+the channel root, so `curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product
+dns` reads the same file every release archive carries under `deploy/`, and a plain `sh` stops it
+at once with one line naming bash. The signature is verified with `openssl` over the payload
+bytes of the manifest, the same check `keel-release verify` makes, before anything is unpacked;
+the archive is checked against the sha256 of the verified payload, and the signed manifest is kept
+beside the installed version. Its flags: `--product <id>[,<id>]`, `--channel stable|beta`,
+`--channel-url`, `--version` for a version of the channel instead of its head, `--release-key`
+for a rehearsal channel, `--binary <path|url>`, an unsigned override for a build that is not on
+the channel, `--listen` and `--yes`. The installer creates no administrator; it prints the setup
+link the first start logs, and the page behind it calls `keel.setup.admin`.
 
 The M4 acceptance test for this section is: on a clean Debian or Ubuntu,
-`curl | sh -s -- --product dns` installs Keel with `dns` enabled, and no process except the
+`curl | bash -s -- --product dns` installs Keel with `dns` enabled, and no process except the
 privileged unit runs as root; at M5 `keel product enable panel` on the same host yields one login
 that sees both products ([../plan.md](../plan.md)).
 
@@ -296,8 +337,10 @@ warning. Each file is written to a temporary name and renamed into place, so a r
 replaced; an operator's pair that does not parse, or one file of it without the other, fails the
 start naming the file. The certificate's SHA-256 fingerprint is logged at every start, so the
 operator accepting the certificate in a browser knows it is the right one. The operator can supply a
-certificate and key or, from M4, request one through ACME with a button in the settings; a
-certificate that is about to expire raises a problem ([05-modules.md](05-modules.md)).
+certificate and key; requesting one through ACME with a button in the settings, and the problem a
+certificate about to expire raises ([05-modules.md](05-modules.md)), are left to a later
+milestone the plan names when it schedules them. Until then a non-empty `tls.acme` fails the
+start with `keel.error.acme_unsupported`.
 
 `trusted_proxies` makes the installation usable behind a reverse proxy: a list of CIDRs (a bare
 address standing for its `/32` or `/128`, a bad entry failing the start naming it). When the
@@ -385,23 +428,50 @@ manifest with `hack/release.py` and uploads through the Nexus REST API under a d
 `keel-release` whose secret reaches CI through `ci-cd sync-secrets`. The first releases sign in
 CI with the key held as a repository secret, which is enough while the only installations are
 our own; before the product is sold the signature moves to an offline machine, which changes
-where `hack/release.py` runs and nothing else. Until M4, the `Build` workflow uploads the musl
-binary as a short-lived GitHub artifact and the demo installation receives it by hand.
+where `hack/release.py` runs and nothing else. The workflow is `release.yml`, triggered by
+annotated `keel-v*` tags alone: it repeats the musl build, checks that the binary prints the
+version of the tag, and runs `hack/release.py`, which packages the binary with
+`config-sample.yaml` beside it and `install.sh`, `uninstall.sh`, `agent.yaml` and the unit files
+under `deploy/`, writes the `.sha256`, signs the manifest through `keel-release sign`, verifies it
+against the compiled keys and uploads the archive, its digest, the version's manifest and the
+head in that order, then `install.sh` to the channel root. A
+version with a pre-release suffix lands on `beta`, any other on `stable`; the release notes are
+the tag's annotation; a version the channel already carries is refused without `--replace`, and a
+head never moves backwards. `contract` and `min_upgrade_from` of the next release live in
+`crates/release/channel.json`, edited beside the workspace version. The `Build` workflow keeps
+uploading the musl binary of every push as a short-lived GitHub artifact, which `install.sh
+--binary` takes for a build that is not on the channel.
 
 An update runs in two halves separated by the privilege boundary:
 
-1. The `update` module compares the running version with the channel manifest. Anti-rollback is
-   enforced by the minimum version stated in the channel manifest.
+1. The `update` module compares the running version, the one `/boot` answers, with the head of
+   the channel the setting `update.channel` names (`stable` or `beta`) at the address of
+   `update.channel_url` in `config.yaml`. The address is startup configuration, not a setting,
+   so no administrator points an installation at another channel from the browser. Anti-rollback
+   is enforced by the minimum version stated in the channel manifest. The kernel side reads the
+   payload of the signed envelope without verifying it: the root side is the one verifier. A
+   daily cron job raises the problem `update.available`, and the running version clears it.
 2. The kernel drains the task queue ([05-modules.md](05-modules.md)) and takes a logical dump of
-   the database: `COPY … TO STDOUT` over its own connection into `backups/`, so the unprivileged
-   process does not need to invoke `pg_dump`. This dump is taken before every update.
+   the database: `COPY … TO STDOUT` over its own connection into
+   `backups/pre-update-<version>-<instant>/`, one file per base table of the schema, loaded or
+   orphaned, so the unprivileged process does not need to invoke `pg_dump`. This dump is taken
+   before every update. Draining stops the task worker from starting a queued job and lets running
+   jobs see the cancellation at their next checkpoint; a refused update lifts the drain at once,
+   and a written request lifts it after fifteen minutes should the service still run.
 3. The kernel writes `update.request` with the requested version, channel and the requesting
-   principal.
+   principal; an unconsumed request is replaced. The whole of steps 1 to 3 is the task
+   `update.apply`, run from the button of the screen "Updates" or by `keel update apply`.
 4. `keel-update.path` fires. The root code path downloads `versions/<ver>`, verifies the
    Ed25519 signature and the sha256 from the manifest, switches the `bin/current` symlink,
    refreshes the unit files from the release and restarts the service. The root side knows one
    operation only — install signed version X — and takes no commands from the request beyond
-   the version to install.
+   the version to install. The request file is opened once, without following a link and without
+   blocking, refused unless it is a regular file, and read up to a limit. The previous version is
+   the symlink `bin/previous` beside `bin/current`, written at every switch, and the signed
+   manifest of every installed version is kept as `versions/<ver>/manifest.json`; a version
+   without one has an unknown contract. `min_upgrade_from` is applied twice: the requested
+   version must not be below the head's value, and the running version not below the target
+   manifest's.
 5. The new binary starts, runs its migrations before opening the port, marks tasks that were
    running as `interrupted` and restarts only those declared resumable.
 
@@ -412,7 +482,13 @@ module's tables.
 Postgres is not touched by an update. Migrations within a major are additive (add table, column
 or index; no rename or drop), so `update rollback` within a major switches the symlink back
 without down migrations. Crossing a contract boundary backwards is possible only with
-`--restore`, that is by restoring the pre-update backup.
+`--restore`, that is by restoring the pre-update backup. `update.rollback` and `keel update
+rollback` write an install request for the version the installation was updated from, read from
+the module's own history, and the root side installs a lower version only when it is the one
+`bin/previous` points at and lies within its contract; anything else is `keel privileged update
+rollback`, run by the operator. With `--restore` the root side stops `keel.service` instead of
+restarting it and prints the `keel restore` the operator runs, since the pre-update dump is a
+directory and `keel restore` reads a `keel backup` archive.
 
 The signing key is kept offline; `previous_keys` compiled into the binary allow key rotation.
 Compromise of the signing key would compromise every installation, which is why the root side is
@@ -424,22 +500,43 @@ is an update from 0.1 to 0.2 by a button in the UI and a rollback without losing
 A backup is a `tar.zst` archive with a manifest recording the keel version, the enabled products
 with their editions and the schema versions of the modules. It contains:
 
-- the database: a logical `COPY` dump per module table, or a `pg_dump` if one is present on the
-  host;
-- `/etc/keel/` in full, plugins, brand assets and TLS material;
-- contributions of every loaded module through `BackupSource` (for example zone files contributed
-  by `dns-zones`).
+- the database: a logical `COPY` dump of every base table of the schema, taken in one `REPEATABLE
+  READ` snapshot over the kernel's own connection with the column list in each statement and the
+  generated columns left out; `pg_dump` is not consulted, since the archive has one reader;
+- `/etc/keel/` in full (regular files), `instance.id` and the TLS material of the data directory;
+  brand assets live in a table of the `settings` module and travel with the dump, and plugins
+  join with M7;
+- contributions of every loaded module through `BackupSource` (for example the zone files
+  contributed by `dns-zones` as `dns.zonefiles`), one directory of the archive each, named with
+  the module's prefix; a source without a restore hook is archived and skipped by the restore.
 
-Targets are `local` and S3, reached through `keel-storage`. API tokens and sessions are stored as
+`keel backup [--out <path>] [--with-secret-key]` writes the archive, by default
+`<data_dir>/backups/keel-<version>-<instant>.tar.zst`, never over an existing one; `keel backup
+inspect <archive>` prints its manifest; the screen "Backups" runs `backup.create` as a task whose
+archive is offered for download. M4 writes to this local target alone. The S3 target, and the
+crate `keel-storage` that is to hold the targets, move to M5 with `hosting-backup`, the first
+module that needs a remote target. API tokens and sessions are stored as
 SHA-256 hashes, so an archive contains no usable keys. `secret.key` is included only with
 `--with-secret-key`, protected by a passphrase; values of type `Secret` in the dump are readable on
 another host only with that key. The M4 acceptance test is a backup taken on one VM and restored on
 another with two-factor authentication still working.
 
-`restore` runs with the service stopped and consults a compatibility table by major version. The
-enabled set is restored with the database, because it lives in `keel_kv`; `restore` refuses a
-binary that does not carry one of the bundles the manifest names, and the next start reports what
-the restored set changed. Restore from the UI is a task that ends with a restart.
+`restore` runs with the service stopped and consults a compatibility table by major version: the
+same major alone, and never an archive newer than the binary, since an additive migration may
+have added a column this binary does not know. The enabled set is restored with the database,
+because it lives in `keel_kv`; `restore` refuses a binary that does not carry one of the bundles
+the manifest names, and the next start reports what the restored set changed. It runs the
+binary's migrations for the products the manifest names, then in one transaction truncates every
+table of the schema except the migration ledgers and loads the dump parents first, realigning the
+sequences; the ledgers stay the binary's, so the next start re-runs nothing. Without
+`--with-secret-key` the wrapped data key of the dump is kept when this host's `secret.key` opens
+it and dropped otherwise, so a restore on another host boots with a new data key while the sealed
+values of the dump do not open. The configuration file the restore runs with is never
+overwritten: the archive's copy lands beside it as `config.yaml.restored`, and when `/etc/keel`
+is not writable by `keel` the archive's tree lands under `<data_dir>/backups/<archive>.etc/`,
+since `agent.yaml` is root's policy and root copies it. Restore from the UI is the task
+`backup.restore`, which checks the archive and writes `<data_dir>/restore.request`; `keel serve`
+consumes the request before it opens its port, so the restore runs at the next restart.
 
 ## Observability
 
@@ -448,8 +545,9 @@ the restored set changed. Restore from the UI is a task that ends with a restart
   the support bundle.
 - Every response carries `X-Keel-Request-Id`; the host agent writes every operation to journald
   with the actor and the request id ([06-host.md](06-host.md)).
-- Call counters and latency histograms are exposed in the text exposition format. OTLP export is
-  a cargo feature.
+- Call counters and latency histograms are to be exposed in the text exposition format, with OTLP
+  export as a cargo feature; neither is built yet, and the support bundle carries the `/readyz`
+  answer in their place.
 - `/healthz` reports liveness. `/readyz` reports readiness: the database is reachable, migrations
   are applied, and the process is not draining.
 - The `notify` module keeps a problem registry with idempotent raise and clear for disk space,
@@ -460,11 +558,21 @@ the restored set changed. Restore from the UI is a task that ends with a restart
 
 `doctor` checks the installation end to end: directory permissions, units, TLS, the database
 (version, socket, role rights), migrations, the host agent, the license and free space; that every
-enabled product is carried by the binary and listed by the lease; and the orphaned modules, if
-any.
+enabled product is carried by the binary and listed by the lease; and the orphaned modules and
+the accounts left in `deleting`, if any. It prints one line per check with `ok`, `warn` or
+`fail` and exits 1 when a check fails. The checks are the functions `keel.doctor.run` and
+`keel.logs.tail` of the kernel's own module `keel`, behind the screen "Health" of the system
+group, since the registrar admits a function only under its module's prefix; every
+operating-system parameter of a check is a flag of the CLI (`--opt`, `--unit-dir`,
+`--systemctl`, `--agent-socket`) with the defaults of this document, and the function never
+lets a caller name a binary. Until M5 the license check reports that no lease is required.
 
 `support-bundle` collects the configuration with secrets redacted, logs, the migration ledger, the
-tail of the audit log, open problems and metrics. Redaction uses the same `secret` flag of the
+tail of the audit log, open problems and metrics, into
+`<data_dir>/support/keel-support-<version>-<instant>.tar.zst` or `--out`, written through a
+temporary created exclusively and renamed. The audit tail and the problems are read from the
+tables, so the bundle works with the service stopped; the password-like keys of a section no
+loaded module claims are redacted too, so a disabled product's section cannot leak. Redaction uses the same `secret` flag of the
 field schema that masks values in logs and audit ([02-functions.md](02-functions.md)), and CI runs
 a test that the bundle contains no secrets; the M5 acceptance criteria repeat that check.
 

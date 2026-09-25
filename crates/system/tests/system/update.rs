@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 use axum::Router;
@@ -24,6 +24,9 @@ use keel_testkit::{Harness, Reply, Who, tokio};
 use tokio::net::TcpListener;
 
 const RUNNING: &str = keel_system::VERSION;
+static NEXT: LazyLock<String> = LazyLock::new(|| above(1));
+static LATER: LazyLock<String> = LazyLock::new(|| above(2));
+static BETA: LazyLock<String> = LazyLock::new(|| format!("{}-beta.1", *LATER));
 const WAIT: Duration = Duration::from_secs(30);
 const SLOW: &str = "probe.slow";
 const QUICK: &str = "probe.quick";
@@ -333,8 +336,8 @@ async fn record_run(harness: &Harness, from: &str, to: &str) {
 #[tokio::test]
 async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_upgrade_from() {
     let channel = Channel::serve().await;
-    channel.head("stable", "0.2.0", RUNNING, 1);
-    channel.head("beta", "0.3.0-beta.1", "0.2.0", 1);
+    channel.head("stable", &NEXT, RUNNING, 1);
+    channel.head("beta", &BETA, &NEXT, 1);
     channel.version(RUNNING, "0.0.1", 1);
     let harness = boot(&channel).await;
 
@@ -344,8 +347,11 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
     assert_eq!(status["runningContract"], json!(1));
     assert_eq!(status["channel"], json!("stable"));
     assert_eq!(status["channelUrl"], json!(channel.url()));
-    assert_eq!(status["available"], json!("0.2.0"));
-    assert_eq!(status["notes"], json!("Release 0.2.0 on stable"));
+    assert_eq!(status["available"], json!(NEXT.as_str()));
+    assert_eq!(
+        status["notes"],
+        json!(format!("Release {} on stable", *NEXT))
+    );
     assert_eq!(status["minUpgradeFrom"], json!(RUNNING));
     assert_eq!(status["contract"], json!(1));
     assert_eq!(status["upToDate"], json!(false));
@@ -353,11 +359,11 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
     assert_eq!(status["blockedBy"], Value::Null);
     assert_eq!(status["previous"], Value::Null);
 
-    channel.head("stable", "0.3.0", "0.2.0", 1);
+    channel.head("stable", &LATER, &NEXT, 1);
     let checked = harness.call(Who::Admin, CHECK, json!({})).await;
     let status = data(&checked);
-    assert_eq!(status["available"], json!("0.3.0"));
-    assert_eq!(status["minUpgradeFrom"], json!("0.2.0"));
+    assert_eq!(status["available"], json!(LATER.as_str()));
+    assert_eq!(status["minUpgradeFrom"], json!(NEXT.as_str()));
     assert_eq!(status["allowed"], json!(false));
     assert_eq!(status["blockedBy"], json!("min_upgrade_from"));
 
@@ -379,13 +385,13 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
     let checked = harness.call(Who::Admin, CHECK, json!({})).await;
     let status = data(&checked);
     assert_eq!(status["channel"], json!("beta"));
-    assert_eq!(status["available"], json!("0.3.0-beta.1"));
-    assert_eq!(status["notes"], json!("Release 0.3.0-beta.1 on beta"));
+    assert_eq!(status["available"], json!(BETA.as_str()));
+    assert_eq!(status["notes"], json!(format!("Release {} on beta", *BETA)));
     assert_eq!(status["blockedBy"], json!("min_upgrade_from"));
     choose_channel(&harness, "stable");
 
     channel.remove(&format!("versions/{RUNNING}/manifest.json"));
-    channel.head("stable", "0.2.0", RUNNING, 2);
+    channel.head("stable", &NEXT, RUNNING, 2);
     let checked = harness.call(Who::Admin, CHECK, json!({})).await;
     let status = data(&checked);
     assert_eq!(status["runningContract"], Value::Null);
@@ -414,7 +420,7 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
 #[tokio::test]
 async fn apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_principal() {
     let channel = Channel::serve().await;
-    channel.head("stable", "0.2.0", RUNNING, 1);
+    channel.head("stable", &NEXT, RUNNING, 1);
     channel.version(RUNNING, "0.0.1", 1);
     let harness = boot(&channel).await;
     let drain = drain(&harness);
@@ -446,7 +452,7 @@ async fn apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_p
         .expect("the request is written");
     assert_eq!(
         serde_json::from_str::<Value>(&request).expect("json"),
-        json!({ "version": "0.2.0", "channel": "stable", "requested_by": admin.login })
+        json!({ "version": NEXT.as_str(), "channel": "stable", "requested_by": admin.login })
     );
 
     let dumps = dumps_of(&harness);
@@ -495,7 +501,8 @@ async fn apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_p
     assert_eq!(
         runs,
         [format!(
-            "apply {RUNNING} 0.2.0 stable {} {}",
+            "apply {RUNNING} {} stable {} {}",
+            *NEXT,
             admin.login,
             tables.len()
         )]
@@ -507,7 +514,7 @@ async fn apply_drains_dumps_every_loaded_table_and_writes_the_request_with_the_p
     let detail = data(&detail);
     assert_eq!(detail["result"]["kind"], json!("apply"));
     assert_eq!(detail["result"]["from"], json!(RUNNING));
-    assert_eq!(detail["result"]["to"], json!("0.2.0"));
+    assert_eq!(detail["result"]["to"], json!(NEXT.as_str()));
     assert_eq!(detail["result"]["requestedBy"], json!(admin.login));
     assert_eq!(detail["result"]["tables"], json!(tables.len()));
     assert_eq!(detail["result"]["leftRunning"], json!(0));
@@ -528,15 +535,15 @@ async fn apply_refuses_a_version_below_min_upgrade_from_and_across_a_contract() 
     let harness = boot(&channel).await;
     let drain = drain(&harness);
 
-    channel.head("stable", "0.3.0", "0.2.0", 1);
+    channel.head("stable", &LATER, &NEXT, 1);
     let (id, state) = run_task(&harness, APPLY).await;
     assert_eq!(state, TaskState::Failed);
     let error = task_error(&harness, id).await;
     assert_eq!(error["key"], json!(ERROR_MIN_UPGRADE_FROM));
     assert_eq!(error["code"], json!("conflict"));
     assert_eq!(error["params"]["running"], json!(RUNNING));
-    assert_eq!(error["params"]["target"], json!("0.3.0"));
-    assert_eq!(error["params"]["minUpgradeFrom"], json!("0.2.0"));
+    assert_eq!(error["params"]["target"], json!(LATER.as_str()));
+    assert_eq!(error["params"]["minUpgradeFrom"], json!(NEXT.as_str()));
 
     channel.head("stable", "1.0.0", RUNNING, 2);
     let (id, state) = run_task(&harness, APPLY).await;
@@ -664,7 +671,7 @@ async fn the_daily_check_raises_update_available_and_the_running_version_clears_
     use keel_system::update::{POLL_JOB, PROBLEM_KEY};
 
     let channel = Channel::serve().await;
-    channel.head("stable", "0.2.0", RUNNING, 1);
+    channel.head("stable", &NEXT, RUNNING, 1);
     channel.version(RUNNING, "0.0.1", 1);
     let harness = Harness::new()
         .module(&keel_system::tasks::MODULE)
@@ -726,7 +733,7 @@ async fn the_daily_check_raises_update_available_and_the_running_version_clears_
     assert_eq!(problems[0]["key"], json!(PROBLEM_KEY));
     assert_eq!(problems[0]["subject"], json!("stable"));
     assert_eq!(problems[0]["open"], json!(true));
-    assert_eq!(problems[0]["params"]["available"], json!("0.2.0"));
+    assert_eq!(problems[0]["params"]["available"], json!(NEXT.as_str()));
     assert_eq!(problems[0]["params"]["running"], json!(RUNNING));
     assert_eq!(problems[0]["params"]["allowed"], json!(true));
 
@@ -748,4 +755,17 @@ async fn the_daily_check_raises_update_available_and_the_running_version_clears_
     channel.remove("stable/manifest.json");
     assert_eq!(run(&harness, &scheduler).await, Outcome::Failed);
     harness.finish().await;
+}
+
+fn above(minors: u64) -> String {
+    let mut parts = RUNNING.split('.');
+    let major: u64 = parts
+        .next()
+        .and_then(|part| part.parse().ok())
+        .expect("the running version has a major number");
+    let minor: u64 = parts
+        .next()
+        .and_then(|part| part.parse().ok())
+        .expect("the running version has a minor number");
+    format!("{major}.{}.0", minor + minors)
 }

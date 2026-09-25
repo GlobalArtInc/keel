@@ -37,4 +37,4 @@ export {
 } from './storybook';
 export type { KeelDecorator, KeelStory, WithKeelOptions } from './storybook';
 
-export const KEEL_TESTING_VERSION = '0.1.0';
+export const KEEL_TESTING_VERSION = '0.2.0';

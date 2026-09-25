@@ -161,6 +161,17 @@ feature, token scope, module guards, then the ownership guard described below. A
 scope names one function receives `forbidden` (403) on any other. The full pipeline is in
 [02-functions.md](02-functions.md).
 
+The feature guard answers `license` (402, `keel.error.license` naming the feature) for a function
+whose feature is not in the feature set, and the projection asks the same question with the level
+and the permission, so such a function leaves the descriptor listing, answers 402 for its own
+descriptor and disappears as an action, a row action, a column's inline edit, a dashboard widget
+and a menu item wherever it is referenced; a custom view that needs such a feature is cut too.
+The feature set of M4 has no lease behind it: it is every feature of every edition the enabled
+products declare, which is what `/boot.features` carries, so the list and the menu agree. It is a
+function of the enabled products, which the metadata version already hashes. M5 replaces it with
+the set the lease grants ([05-modules.md](05-modules.md)), and the lease joins the metadata
+version then.
+
 ## Delegation
 
 An operation can be performed by one principal on behalf of another. In every such case the call
@@ -484,7 +495,7 @@ per-module convention. A module contributes a `LimitDef` with the key, unit, def
 that may edit it and whether "unlimited" is allowed:
 
 ```rust
-r.contribute(LimitDef::new("dns.zone.max", Unit::Count).default(50).unlimited(true));
+r.contribute(LimitDef::new("dns.zones", Unit::Count).default(50).unlimited(true));
 ```
 
 Values are stored per account in `keel_limit(account_id, key, value)` and inherited along
@@ -496,9 +507,14 @@ call.check_limit(key, current)
 ```
 
 and receives `limit_exceeded`, a 409 in the envelope with an i18n key, when `current` does not
-fit under the effective value. Invariant checks like this belong in `within` hooks or the
-handler, inside the transaction ([02-functions.md](02-functions.md)). Account limits ship with
-the first product, dns, at M4.
+fit under the effective value, with the parameters `limit` and `max`. Invariant checks like this
+belong in `within` hooks or the handler, inside the transaction
+([02-functions.md](02-functions.md)). The effective value is the tightest one stored along the
+account's `path`; a stored `null` means unlimited where the definition allows it, and the default
+applies otherwise. Account limits shipped with the first product, dns, at M4: `dns.zones` (50 per
+account) and `dns.record.max` (500 per zone, checked against the zone's account under the zone's
+row lock), both admitting unlimited. A function that edits the stored values is not built yet,
+and the edition ceiling waits for the `license` module of M5.
 
 The limit table is `keel_limit(account_id, key, value)`, one of the kernel tables
 ([04-storage.md](04-storage.md)); the keys stored in it come from `LimitDef` contributions.
@@ -516,17 +532,35 @@ r.contribute(AccountLifecycle { on_delete: Some(lifecycle::drop_zones), ..Defaul
 
 The handlers are `on_suspend`, `on_resume`, `on_delete` and `on_rename`. For each state change
 the kernel invokes the matching handler in every module that contributed one and emits the
-matching event. The contribution, `keel.account.delete`, `suspend` and `resume` are not built
-yet: M3 planned them and left them undone, so the step moves to the first milestone that needs
-them ([../plan.md](../plan.md)); until then `keel_system::notify` and `keel_system::webhooks`
-expose `drop_account` with the shape of an `on_delete` handler, tested directly.
+matching event. The contribution, `keel.account.delete`, `suspend` and `resume` were built in M4,
+for the `on_delete` of `dns`.
+
+`keel.account.suspend` and `keel.account.resume` (reseller, `keel.account.manage`, owned) lock the
+row, refuse the root account, the caller's own account and an account in `deleting`, answer
+`changed: false` when the state is already the requested one, and emit
+`keel.account.suspended` or `resumed`. Their handlers run after commit, in `requires` order, each
+in a transaction of its own that first reads the account row `FOR SHARE` and runs the handler
+only while the row still holds the state the change set, so a suspend and a resume in quick
+succession cannot leave a module in the state of the earlier one; a failing handler is logged and
+the walk goes on.
 
 `keel.account.delete` is an action whose result is a task:
 
-1. the kernel sets the account `state` to `deleting`;
-2. the task walks the modules in reverse `requires` order, calling `on_delete` with a checkpoint
-   after each and a log visible in the task screen;
-3. only then does it delete the `keel_account` row and emit `keel.account.deleted`.
+1. the kernel sets the account `state` to `deleting`, refusing the root account, the caller's
+   own account and an account with child accounts;
+2. the task walks the modules in reverse `requires` order, dependents first, calling `on_delete`
+   with progress per module, a checkpoint `{ done: [module] }` and the log line `deleted
+   <module>` after each; a resumed job skips the modules the checkpoint names;
+3. only then does it remove the account's limits, its principals and the `keel_account` row in
+   the job's own transaction and emit `keel.account.deleted`; a foreign key that still holds the
+   row answers `keel.account.error.rows_remain` with the constraint's detail.
+
+A failing handler fails the task with its own error and the module as a parameter and leaves the
+account in `deleting`, which `doctor` reports; calling delete again runs a new job. In M4 the
+modules of `keel-system` contribute no `on_delete` yet, so deleting an account whose principals
+hold passwords, sessions or settings fails loudly with `rows_remain`; `notify` and `webhooks`
+expose `drop_account` in the shape of an `on_delete` handler, tested directly, for the milestone
+that wires them. `on_rename` has no caller until the origin sync of M6.
 
 Module migrations use `ON DELETE RESTRICT` on their account foreign keys by default. A module
 that forgot to contribute `on_delete` therefore makes the deletion fail at step 3 rather than

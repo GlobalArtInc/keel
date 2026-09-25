@@ -89,6 +89,7 @@ request beyond the version to install ([09-operations.md](09-operations.md)).
 | policy | `/etc/keel/agent.yaml` |
 | template overrides | `/etc/keel/templates/` |
 | update request | `/var/lib/keel/update.request` |
+| admitted peer | the account named by `--user`, `keel` by default |
 
 Products on one host share one agent, one socket and one policy file. What stays per product
 inside the policy is the drop-in prefix `keel-<product>-` and the operating-system user prefix,
@@ -131,11 +132,25 @@ enabled bundle names `host` in its `modules`, and product modules that need the 
   identical for both.
 - the typed client API: `users()`, `fs()`, `services()`, `pkg()`, `cron()`, `quota()`,
   `template()`, `exec()` (allowlisted), and `op::<A, R>(name)` for product-defined operations;
-  propagation of `request_id` and mapping of agent errors to i18n keys (`host.error.*`). Client
-  timeouts are expected but not fixed by this revision.
+  propagation of `request_id` and mapping of agent errors to i18n keys (`host.error.*`). A call
+  goes through `host.on(Origin::new(product, principal, request_id))`: the caller names the
+  product that owns it beside the principal and the request id it takes from the `Call` or the
+  `AfterContext`, since a module crate belongs to one bundle and nothing in the SDK maps a module
+  to the bundle that loaded it. `Local` opens one connection per request, which survives a
+  restart of the privileged unit without reconnect logic, reads one answer line of at most
+  16 MiB and checks its id. The client timeout is `timeout_seconds` of the section, 60 by
+  default. An agent error surfaces in the call envelope as its key with the detail as the
+  parameter `detail`, and the code follows the key: `host.error.policy` is `forbidden`, `args`,
+  `render_failed` and `validate_failed` are `validation`, `not_found` is `not_found`,
+  `unavailable` is `unavailable`, and any other key, a product operation's own included, is
+  `internal`. The client adds `host.error.unreachable` (the socket is missing, refuses, or closes
+  without an answer, which is how the agent turns away a peer it does not admit) and
+  `host.error.timeout`, both `unavailable`.
 - the `host` module, `keel_host::MODULE` — an ordinary `ModuleDef` with id `host`. It registers
   `dyn HostExecutor` as a service and reads its own section of `config.yaml` through
-  `ConfigSection`; the keys of that section are not fixed by this revision. The set of `host.*`
+  `ConfigSection`: `socket` (absolute, default `/run/keel/agent.sock`) and `timeout_seconds`
+  (1 to 3600, default 60). The start hook only records them; the socket is opened by the first
+  operation, so a kernel with the module loaded connects only once a module calls. The set of `host.*`
   functions and streams it exposes for host-level screens (services, files, logs) is also not
   fixed by this revision. File manager and terminal screens are product views built on raw
   routes, as described in [02-functions.md](02-functions.md) and [08-frontend.md](08-frontend.md).
@@ -157,7 +172,8 @@ executes are always from the same build.
 
 ```rust
 let host = call.require::<dyn HostExecutor>()?;
-host.template("bind/zone.j2").vars(&vars).dest("zones", name).validate("named-checkzone").reload("named").apply().await?;
+host.on(Origin::new("dns", call.principal(), call.request_id()))
+    .template("bind/zone.j2").vars(&vars).dest("zones", &file).validate("named.check").reload("named").apply().await?;
 ```
 
 The dispatcher rule from [02-functions.md](02-functions.md) applies without exception: operations
@@ -178,10 +194,10 @@ and a policy that constrains it. There is no "run this command" operation with f
 | `host.fs.*` | files and directories | path policy from `file_roots`; writes go through a temporary file and rename |
 | `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → swap → validate → reload → rollback, the check running with the file in place; see "Configuration templates" |
 | `host.service.*` | reload, restart, list | only units named in `services`; `systemctl` is executed as a process, without D-Bus, so the binary stays a musl static build |
-| `host.pkg.*` | packages | the distribution's package manager |
-| `host.cron.*` | scheduled jobs on the host | |
-| `host.quota.*` | disk quotas | |
-| `host.exec` | run an external binary | only binaries in `exec_allow`, with fixed arguments |
+| `host.pkg.*` | packages: install, remove, get, refresh | `apt-get` with a fixed argument vector and `APT::Cmd::Pattern-Only=true`, each name taken as that package and never as a pattern or a trailing `+` or `-` action; `changes` lists every requested package whose installed version moved, read from `dpkg-query` before and after; no allowlist in M4 |
+| `host.cron.*` | scheduled jobs on the host | drop-ins in `/etc/cron.d` under the product's `drop_in_prefix`, mode `0644`, written through a temporary file and a rename; a job runs an entry of `exec_allow`, never a command, as `keel` or as one of the product's own users, never as root; five fields or a nickname |
+| `host.quota.*` | disk quotas | `setquota` and `repquota`; `host.error.unavailable` on a host without them |
+| `host.exec` | run an external binary | only entries of `exec_allow`: a name runs without arguments, `name: [binary, arguments…]` with exactly that vector |
 
 ### Resource identifiers instead of paths
 
@@ -219,8 +235,13 @@ host.op::<VmCreateArgs, VmRef>("vm.libvirt.create", &args).await?;
 Product operations follow the same rules as built-in ones: typed arguments, resource identifiers
 rather than free paths or argument vectors, a policy class the agent checks the call against, and
 a journald record per call. The policy class (`vm` in the example) is the name under which the
-policy constrains the operation; the shape of a product-specific section in `agent.yaml` is not
-fixed by this revision.
+policy constrains the operation: the product's section of `agent.yaml` grants it under
+`classes`, a map from class to a free-form section the agent hands to the handler, as in
+`demo: { drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }`; the handler resolves
+files through the same `file_roots` rules as `host.fs`, and the journal line carries `class=`.
+`keel-host-agent` cannot depend on `keel-sdk`, whose database types would enter the agent's
+graph, so the agent has operation and template types of its own and `keel privileged` adapts the
+contributions of the frozen registry of every product the binary carries to them.
 
 ## Policy: agent.yaml
 
@@ -231,22 +252,41 @@ never edits `/etc/keel`; the operator edits one file.
 
 ```yaml
 policy:
-  file_roots: { zones: /etc/bind/zones, vhosts: /etc/nginx/conf.d, www: /var/www }
-  services: [nginx, php8.3-fpm, named]
-  checks: { nginx.test: ["nginx", "-t"] }
+  uid_range: { from: 100000, to: 165535 }
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www }
+  services: [named, nginx, php8.3-fpm]
+  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"] }
   exec_allow: [certbot, quotatool]
   products:
-    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }
+    bill:  { drop_in_prefix: keel-bill- }
     dns:   { drop_in_prefix: keel-dns- }
+    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }
 ```
+
+This is `deploy/agent.yaml` as the release ships it; the installer writes the range it allotted
+over `uid_range`.
 
 | Key | Meaning |
 |-----|---------|
+| `uid_range` | `{ from, to }`, the uids and gids the agent may create and impersonate; a range reaching 4294967295, the id that means "unchanged" to `setresuid` and `fchown`, is refused |
 | `file_roots` | named directories the file and template operations may write to; `dest.root` in a request refers to a key of this map |
 | `services` | units the service operations may reload, restart or list |
 | `checks` | named validation commands with a fixed argument vector; `validate` in a request refers to a check by name |
-| `exec_allow` | binaries `host.exec` may run |
-| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section. |
+| `exec_allow` | entries `host.exec` and cron jobs may run: a binary name, or `name: [binary, arguments…]`; a name appearing twice fails the policy |
+| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section. |
+
+The placement rules hold for every file the agent writes. The root of `file_roots` is
+canonicalised; a symbolic link at the target is refused, and no path is followed or changed
+after it is opened: a temporary is created with `O_EXCL` and `O_NOFOLLOW` beside the target, its
+owner and mode applied to the open handle before the rename, and the previous content, mode and
+owner are read from one no-follow handle. A mode is octal up to `1777` for a file and `3777` for
+a directory; nothing carries the setuid bit, a file carries no setgid bit and never the
+other-write bit, and a directory carries the other-write bit only with the sticky bit. A file the
+agent reads for `host.fs.read`, `host.fs.write` or `host.template.apply` is read up to 8 MiB and
+refused beyond. Operations run one at a time behind one lock, every tool runs with a cleared
+environment and a fixed `PATH`, and account lookups go through `getent` as a process, so the
+static build is not tied to the C library's name service. A service name starting with `-` never
+reaches `systemctl`.
 
 Everything outside the policy is refused. The agent does not hold a copy of the kernel's principal
 or account model: the policy is about the host, and who may call a function is decided by the
@@ -258,7 +298,9 @@ Every operation — accepted or refused — is written to journald with the `act
 `request_id` carried in the request. The kernel's `audit` module records the function call on its
 side with the same request id ([05-modules.md](05-modules.md)), so the two trails join on
 `request_id`: the audit table says who called `dns.zone.edit`, the journal says which files the
-agent touched for it and whether the validation passed.
+agent touched for it and whether the validation passed. The frame fields that reach every record
+— the operation, the actor, the request id and the product — are capped at 1024 bytes each, and
+so is the detail a record carries.
 
 ## Impersonation
 
@@ -270,7 +312,11 @@ something under another identity are forbidden by a rule that is enforced with a
 The rationale is the runtime: an asynchronous multi-threaded process has no safe notion of "this
 thread is now another user", and any per-thread credential trick leaks across the worker pool. A
 fresh process is the only unit of identity that the kernel of the operating system guarantees.
-Impersonation is allowed only for uids in the range allotted to the installation.
+Impersonation is allowed only for uids in the range allotted to the installation, and only for an
+account whose primary group lies in that range too; a lookup that answers another uid than the
+one asked is refused. The re-exec clears the environment, gives the program the fixed `PATH`,
+`LC_ALL=C` and the account's `HOME`, `USER` and `LOGNAME`, and starts it in `/`, and it changes
+credentials before the multi-threaded runtime is built.
 
 ## Configuration templates
 
@@ -286,8 +332,10 @@ r.contribute(ConfigTemplate::new("bind/zone.j2", include_str!("../templates/zone
 ```
 
 The operator may override a template by placing a file of the same name under
-`/etc/keel/templates/`; template ids are unique across the loaded set, which the freeze checks, so
-two products' overrides never collide. The kernel side sends the template id and its variables;
+`/etc/keel/templates/` (the directory `keel privileged --templates` names), which the agent reads
+before the compiled text; template ids are unique across the loaded set, which the freeze checks,
+so two products' overrides never collide. The render is minijinja with undefined variables
+strict, and the `validate` of a request wins over the template's named check. The kernel side sends the template id and its variables;
 the agent renders the template (the template engine lives outside the kernel), writes the result
 to a temporary file beside the target, swaps it into place keeping the previous content, mode and
 owner, runs the named validation check, reloads the service, and rolls the file back — restores
@@ -301,8 +349,10 @@ apply whose rendered file equals what is there changes nothing and answers `chan
 response reports whether the file changed (`changed`).
 
 The acceptance tests for this path are in [../plan.md](../plan.md): at M2 an invalid template
-rolls back on nginx, proven by `bin/spike` on the demo machine; at M4 a broken template rolls back
-without downtime.
+rolled back on nginx, proven by the host spike on the demo machine, which `keel-host-agent`
+replaced and the close of M4 removed; at M4 a broken template rolls back without downtime, proven
+in CI against a stub check and reload and on a machine by `hack/host-vm.sh` and `hack/dns-vm.sh`,
+where `named` keeps its process and its serial and answers every query during the broken apply.
 
 ## The agent protocol
 
@@ -324,7 +374,12 @@ module (the bundle that names it, [05-modules.md](05-modules.md)), and `args` sh
 operation's schema. A response carries the same `id` and either `ok: true` with `data` or
 `ok: false` with an `error` whose `key` is an i18n key and whose `detail` is the raw output of the
 failed step. The key surfaces unchanged in the call envelope, so a validation failure on the host
-reaches the form as a keyed error ([10-contracts.md](10-contracts.md)).
+reaches the form as a keyed error ([10-contracts.md](10-contracts.md)). A request is one line of
+at most 1 MiB; a frame with a field it does not know, a duplicate field or a nesting deeper than
+the parser's limit is refused with `host.error.frame`, and an argument of the catalogue with a
+field the operation does not know with `host.error.args`. The answers
+of the catalogue are `created`, `removed`, `changed`, `entries` and `services`, as each operation
+fits.
 
 Streaming, progress and cancellation of long agent operations are not fixed by this revision; on
 the kernel side a long host operation is a task.
@@ -351,6 +406,23 @@ symlink and time-of-check races, the exec allowlist, and product `AgentOp` handl
 are fuzzing of operation schemas, a security review at M4 and again at M7, and the journald
 record of every operation.
 
+The review of M4 went over the agent, the root half of the update and the release verifier as an
+adversary would, and every finding it fixed carries a named test in the crate it concerns: the
+re-exec's environment and group, the id that means "unchanged", a service named like an option,
+world-writable placements, unbounded reads, the frame fields in the journal, the request file
+read twice by path, a request moving to an older version, the unpacker counting the ustar size
+where tar reads the PAX size, and group or other write bits in an archive. The frame parser and
+the manifest verifier are fuzzed by bounded property tests (`proptest`) in the ordinary test run,
+since the runner has no nightly toolchain for a coverage-guided fuzzer. Left without a fix, and
+recorded in the M4 exit checklist of [../plan.md](../plan.md): a process the agent runs has no
+timeout, so a hung check holds the lock for every later operation; `host.pkg.*` has no allowlist;
+the owner of a placement may be any account of the host, since `bind` has to own zone files; the
+channel admits `http://` and a head manifest carries no expiry, so a man in the middle can replay
+an older signed head or withhold one, but not forge one; the unpacker has no bound on the number
+of entries, a finding that needs the signing key; and the arguments of a product operation are the
+product's types, which the SDK does not hold to `deny_unknown_fields`, the subject of the M7
+review.
+
 Self-update under root has its own risk: a compromise of the release signing key is a compromise
 of every installation. The measures are the offline key, `previous_keys` in the binary, and a
 root unit that knows one operation and does not read commands from the request.
@@ -366,7 +438,7 @@ rather than by changing credentials in place. The full record is in
 
 | Milestone | Scope for this layer |
 |-----------|----------------------|
-| M2 | a thin agent spike in a separate bin crate `bin/spike`: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx under a policy in the shape of `agent.yaml`, every operation written to the journal with actor and request id; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back — shown by `hack/spike-vm.sh` on `keel-demo`; the spike depends on no workspace crate and is replaced by `keel-host-agent` in M4 |
+| M2 | a thin agent spike in a separate bin crate, `keel-spike`, removed at the close of M4: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx under a policy in the shape of `agent.yaml`, every operation written to the journal with actor and request id; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back — shown by the spike's own script on `keel-demo`; the spike depended on no workspace crate and was replaced by `keel-host-agent` in M4 |
 | M4 | `keel-host` in full — users, files, services, template, pkg, `AgentOp`, the `host` module; `privileged` with the `update` policy (check, apply, rollback, pre-update dump, anti-rollback); `dns` on bind; done when no process except `privileged` runs as root, a broken template rolls back without downtime, and an operation outside `file_roots` is refused and audited |
 | M8 | `Remote` executor, node PKI and enrolment, `keel-system::cluster`, `Invoker` |
 
