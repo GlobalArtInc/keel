@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::descriptor::Kind;
 use crate::envelope::MetaActor;
@@ -14,7 +14,7 @@ pub struct Boot {
     pub brand: BootBrand,
     pub principal: Option<BootPrincipal>,
     pub features: Vec<String>,
-    pub license: Option<Value>,
+    pub license: Option<BootLicense>,
     pub menu: Vec<BootMenuGroup>,
     pub dashboard: Vec<BootWidget>,
     pub views: Vec<String>,
@@ -105,9 +105,26 @@ pub struct Badge {
     pub problem: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BootLicense {
+    pub state: LicenseState,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub grace_ends_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LicenseState {
+    None,
+    Valid,
+    Grace,
+    ReadOnly,
+}
+
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
 
@@ -229,6 +246,24 @@ mod tests {
                     "func": "hosting.file-manager", "icon": "folder" })
         );
         assert_eq!(serde_json::from_value::<BootMenuItem>(wire).unwrap(), item);
+    }
+
+    #[test]
+    fn a_boot_license_serialises_its_state_in_snake_case_and_its_dates_in_camel_case() {
+        let license = BootLicense {
+            state: LicenseState::ReadOnly,
+            expires_at: None,
+            grace_ends_at: None,
+        };
+        let wire = serde_json::to_value(&license).unwrap();
+        assert_eq!(
+            wire,
+            json!({ "state": "read_only", "expiresAt": null, "graceEndsAt": null })
+        );
+        assert_eq!(
+            serde_json::from_value::<BootLicense>(wire).unwrap(),
+            license
+        );
     }
 
     #[test]

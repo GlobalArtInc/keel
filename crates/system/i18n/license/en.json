@@ -1,0 +1,36 @@
+{
+  "license": {
+    "action": {
+      "install": "Install a lease",
+      "refresh": "Refresh"
+    },
+    "column": {
+      "expiresAt": "Expires",
+      "graceEndsAt": "Grace ends",
+      "instanceId": "Instance",
+      "issuedAt": "Issued",
+      "products": "Products",
+      "state": "State"
+    },
+    "error": {
+      "instance": "The lease is issued for the installation {instance}, not for this one",
+      "lease": "The signed document is not a lease: {reason}",
+      "not_started": "The license module has not started yet",
+      "signature": "The lease is not signed with the license key: {reason}",
+      "stored": "The stored lease is not a signed text: {value}"
+    },
+    "get": {
+      "title": "License"
+    },
+    "install": {
+      "title": "Install a lease"
+    },
+    "lease": "Signed lease",
+    "state": {
+      "grace": "In grace",
+      "none": "No lease",
+      "read_only": "Read-only",
+      "valid": "Valid"
+    }
+  }
+}

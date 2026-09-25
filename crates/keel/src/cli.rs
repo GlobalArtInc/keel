@@ -18,6 +18,7 @@ use crate::VERSION;
 use crate::backup::{self, BackupCliError, RESTORE_CLI, describe_manifest};
 use crate::doctor::SupportCliError;
 use crate::error::{Error, describe};
+use crate::license::{self, INSTALL as LICENSE_INSTALL};
 use crate::privileged::{self, HostPolicy, PrivilegedError, Request, Runner, Source};
 use crate::products::{Switched, Wanted};
 use crate::runtime::{Runtime, Stopped};
@@ -61,6 +62,8 @@ pub(crate) enum Command {
         about = "The one root code path of the installation: serves the update policy, and the host policy once a product loads the host module"
     )]
     Privileged(PrivilegedArgs),
+    #[command(about = "Install a signed license lease over the control socket")]
+    License(LicenseCommand),
     #[command(about = "Write a backup archive of the installation, or inspect the manifest of one")]
     Backup(BackupArgs),
     #[command(about = "Restore a backup archive while the service is stopped")]
@@ -348,6 +351,29 @@ pub(crate) enum ProductAction {
 }
 
 #[derive(Debug, Args)]
+pub(crate) struct LicenseCommand {
+    #[command(subcommand)]
+    pub(crate) action: LicenseAction,
+    #[arg(long, global = true, value_enum, default_value_t = OutArg::Json)]
+    pub(crate) out: OutArg,
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(crate) socket: Option<PathBuf>,
+    #[arg(long, global = true, default_value = "en", value_name = "CODE")]
+    pub(crate) lang: String,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum LicenseAction {
+    #[command(
+        about = "Verify a signed lease against the license key and store it; the answer is the new license state"
+    )]
+    Install {
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+    },
+}
+
+#[derive(Debug, Args)]
 pub(crate) struct CtlArgs {
     #[arg(value_name = "FUNC")]
     pub(crate) func: String,
@@ -505,6 +531,28 @@ impl Runtime {
                         None => load(cli.config.as_deref())?.socket,
                     };
                     Ok(update(&socket, &args).await)
+                }
+                Command::License(args) => {
+                    let socket = match &args.socket {
+                        Some(socket) => socket.clone(),
+                        None => load(cli.config.as_deref())?.socket,
+                    };
+                    let LicenseAction::Install { file } = &args.action;
+                    let lease = match license::read_lease(file) {
+                        Ok(lease) => lease,
+                        Err(error) => {
+                            eprintln!("error: {error}");
+                            return Ok(ExitCode::FAILURE);
+                        }
+                    };
+                    let request = ctl::Request {
+                        func: LICENSE_INSTALL.to_owned(),
+                        params: json!({ "lease": lease }),
+                        out: args.out.into(),
+                        lang: args.lang.clone(),
+                        run_as: None,
+                    };
+                    Ok(print(ctl::run(&socket, &request).await?))
                 }
                 Command::Backup(args) => {
                     let config = load(cli.config.as_deref())?;
@@ -943,6 +991,40 @@ mod tests {
             }
         ));
         assert_eq!(cli.config, Some(PathBuf::from("c.yaml")));
+    }
+
+    #[test]
+    fn license_install_takes_the_file_and_the_ctl_options() {
+        let cli =
+            Cli::try_parse_from(["keel", "license", "install", "/etc/keel/license.lease"]).unwrap();
+        let Command::License(args) = cli.command else {
+            panic!("{:?}", cli.command);
+        };
+        let LicenseAction::Install { file } = &args.action;
+        assert_eq!(file, &PathBuf::from("/etc/keel/license.lease"));
+        assert_eq!(args.out, OutArg::Json);
+        assert_eq!(args.socket, None);
+        assert_eq!(args.lang, "en");
+        let cli = Cli::try_parse_from([
+            "keel",
+            "license",
+            "install",
+            "lease.json",
+            "--socket",
+            "/run/keel/core.sock",
+            "--out",
+            "table",
+            "--lang",
+            "ru",
+        ])
+        .unwrap();
+        let Command::License(args) = cli.command else {
+            panic!("{:?}", cli.command);
+        };
+        assert_eq!(args.socket, Some(PathBuf::from("/run/keel/core.sock")));
+        assert_eq!(args.out, OutArg::Table);
+        assert_eq!(args.lang, "ru");
+        assert!(Cli::try_parse_from(["keel", "license", "install"]).is_err());
     }
 
     #[test]

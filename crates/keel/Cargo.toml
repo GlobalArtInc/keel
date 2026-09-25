@@ -27,7 +27,7 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
-keel-system = { workspace = true, features = ["auth", "tasks", "cron", "notify", "audit"] }
+keel-system = { workspace = true, features = ["auth", "tasks", "cron", "notify", "audit", "license"] }
 keel-testkit = { workspace = true }
 rustls = { workspace = true }
 schemars = { workspace = true }

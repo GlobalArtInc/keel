@@ -6,7 +6,7 @@ use std::time::Duration;
 use keel::prelude::*;
 use keel_system::cron::api::{Outcome, Scheduler};
 use keel_system::notify::POLL_JOB;
-use keel_testkit::{Harness, Reply, Who, tokio};
+use keel_testkit::{Builder, Harness, Reply, Who, tokio};
 
 pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 pub(crate) const NAMESERVER: &str = "ns1.example.net";
@@ -104,6 +104,10 @@ impl Site {
 }
 
 pub(crate) async fn dns(site: &Site) -> Harness {
+    composed(site).boot().await
+}
+
+pub(crate) fn composed(site: &Site) -> Builder {
     Harness::new()
         .product(&keel_dns::MANIFEST)
         .module(&keel_system::tasks::MODULE)
@@ -111,8 +115,6 @@ pub(crate) async fn dns(site: &Site) -> Harness {
         .module(&keel_system::notify::MODULE)
         .section("dns", site.section())
         .agent(&site.policy())
-        .boot()
-        .await
 }
 
 pub(crate) fn data(reply: &Reply) -> &Value {

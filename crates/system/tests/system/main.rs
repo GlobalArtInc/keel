@@ -30,6 +30,8 @@ mod backup_alone;
 mod cron;
 #[cfg(feature = "cron")]
 mod cron_alone;
+#[cfg(feature = "license")]
+mod license;
 #[cfg(feature = "notify")]
 mod notify;
 #[cfg(feature = "notify")]

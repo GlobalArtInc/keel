@@ -66,7 +66,7 @@ export const BOOT_ONE: Boot = {
     {
       id: 'demo',
       name: 'product.demo.brand',
-      edition: null,
+      edition: 'full',
       brand: { name: 'product.demo.brand', logo: '/brand/demo/logo.svg', hue: 264, chroma: 0.18 },
     },
   ],

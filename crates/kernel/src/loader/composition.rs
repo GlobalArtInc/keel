@@ -3,7 +3,9 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use keel_sdk::system::LicenseKey;
 use keel_sdk::{ModuleDef, ProductManifest};
+use keel_types::Id;
 use serde_json::Value;
 
 use crate::clock::{Clock, SystemClock};
@@ -21,6 +23,8 @@ pub struct Composition {
     version: String,
     clock: Arc<dyn Clock>,
     key: Option<Key>,
+    instance: Option<Id>,
+    license_key: Option<Arc<dyn LicenseKey>>,
     sections: Sections,
     data_dir: PathBuf,
 }
@@ -33,6 +37,8 @@ pub struct Graph {
     version: String,
     clock: Arc<dyn Clock>,
     key: Option<Key>,
+    instance: Option<Id>,
+    license_key: Option<Arc<dyn LicenseKey>>,
     sections: Sections,
     data_dir: PathBuf,
 }
@@ -138,6 +144,8 @@ impl Default for Composition {
             version: env!("CARGO_PKG_VERSION").to_owned(),
             clock: Arc::new(SystemClock),
             key: None,
+            instance: None,
+            license_key: None,
             sections: Sections::default(),
             data_dir: PathBuf::from(crate::config::DATA_DIR),
         }
@@ -180,6 +188,16 @@ impl Composition {
 
     pub fn key(mut self, key: Key) -> Self {
         self.key = Some(key);
+        self
+    }
+
+    pub fn instance(mut self, id: Id) -> Self {
+        self.instance = Some(id);
+        self
+    }
+
+    pub fn license_key(mut self, key: Arc<dyn LicenseKey>) -> Self {
+        self.license_key = Some(key);
         self
     }
 
@@ -323,6 +341,8 @@ impl Composition {
                 version: self.version,
                 clock: self.clock,
                 key: self.key,
+                instance: self.instance,
+                license_key: self.license_key,
                 sections: self.sections,
                 data_dir: self.data_dir,
             })
@@ -492,6 +512,14 @@ impl Graph {
 
     pub fn key(&self) -> Option<&Key> {
         self.key.as_ref()
+    }
+
+    pub(crate) fn instance(&self) -> Option<Id> {
+        self.instance
+    }
+
+    pub(crate) fn license_key(&self) -> Option<&Arc<dyn LicenseKey>> {
+        self.license_key.as_ref()
     }
 
     pub fn sections(&self) -> &Sections {

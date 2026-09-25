@@ -1033,6 +1033,7 @@
         "action": {
           "create": "New zone",
           "delete": "Delete",
+          "dnssec": "DNSSEC",
           "edit": "Edit",
           "records": "Records"
         },
@@ -1046,6 +1047,15 @@
         },
         "create": {
           "title": "New zone"
+        },
+        "dnssec": {
+          "column": {
+            "state": "Signing state"
+          },
+          "state": {
+            "unsigned": "Not signed"
+          },
+          "title": "DNSSEC signing"
         },
         "edit": {
           "title": "Zone"

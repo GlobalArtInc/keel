@@ -7,6 +7,7 @@ pub mod fixtures;
 pub mod harness;
 pub mod http;
 pub mod invariants;
+pub mod license;
 pub mod snapshots;
 pub mod socket;
 

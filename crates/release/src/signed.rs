@@ -20,8 +20,12 @@ pub struct Signed {
 impl Signed {
     pub fn sign(manifest: &Manifest, key: &SecretKey) -> Result<Self, ReleaseError> {
         let payload = serde_json::to_vec_pretty(manifest).map_err(ReleaseError::Serialise)?;
+        Ok(Self::seal(payload, key))
+    }
+
+    pub fn seal(payload: Vec<u8>, key: &SecretKey) -> Self {
         let signature = key.sign(&payload);
-        Ok(Self { payload, signature })
+        Self { payload, signature }
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Self, ReleaseError> {
@@ -66,11 +70,15 @@ impl Signed {
         &self.payload
     }
 
-    pub fn verify(&self, keys: &KeyRing) -> Result<Manifest, ReleaseError> {
+    pub fn open(&self, keys: &KeyRing) -> Result<&[u8], ReleaseError> {
         if !keys.verifies(&self.payload, &self.signature) {
             return Err(ReleaseError::Signature);
         }
-        serde_json::from_slice(&self.payload).map_err(ReleaseError::Payload)
+        Ok(&self.payload)
+    }
+
+    pub fn verify(&self, keys: &KeyRing) -> Result<Manifest, ReleaseError> {
+        serde_json::from_slice(self.open(keys)?).map_err(ReleaseError::Payload)
     }
 }
 
@@ -120,6 +128,17 @@ mod tests {
             foreign.verify(&ring),
             Err(ReleaseError::Signature)
         ));
+    }
+
+    #[test]
+    fn a_sealed_payload_opens_with_its_key_through_the_envelope_and_not_with_another() {
+        let key = SecretKey::generate("license").unwrap();
+        let sealed = Signed::seal(br#"{"any":"bytes"}"#.to_vec(), &key);
+        let parsed = Signed::parse(sealed.to_json().unwrap().as_bytes()).unwrap();
+        let ring = KeyRing::new(key.public(), Vec::new());
+        assert_eq!(parsed.open(&ring).unwrap(), br#"{"any":"bytes"}"#);
+        let other = KeyRing::new(SecretKey::generate("other").unwrap().public(), Vec::new());
+        assert!(matches!(parsed.open(&other), Err(ReleaseError::Signature)));
     }
 
     #[test]

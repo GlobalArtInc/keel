@@ -5,6 +5,7 @@
       "action": {
         "create": "Новая зона",
         "delete": "Удалить",
+        "dnssec": "DNSSEC",
         "edit": "Изменить",
         "records": "Записи"
       },
@@ -18,6 +19,15 @@
       },
       "create": {
         "title": "Новая зона"
+      },
+      "dnssec": {
+        "column": {
+          "state": "Состояние подписи"
+        },
+        "state": {
+          "unsigned": "Не подписана"
+        },
+        "title": "Подпись DNSSEC"
       },
       "edit": {
         "title": "Зона"

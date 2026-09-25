@@ -7,7 +7,7 @@
     {
       "id": "demo",
       "name": "product.demo.brand",
-      "edition": null,
+      "edition": "full",
       "brand": {
         "name": "product.demo.brand",
         "logo": "/brand/demo/logo.svg",
@@ -43,7 +43,8 @@
     "totp": false
   },
   "features": [
-    "dns.zones"
+    "dns.zones",
+    "dns.dnssec"
   ],
   "license": null,
   "menu": [

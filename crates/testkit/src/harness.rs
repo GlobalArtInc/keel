@@ -11,7 +11,7 @@ use keel_kernel::{
     CallOptions, Composition, Dispatcher, Http, HttpOptions, Kernel, Readiness, Registry, Reply,
     Storage,
 };
-use keel_sdk::system::Frame;
+use keel_sdk::system::{Frame, LicenseKey};
 use keel_sdk::{ModuleDef, ProductManifest};
 use keel_types::{Id, Level, Principal};
 use sea_orm::DatabaseConnection;
@@ -36,6 +36,7 @@ pub struct Builder {
     data_dir: Option<PathBuf>,
     database: Option<AttachedDatabase>,
     key: Option<Key>,
+    license_key: Option<Arc<dyn LicenseKey>>,
     agent: Option<String>,
 }
 
@@ -173,6 +174,11 @@ impl Builder {
         self
     }
 
+    pub fn license_key(mut self, key: Arc<dyn LicenseKey>) -> Self {
+        self.license_key = Some(key);
+        self
+    }
+
     pub fn agent(mut self, policy: &str) -> Self {
         self.agent = Some(policy.to_owned());
         self
@@ -218,11 +224,16 @@ impl Builder {
                 _ => sections.push((agent::SECTION.to_owned(), json!({ "socket": socket }))),
             }
         }
+        let instance = Id::generate();
         let mut composition = Composition::new()
             .clock(clock.clone())
             .key(key.clone())
+            .instance(instance)
             .data_dir(data_dir.path())
             .module(&auth::MODULE);
+        if let Some(license_key) = self.license_key {
+            composition = composition.license_key(license_key);
+        }
         for module in self.modules {
             composition = composition.module(module);
         }
@@ -253,7 +264,6 @@ impl Builder {
             }
         };
         dispatcher.fill_caller();
-        let instance = Id::generate();
         dispatcher.fill_outbox(instance);
         let fixtures = if seeded {
             recover(&dispatcher).await

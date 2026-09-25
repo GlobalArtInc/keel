@@ -4,7 +4,8 @@ use keel_sdk::system::{
 };
 use keel_sdk::{DashboardWidget, Db, KeelError, ProductManifest};
 use keel_types::{
-    Boot, BootBrand, BootPrincipal, BootProblems, BootProduct, BootWidget, Level, Principal,
+    Boot, BootBrand, BootLicense, BootPrincipal, BootProblems, BootProduct, BootWidget, Level,
+    Principal,
 };
 use sea_orm::DatabaseConnection;
 
@@ -76,15 +77,19 @@ pub(crate) fn product_brand(manifest: &ProductManifest) -> BootBrand {
 }
 
 pub(crate) fn products(registry: &Registry) -> Vec<BootProduct> {
+    let features = registry.services().get::<dyn Features>();
     registry
         .products()
         .iter()
         .map(|manifest| BootProduct {
             id: manifest.id.to_owned(),
             name: manifest.name.to_owned(),
-            edition: manifest
-                .default_edition()
-                .map(|edition| edition.id.to_owned()),
+            edition: match &features {
+                Some(features) => features.edition(manifest),
+                None => manifest
+                    .default_edition()
+                    .map(|edition| edition.id.to_owned()),
+            },
             brand: product_brand(manifest),
         })
         .collect()
@@ -96,6 +101,13 @@ pub(crate) fn features(registry: &Registry) -> Vec<String> {
         .get::<dyn Features>()
         .map(|features| features.enabled())
         .unwrap_or_default()
+}
+
+pub(crate) fn license(registry: &Registry) -> Option<BootLicense> {
+    registry
+        .services()
+        .get::<dyn Features>()
+        .and_then(|features| features.license())
 }
 
 pub(crate) fn views(registry: &Registry, principal: &Principal) -> Vec<String> {
@@ -200,7 +212,7 @@ pub(crate) async fn payload(
         brand,
         principal: self::principal(principal, totp, tz)?,
         features: features(registry),
-        license: None,
+        license: license(registry),
         menu: menu::project(registry, principal),
         dashboard: dashboard(registry, principal),
         views: views(registry, principal),

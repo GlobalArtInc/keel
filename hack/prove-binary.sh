@@ -552,7 +552,7 @@ check "GET /api/v1/boot is 200" http_is "$site/boot.json" 200 GET /api/v1/boot
 check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "demo" for p in doc["products"])'
 check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264 and doc["brand"]["chroma"] == 0.18'
 check "boot names the keel version" json_is "$site/boot.json" "doc['keel']['version'] == '$version' and doc['keel']['api'] == 1"
-check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": None, "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18}}'
+check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": "full", "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18}}'
 check "GET /brand/logo.svg is 200" http_is "$site/logo.svg" 200 GET /brand/logo.svg
 check "the effective logo is the demo's SVG" cmp -s "$site/logo.svg" products/demo/brand/logo.svg
 check "the effective logo is served as image/svg+xml no-store" svg_is_served "$site/logo.svg"
@@ -795,7 +795,7 @@ check "note.delete answers the deleted count" json_is "$site/delete-inline.json"
 echo "--- backup over the CLI and as a task"
 check "ctl note.list before the backup" keel_ok "$site/notes-at-backup.json" ctl note.list --out json
 KEEL_BACKUP_PASSPHRASE=prove-passphrase check "backup --with-secret-key writes the archive while the service runs" keel_ok "$site/backup.out" backup --out "$site/backup.tar.zst" --with-secret-key
-check "backup prints the archive, its size and the manifest line" grep -q "^wrote $site/backup.tar.zst ([0-9]* bytes): keel $version taken .*; products: demo $version; .*; secret key included$" "$site/backup.out"
+check "backup prints the archive, its size and the manifest line" grep -q "^wrote $site/backup.tar.zst ([0-9]* bytes): keel $version taken .*; products: demo $version (full); .*; secret key included$" "$site/backup.out"
 check "the archive is written with mode 0600" test "$(stat -c '%a' "$site/backup.tar.zst" 2>/dev/null || stat -f '%Lp' "$site/backup.tar.zst")" = "600"
 check "backup inspect prints the manifest" keel_ok "$site/backup-manifest.json" backup inspect "$site/backup.tar.zst"
 check "the manifest names the version, the demo bundle, the note table, the configuration and the sealed key" json_is "$site/backup-manifest.json" "doc['keel'] == '$version' and [(p['id'], p['version']) for p in doc['products']] == [('demo', '$version')] and any(t['name'] == 'note_item' and 'title' in t['columns'] for t in doc['tables']) and any(m['id'] == 'keel' and m['ledger'] == 'keel_migration' and m['applied'] == 2 for m in doc['modules']) and doc['config'] == ['config.yaml'] and 'instance.id' in doc['data'] and 'tls/key.pem' in doc['data'] and 'secret.key.sealed' in doc['data'] and doc['secretKey'] is True"

@@ -8,7 +8,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use keel_types::{
-    BootProblems, CallError, DownloadFile, Event, Id, Level, Mode, Principal, TaskState,
+    BootLicense, BootProblems, CallError, DownloadFile, Event, Id, Level, Mode, Principal,
+    TaskState,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,6 +19,7 @@ use crate::call::Call;
 use crate::context::Context;
 use crate::db::Db;
 use crate::error::Result;
+use crate::product::ProductManifest;
 use crate::secret::Secret;
 use crate::task::TaskHandle;
 
@@ -83,6 +85,26 @@ pub trait PermissionCatalogue: Send + Sync {
 pub trait Features: Send + Sync {
     fn enabled(&self) -> Vec<String>;
     fn allows(&self, feature: &str) -> bool;
+
+    fn edition(&self, product: &ProductManifest) -> Option<String> {
+        product
+            .default_edition()
+            .map(|edition| edition.id.to_owned())
+    }
+
+    fn license(&self) -> Option<BootLicense> {
+        None
+    }
+}
+
+pub trait LicenseKey: Send + Sync {
+    fn open(&self, signed: &[u8]) -> std::result::Result<Vec<u8>, String>;
+}
+
+#[derive(Clone, Debug)]
+pub struct Installation {
+    pub instance: Option<Id>,
+    pub products: Vec<&'static ProductManifest>,
 }
 
 #[async_trait]

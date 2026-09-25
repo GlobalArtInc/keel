@@ -696,7 +696,7 @@ async fn note_list_answers_over_http_with_the_envelope_and_boot_carries_the_demo
     let boot = server.get(Who::A1, "/api/v1/boot").await.json();
     assert_eq!(
         boot["products"],
-        json!([{ "id": "demo", "name": "product.demo.brand", "edition": null,
+        json!([{ "id": "demo", "name": "product.demo.brand", "edition": "full",
                  "brand": { "name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18 } }])
     );
     assert_eq!(boot["keel"]["api"], json!(1));

@@ -29,10 +29,16 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         disabled: &[],
     },
     account_kinds: &["user"],
-    editions: &[Edition {
-        id: "lite",
-        features: &["dns.zones"],
-    }],
+    editions: &[
+        Edition {
+            id: "lite",
+            features: &["dns.zones"],
+        },
+        Edition {
+            id: "pro",
+            features: &["dns.zones", "dns.dnssec"],
+        },
+    ],
     i18n: &[
         ("en", include_str!("../i18n/en.json")),
         ("ru", include_str!("../i18n/ru.json")),

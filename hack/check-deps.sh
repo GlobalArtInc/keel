@@ -61,8 +61,8 @@ fi
 echo "keel-sdk-probe graph checked"
 
 testkit=$(cargo tree -p keel-testkit -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$testkit" != "keel-host-agent keel-kernel keel-sdk keel-types " ]; then
-  echo "keel-testkit depends on workspace crates other than keel-host-agent, keel-kernel, keel-sdk and keel-types: $testkit" >&2
+if [ "$testkit" != "keel-host-agent keel-kernel keel-release keel-sdk keel-types " ]; then
+  echo "keel-testkit depends on workspace crates other than keel-host-agent, keel-kernel, keel-release, keel-sdk and keel-types: $testkit" >&2
   fail=1
 fi
 echo "keel-testkit graph checked"

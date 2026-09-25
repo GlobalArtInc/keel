@@ -6,6 +6,8 @@ pub mod auth;
 pub mod backup;
 #[cfg(feature = "cron")]
 pub mod cron;
+#[cfg(feature = "license")]
+pub mod license;
 #[cfg(feature = "notify")]
 pub mod notify;
 #[cfg(feature = "settings")]

@@ -12,6 +12,8 @@ use crate::{EXISTS, zone};
 const READ: &str = "dns.zone.read";
 const MANAGE: &str = "dns.zone.manage";
 const FEATURE: &str = "dns.zones";
+const DNSSEC: &str = "dns.dnssec";
+const DNSSEC_GET: &str = "dns.zone.dnssec.get";
 const SUBJECT: &str = "dns.zone";
 const RECORDS: &str = "dns.record.list";
 const RECORD_CREATE: &str = "dns.record.create";
@@ -44,6 +46,20 @@ fn minimum() -> u32 {
 #[schemars(crate = "keel::sdk::schemars")]
 struct Pick {
     id: Id,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde", rename_all = "snake_case")]
+#[schemars(crate = "keel::sdk::schemars", rename_all = "snake_case")]
+enum Signing {
+    Unsigned,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Dnssec {
+    state: Signing,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -160,7 +176,13 @@ pub(crate) fn list() -> FunctionDef {
                     .params([("zone_id", "$id")])
                     .icon("list"),
             )
-            .row_actions(["edit", "records", "delete"])
+            .action(
+                Action::new("dnssec", ActionRole::Child)
+                    .screen(DNSSEC_GET)
+                    .params([("id", "$id")])
+                    .icon("shield-check"),
+            )
+            .row_actions(["edit", "records", "dnssec", "delete"])
             .empty("dns.zone.empty", Some("create"))
             .invalidate_on(["dns.zone.*", "dns.record.*"]))
         .default_sort("name", SortDir::Asc)
@@ -174,6 +196,21 @@ pub(crate) fn get() -> FunctionDef {
         .feature(FEATURE)
         .owned::<zone::Entity>()
         .handler(|call: Call<Pick>| async move { load(call.db(), &call.params().id).await })
+}
+
+pub(crate) fn dnssec() -> FunctionDef {
+    function::<Pick, Dnssec>(DNSSEC_GET)
+        .kind(Kind::Get)
+        .access(Level::User, READ)
+        .feature(DNSSEC)
+        .owned::<zone::Entity>()
+        .ui(ObjectScreen::new("dns.zone.dnssec.title"))
+        .handler(|call: Call<Pick>| async move {
+            load(call.db(), &call.params().id).await?;
+            Ok(Dnssec {
+                state: Signing::Unsigned,
+            })
+        })
 }
 
 pub(crate) fn create() -> FunctionDef {

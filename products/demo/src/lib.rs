@@ -31,7 +31,10 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         disabled: &[],
     },
     account_kinds: &["user"],
-    editions: &[],
+    editions: &[Edition {
+        id: "full",
+        features: &[],
+    }],
     i18n: &[
         ("en", include_str!("../i18n/en.json")),
         ("ru", include_str!("../i18n/ru.json")),
@@ -50,7 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_bundle_names_the_note_module_after_host_behind_its_feature_one_group_and_no_edition() {
+    fn the_bundle_names_the_note_module_after_host_behind_its_feature_one_group_and_one_edition() {
         assert_eq!(MANIFEST.id, "demo");
         let expected: &[&str] = if cfg!(feature = "host") {
             &["host", "note"]
@@ -68,7 +71,13 @@ mod tests {
         assert_eq!(MANIFEST.menu[0].id, "demo");
         assert_eq!(MANIFEST.menu[0].label, "menu.demo");
         assert_eq!(MANIFEST.account_kinds, ["user"]);
-        assert!(MANIFEST.default_edition().is_none());
+        assert_eq!(
+            MANIFEST.editions,
+            [Edition {
+                id: "full",
+                features: &[],
+            }]
+        );
         assert_eq!(MANIFEST.levels, LevelLabels::default());
         let languages: Vec<&str> = MANIFEST.i18n.iter().map(|(lang, _)| *lang).collect();
         assert_eq!(languages, ["en", "ru"]);

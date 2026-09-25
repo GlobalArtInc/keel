@@ -13,8 +13,8 @@ pub mod task;
 pub mod ui;
 
 pub use boot::{
-    Badge, Boot, BootBrand, BootMenuGroup, BootMenuItem, BootPrincipal, BootProblems, BootProduct,
-    BootWidget, Platform, WidgetKind,
+    Badge, Boot, BootBrand, BootLicense, BootMenuGroup, BootMenuItem, BootPrincipal, BootProblems,
+    BootProduct, BootWidget, LicenseState, Platform, WidgetKind,
 };
 pub use check::Check;
 pub use descriptor::{

@@ -12,6 +12,7 @@ chrono = { workspace = true }
 insta = { workspace = true }
 keel-host-agent = { workspace = true }
 keel-kernel = { workspace = true }
+keel-release = { workspace = true }
 keel-sdk = { workspace = true }
 keel-types = { workspace = true }
 sea-orm = { workspace = true }

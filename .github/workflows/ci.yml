@@ -247,6 +247,7 @@ jobs:
           - cron
           - notify
           - webhooks
+          - license
           - update
           - backup
           - tasks,cron,notify,update

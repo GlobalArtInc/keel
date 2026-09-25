@@ -17,6 +17,7 @@ const PUBLIC_KIND: &str = "ed25519";
 const SECRET_KIND: &str = "ed25519-secret";
 const KEY_LENGTH: usize = 32;
 const RELEASE_KEY: &str = include_str!("../keys/release.pub");
+const LICENSE_KEY: &str = include_str!("../keys/license.pub");
 const PREVIOUS_KEYS: &[&str] = &[];
 
 #[derive(Clone, PartialEq, Eq)]
@@ -201,6 +202,10 @@ impl KeyRing {
         Ok(Self { current, previous })
     }
 
+    pub fn license() -> Result<Self, ReleaseError> {
+        Ok(Self::new(LICENSE_KEY.parse()?, Vec::new()))
+    }
+
     pub(crate) fn verifies(&self, payload: &[u8], signature: &Signature) -> bool {
         std::iter::once(&self.current)
             .chain(&self.previous)
@@ -298,5 +303,12 @@ mod tests {
         let ring = KeyRing::compiled().unwrap();
         assert_eq!(ring.current.to_string().trim(), RELEASE_KEY.trim());
         assert!(ring.previous.is_empty());
+    }
+
+    #[test]
+    fn the_compiled_license_key_parses_and_differs_from_the_release_key() {
+        let ring = KeyRing::license().unwrap();
+        assert_eq!(ring.current.to_string().trim(), LICENSE_KEY.trim());
+        assert_ne!(ring.current, KeyRing::compiled().unwrap().current);
     }
 }

@@ -51,6 +51,7 @@ export type Expr =
     };
 export type ExportFormat = 'csv' | 'json';
 export type ActorVia = 'su' | 'socket' | 'peer';
+export type LicenseState = 'none' | 'valid' | 'grace' | 'read_only';
 export type Kind =
   | 'list'
   | 'get'
@@ -185,7 +186,7 @@ export interface Boot {
   brand: BootBrand;
   principal?: BootPrincipal | null;
   features: string[];
-  license?: unknown;
+  license?: BootLicense | null;
   menu: BootMenuGroup[];
   dashboard: BootWidget[];
   views: string[];
@@ -223,6 +224,11 @@ export interface MetaActor {
   login: string;
   level: Level;
   via: ActorVia;
+}
+export interface BootLicense {
+  state: LicenseState;
+  expiresAt?: string | null;
+  graceEndsAt?: string | null;
 }
 export interface BootMenuGroup {
   id: string;

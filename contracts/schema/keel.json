@@ -210,7 +210,16 @@
             "type": "string"
           }
         },
-        "license": true,
+        "license": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BootLicense"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "menu": {
           "type": "array",
           "items": {
@@ -281,6 +290,31 @@
         "name",
         "hue",
         "chroma"
+      ]
+    },
+    "BootLicense": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/LicenseState"
+        },
+        "expiresAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "graceEndsAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "state"
       ]
     },
     "BootMenuGroup": {
@@ -1549,6 +1583,15 @@
         "reseller",
         "admin",
         "owner"
+      ]
+    },
+    "LicenseState": {
+      "type": "string",
+      "enum": [
+        "none",
+        "valid",
+        "grace",
+        "read_only"
       ]
     },
     "Link": {

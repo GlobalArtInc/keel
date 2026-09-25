@@ -1,4 +1,5 @@
 use keel_sdk::KeelError;
+use keel_sdk::system::Features;
 use keel_types::{Id, Level, Principal};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value};
 use sha2::{Digest, Sha256};
@@ -13,6 +14,7 @@ pub(crate) struct MetaKey<'a> {
     pub(crate) build: &'a str,
     pub(crate) modules: &'a [ModuleInfo],
     pub(crate) products: &'a [&'a str],
+    pub(crate) licensed: &'a str,
     pub(crate) lang: &'a str,
     pub(crate) principal: Id,
     pub(crate) acl_gen: i32,
@@ -28,6 +30,7 @@ pub(crate) async fn version(
         build: &registry.platform().version,
         modules: registry.modules(),
         products: &registry.product_ids(),
+        licensed: &licensed(registry),
         lang: &principal.lang,
         principal: principal.id,
         acl_gen,
@@ -40,11 +43,29 @@ pub(crate) fn catalogue_version(registry: &Registry, lang: &str) -> String {
         build: &registry.platform().version,
         modules: registry.modules(),
         products: &registry.product_ids(),
+        licensed: "",
         lang,
         principal: Id::ROOT_ACCOUNT,
         acl_gen: 0,
     }
     .version()
+}
+
+fn licensed(registry: &Registry) -> String {
+    let Some(features) = registry.services().get::<dyn Features>() else {
+        return String::new();
+    };
+    let Some(license) = features.license() else {
+        return String::new();
+    };
+    let mut enabled = features.enabled();
+    enabled.sort_unstable();
+    let editions: Vec<String> = registry
+        .products()
+        .iter()
+        .map(|manifest| format!("{}:{:?}", manifest.id, features.edition(manifest)))
+        .collect();
+    format!("{}|{}|{license:?}", enabled.join(","), editions.join(","))
 }
 
 impl MetaKey<'_> {
@@ -58,14 +79,17 @@ impl MetaKey<'_> {
         let mut products: Vec<&str> = self.products.to_vec();
         products.sort_unstable();
         let mut hasher = Sha256::new();
-        for line in [
-            self.build.to_owned(),
-            modules.join(","),
-            products.join(","),
-            self.lang.to_owned(),
-            self.principal.to_string(),
-            self.acl_gen.to_string(),
-        ] {
+        let licensed = (!self.licensed.is_empty()).then(|| self.licensed.to_owned());
+        let lines = [
+            Some(self.build.to_owned()),
+            Some(modules.join(",")),
+            Some(products.join(",")),
+            licensed,
+            Some(self.lang.to_owned()),
+            Some(self.principal.to_string()),
+            Some(self.acl_gen.to_string()),
+        ];
+        for line in lines.into_iter().flatten() {
             hasher.update(line.as_bytes());
             hasher.update(b"\n");
         }
@@ -117,6 +141,7 @@ mod tests {
             build: "0.1.0",
             modules,
             products,
+            licensed: "",
             lang: "en",
             principal: Id::ROOT_ACCOUNT,
             acl_gen: 0,
@@ -152,6 +177,10 @@ mod tests {
             },
             MetaKey {
                 products: &["dns"],
+                ..base.clone()
+            },
+            MetaKey {
+                licensed: "dns.zones|dns:Some(\"lite\")|valid",
                 ..base.clone()
             },
             MetaKey {

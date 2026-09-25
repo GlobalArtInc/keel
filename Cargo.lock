@@ -2506,6 +2506,7 @@ dependencies = [
  "insta",
  "keel-host-agent",
  "keel-kernel",
+ "keel-release",
  "keel-sdk",
  "keel-types",
  "sea-orm",

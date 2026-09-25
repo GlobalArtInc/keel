@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::Arc;
 
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::socket::ClientError;
@@ -11,6 +12,7 @@ use tokio::net::UnixStream;
 
 use crate::VERSION;
 use crate::error::Error;
+use crate::license::CompiledLicenseKey;
 use crate::runtime::Runtime;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -114,7 +116,9 @@ impl Runtime {
     }
 
     pub(crate) fn composition(&self, enabled: &[String]) -> Result<Composition, Error> {
-        let mut composition = Composition::new().version(VERSION);
+        let mut composition = Composition::new()
+            .version(VERSION)
+            .license_key(Arc::new(CompiledLicenseKey));
         for module in &self.modules {
             composition = composition.module(module);
         }

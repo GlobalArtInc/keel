@@ -45,7 +45,7 @@ pub enum ReleaseError {
     },
     #[error("the envelope's signature is not {expected} bytes but {actual}")]
     SignatureLength { expected: usize, actual: usize },
-    #[error("the signature matches none of the release keys")]
+    #[error("the signature matches none of the trusted keys")]
     Signature,
     #[error("the signed payload is not a release manifest: {0}")]
     Payload(#[source] serde_json::Error),

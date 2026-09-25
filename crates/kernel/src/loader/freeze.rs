@@ -7,9 +7,9 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, Features, LanguageSource, LimitSource,
-    LiveEvents, OutboxSubscriber, ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher,
-    TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, Features, Installation, LanguageSource,
+    LicenseKey, LimitSource, LiveEvents, OutboxSubscriber, ParamMasker, PermissionCatalogue,
+    PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
@@ -543,6 +543,13 @@ impl Freezer {
             api: API,
         }));
         services.provide::<dyn Clock>(graph.clock().clone());
+        services.provide(Arc::new(Installation {
+            instance: graph.instance(),
+            products: graph.products().to_vec(),
+        }));
+        if let Some(key) = graph.license_key() {
+            services.provide::<dyn LicenseKey>(key.clone());
+        }
         services.provide::<dyn PrincipalSource>(Arc::new(StoredPrincipals));
         services.provide::<dyn AccountSource>(Arc::new(StoredAccounts));
         services.provide::<dyn LimitSource>(Arc::new(StoredLimits::new(&self.contributions)));
