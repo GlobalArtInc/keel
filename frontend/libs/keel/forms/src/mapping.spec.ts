@@ -22,8 +22,10 @@ const TABLE: Record<Control, PhxControl> = {
   time: 'phx-time-field',
   file: 'phx-file-field',
   list: 'phx-list-field',
-  code: 'phx-code-field',
+  code: 'phx-code-editor',
   tags: 'phx-tags-field',
+  key_value: 'phx-key-value-field',
+  transfer: 'phx-transfer-list',
 };
 
 function descriptorWith(property: Record<string, unknown>): Descriptor {
@@ -99,8 +101,8 @@ describe('mapControl', () => {
     ]);
   });
 
-  it('the twelve controls of the enum map onto the twelve components', () => {
-    expect(CONTROLS).toHaveLength(12);
+  it('the fourteen controls of the enum map onto the fourteen components', () => {
+    expect(CONTROLS).toHaveLength(14);
     expect([...CONTROLS].sort()).toEqual(Object.keys(TABLE).sort());
     for (const control of CONTROLS) {
       const mapping = mappingOf({ type: 'string', 'x-ui': { control } });
@@ -187,6 +189,50 @@ describe('mapControl', () => {
         'x-ui': { control: 'list' },
       }),
     ).toEqual({ component: 'phx-list-field', columns: ['host', 'port'], preset: null });
+  });
+
+  it('a key-value field takes its key pattern from propertyNames', () => {
+    expect(
+      mappingOf({
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        propertyNames: { pattern: '^[A-Z_][A-Z0-9_]*$' },
+        'x-ui': { control: 'key_value' },
+      }),
+    ).toEqual({ component: 'phx-key-value-field', keyPattern: '^[A-Z_][A-Z0-9_]*$', preset: null });
+    expect(mappingOf({ type: 'object', 'x-ui': { control: 'key_value' } })).toEqual({
+      component: 'phx-key-value-field',
+      keyPattern: null,
+      preset: null,
+    });
+  });
+
+  it('a transfer list takes its choices from the enum of the items or its options function', () => {
+    expect(
+      mappingOf({
+        type: 'array',
+        items: { type: 'string', enum: ['dns', 'mail', 'web'] },
+        'x-ui': { control: 'transfer' },
+      }),
+    ).toEqual({
+      component: 'phx-transfer-list',
+      choices: ['dns', 'mail', 'web'],
+      remote: null,
+      preset: null,
+    });
+    expect(
+      mappingOf({
+        type: 'array',
+        items: { type: 'string' },
+        'x-keel': { options: 'dns.zone.options' },
+        'x-ui': { control: 'transfer' },
+      }),
+    ).toEqual({
+      component: 'phx-transfer-list',
+      choices: [],
+      remote: 'dns.zone.options',
+      preset: null,
+    });
   });
 
   it('mapControl is the pure table behind the model', () => {

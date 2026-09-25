@@ -17,16 +17,16 @@ import {
   ValueChangeEvent,
 } from '@angular/forms';
 import { KeelI18n } from '@globalart/keel/client';
-import { lookup, type FieldError } from '@globalart/keel/meta';
+import { lookup, type Choice, type FieldError } from '@globalart/keel/meta';
 import {
   PHX_LABELS,
-  PhxCodeFieldComponent,
   PhxDateFieldComponent,
   PhxFieldErrorComponent,
   PhxFieldHintComponent,
   PhxFileFieldComponent,
   PhxFormRowComponent,
   PhxInputComponent,
+  PhxKeyValueFieldComponent,
   PhxListFieldComponent,
   PhxNumberFieldComponent,
   PhxPasswordComponent,
@@ -36,12 +36,15 @@ import {
   PhxTagsFieldComponent,
   PhxTimeFieldComponent,
   PhxToggleComponent,
+  PhxTransferListComponent,
   type PhxColumn,
   type PhxDateValue,
   type PhxLabels,
   type PhxSelectOption,
   type PhxSwitcherOption,
+  type PhxTransferItem,
 } from '@globalart/phoenix-ui';
+import { PhxCodeEditorComponent } from '@globalart/phoenix-ui/code';
 import type { ControlMapping } from './mapping';
 import type { FormField } from './model';
 import { toSelectOption } from './options';
@@ -77,8 +80,10 @@ const UNLIMITED_KEY = 'phx.unlimited';
     PhxTimeFieldComponent,
     PhxFileFieldComponent,
     PhxListFieldComponent,
-    PhxCodeFieldComponent,
+    PhxCodeEditorComponent,
     PhxTagsFieldComponent,
+    PhxKeyValueFieldComponent,
+    PhxTransferListComponent,
   ],
   template: `
     <phx-form-row [label]="label()" [required]="required()">
@@ -209,19 +214,42 @@ const UNLIMITED_KEY = 'phx.unlimited';
             width="full"
           />
         }
-        @case ('phx-code-field') {
-          <phx-code-field
-            [formControl]="control()"
-            [placeholder]="placeholder()"
-            [required]="required()"
-            [hint]="hint()"
-            [error]="error()"
-          />
+        @case ('phx-code-editor') {
+          @defer (on immediate) {
+            <phx-code-editor
+              [formControl]="control()"
+              [placeholder]="placeholder()"
+              [required]="required()"
+              [hint]="hint()"
+              [error]="error()"
+            />
+          }
         }
         @case ('phx-tags-field') {
           <phx-tags-field
             [formControl]="control()"
             [placeholder]="placeholder()"
+            [required]="required()"
+            [hint]="hint()"
+            [error]="error()"
+            width="full"
+          />
+        }
+        @case ('phx-key-value-field') {
+          <phx-key-value-field
+            [formControl]="control()"
+            [keyPattern]="keyPattern()"
+            [required]="required()"
+            [hint]="hint()"
+            [error]="error()"
+            width="full"
+          />
+        }
+        @case ('phx-transfer-list') {
+          <phx-transfer-list
+            [formControl]="control()"
+            [items]="transferItems()"
+            [loading]="loading()"
             [required]="required()"
             [hint]="hint()"
             [error]="error()"
@@ -359,6 +387,20 @@ export class KeelFieldComponent {
     })),
   );
 
+  protected readonly keyPattern = computed(
+    () => member(this.mapping(), 'phx-key-value-field')?.keyPattern ?? null,
+  );
+  protected readonly transferItems = computed<PhxTransferItem[]>(() => {
+    const served = this.field().choices() ?? this.field().options?.choices() ?? null;
+    if (served !== null) {
+      return served.map(toTransferItem);
+    }
+    return (member(this.mapping(), 'phx-transfer-list')?.choices ?? []).map((value) => ({
+      id: value,
+      label: this.choice(value).label,
+    }));
+  });
+
   private readonly numeric = computed(
     () => member(this.mapping(), 'phx-slider') ?? member(this.mapping(), 'phx-number-field'),
   );
@@ -374,6 +416,10 @@ export class KeelFieldComponent {
       const value = this.number();
       const disabled = this.disabled();
       untracked(() => this.reflect(value, disabled));
+    });
+    effect(() => {
+      const options = member(this.mapping(), 'phx-transfer-list') ? this.field().options : null;
+      untracked(() => options?.search(''));
     });
     this.mirror.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event instanceof ValueChangeEvent && event.value !== this.control().value) {
@@ -423,6 +469,10 @@ export class KeelFieldComponent {
   private choice(value: string): { value: string; label: string } {
     return { value, label: this.i18n.t(`${this.field().labelKey}.${value}`) };
   }
+}
+
+function toTransferItem(choice: Choice): PhxTransferItem {
+  return { id: choice.value, label: choice.label, hint: choice.hint ?? null };
 }
 
 function member<C extends ControlMapping['component']>(

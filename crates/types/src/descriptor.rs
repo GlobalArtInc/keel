@@ -90,6 +90,9 @@ pub enum Control {
     List,
     Code,
     Tags,
+    #[serde(rename = "key_value")]
+    KeyValue,
+    Transfer,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -197,6 +200,21 @@ mod tests {
         assert!(serde_json::from_value::<Kind>(json!("List")).is_err());
         assert!(serde_json::from_value::<Mode>(json!("readwrite")).is_err());
         assert!(serde_json::from_value::<Control>(json!("textarea")).is_err());
+        assert!(serde_json::from_value::<Control>(json!("keyvalue")).is_err());
+    }
+
+    #[test]
+    fn the_map_and_transfer_controls_travel_by_their_wire_names() {
+        for (control, name) in [
+            (Control::KeyValue, "key_value"),
+            (Control::Transfer, "transfer"),
+        ] {
+            assert_eq!(serde_json::to_value(control).ok(), Some(json!(name)));
+            assert_eq!(
+                serde_json::from_value::<Control>(json!(name)).ok(),
+                Some(control)
+            );
+        }
     }
 
     #[test]

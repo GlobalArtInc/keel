@@ -862,7 +862,9 @@
         "file",
         "list",
         "code",
-        "tags"
+        "tags",
+        "key_value",
+        "transfer"
       ]
     },
     "Descriptor": {

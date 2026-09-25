@@ -353,6 +353,8 @@ function initialOf(shape: FieldSchema, values: Record<string, unknown>): unknown
       return false;
     case 'array':
       return [];
+    case 'object':
+      return {};
     default:
       return null;
   }

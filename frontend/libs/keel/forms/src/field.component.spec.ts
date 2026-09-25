@@ -13,6 +13,9 @@ const MESSAGES = {
       'value.placeholder': 'Type here',
       'value.on': 'Switched on',
       'value.off': 'Switched off',
+      'value.dns': 'DNS',
+      'value.mail': 'Mail',
+      'value.web': 'Web',
       page: { main: 'Main' },
     },
     brand: { hue: 'Hue', 'hue.empty': 'From the product', chroma: 'Chroma' },
@@ -32,8 +35,17 @@ const COMPONENT: Record<Control, string> = {
   time: 'phx-time-field',
   file: 'phx-file-field',
   list: 'phx-list-field',
-  code: 'phx-code-field',
+  code: 'phx-code-editor',
   tags: 'phx-tags-field',
+  key_value: 'phx-key-value-field',
+  transfer: 'phx-transfer-list',
+};
+
+const SCHEMAS: Partial<Record<Control, Record<string, unknown>>> = {
+  list: { type: 'array', items: { type: 'object', properties: { host: { type: 'string' } } } },
+  switcher: { type: 'string', enum: ['on', 'off'] },
+  key_value: { type: 'object', additionalProperties: { type: 'string' } },
+  transfer: { type: 'array', items: { type: 'string', enum: ['dns', 'mail', 'web'] } },
 };
 
 function descriptorWith(property: Record<string, unknown>, required = false): Descriptor {
@@ -86,22 +98,58 @@ function brandFieldOf(name: string): FormField {
   return field;
 }
 
-async function render(field: FormField): Promise<ComponentFixture<KeelFieldComponent>> {
+async function render(
+  field: FormField,
+  client = new KeelMockClient({ catalogue: { lang: 'en', messages: MESSAGES } }),
+): Promise<ComponentFixture<KeelFieldComponent>> {
   TestBed.configureTestingModule({
     imports: [KeelFieldComponent],
-    providers: [
-      providePhoenixIcons(),
-      {
-        provide: KeelClient,
-        useValue: new KeelMockClient({ catalogue: { lang: 'en', messages: MESSAGES } }),
-      },
-    ],
+    providers: [providePhoenixIcons(), { provide: KeelClient, useValue: client }],
   });
   await TestBed.inject(KeelI18n).load('en');
   const fixture = TestBed.createComponent(KeelFieldComponent);
   fixture.componentRef.setInput('field', field);
   fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
   return fixture;
+}
+
+function typeInto(input: HTMLInputElement | undefined, text: string): void {
+  if (input === undefined) {
+    throw new Error('no input to type into');
+  }
+  input.value = text;
+  input.dispatchEvent(new Event('input'));
+}
+
+function button(fixture: ComponentFixture<KeelFieldComponent>, label: string): HTMLButtonElement {
+  const found = [...element(fixture).querySelectorAll<HTMLButtonElement>('button')].find(
+    (candidate) =>
+      candidate.getAttribute('aria-label') === label || candidate.textContent?.trim() === label,
+  );
+  if (found === undefined) {
+    throw new Error(`no button ${label}`);
+  }
+  return found;
+}
+
+function checkbox(fixture: ComponentFixture<KeelFieldComponent>, side: string, label: string) {
+  const group = [...element(fixture).querySelectorAll('phx-transfer-list section')].find(
+    (section) => section.querySelector('.side__heading')?.textContent?.trim() === side,
+  );
+  return [...(group?.querySelectorAll<HTMLLabelElement>('phx-checkbox label') ?? [])]
+    .find((candidate) => candidate.textContent?.trim() === label)
+    ?.querySelector<HTMLInputElement>('input');
+}
+
+function labelsOf(fixture: ComponentFixture<KeelFieldComponent>, side: string): string[] {
+  const group = [...element(fixture).querySelectorAll('phx-transfer-list section')].find(
+    (section) => section.querySelector('.side__heading')?.textContent?.trim() === side,
+  );
+  return [...(group?.querySelectorAll('phx-checkbox label') ?? [])].map(
+    (label) => label.textContent?.trim() ?? '',
+  );
 }
 
 function element(fixture: ComponentFixture<KeelFieldComponent>): HTMLElement {
@@ -111,14 +159,9 @@ function element(fixture: ComponentFixture<KeelFieldComponent>): HTMLElement {
 describe('keel-field', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('renders each of the twelve controls on a phx-form-row with the translated label', async () => {
+  it('renders each of the fourteen controls on a phx-form-row with the translated label', async () => {
     for (const control of CONTROLS) {
-      const schema =
-        control === 'list'
-          ? { type: 'array', items: { type: 'object', properties: { host: { type: 'string' } } } }
-          : control === 'switcher'
-            ? { type: 'string', enum: ['on', 'off'] }
-            : { type: 'string' };
+      const schema = SCHEMAS[control] ?? { type: 'string' };
       const fixture = await render(fieldOf({ ...schema, 'x-ui': { control } }));
       const row = element(fixture).querySelector('phx-form-row');
       expect(row).not.toBeNull();
@@ -290,6 +333,134 @@ describe('keel-field', () => {
     const plain = element(chroma).querySelector<HTMLInputElement>('phx-number-field input');
     expect(plain?.value).toBe('No limit');
     expect(chroma.componentInstance.labels.unlimited).toBe('No limit');
+  });
+
+  it('a_code_widget_renders_the_code_editor', async () => {
+    const text = 'server {\n  listen 80;\n}';
+    const field = fieldOf({ type: 'string', 'x-ui': { control: 'code' } }, { value: text });
+    const fixture = await render(field);
+    const editor = element(fixture).querySelector('phx-form-row phx-code-editor');
+    expect(editor).not.toBeNull();
+    expect(element(fixture).querySelector('phx-code-field')).toBeNull();
+    const lines = [...(editor?.querySelectorAll('.cm-content .cm-line') ?? [])].map(
+      (line) => line.textContent,
+    );
+    expect(lines).toEqual(['server {', '  listen 80;', '}']);
+    expect(editor?.querySelector('.cm-content')?.getAttribute('contenteditable')).toBe('true');
+    expect(field.control.value).toBe(text);
+  });
+
+  it('a_key_value_widget_edits_a_map', async () => {
+    const field = fieldOf(
+      {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        propertyNames: { pattern: '^[a-z]+$' },
+        'x-ui': { control: 'key_value' },
+      },
+      { value: { env: 'prod' } },
+    );
+    const fixture = await render(field);
+    const keys = () =>
+      [...element(fixture).querySelectorAll<HTMLInputElement>('phx-key-value-field input')].filter(
+        (input) => input.getAttribute('aria-label')?.startsWith('Key'),
+      );
+    const values = () =>
+      [...element(fixture).querySelectorAll<HTMLInputElement>('phx-key-value-field input')].filter(
+        (input) => input.getAttribute('aria-label')?.startsWith('Value'),
+      );
+    expect(keys().map((input) => input.value)).toEqual(['env']);
+    expect(values().map((input) => input.value)).toEqual(['prod']);
+
+    button(fixture, 'Add').click();
+    fixture.detectChanges();
+    typeInto(keys()[1], 'tier');
+    typeInto(values()[1], 'web');
+    fixture.detectChanges();
+    expect(field.control.value).toEqual({ env: 'prod', tier: 'web' });
+    expect(field.control.valid).toBe(true);
+
+    typeInto(keys()[1], 'env');
+    fixture.detectChanges();
+    expect(field.control.value).toEqual({ env: 'prod' });
+    expect(field.control.valid).toBe(false);
+    expect(
+      element(fixture).querySelector('phx-key-value-field phx-field-error')?.textContent,
+    ).toContain('This key is already used');
+
+    typeInto(keys()[1], 'Tier');
+    fixture.detectChanges();
+    expect(field.control.valid).toBe(false);
+    expect(
+      element(fixture).querySelector('phx-key-value-field phx-field-error')?.textContent,
+    ).toContain('This key is not allowed');
+
+    button(fixture, 'Remove Tier').click();
+    button(fixture, 'Remove env').click();
+    fixture.detectChanges();
+    expect(field.control.value).toEqual({});
+    expect(field.control.valid).toBe(true);
+  });
+
+  it('a_transfer_widget_edits_a_list_of_ids', async () => {
+    const field = fieldOf(
+      {
+        type: 'array',
+        items: { type: 'string', enum: ['dns', 'mail', 'web'] },
+        'x-ui': { control: 'transfer' },
+      },
+      { value: ['mail'] },
+    );
+    const fixture = await render(field);
+    expect(labelsOf(fixture, 'Available')).toEqual(['DNS', 'Web']);
+    expect(labelsOf(fixture, 'Chosen')).toEqual(['Mail']);
+
+    checkbox(fixture, 'Available', 'Web')?.click();
+    fixture.detectChanges();
+    button(fixture, 'Move selected to chosen').click();
+    fixture.detectChanges();
+    expect(field.control.value).toEqual(['mail', 'web']);
+    expect(labelsOf(fixture, 'Chosen')).toEqual(['Mail', 'Web']);
+
+    checkbox(fixture, 'Chosen', 'Mail')?.click();
+    fixture.detectChanges();
+    button(fixture, 'Move selected to available').click();
+    fixture.detectChanges();
+    expect(field.control.value).toEqual(['web']);
+    expect(labelsOf(fixture, 'Available')).toEqual(['DNS', 'Mail']);
+  });
+
+  it('a transfer widget with an options function lists the choices the function answers', async () => {
+    const client = new KeelMockClient({
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: {
+        'dns.zone.options': {
+          ok: true,
+          data: {
+            data: [
+              { value: 'z1', label: 'example.com' },
+              { value: 'z2', label: 'example.net', hint: 'secondary' },
+            ],
+            more: false,
+          },
+          meta: { requestId: 'req-options' },
+        },
+      },
+    });
+    const descriptor = descriptorWith({
+      type: 'array',
+      items: { type: 'string' },
+      'x-keel': { options: 'dns.zone.options' },
+      'x-ui': { control: 'transfer' },
+    });
+    const field = buildForm(descriptor, { client, values: { value: ['z2'] } }).field('value');
+    if (field === undefined) {
+      throw new Error('no field value');
+    }
+    const fixture = await render(field, client);
+    expect(client.calls.map((call) => call.func)).toEqual(['dns.zone.options']);
+    expect(labelsOf(fixture, 'Available')).toEqual(['example.com']);
+    expect(labelsOf(fixture, 'Chosen')).toEqual(['example.netsecondary']);
   });
 
   it('a readonly field renders its control disabled', async () => {

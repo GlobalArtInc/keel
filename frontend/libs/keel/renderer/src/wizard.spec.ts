@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Location } from '@angular/common';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { NgControl, type AbstractControl } from '@angular/forms';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { provideLocationMocks } from '@angular/common/testing';
 import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
@@ -120,14 +122,29 @@ function steps(element: HTMLElement): [string, boolean, boolean][] {
   ]);
 }
 
-function type(element: HTMLElement, text: string): void {
-  const area = must(element.querySelector<HTMLTextAreaElement>('phx-code-field textarea'), 'text');
-  area.value = text;
-  area.dispatchEvent(new Event('input'));
+async function editor(fixture: ComponentFixture<unknown>): Promise<AbstractControl> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const control = fixture.debugElement
+      .query(By.css('phx-code-editor'))
+      ?.injector.get(NgControl).control;
+    if (control) {
+      return control;
+    }
+    await settle(fixture);
+  }
+  throw new Error('the wizard renders no code editor');
+}
+
+async function type(fixture: ComponentFixture<unknown>, text: string): Promise<void> {
+  const control = await editor(fixture);
+  control.markAsDirty();
+  control.setValue(text);
 }
 
 function fieldError(element: HTMLElement): string | null {
-  return element.querySelector('phx-code-field phx-field-error .text')?.textContent?.trim() ?? null;
+  return (
+    element.querySelector('phx-code-editor phx-field-error .text')?.textContent?.trim() ?? null
+  );
 }
 
 describe('the wizard renderer', () => {
@@ -163,7 +180,7 @@ describe('the wizard renderer', () => {
     expect(fieldError(element)).toBe('The field text is required');
     expect(element.getAttribute('data-step')).toBe('source');
 
-    type(element, TEXT);
+    await type(fixture, TEXT);
     next.click();
     await settle(fixture);
     expect(client.calls.map((call) => [call.func, call.params])).toEqual([
@@ -178,7 +195,7 @@ describe('the wizard renderer', () => {
     expect(client.calls).toHaveLength(1);
     expect(element.getAttribute('data-step')).toBe('source');
 
-    type(element, FIXED);
+    await type(fixture, FIXED);
     fixture.detectChanges();
     expect(fieldError(element)).toBeNull();
     next.click();
@@ -199,8 +216,9 @@ describe('the wizard renderer', () => {
     back.click();
     await settle(fixture);
     expect(element.getAttribute('data-step')).toBe('source');
-    expect(element.querySelector<HTMLTextAreaElement>('phx-code-field textarea')?.value).toBe(
-      FIXED,
+    expect((await editor(fixture)).value).toBe(FIXED);
+    expect(element.querySelector('phx-code-editor .cm-content')?.textContent).toContain(
+      FIXED.split('\n')[0],
     );
     expect(client.calls).toHaveLength(2);
 
@@ -224,7 +242,7 @@ describe('the wizard renderer', () => {
     const done: Saved[] = [];
     fixture.componentInstance.done.subscribe((saved) => done.push(saved));
 
-    type(element, TEXT);
+    await type(fixture, TEXT);
     must(element.querySelector<HTMLButtonElement>('button.next'), 'next').click();
     await settle(fixture);
     expect(element.getAttribute('data-step')).toBe('options');
@@ -260,7 +278,7 @@ describe('the wizard renderer', () => {
     const element: HTMLElement = fixture.nativeElement;
     const back = jest.spyOn(TestBed.inject(Location), 'back');
 
-    type(element, TEXT);
+    await type(fixture, TEXT);
     must(element.querySelector<HTMLButtonElement>('button.next'), 'next').click();
     await settle(fixture);
     must(element.querySelector<HTMLButtonElement>('button.next'), 'finish').click();
@@ -269,7 +287,7 @@ describe('the wizard renderer', () => {
     expect(fieldError(element)).toBe('Line 1 is longer than 200 characters');
     expect(back).not.toHaveBeenCalled();
 
-    type(element, 'fixed');
+    await type(fixture, 'fixed');
     must(element.querySelector<HTMLButtonElement>('button.next'), 'next').click();
     await settle(fixture);
     must(element.querySelector<HTMLButtonElement>('button.next'), 'finish').click();

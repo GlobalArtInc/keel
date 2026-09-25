@@ -114,7 +114,9 @@ export type Control =
   | 'file'
   | 'list'
   | 'code'
-  | 'tags';
+  | 'tags'
+  | 'key_value'
+  | 'transfer';
 export type Mode = 'read' | 'write';
 export type ScreenResult = 'redirect' | 'task' | 'download';
 export type Envelope =

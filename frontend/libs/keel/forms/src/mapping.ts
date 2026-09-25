@@ -1,5 +1,5 @@
 import type { Check, Control, KeelAttrs, UiAttrs } from '@globalart/keel/meta';
-import { enumOf, numberOf, propertiesOf, resolveSchema, type JsonObject } from './schema';
+import { enumOf, isObject, numberOf, propertiesOf, resolveSchema, type JsonObject } from './schema';
 
 export interface FieldSchema {
   name: string;
@@ -31,8 +31,10 @@ export type ControlMapping = { preset: Check | null } & (
   | { component: 'phx-time-field' }
   | { component: 'phx-file-field'; accept: string[]; maxSize: number | null }
   | { component: 'phx-list-field'; columns: string[] }
-  | { component: 'phx-code-field' }
+  | { component: 'phx-code-editor' }
   | { component: 'phx-tags-field' }
+  | { component: 'phx-key-value-field'; keyPattern: string | null }
+  | { component: 'phx-transfer-list'; choices: string[]; remote: string | null }
 );
 
 export type PhxControl = ControlMapping['component'];
@@ -50,6 +52,8 @@ export const CONTROLS: readonly Control[] = [
   'list',
   'code',
   'tags',
+  'key_value',
+  'transfer',
 ];
 
 export function mapControl(field: FieldSchema): ControlMapping {
@@ -94,9 +98,18 @@ export function mapControl(field: FieldSchema): ControlMapping {
     case 'list':
       return { component: 'phx-list-field', columns: columnsOf(field), preset };
     case 'code':
-      return { component: 'phx-code-field', preset };
+      return { component: 'phx-code-editor', preset };
     case 'tags':
       return { component: 'phx-tags-field', preset };
+    case 'key_value':
+      return { component: 'phx-key-value-field', keyPattern: keyPatternOf(field.schema), preset };
+    case 'transfer':
+      return {
+        component: 'phx-transfer-list',
+        choices: field.keel.options ? [] : (enumOf(itemsOf(field).schema) ?? []),
+        remote: field.keel.options ?? null,
+        preset,
+      };
     case 'number':
       return {
         component: 'phx-number-field',
@@ -139,6 +152,12 @@ function inputType(schema: JsonObject): InputType {
     default:
       return 'text';
   }
+}
+
+function keyPatternOf(schema: JsonObject): string | null {
+  const names = schema['propertyNames'];
+  const pattern = isObject(names) ? names['pattern'] : null;
+  return typeof pattern === 'string' ? pattern : null;
 }
 
 function itemsOf(field: FieldSchema) {
