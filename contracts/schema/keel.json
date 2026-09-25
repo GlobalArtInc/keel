@@ -1742,6 +1742,38 @@
         }
       }
     },
+    "LogLevel": {
+      "type": "string",
+      "enum": [
+        "trace",
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ]
+    },
+    "LogLine": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "level": {
+          "$ref": "#/$defs/LogLevel"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "text"
+      ]
+    },
     "MemberAccess": {
       "type": "object",
       "properties": {

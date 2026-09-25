@@ -23,7 +23,9 @@ use tokio::sync::oneshot;
 use tokio::task::{JoinHandle, JoinSet};
 
 use crate::boot;
-use crate::dispatcher::{CallOptions, Dispatcher, download_route_error, generate_request_id};
+use crate::dispatcher::{
+    CallOptions, Dispatcher, download_route_error, generate_request_id, stream_route_error,
+};
 use crate::grants;
 use crate::http::{Projection, acceptable_request_id, catalogue};
 use crate::keel::StoredPrincipals;
@@ -246,11 +248,18 @@ impl Socket {
                 run_as,
             } => {
                 let request_id = request_id.filter(|id| acceptable_request_id(id));
-                if let Some(function) = self.dispatcher.registry().function(&func)
-                    && function.def().kind() == Kind::Download
-                {
+                let raw = self
+                    .dispatcher
+                    .registry()
+                    .function(&func)
+                    .and_then(|function| match function.def().kind() {
+                        Kind::Download => Some(download_route_error(function)),
+                        Kind::Stream => Some(stream_route_error(function)),
+                        _ => None,
+                    });
+                if let Some(refused) = raw {
                     return error_envelope(
-                        download_route_error(function),
+                        refused,
                         &request_id.unwrap_or_else(generate_request_id),
                     );
                 }

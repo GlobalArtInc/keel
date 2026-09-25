@@ -55,6 +55,7 @@ import {
 } from './master-detail/selection';
 import { KeelObjectComponent } from './object/object.component';
 import { KeelReportComponent } from './report/report.component';
+import { KeelStreamComponent } from './stream/stream.component';
 import { NOT_FOUND_KEY, SCREEN_UNSUPPORTED_KEY, VIEW_MISSING_KEY, describeError } from './messages';
 import {
   injectKeelViews,
@@ -144,6 +145,7 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
     KeelMasterDetailComponent,
     KeelObjectComponent,
     KeelReportComponent,
+    KeelStreamComponent,
     KeelActionComponent,
     KeelWizardComponent,
   ],
@@ -209,6 +211,9 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
           }
           @case ('report') {
             <keel-report [descriptor]="descriptor()" [params]="typedParams()" />
+          }
+          @case ('stream') {
+            <keel-stream [descriptor]="descriptor()" [params]="typedParams()" />
           }
           @case ('action') {
             <keel-action

@@ -1,0 +1,71 @@
+{
+  "keel": 1,
+  "name": "dns.zone.log",
+  "module": "dns",
+  "kind": "stream",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.read",
+    "feature": "dns.zones"
+  },
+  "key": "id",
+  "params": {
+    "title": "Watched",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "LogLine",
+    "type": "object",
+    "properties": {
+      "at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "level": {
+        "$ref": "#/$defs/LogLevel"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "level",
+      "text"
+    ],
+    "$defs": {
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "dns.zone.log.title"
+  }
+}

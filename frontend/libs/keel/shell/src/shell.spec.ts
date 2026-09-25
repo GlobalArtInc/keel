@@ -29,6 +29,7 @@ const MESSAGES = {
     principal: { list: { title: 'Principals' } },
     product: { list: { title: 'Products' } },
     doctor: { run: { title: 'Health' } },
+    logs: { stream: { title: 'Log' } },
     shell: { boot_failed: 'The installation did not answer; reload the page' },
   },
   phx: { retry: 'Try again', loading: 'Loading' },
@@ -119,15 +120,17 @@ describe('KeelShellComponent', () => {
       'Principals',
       'Products',
       'Health',
+      'Log',
     ]);
     expect(items.map((item) => item.querySelector('a')?.getAttribute('href'))).toEqual([
       '/f/keel.account.list',
       '/f/keel.principal.list',
       '/f/keel.product.list',
       '/f/keel.doctor.run',
+      '/f/keel.logs.stream',
     ]);
     expect(items.map((item) => item.querySelector('a')?.classList.contains('item_active'))).toEqual(
-      [true, false, false, false],
+      [true, false, false, false, false],
     );
     expect(element.querySelector('phx-sidebar nav.menu')?.getAttribute('aria-label')).toBe(
       'System',

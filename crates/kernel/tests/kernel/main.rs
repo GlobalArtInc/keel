@@ -22,6 +22,7 @@ mod settings;
 mod setup;
 mod socket;
 mod storage;
+mod streams;
 mod tasks;
 mod tls;
 mod upload;

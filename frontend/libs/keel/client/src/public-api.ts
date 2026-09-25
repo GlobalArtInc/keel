@@ -47,7 +47,6 @@ export {
   AFTER_PARAM,
   DATA_INVALIDATE,
   KEEL_EVENTS_PATH,
-  KEEL_EVENT_SOURCE,
   KeelEvents,
   MAX_BACKOFF_MS,
   META_INVALIDATE,
@@ -59,13 +58,9 @@ export {
   isNotificationFrame,
   isTaskProgress,
 } from './events';
-export type {
-  EventSourceFactory,
-  EventSourceLike,
-  EventsPhase,
-  EventsState,
-  MetaInvalidate,
-} from './events';
+export type { EventsPhase, EventsState, MetaInvalidate } from './events';
+export { KEEL_EVENT_SOURCE } from './source';
+export type { EventSourceFactory, EventSourceLike } from './source';
 export { tracked } from './progress';
 export { RAW_PREFIX, downloadUrl, filenameOf } from './download';
 export type { DownloadResult, DownloadedFile } from './download';

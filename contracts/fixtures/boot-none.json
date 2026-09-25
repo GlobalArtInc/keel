@@ -55,6 +55,13 @@
           "func": "keel.doctor.run",
           "kind": "list",
           "icon": "activity"
+        },
+        {
+          "path": "system/logs",
+          "label": "keel.logs.stream.title",
+          "func": "keel.logs.stream",
+          "kind": "stream",
+          "icon": "file-text"
         }
       ]
     }

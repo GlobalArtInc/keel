@@ -26,6 +26,7 @@ pub mod ui;
 mod call;
 mod services;
 mod stat;
+mod stream;
 
 #[doc(hidden)]
 pub mod runtime;
@@ -36,6 +37,7 @@ pub use async_trait;
 pub use bytes;
 pub use chrono;
 pub use chrono_tz;
+pub use futures;
 pub use keel_types as types;
 pub use migrator;
 pub use schemars;
@@ -68,6 +70,7 @@ pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
 pub use stat::StatCollector;
+pub use stream::Lines;
 pub use task::{TaskHandle, TaskOutput};
 pub use ui::{Action, ActionScreen, Column, Form, List, ObjectScreen, ViewSpec};
 

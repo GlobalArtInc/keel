@@ -34,6 +34,7 @@
         "delete": "Delete",
         "dnssec": "DNSSEC",
         "edit": "Edit",
+        "log": "History",
         "records": "Records"
       },
       "column": {
@@ -65,6 +66,7 @@
         "backup": "The zone file {file} could not be copied into the backup",
         "exists": "The zone {name} already exists",
         "id": "The stored id {id} of a zone is not an identifier",
+        "log": "The zone history cannot be read without a database connection",
         "not_started": "The dns module has not started, so no name server is attached",
         "template": "The {type} record {name} of the template does not hold for this zone"
       },
@@ -74,6 +76,9 @@
       "ip6": "IPv6 address the template points to",
       "list": {
         "title": "Zones"
+      },
+      "log": {
+        "title": "Zone history"
       },
       "minimum": "Negative caching TTL, seconds",
       "name": "Name",

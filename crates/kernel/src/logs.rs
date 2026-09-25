@@ -3,38 +3,31 @@ use std::fmt;
 use std::sync::{Mutex, PoisonError};
 
 use chrono::{DateTime, Utc};
+use futures::Stream;
+use futures::stream;
+use keel_types::LogLine;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use tokio::sync::Notify;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 
 pub const CAPACITY: usize = 10_000;
+const FOLLOW_BATCH: usize = 256;
 const MESSAGE_FIELD: &str = "message";
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum LogLevel {
-    Trace,
-    Debug,
-    Info,
-    Warn,
-    Error,
-}
+pub use keel_types::LogLevel;
 
-impl From<tracing::Level> for LogLevel {
-    fn from(level: tracing::Level) -> Self {
-        match level {
-            tracing::Level::TRACE => LogLevel::Trace,
-            tracing::Level::DEBUG => LogLevel::Debug,
-            tracing::Level::INFO => LogLevel::Info,
-            tracing::Level::WARN => LogLevel::Warn,
-            tracing::Level::ERROR => LogLevel::Error,
-        }
+fn level_of(level: tracing::Level) -> LogLevel {
+    match level {
+        tracing::Level::TRACE => LogLevel::Trace,
+        tracing::Level::DEBUG => LogLevel::Debug,
+        tracing::Level::INFO => LogLevel::Info,
+        tracing::Level::WARN => LogLevel::Warn,
+        tracing::Level::ERROR => LogLevel::Error,
     }
 }
 
@@ -50,6 +43,19 @@ pub struct Entry {
     pub fields: Map<String, Value>,
 }
 
+impl Entry {
+    pub(crate) fn line(&self) -> LogLine {
+        let mut text = format!("{} {}", self.target, self.message);
+        for (name, value) in &self.fields {
+            match value {
+                Value::String(value) => text.push_str(&format!(" {name}={value}")),
+                other => text.push_str(&format!(" {name}={other}")),
+            }
+        }
+        LogLine::new(self.level, text).at(self.at)
+    }
+}
+
 struct Inner {
     entries: VecDeque<Entry>,
     next: u64,
@@ -59,6 +65,7 @@ struct Inner {
 pub struct Ring {
     inner: Mutex<Inner>,
     capacity: usize,
+    pushed: Notify,
 }
 
 impl Ring {
@@ -70,6 +77,7 @@ impl Ring {
                 dropped: 0,
             }),
             capacity,
+            pushed: Notify::const_new(),
         }
     }
 
@@ -91,7 +99,53 @@ impl Ring {
             inner.dropped += 1;
         }
         inner.entries.push_back(entry);
+        drop(inner);
+        self.pushed.notify_waiters();
         seq
+    }
+
+    fn backlog(&self, limit: usize) -> (VecDeque<Entry>, u64) {
+        let inner = self.inner();
+        let skip = inner.entries.len().saturating_sub(limit);
+        let backlog = inner.entries.iter().skip(skip).cloned().collect();
+        (backlog, inner.next - 1)
+    }
+
+    fn after(&self, cursor: u64, limit: usize) -> Vec<Entry> {
+        let inner = self.inner();
+        let start = inner.entries.partition_point(|entry| entry.seq <= cursor);
+        inner
+            .entries
+            .iter()
+            .skip(start)
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
+    pub(crate) fn follow(&'static self, backlog: usize) -> impl Stream<Item = Entry> + Send {
+        let (pending, cursor) = self.backlog(backlog);
+        stream::unfold(
+            (pending, cursor),
+            move |(mut pending, mut cursor)| async move {
+                loop {
+                    if let Some(entry) = pending.pop_front() {
+                        return Some((entry, (pending, cursor)));
+                    }
+                    let pushed = self.pushed.notified();
+                    tokio::pin!(pushed);
+                    pushed.as_mut().enable();
+                    let fresh = self.after(cursor, FOLLOW_BATCH);
+                    match fresh.last() {
+                        Some(last) => {
+                            cursor = last.seq;
+                            pending.extend(fresh);
+                        }
+                        None => pushed.await,
+                    }
+                }
+            },
+        )
     }
 
     pub fn tail(&self, limit: usize, at_least: Option<LogLevel>) -> Vec<Entry> {
@@ -210,7 +264,7 @@ impl<S: Subscriber> Layer<S> for RingLayer {
         self.ring.push(Entry {
             seq: 0,
             at: Utc::now(),
-            level: (*metadata.level()).into(),
+            level: level_of(*metadata.level()),
             target: metadata.target().to_owned(),
             message: visitor.message,
             fields: visitor.fields,
@@ -284,11 +338,38 @@ mod tests {
         assert!(ring.tail(0, None).is_empty());
     }
 
+    #[tokio::test]
+    async fn the_follow_stream_yields_the_backlog_then_what_arrives() {
+        use futures::StreamExt;
+
+        let ring: &'static Ring = Box::leak(Box::new(Ring::new(8)));
+        for message in ["one", "two", "three"] {
+            ring.push(entry(LogLevel::Info, message));
+        }
+        let mut follow = Box::pin(ring.follow(2));
+        let backlog: Vec<String> = [follow.next().await, follow.next().await]
+            .into_iter()
+            .flatten()
+            .map(|entry| entry.message)
+            .collect();
+        assert_eq!(backlog, ["two", "three"]);
+        let pending = tokio::spawn(async move { follow.next().await });
+        tokio::task::yield_now().await;
+        ring.push(entry(LogLevel::Error, "four"));
+        let arrived = pending.await.unwrap().expect("a new entry");
+        assert_eq!(arrived.message, "four");
+        assert_eq!(arrived.seq, 4);
+        let line = arrived.line();
+        assert_eq!(line.level, LogLevel::Error);
+        assert_eq!(line.text, "keel_kernel::probe four");
+        assert_eq!(line.at, Some(arrived.at));
+    }
+
     #[test]
     fn a_level_comes_from_tracing_and_serialises_by_its_name() {
         assert!(LogLevel::Error > LogLevel::Trace);
-        assert_eq!(LogLevel::from(tracing::Level::DEBUG), LogLevel::Debug);
-        assert_eq!(LogLevel::from(tracing::Level::TRACE), LogLevel::Trace);
+        assert_eq!(level_of(tracing::Level::DEBUG), LogLevel::Debug);
+        assert_eq!(level_of(tracing::Level::TRACE), LogLevel::Trace);
         assert_eq!(
             serde_json::to_value(LogLevel::Info).unwrap(),
             Value::String("info".into())

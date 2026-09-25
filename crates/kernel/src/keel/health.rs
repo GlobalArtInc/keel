@@ -1,3 +1,5 @@
+use futures::StreamExt;
+use keel_sdk::FunctionBuilder;
 use keel_sdk::prelude::*;
 use keel_sdk::types::{FilterOp, FilterValue};
 
@@ -6,6 +8,9 @@ use crate::logs::{self, Entry, LogLevel};
 
 pub(super) const DOCTOR_RUN: &str = "keel.doctor.run";
 pub const LOGS_TAIL: &str = "keel.logs.tail";
+pub(super) const LOGS_STREAM: &str = "keel.logs.stream";
+pub(super) const LOGS_MENU_PATH: &str = "system/logs";
+pub(super) const LOGS_MENU_ICON: &str = "file-text";
 pub(super) const MENU_PATH: &str = "system/health";
 pub(super) const MENU_ICON: &str = "activity";
 const DEFAULT_TAIL: u32 = 200;
@@ -27,6 +32,9 @@ pub(super) struct LogsTail {
     #[serde(default)]
     pub(super) level: Option<LogLevel>,
 }
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+pub(super) struct LogsStream {}
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -116,6 +124,20 @@ pub(super) fn logs_tail() -> FunctionDef {
                 dropped: ring.dropped(),
             })
         })
+}
+
+pub(super) fn logs_stream() -> FunctionBuilder<LogsStream, LogLine> {
+    function::<LogsStream, LogLine>(LOGS_STREAM)
+        .level(Level::Admin)
+        .unowned()
+        .ui(ObjectScreen::new("keel.logs.stream.title"))
+}
+
+pub(super) async fn follow_logs(_: Call<LogsStream>) -> Result<Lines> {
+    let backlog = usize::try_from(DEFAULT_TAIL).unwrap_or(logs::CAPACITY);
+    Ok(Lines::new(
+        logs::ring().follow(backlog).map(|entry| entry.line()),
+    ))
 }
 
 #[cfg(test)]

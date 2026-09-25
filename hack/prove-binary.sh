@@ -263,6 +263,13 @@ print("%06d" % ((struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF)
 EOF
 }
 
+stream_sample() {
+  local out=$1 path=$2 credential=$3
+  curl_tls -sS -N --max-time 2 -D "$out.headers" -H "Cookie: $credential" "$scheme://127.0.0.1:$port$path" >"$out" 2>/dev/null
+  local code=$?
+  [ "$code" -eq 0 ] || [ "$code" -eq 28 ]
+}
+
 header_matches() {
   local file=$1 name=$2 pattern=$3
   header_of "$file" "$name" | grep -qi "$pattern"
@@ -535,6 +542,12 @@ check "POST /api/v1/call/auth.login as first is 200" http_is "$site/login-first.
 first_cookie=$(session_cookie_of "$site/login-first.json.headers") || fail "auth.login sets the session cookie for first"
 check "GET /api/v1/boot as first is 200" http_is "$site/boot-first.json" 200 GET /api/v1/boot '' "$first_cookie"
 check "boot names first as an admin of the root account" json_is "$site/boot-first.json" 'doc["principal"]["login"] == "first" and doc["principal"]["level"] == "admin"'
+check "GET the kernel log stream as first" stream_sample "$site/logs-stream.sse" /api/v1/x/keel/logs.stream "$first_cookie"
+check "the kernel log stream is served as server-sent events" header_matches "$site/logs-stream.sse.headers" content-type '^text/event-stream'
+check "the kernel log stream carries the lines of the ring" grep -q '^event: line$' "$site/logs-stream.sse"
+check "GET the kernel log stream without a session is 401" http_is "$site/logs-stream-guest.json" 401 GET /api/v1/x/keel/logs.stream
+check "ctl keel.logs.stream is refused and names its raw route" keel_fails "$site/logs-stream.err" ctl keel.logs.stream
+check "the refusal names the raw route of the stream" grep -qE 'stream_route|/api/v1/x/keel/logs\.stream' "$site/logs-stream.err"
 check "ctl keel.principal.list finds first as an admin of the root account" keel_ok "$site/principal-first.json" ctl keel.principal.list search=first --out json
 check "the setup administrator is stored in the root account with the owner role" json_is "$site/principal-first.json" 'doc["ok"] is True and [(row["login"], row["level"], row["accountId"], row["role"]) for row in doc["data"]["data"]] == [("first", "admin", "00000000000000000000000000", "owner")]'
 

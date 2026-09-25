@@ -211,6 +211,7 @@
       "service_missing": "The service {service} is not provided",
       "setting_value": "The setting {key} has no usable value",
       "spawn_inside_task": "A task cannot spawn itself again",
+      "stream_route": "The function {function} is a stream; open it at {route}",
       "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
       "task_output": "The task output at {path} could not be opened",
       "tasks_unavailable": "Background tasks are not available on this installation",
@@ -246,6 +247,11 @@
       "user": "User"
     },
     "login": "Login",
+    "logs": {
+      "stream": {
+        "title": "Log"
+      }
+    },
     "name": "Name",
     "once": {
       "title": "Shown only once: copy the values now"
@@ -498,6 +504,13 @@
       }
     },
     "state": "State",
+    "stream": {
+      "connecting": "Connecting…",
+      "ended": "The stream has ended.",
+      "failed": "The stream could not be opened or was interrupted.",
+      "live": "Live",
+      "reconnect": "Reconnect"
+    },
     "title": "Title",
     "type": "Type",
     "updatedAt": "Updated",

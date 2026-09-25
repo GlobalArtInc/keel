@@ -5,19 +5,21 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use keel_types::{Access, Level};
-use schemars::Schema;
+use keel_types::{Access, Level, LogLine};
+use schemars::{JsonSchema, Schema};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::call::{Call, Invoker};
 use crate::context::Context;
 use crate::error::Result;
-use crate::function::FunctionDef;
+use crate::function::{FunctionBuilder, FunctionDef};
 use crate::guard::Guard;
 use crate::host::{AgentOp, ConfigTemplate};
 use crate::lifecycle::AccountLifecycle;
 use crate::limit::LimitDef;
 use crate::services::{ServiceKey, Services};
+use crate::stream::Lines;
 use crate::ui::ViewSpec;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -421,6 +423,19 @@ impl Registrar {
         self
     }
 
+    pub fn stream<P, F, Fut>(
+        &mut self,
+        builder: FunctionBuilder<P, LogLine>,
+        handler: F,
+    ) -> &mut Self
+    where
+        P: DeserializeOwned + JsonSchema + Send + 'static,
+        F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Lines>> + Send + 'static,
+    {
+        self.function(builder.lines(handler))
+    }
+
     pub fn view(&mut self, name: &str, spec: ViewSpec) -> &mut Self {
         self.check_prefix("view", name);
         if self.views.iter().any(|known| known.name == name)
@@ -752,6 +767,36 @@ mod tests {
         ) -> BoxFuture<'static, Result<Value>> {
             Box::pin(async move { Ok(params) })
         }
+    }
+
+    #[tokio::test]
+    async fn a_stream_registers_a_read_function_of_kind_stream_whose_call_attaches_its_lines() {
+        use futures::StreamExt;
+        use keel_types::{LogLevel, Mode};
+
+        let mut r = Registrar::new("m");
+        r.stream(
+            function::<Nothing, LogLine>("m.e.tail").level(Level::User),
+            |call: Call<Nothing>| async move {
+                let login = call.principal().login.clone();
+                Ok(Lines::new(futures::stream::iter([LogLine::new(
+                    LogLevel::Info,
+                    login,
+                )])))
+            },
+        );
+        let registrations = r.into_registrations().expect("registered");
+        let def = &registrations.functions[0];
+        assert_eq!(def.kind(), Kind::Stream);
+        assert_eq!(def.mode(), Mode::Read);
+        let handle = crate::tests::read_handle();
+        let answer = (def.handler())(handle.call(json!({})))
+            .await
+            .expect("opened");
+        assert_eq!(answer, Value::Null);
+        let lines: Vec<LogLine> = handle.take_lines().expect("the lines").collect().await;
+        assert_eq!(lines, [LogLine::new(LogLevel::Info, "alice")]);
+        assert!(handle.take_lines().is_none());
     }
 
     #[test]

@@ -33,6 +33,7 @@ const MESSAGES = {
     principal: { list: { title: 'Principals' } },
     product: { list: { title: 'Products' } },
     doctor: { run: { title: 'Health' } },
+    logs: { stream: { title: 'Log' } },
   },
 };
 
@@ -200,7 +201,12 @@ describe('the sidebar rule', () => {
 
   it('no product shows the platform group alone', async () => {
     const fixture = await render(noProduct());
-    expect(sectionsOf(fixture)).toEqual([PLATFORM]);
+    expect(sectionsOf(fixture)).toEqual([
+      {
+        ...PLATFORM,
+        groups: [{ ...SYSTEM, items: [...SYSTEM.items, 'Log /f/keel.logs.stream'] }],
+      },
+    ]);
     expect(brandShown(fixture)).toEqual({ alt: null, text: 'Keel' });
     expect(levelShown(fixture)).toBe('Owner');
   });

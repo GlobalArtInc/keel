@@ -7,6 +7,7 @@ pub mod expr;
 pub mod id;
 pub mod level;
 pub mod list;
+pub mod log;
 pub mod options;
 pub mod principal;
 pub mod task;
@@ -30,6 +31,7 @@ pub use expr::{Context, Expr};
 pub use id::Id;
 pub use level::Level;
 pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
+pub use log::{LogLevel, LogLine};
 pub use options::{Choice, Choices, OptionsQuery};
 pub use principal::{
     Account, AccountState, ActorVia, NotDelegated, Principal, Scope, Via, is_mask,

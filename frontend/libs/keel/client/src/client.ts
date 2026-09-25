@@ -6,7 +6,14 @@ import {
   type HttpResponse,
 } from '@angular/common/http';
 import { Injectable, inject, signal, type Signal } from '@angular/core';
-import type { Boot, CallError, Descriptor, Envelope, Messages } from '@globalart/keel/meta';
+import type {
+  Boot,
+  CallError,
+  Descriptor,
+  Envelope,
+  LogLine,
+  Messages,
+} from '@globalart/keel/meta';
 import { PhxGlobalProgressService } from '@globalart/phoenix-ui';
 import {
   Observable,
@@ -22,6 +29,8 @@ import {
 } from 'rxjs';
 import { CONTENT_DISPOSITION, downloadUrl, filenameOf, type DownloadResult } from './download';
 import { tracked } from './progress';
+import { KEEL_EVENT_SOURCE } from './source';
+import { openStream } from './stream';
 import { isTaskRef } from './tasks';
 import { JSON_TYPE, multipartOf, uploadUrl, type UploadFiles } from './upload';
 
@@ -79,6 +88,8 @@ export abstract class KeelClient {
   ): Observable<Envelope<T>>;
 
   abstract download(func: string, params?: unknown): Observable<DownloadResult>;
+
+  abstract stream(func: string, params?: unknown): Observable<LogLine>;
 
   abstract upload<T = unknown>(
     func: string,
@@ -149,6 +160,7 @@ function bodyOf<T>(response: HttpResponse<T>): T {
 export class KeelHttpClient extends KeelClient {
   private readonly http = inject(HttpClient);
   private readonly progress = inject(PhxGlobalProgressService);
+  private readonly source = inject(KEEL_EVENT_SOURCE);
   private readonly requestId = signal<string | null>(null);
   private readonly replay = signal(false);
   private readonly version = signal<string | null>(null);
@@ -246,6 +258,10 @@ export class KeelHttpClient extends KeelClient {
         }),
         tracked(this.progress),
       );
+  }
+
+  stream(func: string, params: unknown = {}): Observable<LogLine> {
+    return openStream(this.source, func, params);
   }
 
   upload<T = unknown>(

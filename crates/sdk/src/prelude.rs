@@ -4,7 +4,8 @@ pub use async_trait::async_trait;
 pub use keel_types::{
     Access, ActionRole, Choice, Choices, ColumnType, ConfirmDetails, ConfirmInput, DownloadFile,
     DownloadRef, EventSubject, ExportFormat, FileAttrs, GroupResult, Id, Kind, Level, ListQuery,
-    Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir, TaskRef, Tone, Total, WidgetKind,
+    LogLevel, LogLine, Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir, TaskRef, Tone,
+    Total, WidgetKind,
 };
 pub use schemars::JsonSchema;
 pub use serde::{Deserialize, Serialize};
@@ -32,5 +33,6 @@ pub use crate::product::{Asset, Brand, Edition, LevelLabels, MenuGroup, ProductM
 pub use crate::registrar::{Before, DescriptorPatch, MenuNode, Registrar};
 pub use crate::secret::Secret;
 pub use crate::settings::{SettingDef, SettingsSource};
+pub use crate::stream::Lines;
 pub use crate::ui::{Action, ActionScreen, Column, Form, List, ObjectScreen, ViewSpec};
 pub use crate::{VERSION, chrono, migrator};

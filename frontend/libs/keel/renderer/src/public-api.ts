@@ -36,6 +36,7 @@ export type { PropRow } from './object/props.component';
 export { KeelObjectComponent } from './object/object.component';
 export type { ObjectState } from './object/object.component';
 export { KeelReportComponent } from './report/report.component';
+export { KeelStreamComponent } from './stream/stream.component';
 export {
   DEFAULT_KEY,
   KeelActionRunner,

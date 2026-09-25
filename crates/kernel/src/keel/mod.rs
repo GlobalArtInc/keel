@@ -34,10 +34,11 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 21] = [
+pub const FUNCTIONS: [&str; 22] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
+    health::LOGS_STREAM,
     RESTART,
     SETUP_ADMIN,
     "keel.account.list",
@@ -89,6 +90,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(crate::export::function())
         .function(health::doctor_run())
         .function(health::logs_tail())
+        .stream(health::logs_stream(), health::follow_logs)
         .function(widgets::accounts())
         .contribute(stats::accounts())
         .contribute(stats::principals())
@@ -121,6 +123,12 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .order(90)
                 .label("keel.doctor.run.title"),
         )
+        .menu(
+            MenuNode::new(health::LOGS_MENU_PATH, health::LOGS_STREAM)
+                .icon(health::LOGS_MENU_ICON)
+                .order(95)
+                .label("keel.logs.stream.title"),
+        )
         .i18n("en", include_str!("../../i18n/en.json"))
         .i18n("ru", include_str!("../../i18n/ru.json"))
         .start(|ctx| async move {
@@ -139,7 +147,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_twenty_one_functions_and_the_accounts_widget_under_the_keel_prefix()
+    fn the_kernel_module_registers_its_twenty_two_functions_and_the_accounts_widget_under_the_keel_prefix()
      {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
@@ -151,7 +159,7 @@ mod tests {
             .into_registrations()
             .expect("the registrations are valid");
         assert_eq!(registrations.permissions.len(), 4);
-        assert_eq!(registrations.menu.len(), 4);
+        assert_eq!(registrations.menu.len(), 5);
         let widgets: Vec<(WidgetKind, &str, Option<Level>)> = registrations
             .contributions
             .of::<DashboardWidget>()

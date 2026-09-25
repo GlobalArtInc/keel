@@ -6,6 +6,7 @@ use keel::types::ErrorCode;
 
 use crate::api::{Expansion, RecordSeed, ZoneTemplates};
 use crate::changes::{bump, first_serial};
+use crate::history::LOG;
 use crate::provider::DnsProvider;
 use crate::{EXISTS, zone};
 
@@ -183,7 +184,13 @@ pub(crate) fn list() -> FunctionDef {
                     .params([("id", "$id")])
                     .icon("shield-check"),
             )
-            .row_actions(["edit", "records", "dnssec", "delete"])
+            .action(
+                Action::new("log", ActionRole::Child)
+                    .screen(LOG)
+                    .params([("id", "$id")])
+                    .icon("history"),
+            )
+            .row_actions(["edit", "records", "dnssec", "log", "delete"])
             .empty("dns.zone.empty", Some("create"))
             .invalidate_on(["dns.zone.*", "dns.record.*"])
             .master_detail(RECORDS, [(RECORDS_PARENT, "$id")]))

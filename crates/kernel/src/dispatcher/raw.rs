@@ -5,6 +5,7 @@ use crate::registry::Function;
 pub const RAW_PREFIX: &str = "/api/v1/x";
 pub const DOWNLOAD_ROUTE_KEY: &str = "keel.error.download_route";
 pub const UPLOAD_ROUTE_KEY: &str = "keel.error.upload_route";
+pub const STREAM_ROUTE_KEY: &str = "keel.error.stream_route";
 
 pub fn raw_route(function: &Function) -> String {
     let module = function.module();
@@ -24,6 +25,12 @@ pub fn download_route_error(function: &Function) -> KeelError {
 
 pub fn upload_route_error(function: &Function) -> KeelError {
     KeelError::validation(UPLOAD_ROUTE_KEY)
+        .param("function", function.name())
+        .param("route", raw_route(function))
+}
+
+pub fn stream_route_error(function: &Function) -> KeelError {
+    KeelError::validation(STREAM_ROUTE_KEY)
         .param("function", function.name())
         .param("route", raw_route(function))
 }

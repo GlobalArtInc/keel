@@ -17,6 +17,7 @@ use crate::download::Download;
 use crate::error::{KeelError, Result};
 use crate::services::Services;
 use crate::settings::SettingsSource;
+use crate::stream::Lines;
 use crate::system::{Client, LimitSource, SessionChange, TaskRunner, TaskSpec};
 use crate::task::TaskHandle;
 
@@ -46,6 +47,7 @@ pub(crate) struct CallState {
     session: Mutex<Option<SessionChange>>,
     resolved: Mutex<Option<Id>>,
     download: Mutex<Option<Download>>,
+    lines: Mutex<Option<Lines>>,
     invoked: Mutex<Option<Invoked>>,
 }
 
@@ -328,6 +330,14 @@ impl<P> Call<P> {
             .unwrap_or_else(PoisonError::into_inner) = Some(download);
     }
 
+    pub(crate) fn attach_lines(&self, lines: Lines) {
+        *self
+            .state
+            .lines
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(lines);
+    }
+
     pub(crate) fn into_parts(self) -> (Arc<CallState>, P) {
         (self.state, self.params)
     }
@@ -444,6 +454,7 @@ impl CallBuilder {
             session: Mutex::new(None),
             resolved: Mutex::new(None),
             download: Mutex::new(None),
+            lines: Mutex::new(None),
             invoked: Mutex::new(None),
         }))
     }
@@ -530,6 +541,14 @@ impl CallHandle {
     pub fn take_download(&self) -> Option<Download> {
         self.0
             .download
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    pub fn take_lines(&self) -> Option<Lines> {
+        self.0
+            .lines
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take()

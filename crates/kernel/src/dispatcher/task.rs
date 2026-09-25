@@ -100,6 +100,7 @@ impl Inner {
             context: None,
             session: pool.take_session_change(),
             download: None,
+            lines: None,
         }))
     }
 
@@ -170,6 +171,7 @@ impl Inner {
             context: None,
             session: None,
             download: None,
+            lines: None,
         })
     }
 }

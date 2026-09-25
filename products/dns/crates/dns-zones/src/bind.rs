@@ -13,6 +13,7 @@ use keel_host::api::{Dest, Host, HostExecutor, Origin};
 
 use crate::api::{RecordLine, ZoneRecords};
 use crate::config::DnsConfig;
+use crate::history;
 use crate::provider::DnsProvider;
 use crate::{PRODUCT, zone};
 
@@ -102,13 +103,18 @@ impl DnsProvider for BindProvider {
             Err(error) => Err(error),
         };
         match published {
-            Ok(()) => mark(db, &current, zone::STATE_ACTIVE, None, true).await,
+            Ok(()) => {
+                mark(db, &current, zone::STATE_ACTIVE, None, true).await?;
+                history::applied(db, &current).await
+            }
             Err(error) => {
+                let detail = detail(&error, &current);
+                history::failed(db, &current, &detail).await?;
                 mark(
                     db,
                     &current,
                     zone::STATE_ERROR,
-                    Some(detail(&error, &current)),
+                    Some(detail),
                     current.served,
                 )
                 .await?;

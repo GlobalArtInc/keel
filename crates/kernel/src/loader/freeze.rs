@@ -1661,7 +1661,7 @@ mod tests {
         assert!(registry.function("base.item.edit").is_some());
         assert!(registry.function("base.item.delete").is_none());
         assert!(registry.function("keel.account.list").is_some());
-        assert_eq!(registry.menu().len(), 5);
+        assert_eq!(registry.menu().len(), 6);
         assert_eq!(registry.permissions().len(), 6);
         assert!(registry.permission("base.item.read").is_some());
         assert!(registry.permission("keel.account.manage").is_some());

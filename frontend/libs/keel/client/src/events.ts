@@ -18,23 +18,11 @@ import type {
 import { Subject, type Observable } from 'rxjs';
 import { KeelBoot } from './boot';
 import { API_PREFIX, KeelClient } from './client';
+import { KEEL_EVENT_SOURCE, type EventSourceLike } from './source';
 
 export const KEEL_EVENTS_PATH = new InjectionToken<string>('KEEL_EVENTS_PATH', {
   providedIn: 'root',
   factory: () => `${API_PREFIX}/events`,
-});
-
-export interface EventSourceLike {
-  readonly readyState: number;
-  addEventListener(type: string, listener: (event: Event) => void): void;
-  close(): void;
-}
-
-export type EventSourceFactory = (url: string, init: EventSourceInit) => EventSourceLike;
-
-export const KEEL_EVENT_SOURCE = new InjectionToken<EventSourceFactory>('KEEL_EVENT_SOURCE', {
-  providedIn: 'root',
-  factory: () => (url, init) => new EventSource(url, init),
 });
 
 export type EventsPhase = 'idle' | 'connecting' | 'open' | 'closed';

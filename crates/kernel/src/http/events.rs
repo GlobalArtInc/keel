@@ -37,13 +37,13 @@ pub const META_INVALIDATE: &str = "meta.invalidate";
 
 const AFTER: &str = "after";
 const NO_STORE: &str = "no-store";
-const KEEP_ALIVE_COMMENT: &str = "keep-alive";
+pub(super) const KEEP_ALIVE_COMMENT: &str = "keep-alive";
 const DRAINING_COMMENT: &str = "draining";
 const SUPERSEDED_COMMENT: &str = "superseded";
-const KEEP_ALIVE_FLOOR: Duration = Duration::from_millis(1);
+pub(super) const KEEP_ALIVE_FLOOR: Duration = Duration::from_millis(1);
 const QUEUE: usize = 64;
 
-type SessionKey = [u8; 32];
+pub(super) type SessionKey = [u8; 32];
 
 struct Slot {
     serial: u64,
@@ -71,7 +71,7 @@ impl Streams {
         self.open.load(Ordering::SeqCst)
     }
 
-    fn enter(self: &Arc<Self>, key: SessionKey) -> (Opened, oneshot::Receiver<()>) {
+    pub(super) fn enter(self: &Arc<Self>, key: SessionKey) -> (Opened, oneshot::Receiver<()>) {
         let serial = self.serial.fetch_add(1, Ordering::SeqCst);
         let (evict, evicted) = oneshot::channel();
         {
@@ -107,12 +107,12 @@ impl Streams {
         self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn drained(&self) -> watch::Receiver<bool> {
+    pub(super) fn drained(&self) -> watch::Receiver<bool> {
         self.readiness.drained()
     }
 }
 
-struct Opened {
+pub(super) struct Opened {
     streams: Arc<Streams>,
     key: SessionKey,
     serial: u64,
@@ -125,7 +125,7 @@ impl Drop for Opened {
     }
 }
 
-fn session_key(credential: &Credential) -> SessionKey {
+pub(super) fn session_key(credential: &Credential) -> SessionKey {
     let (kind, secret): (&[u8], _) = match credential {
         Credential::Bearer(secret) => (b"bearer", secret),
         Credential::Session(secret) => (b"session", secret),
@@ -443,7 +443,7 @@ impl Connection {
     }
 }
 
-async fn draining(drained: &mut watch::Receiver<bool>) {
+pub(super) async fn draining(drained: &mut watch::Receiver<bool>) {
     if drained.wait_for(|draining| *draining).await.is_err() {
         std::future::pending::<()>().await;
     }

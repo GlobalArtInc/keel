@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use keel_types::descriptor::{Access, DESCRIPTOR_VERSION, Descriptor, Kind, Mode};
-use keel_types::{DownloadFile, Level, ListQuery, Page, Sort, SortDir};
+use keel_types::{DownloadFile, Level, ListQuery, LogLine, Page, Sort, SortDir};
 use schemars::{JsonSchema, Schema, json_schema, schema_for};
 use sea_orm::{IdenStatic, Iterable, PrimaryKeyToColumn};
 use serde::Serialize;
@@ -20,6 +20,7 @@ use crate::call::Call;
 use crate::download::DownloadOutcome;
 use crate::error::{KeelError, Result};
 use crate::list::{ListSource, ListSpec};
+use crate::stream::Lines;
 use crate::ui::{UiDef, UiError};
 
 pub type ErasedHandler =
@@ -312,6 +313,34 @@ where
                     DownloadOutcome::Task(reference) => serde_json::to_value(reference)?,
                 };
                 Ok(answer)
+            })
+        });
+        self.finish(erased, None)
+    }
+}
+
+impl<P> FunctionBuilder<P, LogLine>
+where
+    P: DeserializeOwned + JsonSchema + Send + 'static,
+{
+    pub(crate) fn lines<F, Fut>(mut self, handler: F) -> FunctionDef
+    where
+        F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Lines>> + Send + 'static,
+    {
+        self.def.kind = Kind::Stream;
+        let handler = Arc::new(handler);
+        let erased: ErasedHandler = Arc::new(move |call: Call<Value>| {
+            let handler = handler.clone();
+            Box::pin(async move {
+                let (state, raw) = call.into_parts();
+                let params: P = serde_json::from_value(raw).map_err(|error| {
+                    KeelError::validation("keel.error.validation").source(error)
+                })?;
+                let call = Call::from_parts(state, params);
+                let slot = Call::from_parts(call.state_clone(), ());
+                slot.attach_lines(handler(call).await?);
+                Ok(Value::Null)
             })
         });
         self.finish(erased, None)

@@ -496,7 +496,8 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
                     "system/accounts",
                     "system/principals",
                     "system/products",
-                    "system/health"
+                    "system/health",
+                    "system/logs"
                 ]
             ),
         ]
@@ -559,7 +560,8 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
                 "system/accounts",
                 "system/principals",
                 "system/products",
-                "system/health"
+                "system/health",
+                "system/logs"
             ]
         )]
     );

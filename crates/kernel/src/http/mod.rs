@@ -7,6 +7,7 @@ mod cookie;
 mod descriptors;
 mod events;
 mod i18n;
+mod lines;
 mod live;
 mod proxy;
 mod raw;
@@ -48,6 +49,7 @@ pub use events::{
     DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_MAX_CLIENTS, SSE_REPLAY_WINDOW, SSE_RETRY,
 };
 pub use i18n::Catalogue;
+pub use lines::{END_EVENT, LINE_EVENT};
 pub use raw::{BODY_NOT_MULTIPART_KEY, PART_REPEATED_KEY, PART_UNKNOWN_KEY};
 pub use reply::{IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID};
 
@@ -164,6 +166,7 @@ pub(crate) struct Shared {
     options: HttpOptions,
     live: OnceLock<Live>,
     streams: Arc<Streams>,
+    tails: Arc<Streams>,
 }
 
 pub struct Served {
@@ -181,6 +184,7 @@ enum Stop {
 impl Http {
     pub fn new(db: DatabaseConnection, readiness: Arc<Readiness>, options: HttpOptions) -> Self {
         let streams = Arc::new(Streams::new(readiness.clone()));
+        let tails = Arc::new(Streams::new(readiness.clone()));
         Self {
             state: Arc::new(Shared {
                 db,
@@ -188,6 +192,7 @@ impl Http {
                 options,
                 live: OnceLock::new(),
                 streams,
+                tails,
             }),
         }
     }

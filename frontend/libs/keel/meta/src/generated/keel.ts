@@ -135,6 +135,7 @@ export type EventActorKind = 'principal' | 'peer' | 'system';
 export type FilterOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
 export type FilterValue = string | string[];
 export type SortDir = 'asc' | 'desc';
+export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 export type NotificationLevel = 'info' | 'warning' | 'error';
 export type Scope =
   | ('full' | 'read_only')
@@ -465,6 +466,11 @@ export interface ListQuery {
 export interface Sort {
   key: string;
   dir: SortDir;
+}
+export interface LogLine {
+  at?: string | null;
+  level: LogLevel;
+  text: string;
 }
 export interface NotificationFrame {
   id: Id;

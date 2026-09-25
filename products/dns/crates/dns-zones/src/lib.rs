@@ -3,6 +3,7 @@ mod bind;
 mod changes;
 mod config;
 mod functions;
+mod history;
 mod hooks;
 mod lifecycle;
 mod problems;
@@ -59,6 +60,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::delete())
         .function(report::zones())
         .function(widget::zones(LIMIT, TOTAL))
+        .stream(history::log(), history::tail)
         .permission("dns.zone.read", &[Level::User, Level::Reseller])
         .permission("dns.zone.manage", &[Level::User, Level::Reseller])
         .menu(

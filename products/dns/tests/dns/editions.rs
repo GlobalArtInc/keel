@@ -105,7 +105,10 @@ async fn a_lite_lease_hides_dns_zone_dnssec_get_from_the_menu_and_it_answers_lic
         .await;
     assert_eq!(descriptor.status, 402, "{}", descriptor.body);
     assert!(!listed(&http).await);
-    assert_eq!(row_actions(&http).await, ["edit", "records", "delete"]);
+    assert_eq!(
+        row_actions(&http).await,
+        ["edit", "records", "log", "delete"]
+    );
     assert_eq!(boot_features(&http).await, ["dns.zones"]);
 
     leased(&harness, &issuer, "pro").await;
@@ -121,7 +124,7 @@ async fn a_lite_lease_hides_dns_zone_dnssec_get_from_the_menu_and_it_answers_lic
     assert!(listed(&http).await);
     assert_eq!(
         row_actions(&http).await,
-        ["edit", "records", "dnssec", "delete"]
+        ["edit", "records", "dnssec", "log", "delete"]
     );
     assert_eq!(boot_features(&http).await, ["dns.zones", DNSSEC]);
     harness.finish().await;

@@ -4,6 +4,7 @@ export type {
   KeelMockFixtures,
   RecordedCall,
   RecordedDownload,
+  RecordedStream,
   RecordedUpload,
 } from './mock-client';
 export {

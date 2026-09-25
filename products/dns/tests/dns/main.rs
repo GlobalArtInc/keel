@@ -1,4 +1,5 @@
 mod editions;
+mod history;
 mod records;
 mod report;
 mod stats;

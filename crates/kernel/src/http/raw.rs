@@ -15,8 +15,10 @@ use keel_types::{ErrorCode, FieldError, FileAttrs, Kind, Level};
 use serde_json::{Map, Value};
 
 use super::Shared;
-use super::auth::Caller;
+use super::auth::{self, Caller};
 use super::call::{body, from_query, options, respond};
+use super::events::KEEP_ALIVE_FLOOR;
+use super::lines::{self, Tail};
 use super::live::Live;
 use super::reply;
 use crate::dispatcher::{Plan, RAW_PREFIX, file_encoding, file_too_large, file_type};
@@ -45,16 +47,7 @@ pub(super) async fn get(
         return refused;
     }
     if function.def().kind() == Kind::Upload {
-        let mut response = reply::error(
-            KeelError::validation("keel.error.method_not_allowed")
-                .param("function", function.name())
-                .param("allowed", "POST"),
-            &caller.request_id,
-        );
-        response
-            .headers_mut()
-            .insert(ALLOW, HeaderValue::from_static("POST"));
-        return response;
+        return method_not_allowed(function, "POST", &caller.request_id);
     }
     let params = from_query(pairs);
     serve(&state, &live, function, caller, &headers, params).await
@@ -73,6 +66,9 @@ pub(super) async fn post(
     if let Some(refused) = refuse_guest(&caller) {
         return refused;
     }
+    if function.def().kind() == Kind::Stream {
+        return method_not_allowed(function, "GET", &caller.request_id);
+    }
     let headers = request.headers().clone();
     let params = match function.def().kind() {
         Kind::Upload => multipart(request, function).await,
@@ -88,6 +84,19 @@ fn resolve<'a>(live: &'a Live, module: &str, name: &str) -> Option<&'a Function>
         .find_map(|prefix| live.registry.function(&format!("{prefix}.{name}")))
         .filter(|function| function.module() == module)
         .filter(is_raw)
+}
+
+fn method_not_allowed(function: &Function, allowed: &'static str, request_id: &str) -> Response {
+    let mut response = reply::error(
+        KeelError::validation("keel.error.method_not_allowed")
+            .param("function", function.name())
+            .param("allowed", allowed),
+        request_id,
+    );
+    response
+        .headers_mut()
+        .insert(ALLOW, HeaderValue::from_static(allowed));
+    response
 }
 
 fn refuse_guest(caller: &Caller) -> Option<Response> {
@@ -125,19 +134,42 @@ async fn serve(
         Ok(params) => params,
         Err(error) => return reply::error(error, &request_id),
     };
-    let options = options(headers, &request_id, client, zone);
+    let options = options(headers, &request_id, client.clone(), zone);
     let mut reply = live
         .dispatcher
         .call(principal.clone(), function.name(), params, options)
         .await;
-    match reply.download.take() {
-        Some(download) => stream(download),
-        None => respond(state, live, &principal, reply).await,
+    if let Some(download) = reply.download.take() {
+        return stream(download);
+    }
+    let credential = auth::credential(headers);
+    match (reply.lines.take(), credential) {
+        (Some(lines), Some(credential)) => {
+            let tail = Tail {
+                function: function.name().to_owned(),
+                request_id,
+                principal,
+                credential,
+                client,
+                authenticators: live.authenticators.clone(),
+                keep_alive: state.options.sse_keep_alive.max(KEEP_ALIVE_FLOOR),
+                db: state.db.clone(),
+            };
+            lines::serve(&state.tails, tail, lines)
+        }
+        (Some(_), None) => reply::error(
+            KeelError::unauthenticated("keel.error.unauthenticated"),
+            &request_id,
+        ),
+        (None, _) => respond(state, live, &principal, reply).await,
     }
 }
 
 fn is_raw(function: &&Function) -> bool {
-    matches!(function.def().kind(), Kind::Download | Kind::Upload)
+    matches!(
+        function.def().kind(),
+        Kind::Download | Kind::Upload | Kind::Stream
+    )
 }
 
 fn multipart_limit(files: &[(String, FileAttrs)]) -> u64 {

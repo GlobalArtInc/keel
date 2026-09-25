@@ -9,7 +9,7 @@ import {
   type Fetched,
   type UploadFiles,
 } from '@globalart/keel/client';
-import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
+import type { Boot, Descriptor, Envelope, LogLine } from '@globalart/keel/meta';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { fixturesOf, readDump, type DumpLevel } from './dump';
 
@@ -33,6 +33,11 @@ export interface RecordedDownload {
   params: unknown;
 }
 
+export interface RecordedStream {
+  func: string;
+  params: unknown;
+}
+
 export interface RecordedUpload {
   func: string;
   params: unknown;
@@ -44,8 +49,10 @@ export class KeelMockClient extends KeelClient {
   readonly calls: RecordedCall[] = [];
   readonly downloads: RecordedDownload[] = [];
   readonly uploads: RecordedUpload[] = [];
+  readonly streams: RecordedStream[] = [];
   private readonly answers = new Map<string, Envelope[]>();
   private readonly files = new Map<string, DownloadResult>();
+  private readonly feeds = new Map<string, Subject<LogLine>>();
   private readonly requestId = signal<string | null>(null);
   private readonly replay = signal(false);
   private readonly version = signal<string | null>(null);
@@ -82,6 +89,14 @@ export class KeelMockClient extends KeelClient {
   file(func: string, result: DownloadResult): this {
     this.files.set(func, result);
     return this;
+  }
+
+  feed(func: string): Subject<LogLine> {
+    const opened = this.feeds.get(func);
+    if (opened === undefined) {
+      throw new Error(`the stream ${func} was not opened`);
+    }
+    return opened;
   }
 
   callsOf(func: string): RecordedCall[] {
@@ -129,6 +144,13 @@ export class KeelMockClient extends KeelClient {
       throw new Error(`no canned file for ${func}`);
     }
     return of(result);
+  }
+
+  stream(func: string, params: unknown = {}): Observable<LogLine> {
+    this.streams.push({ func, params });
+    const opened = new Subject<LogLine>();
+    this.feeds.set(func, opened);
+    return opened.asObservable();
   }
 
   upload<T = unknown>(

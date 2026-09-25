@@ -1,0 +1,52 @@
+{
+  "keel": 1,
+  "name": "keel.logs.stream",
+  "module": "keel",
+  "kind": "stream",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "LogsStream",
+    "type": "object"
+  },
+  "result": {
+    "title": "LogLine",
+    "type": "object",
+    "properties": {
+      "at": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "level": {
+        "$ref": "#/$defs/LogLevel"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "level",
+      "text"
+    ],
+    "$defs": {
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "trace",
+          "debug",
+          "info",
+          "warn",
+          "error"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "keel.logs.stream.title"
+  }
+}

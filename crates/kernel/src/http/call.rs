@@ -15,7 +15,9 @@ use super::auth::{Caller, Zone};
 use super::cookie;
 use super::live::Live;
 use super::reply::{self, IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION};
-use crate::dispatcher::{CallOptions, Reply, download_route_error, upload_route_error};
+use crate::dispatcher::{
+    CallOptions, Reply, download_route_error, stream_route_error, upload_route_error,
+};
 
 pub(super) const QUERY_PARAMS: &str = "q";
 
@@ -95,6 +97,7 @@ fn raw_only(live: &Live, func: &str) -> Option<KeelError> {
     match function.def().kind() {
         Kind::Download => Some(download_route_error(function)),
         Kind::Upload => Some(upload_route_error(function)),
+        Kind::Stream => Some(stream_route_error(function)),
         _ => None,
     }
 }

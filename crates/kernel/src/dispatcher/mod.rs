@@ -26,7 +26,7 @@ use keel_sdk::runtime::{
     AfterCommitHook, Before, CallBuilder, CallHandle, Invoked, Invoker, Stored,
 };
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
-use keel_sdk::{AfterContext, Db, Download, FunctionDef, KeelError, TaskHandle};
+use keel_sdk::{AfterContext, Db, Download, FunctionDef, KeelError, Lines, TaskHandle};
 use keel_types::{
     CallError, Envelope, ErrorCode, EventSubject, GroupResult, Id, Kind, Level, Meta,
     MetaPrincipal, Mode, Principal,
@@ -42,9 +42,10 @@ pub use group::{GROUP_BODY_KEY, MULTI_FIELD_KEY, MULTI_UNMASKED_KEY};
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
 pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed};
+pub(crate) use raw::stream_route_error;
 pub use raw::{
-    DOWNLOAD_ROUTE_KEY, RAW_PREFIX, UPLOAD_ROUTE_KEY, download_route_error, raw_route,
-    upload_route_error,
+    DOWNLOAD_ROUTE_KEY, RAW_PREFIX, STREAM_ROUTE_KEY, UPLOAD_ROUTE_KEY, download_route_error,
+    raw_route, upload_route_error,
 };
 pub use strip::MASK;
 pub use task::BATCH_LOG_PREFIX;
@@ -107,6 +108,7 @@ pub struct Reply {
     pub replay: bool,
     pub session: Option<SessionChange>,
     pub download: Option<Download>,
+    pub lines: Option<Lines>,
 }
 
 impl Reply {
@@ -136,15 +138,17 @@ struct Executed {
     context: Option<AfterContext>,
     session: Option<SessionChange>,
     download: Option<Download>,
+    lines: Option<Lines>,
 }
 
 struct Performed {
     data: Value,
     download: Option<Download>,
+    lines: Option<Lines>,
 }
 
 fn audited(def: &FunctionDef) -> bool {
-    def.mode() == Mode::Write || matches!(def.kind(), Kind::Download | Kind::Upload)
+    def.mode() == Mode::Write || matches!(def.kind(), Kind::Download | Kind::Upload | Kind::Stream)
 }
 
 struct Origin {
@@ -410,6 +414,7 @@ impl Dispatcher {
                     replay: executed.replay,
                     session: executed.session,
                     download: executed.download,
+                    lines: executed.lines,
                 }
             }
             Err(error) => error_reply(error, &request_id),
@@ -449,6 +454,7 @@ fn error_reply(error: KeelError, request_id: &str) -> Reply {
         replay: false,
         session: None,
         download: None,
+        lines: None,
     }
 }
 
@@ -560,6 +566,7 @@ impl Inner {
                         context: None,
                         session: pool.take_session_change(),
                         download: performed.download,
+                        lines: performed.lines,
                     })
                 }
                 Mode::Write => {
@@ -597,7 +604,11 @@ impl Inner {
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
         let performed = async {
-            let Performed { data, download } = match work {
+            let Performed {
+                data,
+                download,
+                lines,
+            } = match work {
                 Work::Single(params) => self.perform(target, &handle, params, after).await?,
                 Work::Group(group) => self.perform_group(target, &handle, group, after).await?,
             };
@@ -618,11 +629,19 @@ impl Inner {
                     return Err(Failure::Race { key, hash });
                 }
             }
-            Ok::<Performed, Failure>(Performed { data, download })
+            Ok::<Performed, Failure>(Performed {
+                data,
+                download,
+                lines,
+            })
         }
         .await;
         let outcome = match performed {
-            Ok(Performed { data, download }) => {
+            Ok(Performed {
+                data,
+                download,
+                lines,
+            }) => {
                 let mut hooks = take(after);
                 hooks.extend(handle.take_after_commit());
                 let context = handle
@@ -649,6 +668,7 @@ impl Inner {
                     context: Some(context),
                     session,
                     download,
+                    lines,
                 })
             }
             Err(failure) => {
@@ -801,6 +821,7 @@ impl Inner {
         Ok(Performed {
             data: serde_json::to_value(GroupResult::new(updated))?,
             download: None,
+            lines: None,
         })
     }
 
@@ -856,6 +877,7 @@ impl Inner {
         });
         let mut data = (def.handler())(handle.call(params)).await?;
         let download = handle.take_download();
+        let lines = handle.take_lines();
         if write {
             for patched in function.patched() {
                 let Some(value) = handle.extra().get(&patched.name).cloned() else {
@@ -895,7 +917,11 @@ impl Inner {
             }
         }
         self.project(target, handle.principal().level, &mut data);
-        Ok(Performed { data, download })
+        Ok(Performed {
+            data,
+            download,
+            lines,
+        })
     }
 
     fn project(&self, target: &Target<'_>, level: Level, data: &mut Value) {
@@ -939,8 +965,10 @@ impl Inner {
                     .param("function", func),
             );
         }
-        if target.function.def().kind() == Kind::Download {
-            return Err(download_route_error(target.function));
+        match target.function.def().kind() {
+            Kind::Download => return Err(download_route_error(target.function)),
+            Kind::Stream => return Err(stream_route_error(target.function)),
+            _ => {}
         }
         self.admit(&target, &outer, &params, false).await?;
         let (params, extra) = split_extra(params, &target.prepared.patched);
@@ -974,6 +1002,7 @@ fn replay(record: idempotency::Record, func: &str, hash: &str) -> Result<Execute
             context: None,
             session: None,
             download: None,
+            lines: None,
         })
     } else {
         Err(KeelError::idempotency_mismatch(
