@@ -11,7 +11,7 @@ start_agent() {
   gid=$(id -g)
   agent_socket="$dir/agent.sock"
   agent_log="$dir/agent.log"
-  mkdir -p "$dir/bin" "$dir/notes" "$dir/zones" "$dir/named" "$dir/templates" "$dir/cron.d" "$dir/www" "$dir/transfer"
+  mkdir -p "$dir/bin" "$dir/notes" "$dir/zones" "$dir/named" "$dir/templates" "$dir/cron.d" "$dir/www" "$dir/transfer" "$dir/vhosts"
   : >"$dir/passwd"
   : >"$dir/group"
   printf '%s\n' /bin/sh /bin/bash /usr/sbin/nologin >"$dir/shells"
@@ -106,16 +106,25 @@ EOF
 echo "\$@" >>"$dir/named-checkconf.calls"
 exit 0
 EOF
-  chmod 0755 "$dir/bin/getent" "$dir/bin/systemctl" "$dir/bin/named-checkconf" "$dir/bin/useradd" "$dir/bin/userdel" "$dir/bin/usermod" "$dir/bin/groupadd" "$dir/bin/groupdel" "$dir/bin/keel"
+  cat >"$dir/bin/nginx" <<EOF
+#!/bin/sh
+echo "\$@" >>"$dir/nginx.calls"
+if grep -qs keel_e2e_refused "$dir"/vhosts/*.conf; then
+  echo 'nginx: [emerg] unknown directive "keel_e2e_refused"' >&2
+  exit 1
+fi
+exit 0
+EOF
+  chmod 0755 "$dir/bin/nginx" "$dir/bin/getent" "$dir/bin/systemctl" "$dir/bin/named-checkconf" "$dir/bin/useradd" "$dir/bin/userdel" "$dir/bin/usermod" "$dir/bin/groupadd" "$dir/bin/groupdel" "$dir/bin/keel"
   if [ -n "$range" ]; then
     range_line="  uid_range: $range"
   fi
   cat >"$dir/agent.yaml" <<EOF
 policy:
 $range_line
-  file_roots: { notes: $dir/notes, zones: $dir/zones, named: $dir/named, www: $dir/www, transfer: $dir/transfer }
-  services: [named]
-  checks: { named.check: ["$dir/bin/named-checkconf", "-z"] }
+  file_roots: { notes: $dir/notes, zones: $dir/zones, named: $dir/named, www: $dir/www, transfer: $dir/transfer, vhosts: $dir/vhosts }
+  services: [named, nginx]
+  checks: { named.check: ["$dir/bin/named-checkconf", "-z"], nginx.test: ["$dir/bin/nginx", "-t"] }
   products:
     demo: { user_prefix: dm_, drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }
     dns: { drop_in_prefix: keel-dns- }

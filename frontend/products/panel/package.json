@@ -2,7 +2,7 @@
   "name": "@globalart/keel-panel",
   "version": "0.2.0",
   "private": true,
-  "description": "The KeelPanel product package: the panel product id, its brand, its menu group icon and the file manager view for the shell",
+  "description": "The KeelPanel product package: the panel product id, its brand, its menu group icon and the file manager and configuration editor views for the shell",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GlobalArtInc/keel.git",

@@ -10,6 +10,9 @@ server {
     server_name {{ domain }}{% for alias in aliases %} {{ alias }}{% endfor %};
     root {{ root }};
     disable_symlinks if_not_owner from=$document_root;
+{%- for line in custom %}
+{% if line %}    {{ line }}{% endif %}
+{%- endfor %}
 {%- if acme %}
 
     location ~ "^/\.well-known/acme-challenge/([-_A-Za-z0-9]+)$" {

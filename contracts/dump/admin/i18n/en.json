@@ -1527,26 +1527,6 @@
       }
     },
     "hosting": {
-      "file": {
-        "content": "File",
-        "error": {
-          "exists": "{path} already exists",
-          "failed": "The operation on {path} failed: {detail}",
-          "homeless": "The hosting user {user} has no home directory yet",
-          "missing": "{path} does not exist",
-          "outside": "{path} leads outside the home directory of the hosting user",
-          "transfer": "The file could not be handed between the panel and the host",
-          "unreadable": "The uploaded file could not be read"
-        },
-        "page": {
-          "main": "File"
-        },
-        "path": "Path",
-        "upload": {
-          "title": "Upload a file"
-        },
-        "user": "Hosting user"
-      },
       "file-manager": {
         "action": {
           "cancel": "Cancel",
@@ -1592,6 +1572,26 @@
         "title": "Files",
         "truncated": "Only the first {count} entries are shown",
         "uploaded": "{name} is uploaded",
+        "user": "Hosting user"
+      },
+      "file": {
+        "content": "File",
+        "error": {
+          "exists": "{path} already exists",
+          "failed": "The operation on {path} failed: {detail}",
+          "homeless": "The hosting user {user} has no home directory yet",
+          "missing": "{path} does not exist",
+          "outside": "{path} leads outside the home directory of the hosting user",
+          "transfer": "The file could not be handed between the panel and the host",
+          "unreadable": "The uploaded file could not be read"
+        },
+        "page": {
+          "main": "File"
+        },
+        "path": "Path",
+        "upload": {
+          "title": "Upload a file"
+        },
         "user": "Hosting user"
       },
       "user": {
@@ -1728,6 +1728,35 @@
           "root": "Document root",
           "state": "State",
           "suspended": "Suspended"
+        },
+        "config-editor": {
+          "noPool": "The site runs no PHP, so no pool is rendered",
+          "none": "No sites yet",
+          "notRendered": "Not rendered yet",
+          "overrides": "Overrides",
+          "pick": "Pick a site to edit its configuration",
+          "pool": "PHP pool",
+          "poolHint": "Lines appended to the pool of {domain}; a later line wins over the default",
+          "rendered": "Rendered",
+          "save": "Save",
+          "saved": "The configuration of {domain} is saved",
+          "server": "Server block",
+          "serverHint": "Directives placed inside the server block of {domain}; nginx -t checks them before they are kept",
+          "site": "Site",
+          "title": "Site configuration"
+        },
+        "config": {
+          "error": {
+            "text": "Only printable text, line breaks and tabs are allowed"
+          },
+          "page": {
+            "main": "Configuration"
+          },
+          "pool": "PHP pool overrides",
+          "server": "Server block overrides",
+          "set": {
+            "title": "Server configuration"
+          }
         },
         "create": {
           "title": "New site"

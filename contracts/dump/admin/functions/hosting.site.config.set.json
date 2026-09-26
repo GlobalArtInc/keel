@@ -1,0 +1,97 @@
+{
+  "keel": 1,
+  "name": "hosting.site.config.set",
+  "module": "hosting_site",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "SiteConfigSet",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "server": {
+        "type": "string",
+        "maxLength": 16384,
+        "default": "",
+        "x-ui": {
+          "control": "code"
+        }
+      },
+      "pool": {
+        "type": "string",
+        "maxLength": 16384,
+        "default": "",
+        "x-ui": {
+          "control": "code"
+        }
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "SiteConfigSet",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "server": {
+        "type": "string",
+        "maxLength": 16384,
+        "default": "",
+        "x-ui": {
+          "control": "code"
+        }
+      },
+      "pool": {
+        "type": "string",
+        "maxLength": 16384,
+        "default": "",
+        "x-ui": {
+          "control": "code"
+        }
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.site.config.set.title",
+    "read": "hosting.site.config.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "server",
+          "pool"
+        ]
+      }
+    ]
+  }
+}

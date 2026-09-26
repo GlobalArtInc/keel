@@ -53,6 +53,8 @@ LIB=/var/lib/keel
 CERT=$LIB/tls/cert.pem
 TRANSFER=/var/lib/keel-panel-transfer
 FILES_LOGIN=panelvm$STAMP
+CONFIG_HEADER="add_header X-Keel-Panel config-$STAMP always;"
+CONFIG_POOL="pm.max_children = 3"
 FILES_CONTENT="keel-panel-files $STAMP"
 
 usage() {
@@ -65,6 +67,7 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh ftp
        hack/panel-vm.sh files
        hack/panel-vm.sh backup
+       hack/panel-vm.sh config
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
@@ -166,6 +169,17 @@ row and the mail back, owned by $USER_NAME and vmail, and the mariadb client
 refusing a shell escape under --sandbox. It sets a schedule keeping one archive,
 takes a second backup and finds the first archive gone, then deletes the
 account and finds the archives of the site removed.
+
+"config" proves the configuration editor on the running installation. It
+creates an account with the hosting user $NAME and the site $DOMAIN on the
+newest PHP of /etc/php. It saves a server block override with a directive
+nginx does not know through hosting.site.config.set and finds it refused with
+the output of nginx -t on the field server, the server block unchanged and
+nginx answering as before. It saves the override $CONFIG_HEADER and the pool
+line $CONFIG_POOL, finds both in the server block and the pool, both accepted by
+nginx -t and php-fpm -t, nginx sending the header and
+hosting.site.config.get answering the installed server block, then deletes
+the account.
 EOF
 }
 
@@ -1131,6 +1145,65 @@ files_proof() {
   say "panel's file manager is proven on this machine: every operation ran as the hosting user inside its home, uploads and downloads passed through $TRANSFER without leaving anything behind, and paths leaving the home were refused"
 }
 
+config_refused() {
+  local out
+  out=$(as_keel ctl hosting.site.config.set "id=$1" "server=keel_vm_refused on;" --out json 2>&1) && return 1
+  grep -qF host.error.validate_failed <<<"$out" && grep -qF '"server"' <<<"$out" \
+    && grep -qF 'unknown directive "keel_vm_refused"' <<<"$out"
+}
+
+sends_header() {
+  curl -sS -o /dev/null -D - -H "Host: $DOMAIN" http://127.0.0.1/ 2>/dev/null \
+    | grep -qiF "x-keel-panel: config-$STAMP"
+}
+
+answers_installed() {
+  [ "$(call hosting.site.config.get "id=$1" | field data.rendered.server)" = "$(cat "$VHOST")" ]
+}
+
+config_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  local account id php pool site vhost_sum code task
+
+  say "--- a site"
+  php=$(php_version)
+  [ -n "$php" ] || fail "no php-fpm under /etc/php; run install first"
+  pool=/etc/php/$php/fpm/pool.d/keel-panel-$DOMAIN.conf
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+  site=$(call hosting.site.create "user=$id" "domain=$DOMAIN" "php=\"$php\"" | field data.id) || fail "keel ctl hosting.site.create failed"
+  check "the site $DOMAIN turns active" eventually site_state_is "$site" active
+  vhost_sum=$(sha256sum "$VHOST" | cut -d' ' -f1)
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $DOMAIN" http://127.0.0.1/)
+
+  say "--- an override nginx -t refuses"
+  check "the override is refused with the output of nginx -t on the field server" config_refused "$site"
+  check "the server block of $DOMAIN is unchanged" test "$(sha256sum "$VHOST" | cut -d' ' -f1)" = "$vhost_sum"
+  check "nginx -t accepts the configuration in place" nginx -t -q
+  check "nginx answers $DOMAIN with $code as before" fetched "$code" "$DOMAIN"
+  check "the site $DOMAIN stays active" site_state_is "$site" active
+
+  say "--- an override nginx -t accepts"
+  check "keel ctl hosting.site.config.set saves the header and the pool line" call hosting.site.config.set "id=$site" "server=$CONFIG_HEADER" "pool=$CONFIG_POOL"
+  check "the server block carries the header" grep -qF "    $CONFIG_HEADER" "$VHOST"
+  check "the pool carries the line" grep -qxF "$CONFIG_POOL" "$pool"
+  check "nginx -t accepts the server block" nginx -t -q
+  check "php-fpm$php -t accepts the pool" "php-fpm$php" -t
+  check "nginx sends the header for $DOMAIN" eventually sends_header
+  check "hosting.site.config.get answers the installed server block" answers_installed "$site"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "the server block of $DOMAIN is gone" eventually test ! -e "$VHOST"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's configuration editor is proven on this machine: an override nginx -t refuses never reached the running nginx, and an accepted one was rendered into the server block and the pool and served"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
@@ -1141,5 +1214,6 @@ case ${1:-} in
   ftp) shift; ftp_proof "$@" ;;
   files) shift; files_proof "$@" ;;
   backup) shift; backup_proof "$@" ;;
+  config) shift; config_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

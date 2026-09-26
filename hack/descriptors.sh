@@ -273,4 +273,8 @@ else
 fi
 
 echo "--- keel-dev views share"
-"$dev" views share --dump "$dump" --frontend "$frontend"
+shares=$("$dev" views share --dump "$dump" --frontend "$frontend")
+printf '%s\n' "$shares"
+printf '%s\n' "$shares" \
+  | awk '$1 == "panel" { split($2, views, "/"); found = 1; exit !(views[1] == 2 && $3 + 0 <= 10) } END { if (!found) exit 1 }' \
+  || fail "keel-dev views share must report exactly two views for panel, at most 10 % of its functions"

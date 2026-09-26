@@ -10575,6 +10575,210 @@
         }
       }
     },
+    "/api/v1/call/hosting.site.config.get": {
+      "post": {
+        "operationId": "hosting.site.config.get",
+        "tags": [
+          "hosting_site"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin",
+            "feature": "panel.web"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "SiteConfig",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "php": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "server": {
+                          "type": "string"
+                        },
+                        "pool": {
+                          "type": "string"
+                        },
+                        "rendered": {
+                          "$ref": "#/components/schemas/RenderedConfig"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "domain",
+                        "server",
+                        "pool",
+                        "rendered"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.site.config.set": {
+      "post": {
+        "operationId": "hosting.site.config.set",
+        "tags": [
+          "hosting_site"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "admin",
+            "feature": "panel.web"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SiteConfigSet",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "server": {
+                    "type": "string",
+                    "maxLength": 16384,
+                    "default": "",
+                    "x-ui": {
+                      "control": "code"
+                    }
+                  },
+                  "pool": {
+                    "type": "string",
+                    "maxLength": 16384,
+                    "default": "",
+                    "x-ui": {
+                      "control": "code"
+                    }
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "SiteConfigSet",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "server": {
+                          "type": "string",
+                          "maxLength": 16384,
+                          "default": "",
+                          "x-ui": {
+                            "control": "code"
+                          }
+                        },
+                        "pool": {
+                          "type": "string",
+                          "maxLength": 16384,
+                          "default": "",
+                          "x-ui": {
+                            "control": "code"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/hosting.site.create": {
       "post": {
         "operationId": "hosting.site.create",
@@ -21123,6 +21327,23 @@
           "SRV",
           "CAA"
         ]
+      },
+      "RenderedConfig": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pool": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "Resolution": {
         "type": "string",

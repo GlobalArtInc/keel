@@ -1,4 +1,5 @@
 pub mod api;
+mod config;
 mod functions;
 mod host;
 mod lifecycle;
@@ -45,6 +46,23 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::edit(Arc::clone(&turn)))
         .function(functions::delete(Arc::clone(&turn)))
         .function(functions::php())
+        .function(config::get(Arc::clone(&turn)))
+        .function(config::set(Arc::clone(&turn)))
+        .before(config::SET, {
+            let turn = Arc::clone(&turn);
+            move |call| config::trial(call, Arc::clone(&turn))
+        })
+        .view(
+            config::VIEW,
+            ViewSpec::new(Level::Admin)
+                .menu(
+                    MenuNode::new("panel/config", config::VIEW)
+                        .label("hosting.site.config-editor.title")
+                        .icon("file-code")
+                        .order(25),
+                )
+                .needs([FEATURE]),
+        )
         .permission("hosting.site.read", &[Level::User, Level::Reseller])
         .permission("hosting.site.manage", &[Level::User, Level::Reseller])
         .menu(

@@ -8,7 +8,7 @@ import { SHELL_PRODUCTS } from './products';
 const DEMO_VIEWS = resolve(__dirname, '../../../products/demo/views.json');
 
 describe('the products of the shell application', () => {
-  it('lists demo, dns and panel, the dns chunk resolving no custom view and the panel chunk the file manager', async () => {
+  it('lists demo, dns and panel, the dns chunk resolving no custom view and the panel chunk the file manager and the configuration editor', async () => {
     expect(SHELL_PRODUCTS.map((product) => product.id)).toEqual(['demo', 'dns', 'panel']);
     const resolved: string[][] = [];
     for (const product of SHELL_PRODUCTS.slice(1)) {
@@ -21,7 +21,7 @@ describe('the products of the shell application', () => {
           .map((view) => view.func),
       );
     }
-    expect(resolved).toEqual([[], ['hosting.file-manager']]);
+    expect(resolved).toEqual([[], ['hosting.file-manager', 'hosting.site.config-editor']]);
   });
 
   it('lists demo, whose chunk resolves the views its views.json names', async () => {

@@ -26,6 +26,8 @@ setup_tag=@setup
 mail_tag=@mail
 panel_tag=@panel
 hosting_user=files
+config_domain=config.example.org
+config_directive="client_max_body_size 64m;"
 hosting_range="{ from: 100000, to: 100009 }"
 reset_login=bob
 reset_address=bob@example.org
@@ -236,6 +238,21 @@ hosting_user_active() {
     waited=$((waited + 1))
   done
   cat "$site/hosting-user-state.json" >&2
+  return 1
+}
+
+site_active() {
+  local id=$1 waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/site-state.json" ctl hosting.site.get "id=$id" --out json \
+      && json_is "$site/site-state.json" "doc['ok'] is True and doc['data']['state'] == 'active'" 2>/dev/null; then
+      test -f "$site/agent/vhosts/keel-panel-$config_domain.conf"
+      return
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/site-state.json" >&2
   return 1
 }
 
@@ -527,10 +544,18 @@ start_serve
 check "ctl hosting.user.create --as alice creates the hosting user $hosting_user" keel_ok "$site/hosting-user.json" ctl hosting.user.create --as "$user_login" "name=$hosting_user"
 hosting_user_id=$(json_get "$site/hosting-user.json" 'doc["data"]["id"]')
 check "the hosting user $hosting_user turns active with its home" hosting_user_active "$hosting_user_id"
+check "ctl hosting.site.create --as alice creates the site $config_domain" keel_ok "$site/config-site.json" ctl hosting.site.create --as "$user_login" "user=$hosting_user_id" "domain=$config_domain"
+config_site_id=$(json_get "$site/config-site.json" 'doc["data"]["id"]')
+check "the site $config_domain turns active with its server block" site_active "$config_site_id"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" "KEEL_E2E_HOSTING_USER=hp_$hosting_user" pnpm e2e --grep "$panel_tag"
+  env "${e2e_env[@]}" "KEEL_E2E_HOSTING_USER=hp_$hosting_user" "KEEL_E2E_SITE=$config_domain" \
+    "KEEL_E2E_SITE_DIRECTIVE=$config_directive" pnpm e2e --grep "$panel_tag"
 )
+check "the server block of $config_domain carries the directive the configuration editor saved" grep -qF "    $config_directive" "$site/agent/vhosts/keel-panel-$config_domain.conf"
+check "the refused directive never stayed in the server block of $config_domain" test "$(grep -c keel_e2e_refused "$site/agent/vhosts/keel-panel-$config_domain.conf")" = 0
+check "ctl hosting.site.config.get answers the saved override of $config_domain" keel_ok "$site/config-get.json" ctl hosting.site.config.get "id=$config_site_id" --out json
+check "the saved override is the directive alone" json_is "$site/config-get.json" "doc['data']['server'] == '$config_directive'"
 check "every file operation ran the worker through agent-exec under the uid of hp_$hosting_user" files_ran_as "$(awk -F: -v k="hp_$hosting_user" '$1 == k {print $3}' "$site/agent/passwd")"
 check "no staged upload or download is left in the transfer root" test -z "$(ls -A "$site/agent/transfer")"
 

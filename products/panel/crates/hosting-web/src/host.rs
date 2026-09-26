@@ -5,11 +5,12 @@ use keel::prelude::*;
 use keel::sdk::sea_orm::sea_query::Expr;
 use keel::sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use keel::sdk::tokio::sync::Mutex;
+use keel::types::ErrorCode;
 use keel_host::api::{Dest, Host, HostExecutor, Origin};
 use keel_hosting_users::api::HostingUsers;
 
 use crate::api::{DocumentRoot, SiteCertificates, SiteTls, Sites};
-use crate::{PRODUCT, names, site};
+use crate::{PRODUCT, config, names, site};
 
 pub(crate) const SERVER_TEMPLATE: &str = "panel/nginx-site.conf.j2";
 pub(crate) const POOL_TEMPLATE: &str = "panel/php-fpm-pool.conf.j2";
@@ -25,6 +26,26 @@ const DETACHED: &str = "hosting.site.error.detached";
 const SITE_ID: &str = "hosting.site.error.site_id";
 
 pub(crate) type Turn = Arc<Mutex<()>>;
+
+#[derive(Clone, Copy)]
+enum Blame {
+    Row,
+    Field,
+}
+
+impl Blame {
+    fn on(self, field: &str, error: KeelError) -> KeelError {
+        match self {
+            Self::Field if error.code() == ErrorCode::Validation => error.field(field),
+            Self::Row | Self::Field => error,
+        }
+    }
+}
+
+pub(crate) struct Installed {
+    pub(crate) server: Option<String>,
+    pub(crate) pool: Option<String>,
+}
 
 pub(crate) struct Gone {
     domain: String,
@@ -83,30 +104,70 @@ impl Effects {
             let Some(row) = site::Entity::find_by_id(id.as_str()).one(db).await? else {
                 continue;
             };
-            let outcome = self.render(&host, db, &row).await;
-            let update = site::Entity::update_many()
-                .col_expr(site::Column::UpdatedAt, Expr::value(self.clock.now()))
-                .filter(site::Column::Id.eq(id.as_str()));
-            match outcome {
-                Ok(()) => {
-                    update
-                        .col_expr(site::Column::State, Expr::value(site::STATE_ACTIVE))
-                        .col_expr(site::Column::Error, Expr::value(Option::<String>::None))
-                        .col_expr(site::Column::PhpApplied, Expr::value(row.php.clone()))
-                        .exec(db)
-                        .await?;
-                }
-                Err(error) => {
-                    update
-                        .col_expr(site::Column::State, Expr::value(site::STATE_ERROR))
-                        .col_expr(site::Column::Error, Expr::value(detail(&error)))
-                        .exec(db)
-                        .await?;
-                    first.get_or_insert(error);
-                }
+            if let Some(error) = self.settle(&host, db, &row).await? {
+                first.get_or_insert(error);
             }
         }
         first.map_or(Ok(()), Err)
+    }
+
+    pub(crate) async fn trial(
+        &self,
+        db: &Db,
+        origin: Origin,
+        stored: &site::Model,
+        candidate: &site::Model,
+    ) -> Result<()> {
+        let _turn = self.turn.lock().await;
+        let host = self.host.on(origin);
+        let tried = self.render(&host, db, candidate, Blame::Field).await;
+        if tried.is_err() {
+            self.settle(&host, db, stored).await?;
+        }
+        tried
+    }
+
+    pub(crate) async fn installed(&self, origin: Origin, row: &site::Model) -> Result<Installed> {
+        let _turn = self.turn.lock().await;
+        let host = self.host.on(origin);
+        let file = file_of(&names::host_name(&row.domain, "domain")?);
+        let server = installed_file(&host, &Dest::new(VHOSTS, &file)).await?;
+        let pool = match names::php(row.php_applied.as_deref())? {
+            Some(version) => installed_file(&host, &Dest::new(&pool_root(&version), &file)).await?,
+            None => None,
+        };
+        Ok(Installed { server, pool })
+    }
+
+    async fn settle(
+        &self,
+        host: &Host<'_>,
+        db: &Db,
+        row: &site::Model,
+    ) -> Result<Option<KeelError>> {
+        let outcome = self.render(host, db, row, Blame::Row).await;
+        let update = site::Entity::update_many()
+            .col_expr(site::Column::UpdatedAt, Expr::value(self.clock.now()))
+            .filter(site::Column::Id.eq(row.id.as_str()));
+        match outcome {
+            Ok(()) => {
+                update
+                    .col_expr(site::Column::State, Expr::value(site::STATE_ACTIVE))
+                    .col_expr(site::Column::Error, Expr::value(Option::<String>::None))
+                    .col_expr(site::Column::PhpApplied, Expr::value(row.php.clone()))
+                    .exec(db)
+                    .await?;
+                Ok(None)
+            }
+            Err(error) => {
+                update
+                    .col_expr(site::Column::State, Expr::value(site::STATE_ERROR))
+                    .col_expr(site::Column::Error, Expr::value(detail(&error)))
+                    .exec(db)
+                    .await?;
+                Ok(Some(error))
+            }
+        }
     }
 
     async fn owner(&self, db: &Db, row: &site::Model) -> Result<(String, String)> {
@@ -126,7 +187,13 @@ impl Effects {
         Ok((user.name, home))
     }
 
-    async fn render(&self, host: &Host<'_>, db: &Db, row: &site::Model) -> Result<()> {
+    async fn render(
+        &self,
+        host: &Host<'_>,
+        db: &Db,
+        row: &site::Model,
+        blame: Blame,
+    ) -> Result<()> {
         let (user, home) = self.owner(db, row).await?;
         let domain = names::host_name(&row.domain, "domain")?;
         let aliases = names::aliases(&domain, &row.aliases.0)?;
@@ -143,13 +210,15 @@ impl Effects {
                     "user": user,
                     "socket": socket,
                     "home": home,
+                    "custom": config::lines(&row.pool_config),
                 }))
                 .dest(&pool_root(version), &file)
                 .mode(MODE)
                 .validate(&pool_check(version))
                 .reload(&pool_service(version))
                 .apply()
-                .await?;
+                .await
+                .map_err(|error| blame.on(config::POOL, error))?;
         }
         let served = host
             .template(SERVER_TEMPLATE)
@@ -164,13 +233,15 @@ impl Effects {
                     "certificate": pair.certificate,
                     "key": pair.key,
                 })),
+                "custom": config::lines(&row.server_config),
             }))
             .dest(VHOSTS, &file)
             .mode(MODE)
             .validate(NGINX_CHECK)
             .reload(NGINX)
             .apply()
-            .await;
+            .await
+            .map_err(|error| blame.on(config::SERVER, error));
         let (kept, dropped) = if served.is_ok() {
             (php.as_deref(), applied.as_deref())
         } else {
@@ -286,6 +357,14 @@ impl Sites for Renderer {
             root: names::root(&row.root)?,
             home,
         }))
+    }
+}
+
+async fn installed_file(host: &Host<'_>, dest: &Dest) -> Result<Option<String>> {
+    match host.fs().read(dest).await {
+        Ok(file) => Ok(Some(file.content)),
+        Err(error) if error.code() == ErrorCode::NotFound => Ok(None),
+        Err(error) => Err(error),
     }
 }
 

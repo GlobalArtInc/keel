@@ -16,6 +16,35 @@
         "state": "State",
         "suspended": "Suspended"
       },
+      "config-editor": {
+        "noPool": "The site runs no PHP, so no pool is rendered",
+        "none": "No sites yet",
+        "notRendered": "Not rendered yet",
+        "overrides": "Overrides",
+        "pick": "Pick a site to edit its configuration",
+        "pool": "PHP pool",
+        "poolHint": "Lines appended to the pool of {domain}; a later line wins over the default",
+        "rendered": "Rendered",
+        "save": "Save",
+        "saved": "The configuration of {domain} is saved",
+        "server": "Server block",
+        "serverHint": "Directives placed inside the server block of {domain}; nginx -t checks them before they are kept",
+        "site": "Site",
+        "title": "Site configuration"
+      },
+      "config": {
+        "error": {
+          "text": "Only printable text, line breaks and tabs are allowed"
+        },
+        "page": {
+          "main": "Configuration"
+        },
+        "pool": "PHP pool overrides",
+        "server": "Server block overrides",
+        "set": {
+          "title": "Server configuration"
+        }
+      },
       "create": {
         "title": "New site"
       },

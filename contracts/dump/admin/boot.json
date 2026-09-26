@@ -156,6 +156,12 @@
           "icon": "globe"
         },
         {
+          "path": "panel/config",
+          "label": "hosting.site.config-editor.title",
+          "func": "hosting.site.config-editor",
+          "icon": "file-code"
+        },
+        {
           "path": "panel/certificates",
           "label": "hosting.certificate.list.title",
           "func": "hosting.certificate.list",
@@ -381,7 +387,8 @@
     }
   ],
   "views": [
-    "hosting.file-manager"
+    "hosting.file-manager",
+    "hosting.site.config-editor"
   ],
   "meta": "m-0000000000000000",
   "problems": {

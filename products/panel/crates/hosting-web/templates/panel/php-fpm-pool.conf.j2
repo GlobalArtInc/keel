@@ -10,3 +10,6 @@ pm.max_children = 5
 pm.process_idle_timeout = 10s
 security.limit_extensions = .php
 php_admin_value[open_basedir] = {{ home }}/:/tmp/
+{%- for line in custom %}
+{{ line }}
+{%- endfor %}

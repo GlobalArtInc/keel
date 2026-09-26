@@ -1,0 +1,85 @@
+{
+  "keel": 1,
+  "name": "hosting.site.config.get",
+  "module": "hosting_site",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "SiteConfig",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "php": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "server": {
+        "type": "string"
+      },
+      "pool": {
+        "type": "string"
+      },
+      "rendered": {
+        "$ref": "#/$defs/RenderedConfig"
+      }
+    },
+    "required": [
+      "id",
+      "domain",
+      "server",
+      "pool",
+      "rendered"
+    ],
+    "$defs": {
+      "RenderedConfig": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pool": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

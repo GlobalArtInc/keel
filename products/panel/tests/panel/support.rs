@@ -21,6 +21,7 @@ const GROUPADD: &str =
     "echo \"groupadd $*\" >> LOG\nprintf '%s:x:%s:\\n' \"$3\" \"$2\" >> ROOT/group\n";
 const GROUPDEL: &str = "echo \"groupdel $*\" >> LOG\nawk -F: -v k=\"$1\" '$1 != k' ROOT/group > ROOT/group.new && mv ROOT/group.new ROOT/group\n";
 const CHECK: &str = "echo \"NAME $*\" >> LOG\nif [ -f FLAG ]; then echo \"NAME: [emerg] the configuration of the test is broken\" >&2; exit 1; fi\nexit 0\n";
+const NGINX: &str = "echo \"nginx $*\" >> LOG\nif [ -f FLAG ]; then echo \"nginx: [emerg] the configuration of the test is broken\" >&2; exit 1; fi\nif grep -qs keel_test_refused ROOT/vhosts/*.conf; then echo \"nginx: [emerg] unknown directive \\\"keel_test_refused\\\" in ROOT/vhosts\" >&2; exit 1; fi\nexit 0\n";
 const SYSTEMCTL: &str = "echo \"systemctl $*\" >> LOG\nexit 0\n";
 const MARIADB: &str = "input=$(cat)\n{ echo \"mariadb $*\"; printf '%s\\n' \"$input\"; } >> LOG\n";
 const MARIADB_DUMP: &str = "echo \"mariadb-dump $*\" >> LOG\nfor last; do :; done\nprintf -- '-- dump of %s\\n' \"$last\"\n";
@@ -116,7 +117,8 @@ impl Site {
             "postmap".to_owned(),
             "vsftpd".to_owned(),
         ] {
-            let body = CHECK
+            let check = if tool == "nginx" { NGINX } else { CHECK };
+            let body = check
                 .replace("FLAG", &site.flag(&tool).display().to_string())
                 .replace("NAME", &tool);
             site.stub(&tool, &body);

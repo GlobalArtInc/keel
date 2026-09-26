@@ -30,8 +30,8 @@ const TAKEN: &str = "SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n WHE
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel::sdk::serde")]
 #[schemars(crate = "keel::sdk::schemars")]
-struct Pick {
-    id: Id,
+pub(crate) struct Pick {
+    pub(crate) id: Id,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -184,6 +184,8 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                     php: Set(php),
                     php_applied: Set(None),
                     suspended: Set(false),
+                    server_config: Set(String::new()),
+                    pool_config: Set(String::new()),
                     state: Set(site::STATE_PENDING.to_owned()),
                     error: Set(None),
                     created_at: Set(now),
@@ -320,7 +322,7 @@ pub(crate) fn remove_after_commit<P>(call: &Call<P>, turn: &Turn, gone: Vec<Gone
     Ok(())
 }
 
-fn apply_after_commit<P>(call: &Call<P>, turn: &Turn, ids: Vec<String>) -> Result<()> {
+pub(crate) fn apply_after_commit<P>(call: &Call<P>, turn: &Turn, ids: Vec<String>) -> Result<()> {
     let effects = Effects::of(call, turn)?;
     call.after_commit(move |ctx| async move { effects.apply(&ctx, &ids).await });
     Ok(())
@@ -373,7 +375,7 @@ async fn refuse_taken<C: ConnectionTrait>(
     Err(KeelError::conflict(EXISTS).field(field).param("name", name))
 }
 
-async fn load<C: ConnectionTrait>(db: &C, id: &Id) -> Result<site::Model> {
+pub(crate) async fn load<C: ConnectionTrait>(db: &C, id: &Id) -> Result<site::Model> {
     site::Entity::find_by_id(id.to_string())
         .one(db)
         .await?

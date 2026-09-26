@@ -38,6 +38,10 @@ pub struct Model {
     #[serde(skip)]
     pub php_applied: Option<String>,
     pub suspended: bool,
+    #[serde(skip)]
+    pub server_config: String,
+    #[serde(skip)]
+    pub pool_config: String,
     pub state: String,
     pub error: Option<String>,
     pub created_at: DateTimeUtc,
