@@ -23,8 +23,12 @@ describe('KEEL_BOOT', () => {
     const demo = dump.products.filter((product) => product.id === 'demo');
     expect(KEEL_BOOT.one.products).toEqual(demo);
     expect(KEEL_BOOT.one.brand).toEqual({ ...demo[0].brand, logo: '/brand/logo.svg' });
-    const others = new Set(dump.products.map((product) => product.id).filter((id) => id !== 'demo'));
-    expect(KEEL_BOOT.one.menu).toEqual(dump.menu.filter((group) => !others.has(group.product ?? '')));
+    const others = new Set(
+      dump.products.map((product) => product.id).filter((id) => id !== 'demo'),
+    );
+    expect(KEEL_BOOT.one.menu).toEqual(
+      dump.menu.filter((group) => !others.has(group.product ?? '')),
+    );
     expect(KEEL_BOOT.one.features).toEqual(
       dump.features.filter((feature) => !others.has(feature.split('.')[0] ?? '')),
     );

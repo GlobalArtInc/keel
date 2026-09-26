@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TestBed } from '@angular/core/testing';
-import { PANEL_BRAND, PANEL_ICON, PANEL_ID, PANEL_VIEWS, provideKeelPanel } from '@globalart/keel-panel';
+import {
+  PANEL_BRAND,
+  PANEL_ICON,
+  PANEL_ID,
+  PANEL_VIEWS,
+  provideKeelPanel,
+} from '@globalart/keel-panel';
 import { isIconName } from '@globalart/keel/forms';
 import { lookup } from '@globalart/keel/meta';
 import { injectKeelViews } from '@globalart/keel/renderer';
