@@ -1,25 +1,5 @@
 {
   "hosting": {
-    "file": {
-      "content": "File",
-      "error": {
-        "exists": "{path} already exists",
-        "failed": "The operation on {path} failed: {detail}",
-        "homeless": "The hosting user {user} has no home directory yet",
-        "missing": "{path} does not exist",
-        "outside": "{path} leads outside the home directory of the hosting user",
-        "transfer": "The file could not be handed between the panel and the host",
-        "unreadable": "The uploaded file could not be read"
-      },
-      "page": {
-        "main": "File"
-      },
-      "path": "Path",
-      "upload": {
-        "title": "Upload a file"
-      },
-      "user": "Hosting user"
-    },
     "file-manager": {
       "action": {
         "cancel": "Cancel",
@@ -65,6 +45,26 @@
       "title": "Files",
       "truncated": "Only the first {count} entries are shown",
       "uploaded": "{name} is uploaded",
+      "user": "Hosting user"
+    },
+    "file": {
+      "content": "File",
+      "error": {
+        "exists": "{path} already exists",
+        "failed": "The operation on {path} failed: {detail}",
+        "homeless": "The hosting user {user} has no home directory yet",
+        "missing": "{path} does not exist",
+        "outside": "{path} leads outside the home directory of the hosting user",
+        "transfer": "The file could not be handed between the panel and the host",
+        "unreadable": "The uploaded file could not be read"
+      },
+      "page": {
+        "main": "File"
+      },
+      "path": "Path",
+      "upload": {
+        "title": "Upload a file"
+      },
       "user": "Hosting user"
     },
     "user": {
