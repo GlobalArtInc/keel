@@ -102,6 +102,7 @@ pub(super) fn install(grant: Arc<Grant>) -> FunctionDef {
             async move {
                 let signed = &call.params().lease;
                 let lease = grant.open(signed)?;
+                lease.replaces(grant.lease().as_ref())?;
                 lease::store(call.tx()?, signed).await?;
                 let status = Status::of(Some(&lease), grant.instance(), grant.now()?);
                 call.after_commit(move |context| async move { grant.load(context.db()?).await });

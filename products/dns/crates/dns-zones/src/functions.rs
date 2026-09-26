@@ -1,6 +1,7 @@
 use keel::prelude::*;
 use keel::sdk::sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set,
+    Statement,
 };
 use keel::types::ErrorCode;
 
@@ -21,6 +22,9 @@ const RECORDS_PARENT: &str = "zone_id";
 const RECORD_CREATE: &str = "dns.record.create";
 const TEMPLATES: &str = "dns.template.options";
 const TEMPLATE_RECORD: &str = "dns.zone.error.template";
+const CLAIM: &str = "dns.zone.claim";
+const NAME_MAX: u32 = 253;
+const OWNERS: &str = "SELECT DISTINCT account_id FROM dns_zone WHERE name = ANY($1)";
 
 const REFRESH: u32 = 10_800;
 const RETRY: u32 = 3_600;
@@ -196,6 +200,55 @@ pub(crate) fn list() -> FunctionDef {
             .master_detail(RECORDS, [(RECORDS_PARENT, "$id")]))
         .default_sort("name", SortDir::Asc)
         .source(entity_source::<zone::Entity>())
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Claim {
+    #[schemars(length(min = 1, max = NAME_MAX))]
+    name: String,
+    #[serde(default)]
+    account: Option<Id>,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Claimed {
+    foreign: bool,
+}
+
+pub(crate) fn claim() -> FunctionDef {
+    function::<Claim, Claimed>(CLAIM)
+        .kind(Kind::Action)
+        .mode(Mode::Read)
+        .level(Level::User)
+        .unowned()
+        .handler(|call: Call<Claim>| async move {
+            let params = call.params();
+            let account = call.resolve_account(params.account).await?.to_string();
+            let name = params.name.trim_end_matches('.').to_ascii_lowercase();
+            let enclosing: Vec<String> = name
+                .match_indices('.')
+                .map(|(at, _)| name[at + 1..].to_owned())
+                .chain(std::iter::once(name.clone()))
+                .collect();
+            let owners = call
+                .db()
+                .query_all(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    OWNERS,
+                    [enclosing.into()],
+                ))
+                .await?;
+            let mut foreign = false;
+            for row in owners {
+                let owner: String = row.try_get("", "account_id")?;
+                foreign |= owner != account;
+            }
+            Ok(Claimed { foreign })
+        })
 }
 
 pub(crate) fn get() -> FunctionDef {

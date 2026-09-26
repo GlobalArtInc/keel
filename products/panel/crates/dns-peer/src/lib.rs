@@ -27,6 +27,10 @@ impl DnsProvider for Peer {
         Err(KeelError::unavailable(UNPAIRED).param("zone", zone.name.as_str()))
     }
 
+    async fn foreign(&self, _: &Invoke<'_>, _: &SiteZone) -> Result<bool> {
+        Ok(false)
+    }
+
     async fn add_records(&self, _: &Invoke<'_>, _: &SiteZone, _: &[ZoneRecord]) -> Result<bool> {
         Ok(false)
     }

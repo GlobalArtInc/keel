@@ -10,7 +10,8 @@ use crate::support::{
     PATIENCE, Site, composed, create, data, eventually, panel, rows, state_becomes,
 };
 
-const CLIENT: &str = "mariadb --batch --sandbox --skip-column-names";
+const CLIENT: &str =
+    "mariadb --batch --sandbox --skip-column-names --default-character-set=utf8mb4";
 const PASSWORD: &str = "it's a \"pass\\word\"";
 
 fn statements(site: &Site) -> Vec<String> {
@@ -209,7 +210,9 @@ async fn a_database_and_user_are_created_with_quoted_identifiers() {
         );
         assert!(
             site.calls()
-                .contains(&format!("mariadb-dump --single-transaction {name}"))
+                .contains(&format!(
+                    "mariadb-dump --single-transaction --skip-comments --default-character-set=utf8mb4 {name}"
+                ))
         );
     }
     assert_eq!(

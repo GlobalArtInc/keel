@@ -5,6 +5,7 @@ mod host;
 mod lifecycle;
 mod limit;
 mod names;
+mod overrides;
 mod site;
 
 use keel::prelude::*;

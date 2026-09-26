@@ -12,3 +12,6 @@ repository.workspace = true
 keel = { workspace = true }
 keel-host = { workspace = true }
 keel-hosting-users = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

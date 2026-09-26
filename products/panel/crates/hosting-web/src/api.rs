@@ -22,6 +22,7 @@ pub struct ZoneRecord {
 #[async_trait]
 pub trait DnsProvider: Send + Sync {
     async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()>;
+    async fn foreign(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<bool>;
     async fn add_records(
         &self,
         invoke: &Invoke<'_>,

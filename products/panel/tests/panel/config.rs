@@ -133,7 +133,7 @@ async fn an_override_that_fails_nginx_t_is_refused_with_the_output_on_the_field(
         .call(
             Who::Admin,
             SET,
-            json!({ "id": id, "server": "client_max_body_size 64m;\nkeel_test_refused on;", "pool": POOL }),
+            json!({ "id": id, "server": "client_max_body_size 64m;\nexpires keel_test_refused;", "pool": POOL }),
         )
         .await;
     let error = refused.error().expect("nginx -t refuses the directive");
@@ -185,5 +185,61 @@ async fn an_override_that_fails_nginx_t_is_refused_with_the_output_on_the_field(
     assert_eq!(read(&site.pool(DOMAIN)), pool);
     assert_eq!(read(&site.vhost(DOMAIN)), vhost);
     site.break_check(&format!("php-fpm{PHP}"), false);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn an_override_naming_a_file_or_opening_a_pool_section_is_refused_before_any_check_runs() {
+    let site = Site::new();
+    let (harness, id) = served_site(&site).await;
+    let vhost = read(&site.vhost(DOMAIN));
+    let pool = read(&site.pool(DOMAIN));
+    let before = site.calls().len();
+    for (server, pool_text, field, key, line) in [
+        (
+            "gzip on;\naccess_log /root/.profile;",
+            "",
+            "server",
+            "hosting.site.config.error.directive",
+            2,
+        ),
+        (
+            "location /x {\n    return 204;\n}\n}\nserver {",
+            "",
+            "server",
+            "hosting.site.config.error.directive",
+            4,
+        ),
+        (
+            "",
+            "pm.max_children = 8\n[www]\nuser = root",
+            "pool",
+            "hosting.site.config.error.setting",
+            2,
+        ),
+    ] {
+        let refused = harness
+            .call(
+                Who::Admin,
+                SET,
+                json!({ "id": id, "server": server, "pool": pool_text }),
+            )
+            .await;
+        let error = refused.error().expect("the override is refused");
+        assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+        assert_eq!(error.fields.len(), 1, "{error:?}");
+        assert_eq!(error.fields[0].path, field, "{error:?}");
+        assert_eq!(error.fields[0].key.as_deref(), Some(key), "{error:?}");
+        assert_eq!(error.fields[0].params["line"], json!(line), "{error:?}");
+    }
+    assert_eq!(site.calls().len(), before, "{:?}", &site.calls()[before..]);
+    assert_eq!(read(&site.vhost(DOMAIN)), vhost);
+    assert_eq!(read(&site.pool(DOMAIN)), pool);
+    let stored = rows(
+        &harness,
+        &format!("SELECT server_config || pool_config FROM hosting_site WHERE id = '{id}'"),
+    )
+    .await;
+    assert_eq!(stored, [""]);
     harness.finish().await;
 }

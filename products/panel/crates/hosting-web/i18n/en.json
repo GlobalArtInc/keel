@@ -34,6 +34,9 @@
       },
       "config": {
         "error": {
+          "block": "The block opened on line {line} is never closed",
+          "directive": "Line {line} is not an override the panel allows: a listed directive ending in a semicolon, a location or if block, a closing brace or a comment",
+          "setting": "Line {line} is not a pool setting the panel allows: a process manager setting or a PHP value, flag or admin value",
           "text": "Only printable text, line breaks and tabs are allowed"
         },
         "page": {
@@ -58,6 +61,7 @@
         "alias_twice": "The alias {name} repeats the domain or another alias",
         "detached": "The site renderer has not started yet",
         "exists": "The name {name} is already served by a site",
+        "foreign_zone": "{name} lies in a DNS zone of another account",
         "home": "The home directory {home} is not a plain absolute path",
         "name": "{name} is not a host name",
         "php": "{php} is not a PHP version",

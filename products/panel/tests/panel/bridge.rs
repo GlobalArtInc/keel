@@ -144,7 +144,7 @@ async fn a_dns_validation_error_reaches_the_hosting_form_as_a_field_key() {
     let harness = with_dns(&site).boot().await;
     let alice = user(&harness, Who::A1, "alice").await;
     let taken = harness
-        .call(Who::A2, ZONE_CREATE, json!({ "name": "taken.example" }))
+        .call(Who::A1, ZONE_CREATE, json!({ "name": "taken.example" }))
         .await;
     data(&taken);
 
@@ -171,9 +171,109 @@ async fn a_dns_validation_error_reaches_the_hosting_form_as_a_field_key() {
     );
     assert_eq!(
         rows(&harness, "SELECT account_id FROM dns_zone").await,
-        [harness.fixtures().accounts.a2.to_string()]
+        [harness.fixtures().accounts.a1.to_string()]
     );
     assert!(!site.vhost("taken.example").exists());
+    harness.finish().await;
+}
+
+fn refused_on<'a>(reply: &'a keel_testkit::Reply, key: &str) -> &'a keel::types::FieldError {
+    let error = reply.error().expect("the name is refused");
+    assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+    assert_eq!(error.fields.len(), 1, "{error:?}");
+    assert_eq!(error.fields[0].key.as_deref(), Some(key), "{error:?}");
+    &error.fields[0]
+}
+
+#[tokio::test]
+async fn a_site_an_alias_or_a_mail_domain_in_a_zone_of_another_account_is_refused() {
+    let site = Site::new();
+    let harness = with_dns(&site).boot().await;
+    let alice = user(&harness, Who::A1, "alice").await;
+    for (who, name) in [(Who::A2, "shop.example"), (Who::A1, "own.example")] {
+        data(
+            &harness
+                .call(who, ZONE_CREATE, json!({ "name": name }))
+                .await,
+        );
+    }
+    let site_key = "hosting.site.error.foreign_zone";
+    for (who, params, field, name) in [
+        (
+            Who::A1,
+            json!({ "user": alice, "domain": "shop.example" }),
+            "domain",
+            "shop.example",
+        ),
+        (
+            Who::A1,
+            json!({ "user": alice, "domain": "Blog.Shop.Example" }),
+            "domain",
+            "blog.shop.example",
+        ),
+        (
+            Who::Admin,
+            json!({ "user": alice, "domain": "admin.shop.example" }),
+            "domain",
+            "admin.shop.example",
+        ),
+        (
+            Who::A1,
+            json!({ "user": alice, "domain": "a.own.example", "aliases": ["www.shop.example"] }),
+            "aliases",
+            "www.shop.example",
+        ),
+    ] {
+        let reply = harness.call(who, CREATE, params.clone()).await;
+        let refused = refused_on(&reply, site_key);
+        assert_eq!(refused.path, field, "{params}");
+        assert_eq!(refused.params["name"], json!(name), "{params}");
+    }
+    let kept = harness
+        .call(
+            Who::A1,
+            CREATE,
+            json!({ "user": alice, "domain": "www.own.example", "aliases": ["own.example"] }),
+        )
+        .await;
+    let id = data(&kept)["id"].as_str().expect("an id").to_owned();
+    let edited = harness
+        .call(
+            Who::A1,
+            "hosting.site.edit",
+            json!({ "id": id, "aliases": ["own.example", "cdn.shop.example"], "root": "www.own.example" }),
+        )
+        .await;
+    let refused = refused_on(&edited, site_key);
+    assert_eq!(refused.path, "aliases");
+    assert_eq!(refused.params["name"], json!("cdn.shop.example"));
+    let mail = harness
+        .call(
+            Who::A1,
+            "hosting.mail.domain.create",
+            json!({ "name": "mail.shop.example" }),
+        )
+        .await;
+    let refused = refused_on(&mail, "hosting.mail.domain.error.foreign_zone");
+    assert_eq!(refused.path, "name");
+    assert_eq!(refused.params["name"], json!("mail.shop.example"));
+    assert_eq!(
+        rows(&harness, "SELECT domain FROM hosting_site").await,
+        ["www.own.example"]
+    );
+    assert!(
+        rows(&harness, "SELECT name FROM hosting_mail_domain")
+            .await
+            .is_empty()
+    );
+    let own_mail = harness
+        .call(
+            Who::A1,
+            "hosting.mail.domain.create",
+            json!({ "name": "own.example" }),
+        )
+        .await;
+    assert_eq!(data(&own_mail)["name"], json!("own.example"));
     harness.finish().await;
 }
 

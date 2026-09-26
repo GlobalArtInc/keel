@@ -1,0 +1,55 @@
+{
+  "keel": 1,
+  "name": "dns.zone.claim",
+  "module": "dns",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user"
+  },
+  "params": {
+    "title": "Claim",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 253
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Claimed",
+    "type": "object",
+    "properties": {
+      "foreign": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "foreign"
+    ]
+  }
+}

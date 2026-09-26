@@ -431,3 +431,97 @@ async fn a_principal_confirms_its_own_address_through_the_mailed_link() {
     );
     harness.finish().await;
 }
+
+async fn mailed_token(catcher: &Catcher, http: &TestHttp, address: &str) -> String {
+    let asked = guest(http, RESET_REQUEST, json!({ "login": Who::A1.login() })).await;
+    assert_eq!(asked.status, 200, "{}", asked.body);
+    let mails = wait_for_mails(catcher, address, 1).await;
+    let text = text_of(catcher, &mails[0]).await;
+    link_in(&text)
+        .split_once("token=")
+        .map(|(_, token)| token.to_owned())
+        .expect("a token")
+}
+
+async fn refused_token(http: &TestHttp, token: &str) {
+    let answer = guest(
+        http,
+        RESET_CONFIRM,
+        json!({ "token": token, "password": RENEWED }),
+    )
+    .await;
+    assert_eq!(answer.status, 422, "{}", answer.body);
+    assert_eq!(
+        answer.json()["error"]["fields"][0]["key"],
+        json!("auth.error.reset_token")
+    );
+    let renewed = login(http, RENEWED).await;
+    assert_eq!(renewed.status, 401, "{}", renewed.body);
+}
+
+#[tokio::test]
+async fn a_reset_link_is_void_once_the_password_is_set_another_way() {
+    let catcher = catcher().await;
+    let Stand {
+        harness,
+        http,
+        address,
+    } = stand(&catcher).await;
+    let token = mailed_token(&catcher, &http, &address).await;
+    let set = harness
+        .call(
+            Who::Admin,
+            "auth.password.set",
+            json!({ "principal": harness.principal(Who::A1).id, "password": "set-by-the-admin" }),
+        )
+        .await;
+    assert!(set.data().is_some(), "{:?}", set.error());
+    refused_token(&http, &token).await;
+    let current = login(&http, "set-by-the-admin").await;
+    assert_eq!(current.status, 200, "{}", current.body);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_reset_link_is_void_once_the_address_it_was_mailed_to_is_replaced() {
+    let catcher = catcher().await;
+    let Stand {
+        harness,
+        http,
+        address,
+    } = stand(&catcher).await;
+    let token = mailed_token(&catcher, &http, &address).await;
+    let replaced = harness
+        .call(
+            Who::Admin,
+            ADDRESS_SET,
+            json!({ "principal": harness.principal(Who::A1).id, "value": format!("new-{address}") }),
+        )
+        .await;
+    assert!(replaced.data().is_some(), "{:?}", replaced.error());
+    refused_token(&http, &token).await;
+    let kept = login(&http, PASSWORD).await;
+    assert_eq!(kept.status, 200, "{}", kept.body);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_reset_link_of_a_principal_raised_to_owner_is_refused() {
+    let catcher = catcher().await;
+    let Stand {
+        harness,
+        http,
+        address,
+    } = stand(&catcher).await;
+    let token = mailed_token(&catcher, &http, &address).await;
+    let principal = harness.principal(Who::A1).id;
+    let raised = harness
+        .database()
+        .rows(&format!(
+            "UPDATE keel_principal SET level = 'owner' WHERE id = '{principal}' RETURNING level"
+        ))
+        .await;
+    assert_eq!(raised, vec!["owner".to_owned()]);
+    refused_token(&http, &token).await;
+    harness.finish().await;
+}

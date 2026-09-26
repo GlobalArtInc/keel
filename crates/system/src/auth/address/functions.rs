@@ -118,6 +118,7 @@ pub fn set(passwords: Arc<Passwords>) -> FunctionDef {
                     let tx = call.tx()?;
                     store(tx, target, &value, Some(now), now).await?;
                     mail::consume_all(tx, Purpose::Verify, target, now).await?;
+                    mail::consume_all(tx, Purpose::Reset, target, now).await?;
                     return Ok(view(target, row(tx, target).await?));
                 }
                 let me = call.principal().id;
@@ -142,6 +143,7 @@ pub fn set(passwords: Arc<Passwords>) -> FunctionDef {
                 let tx = call.tx()?;
                 store(tx, me, &value, None, now).await?;
                 mail::consume_all(tx, Purpose::Verify, me, now).await?;
+                mail::consume_all(tx, Purpose::Reset, me, now).await?;
                 let token = mail::issue(
                     tx,
                     Purpose::Verify,

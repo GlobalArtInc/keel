@@ -293,7 +293,9 @@ async fn a_site_backup_contains_files_databases_and_mail_and_restores() {
     let import = calls
         .iter()
         .position(|call| {
-            call == &format!("mariadb --batch --sandbox --skip-column-names {DATABASE}")
+            call == &format!(
+                "mariadb --batch --sandbox --skip-column-names --default-character-set=utf8mb4 {DATABASE}"
+            )
         })
         .unwrap_or_else(|| panic!("no import in {calls:?}"));
     assert_eq!(calls[import + 1], format!("-- dump of {DATABASE}"));

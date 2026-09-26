@@ -18,7 +18,8 @@
         },
         "empty": "No mail domains yet",
         "error": {
-          "exists": "The mail domain {name} already exists"
+          "exists": "The mail domain {name} already exists",
+          "foreign_zone": "{name} lies in a DNS zone of another account"
         },
         "list": {
           "title": "Mail domains"

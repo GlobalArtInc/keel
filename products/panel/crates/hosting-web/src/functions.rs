@@ -23,6 +23,7 @@ const EXISTS: &str = "hosting.site.error.exists";
 const USER: &str = "hosting.site.error.user";
 const USER_PENDING: &str = "hosting.site.error.user_pending";
 const SITE_ID: &str = "hosting.site.error.site_id";
+const FOREIGN_ZONE: &str = "hosting.site.error.foreign_zone";
 const VERSIONS: [&str; 3] = ["8.2", "8.3", "8.4"];
 const SERIALISE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('hosting_site:names', 0))";
 const TAKEN: &str = "SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n WHERE EXISTS (SELECT 1 FROM hosting_site s WHERE s.id <> $1 AND (s.domain = n OR s.aliases @> to_jsonb(n))) LIMIT 1";
@@ -173,6 +174,7 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 let root = names::root(params.root.as_deref().unwrap_or(&domain))?;
                 let php = names::php(params.php.as_deref())?;
                 refuse_taken(tx, None, &domain, &aliases).await?;
+                refuse_foreign(&call, account, Some(&domain), &aliases).await?;
                 let now = call.require::<dyn Clock>()?.now();
                 let row = site::ActiveModel {
                     id: Set(Id::generate().to_string()),
@@ -240,6 +242,11 @@ pub(crate) fn edit(turn: Turn) -> FunctionDef {
                 let root = names::root(&params.root)?;
                 let php = names::php(params.php.as_deref())?;
                 refuse_taken(tx, Some(&current.id), &current.domain, &aliases).await?;
+                let account: Id = current
+                    .account_id
+                    .parse()
+                    .map_err(|_| KeelError::internal(SITE_ID).param("site", current.id.as_str()))?;
+                refuse_foreign(&call, account, None, &aliases).await?;
                 let now = call.require::<dyn Clock>()?.now();
                 let row = site::ActiveModel {
                     id: Set(current.id.clone()),
@@ -257,6 +264,34 @@ pub(crate) fn edit(turn: Turn) -> FunctionDef {
                 Ok(row)
             }
         })
+}
+
+async fn refuse_foreign<P: Send + Sync>(
+    call: &Call<P>,
+    account: Id,
+    domain: Option<&str>,
+    aliases: &[String],
+) -> Result<()> {
+    let dns = call.require::<dyn DnsProvider>()?;
+    let invoke = |func: &str, params: Value| call.invoke(func, params);
+    let own_account = account == call.principal().account_id;
+    let named = domain
+        .map(|domain| ("domain", domain))
+        .into_iter()
+        .chain(aliases.iter().map(|alias| ("aliases", alias.as_str())));
+    for (field, name) in named {
+        let zone = SiteZone {
+            name: name.to_owned(),
+            account,
+            own_account,
+        };
+        if dns.foreign(&invoke, &zone).await? {
+            return Err(KeelError::validation(FOREIGN_ZONE)
+                .field(field)
+                .param("name", name));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn delete(turn: Turn) -> FunctionDef {

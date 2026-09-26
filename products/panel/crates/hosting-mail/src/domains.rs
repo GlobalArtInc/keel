@@ -17,6 +17,7 @@ const DELETE: &str = "hosting.mail.domain.delete";
 pub(crate) const OPTIONS: &str = "hosting.mail.domain.options";
 const MAX_OPTIONS: u32 = 100;
 const EXISTS: &str = "hosting.mail.domain.error.exists";
+const FOREIGN_ZONE: &str = "hosting.mail.domain.error.foreign_zone";
 const MX_PRIORITY: u16 = 10;
 const SPF: &str = "\"v=spf1 mx -all\"";
 const APEX: &str = "@";
@@ -111,6 +112,18 @@ pub(crate) fn create(mail: Arc<Mail>) -> FunctionDef {
                 let account = call.resolve_account(params.account).await?;
                 let name = names::domain(&params.name)?;
                 refuse_taken(tx, &name).await?;
+                let zone = SiteZone {
+                    name: name.clone(),
+                    account,
+                    own_account: account == call.principal().account_id,
+                };
+                let invoke = |func: &str, params: Value| call.invoke(func, params);
+                let dns = call.require::<dyn DnsProvider>()?;
+                if dns.foreign(&invoke, &zone).await? {
+                    return Err(KeelError::validation(FOREIGN_ZONE)
+                        .field("name")
+                        .param("name", name));
+                }
                 let now = call.require::<dyn Clock>()?.now();
                 let row = domain::ActiveModel {
                     id: Set(Id::generate().to_string()),
@@ -123,17 +136,7 @@ pub(crate) fn create(mail: Arc<Mail>) -> FunctionDef {
                 }
                 .insert(tx)
                 .await?;
-                let invoke = |func: &str, params: Value| call.invoke(func, params);
-                call.require::<dyn DnsProvider>()?
-                    .add_records(
-                        &invoke,
-                        &SiteZone {
-                            name: name.clone(),
-                            account,
-                            own_account: account == call.principal().account_id,
-                        },
-                        &mail_records(&name),
-                    )
+                dns.add_records(&invoke, &zone, &mail_records(&name))
                     .await?;
                 let changed = Changed {
                     domains: vec![row.id.clone()],

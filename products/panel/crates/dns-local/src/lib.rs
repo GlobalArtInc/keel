@@ -4,6 +4,7 @@ use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone, ZoneRecord};
 
 const CREATE: &str = "dns.zone.create";
 const LIST: &str = "dns.zone.list";
+const CLAIM: &str = "dns.zone.claim";
 const RECORD_CREATE: &str = "dns.record.create";
 const PAGE: u32 = 100;
 const ZONE_NAME: &str = "name";
@@ -34,6 +35,12 @@ impl DnsProvider for Local {
             .await
             .map(drop)
             .map_err(onto_the_site)
+    }
+
+    async fn foreign(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<bool> {
+        let account = (!zone.own_account).then_some(zone.account);
+        let answer = invoke(CLAIM, json!({ "name": zone.name, "account": account })).await?;
+        Ok(answer["foreign"].as_bool().unwrap_or(true))
     }
 
     async fn add_records(

@@ -5,12 +5,11 @@ use keel_host::api::Origin;
 
 use crate::functions::{Pick, apply_after_commit, load};
 use crate::host::{Effects, Turn};
-use crate::{FEATURE, PRODUCT, site};
+use crate::{FEATURE, PRODUCT, overrides, site};
 
 pub(crate) const VIEW: &str = "hosting.site.config-editor";
 pub(crate) const SET: &str = "hosting.site.config.set";
-pub(crate) const SERVER: &str = "server";
-pub(crate) const POOL: &str = "pool";
+use crate::overrides::{POOL, SERVER};
 const GET: &str = "hosting.site.config.get";
 const TEXT: &str = "hosting.site.config.error.text";
 const CONFIG_MAX: usize = 16_384;
@@ -125,14 +124,6 @@ pub(crate) async fn trial(call: Call<Value>, turn: Turn) -> Result<Before> {
     Ok(Before::Proceed)
 }
 
-pub(crate) fn lines(text: &str) -> Vec<&str> {
-    let mut lines: Vec<&str> = text.lines().map(str::trim_end).collect();
-    while lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-    lines
-}
-
 fn plain(params: &SiteConfigSet) -> Result<()> {
     for (field, text) in [(SERVER, &params.server), (POOL, &params.pool)] {
         if text
@@ -142,6 +133,8 @@ fn plain(params: &SiteConfigSet) -> Result<()> {
             return Err(KeelError::validation(TEXT).field(field));
         }
     }
+    overrides::server(&params.server)?;
+    overrides::pool(&params.pool)?;
     Ok(())
 }
 
@@ -154,15 +147,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_lines_of_a_configuration_drop_trailing_blanks_and_carriage_returns() {
-        assert_eq!(
-            lines("client_max_body_size 64m;  \r\n\r\nlocation /x {\n}\n\n  \n"),
-            ["client_max_body_size 64m;", "", "location /x {", "}"]
-        );
-        assert!(lines("").is_empty());
-    }
-
-    #[test]
     fn a_control_character_other_than_a_line_break_or_a_tab_is_refused_on_its_field() {
         let set = |server: &str, pool: &str| SiteConfigSet {
             id: Id::generate(),
@@ -170,6 +154,8 @@ mod tests {
             pool: pool.to_owned(),
         };
         assert!(plain(&set("gzip on;\r\n\tgzip_types text/css;\n", "")).is_ok());
+        let error = plain(&set("access_log /root/.profile;", "")).expect_err("a file");
+        assert_eq!(error.field_path(), Some(SERVER));
         let error = plain(&set("", "pm = static\u{1b}")).expect_err("an escape in the pool");
         assert_eq!(error.field_path(), Some(POOL));
         assert_eq!(error.key(), TEXT);

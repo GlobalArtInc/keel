@@ -17,6 +17,7 @@
       "instance": "The lease is issued for the installation {instance}, not for this one",
       "lease": "The signed document is not a lease: {reason}",
       "not_started": "The license module has not started yet",
+      "older": "This lease was issued at {issued}, before the installed one ({installed}); an older lease never replaces a newer one",
       "signature": "The lease is not signed with the license key: {reason}",
       "stored": "The stored lease is not a signed text: {value}"
     },

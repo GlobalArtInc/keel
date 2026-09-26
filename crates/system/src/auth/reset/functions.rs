@@ -95,6 +95,7 @@ pub fn confirm(passwords: Arc<Passwords>) -> FunctionDef {
                     .require::<dyn PrincipalSource>()?
                     .by_id(principal, tx)
                     .await?
+                    .filter(|principal| principal.level < Level::Owner)
                     .map(|principal| principal.login)
                     .ok_or_else(token_refused)?;
                 check_policy(&params.password, &login, policy::min_length(&call).await?)?;

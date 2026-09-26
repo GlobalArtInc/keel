@@ -14,6 +14,8 @@ const CLIENT: &str = "mariadb";
 const DUMP: &str = "mariadb-dump";
 const DUMPS_ROOT: &str = "dumps";
 const SANDBOX: &str = "--sandbox";
+const CHARSET: &str = "--default-character-set=utf8mb4";
+const SKIP_COMMENTS: &str = "--skip-comments";
 const HOST: &str = "localhost";
 const NAME_LIMIT: usize = 64;
 const PASSWORD_LIMIT: usize = 256;
@@ -136,7 +138,7 @@ fn run(call: &Call<'_>, statement: &str, secret: Option<&str>) -> Result<Value, 
 
 fn dump(call: &Call<'_>, database: &str, dest: &Dest) -> Result<Value, Failure> {
     let (program, base) = entry(call, DUMP)?;
-    let mut args = base.to_vec();
+    let mut args = pinned(base, &[SKIP_COMMENTS, CHARSET]);
     args.push(database.to_owned());
     let bytes = super::exec::capture(call, dest, program, &args, true)?;
     Ok(json!({ "bytes": bytes }))
@@ -164,11 +166,17 @@ fn import(call: &Call<'_>, database: &str, source: &Dest) -> Result<Value, Failu
 
 fn client<'a>(call: &'a Call<'_>) -> Result<(&'a Path, Vec<String>), Failure> {
     let (program, base) = entry(call, CLIENT)?;
+    Ok((program, pinned(base, &[SANDBOX, CHARSET])))
+}
+
+fn pinned(base: &[String], flags: &[&str]) -> Vec<String> {
     let mut args = base.to_vec();
-    if !args.iter().any(|arg| arg == SANDBOX) {
-        args.push(SANDBOX.to_owned());
+    for flag in flags {
+        if !args.iter().any(|arg| arg == flag) {
+            args.push((*flag).to_owned());
+        }
     }
-    Ok((program, args))
+    args
 }
 
 fn entry<'a>(call: &'a Call<'_>, name: &str) -> Result<(&'a Path, &'a [String]), Failure> {
@@ -265,6 +273,9 @@ fn redact(failure: Failure, secret: Option<&str>) -> Failure {
 }
 
 #[cfg(test)]
+mod fuzz;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -302,6 +313,29 @@ mod tests {
         assert_eq!(grant_scope("hp_a_b_c", "hp_").unwrap(), "`hp\\_a\\_b\\_c`");
         assert!(grant_scope("mysql", "hp_").is_err());
         assert!(account_of("root", "hp_").is_err());
+    }
+
+    #[test]
+    fn the_client_reads_every_statement_as_utf8mb4_and_a_dump_carries_no_comment() {
+        let policy = |args: &[&str]| args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            pinned(&policy(&["--batch"]), &[SANDBOX, CHARSET]),
+            ["--batch", SANDBOX, CHARSET]
+        );
+        assert_eq!(
+            pinned(
+                &policy(&["--default-character-set=gbk", SANDBOX]),
+                &[SANDBOX, CHARSET]
+            ),
+            ["--default-character-set=gbk", SANDBOX, CHARSET]
+        );
+        assert_eq!(
+            pinned(
+                &policy(&["--single-transaction", CHARSET]),
+                &[SKIP_COMMENTS, CHARSET]
+            ),
+            ["--single-transaction", CHARSET, SKIP_COMMENTS]
+        );
     }
 
     #[test]

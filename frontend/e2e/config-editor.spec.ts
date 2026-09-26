@@ -4,7 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 const TAG = '@panel';
 const SITE_VARIABLE = 'KEEL_E2E_SITE';
 const DIRECTIVE_VARIABLE = 'KEEL_E2E_SITE_DIRECTIVE';
-const REFUSED = 'keel_e2e_refused on;';
+const REFUSED = 'expires keel_e2e_refused;';
 
 function variable(name: string): string {
   const value = process.env[name];

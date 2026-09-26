@@ -508,7 +508,7 @@ fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root()
     let line = site.audit_line(site.last_id());
     assert!(line.contains("op=mariadb.exec"), "{line}");
     assert!(line.contains("outcome=ok"), "{line}");
-    let client = "mariadb|--batch|--sandbox|";
+    let client = "mariadb|--batch|--sandbox|--default-character-set=utf8mb4|";
     assert_eq!(
         site.calls(),
         [
@@ -611,7 +611,9 @@ fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root()
     assert_eq!(meta.uid(), own_uid());
     assert_eq!(
         site.calls().last().map(String::as_str),
-        Some("mariadb-dump|--single-transaction|kd_site_wp|")
+        Some(
+            "mariadb-dump|--single-transaction|--skip-comments|--default-character-set=utf8mb4|kd_site_wp|"
+        )
     );
     let seal = site.root().join("dumps/.keel-demo-1.sql.sha256");
     assert_eq!(
@@ -672,7 +674,7 @@ fn mariadb_exec_imports_only_a_dump_the_agent_sealed_into_one_database() {
     assert_eq!(
         site.calls(),
         [
-            "mariadb|--batch|--sandbox|kd_site_wp|",
+            "mariadb|--batch|--sandbox|--default-character-set=utf8mb4|kd_site_wp|",
             "DROP TABLE IF EXISTS `t`;",
             "CREATE TABLE `t` (a INT);",
         ]
@@ -793,7 +795,7 @@ fn mariadb_exec_runs_the_client_sandboxed_so_a_shell_escape_in_a_dump_runs_nothi
     assert!(detail.contains("sandbox"), "{detail}");
     assert_eq!(
         site.calls().first().map(String::as_str),
-        Some("mariadb|--batch|--sandbox|kd_site_wp|")
+        Some("mariadb|--batch|--sandbox|--default-character-set=utf8mb4|kd_site_wp|")
     );
     assert!(!marker.exists(), "the shell escape ran");
 }

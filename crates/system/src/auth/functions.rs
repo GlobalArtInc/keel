@@ -7,6 +7,7 @@ use keel_sdk::types::{ErrorCode, MetaPrincipal, Via};
 
 use super::api::{LOCAL_METHOD, LoginMethod};
 use super::limits::Lockout;
+use super::mail::{self, Purpose};
 use super::password::{self, Passwords, check_policy, credentials};
 use super::{State, policy, session, totp};
 
@@ -121,7 +122,9 @@ pub fn password_set(passwords: Arc<Passwords>) -> FunctionDef {
                 }
                 let hash = passwords.hash(&params.password).await?;
                 let now = call.require::<dyn Clock>()?.now();
-                password::store(call.tx()?, target, hash, now).await?;
+                let tx = call.tx()?;
+                password::store(tx, target, hash, now).await?;
+                mail::consume_all(tx, Purpose::Reset, target, now).await?;
                 Ok(PasswordChanged { principal: target })
             }
         })

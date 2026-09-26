@@ -6,7 +6,7 @@ use keel_sdk::serde_json::Map;
 use keel_sdk::system::Features;
 use keel_sdk::types::LicenseState;
 use keel_system::license::{
-    ERROR_INSTANCE, ERROR_LEASE, ERROR_SIGNATURE, GET, INSTALL, KV_KEY, MODULE,
+    ERROR_INSTANCE, ERROR_LEASE, ERROR_OLDER, ERROR_SIGNATURE, GET, INSTALL, KV_KEY, MODULE,
 };
 use keel_testkit::license::Issuer;
 use keel_testkit::{ErrorCode, Harness, Reply, Who, tokio};
@@ -249,6 +249,50 @@ async fn a_lease_signed_with_the_license_key_installs_and_a_changed_byte_does_no
     assert_eq!(
         data(&harness.call(Who::Admin, GET, json!({})).await),
         answer
+    );
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_lease_issued_before_the_installed_one_is_refused() {
+    let issuer = throwaway();
+    let harness = licensed(&issuer).await;
+    let newer = issuer
+        .sign(&lease(harness.instance(), &[("orbit", "basic")]))
+        .expect("the newer lease is signed");
+    let mut earlier = lease(harness.instance(), &[("orbit", "plus")]);
+    earlier["issued_at"] = json!(now() - Days::new(30));
+    earlier["expires_at"] = json!(now() + Days::new(3650));
+    let older = issuer.sign(&earlier).expect("the older lease is signed");
+
+    data(
+        &harness
+            .call(Who::Admin, INSTALL, json!({ "lease": newer }))
+            .await,
+    );
+    settled(&harness, LicenseState::Valid).await;
+    let reply = harness
+        .call(Who::Admin, INSTALL, json!({ "lease": older }))
+        .await;
+    assert_eq!(
+        refused(&reply, ERROR_OLDER)["installed"],
+        json!(now().to_rfc3339())
+    );
+    let text = format!("SELECT value #>> '{{}}' FROM keel_kv WHERE key = '{KV_KEY}'");
+    assert_eq!(
+        harness.database().rows(&text).await,
+        std::slice::from_ref(&newer)
+    );
+    let status = data(&harness.call(Who::Admin, GET, json!({})).await).clone();
+    assert_eq!(
+        status["products"],
+        json!([{ "id": "orbit", "edition": "basic" }])
+    );
+    assert_eq!(features(&harness), ["orbit.charts"]);
+    data(
+        &harness
+            .call(Who::Admin, INSTALL, json!({ "lease": newer }))
+            .await,
     );
     harness.finish().await;
 }

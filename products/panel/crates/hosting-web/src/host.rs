@@ -10,7 +10,7 @@ use keel_host::api::{Dest, Host, HostExecutor, Origin};
 use keel_hosting_users::api::HostingUsers;
 
 use crate::api::{DocumentRoot, SiteCertificates, SiteTls, Sites};
-use crate::{PRODUCT, config, names, site};
+use crate::{PRODUCT, names, overrides, site};
 
 pub(crate) const SERVER_TEMPLATE: &str = "panel/nginx-site.conf.j2";
 pub(crate) const POOL_TEMPLATE: &str = "panel/php-fpm-pool.conf.j2";
@@ -210,7 +210,7 @@ impl Effects {
                     "user": user,
                     "socket": socket,
                     "home": home,
-                    "custom": config::lines(&row.pool_config),
+                    "custom": overrides::pool(&row.pool_config)?,
                 }))
                 .dest(&pool_root(version), &file)
                 .mode(MODE)
@@ -218,7 +218,7 @@ impl Effects {
                 .reload(&pool_service(version))
                 .apply()
                 .await
-                .map_err(|error| blame.on(config::POOL, error))?;
+                .map_err(|error| blame.on(overrides::POOL, error))?;
         }
         let served = host
             .template(SERVER_TEMPLATE)
@@ -233,7 +233,7 @@ impl Effects {
                     "certificate": pair.certificate,
                     "key": pair.key,
                 })),
-                "custom": config::lines(&row.server_config),
+                "custom": overrides::server(&row.server_config)?,
             }))
             .dest(VHOSTS, &file)
             .mode(MODE)
@@ -241,7 +241,7 @@ impl Effects {
             .reload(NGINX)
             .apply()
             .await
-            .map_err(|error| blame.on(config::SERVER, error));
+            .map_err(|error| blame.on(overrides::SERVER, error));
         let (kept, dropped) = if served.is_ok() {
             (php.as_deref(), applied.as_deref())
         } else {

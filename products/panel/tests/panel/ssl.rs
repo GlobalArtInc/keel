@@ -8,6 +8,10 @@ use std::time::Duration;
 
 use keel::prelude::*;
 use keel::sdk::chrono::{DateTime, Datelike, Days, Utc};
+use keel::sdk::system::SecretCipher;
+use keel::{ExitCode, Runtime};
+use keel_kernel::socket::Socket;
+use keel_kernel::{Log, LogFormat, logging, support};
 use keel_testkit::{Harness, Who, tokio};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
@@ -15,6 +19,7 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
+use crate::mail::mail;
 use crate::support::{Site, composed, create, data, eventually, rows, run_job, state_becomes};
 
 const DIRECTORY_VARIABLE: &str = "KEEL_TEST_ACME_URL";
@@ -503,5 +508,232 @@ async fn an_uploaded_certificate_is_installed_and_its_near_expiry_is_a_problem()
     .await;
     let vhost = fs::read_to_string(site.vhost(DOMAIN)).expect("the server block");
     assert!(!vhost.contains("listen 443 ssl;"), "{vhost}");
+    harness.finish().await;
+}
+
+const MAILBOX_SECRET: &str = "mailbox-secret-5d1f0c";
+const DATABASE_SECRET: &str = "database-secret-8c2e41";
+const FTP_SECRET: &str = "ftp-secret-3a9b77";
+
+async fn active_row(harness: &Harness, table: &str, id: &str) {
+    let sql = format!("SELECT state FROM {table} WHERE id = '{id}'");
+    eventually(&format!("{table} {id} active"), async || {
+        rows(harness, &sql).await == ["active"]
+    })
+    .await;
+}
+
+async fn created_id(harness: &Harness, function: &str, params: Value) -> String {
+    let reply = harness.call(Who::A1, function, params).await;
+    data(&reply)["id"].as_str().expect("an id").to_owned()
+}
+
+async fn account_key(harness: &Harness) -> String {
+    let sealed = rows(
+        harness,
+        "SELECT credentials FROM hosting_certificate_account",
+    )
+    .await;
+    let sealed = sealed.first().expect("an ACME account");
+    let cipher = harness
+        .registry()
+        .services()
+        .get::<dyn SecretCipher>()
+        .expect("the cipher");
+    let credentials: Value =
+        keel::sdk::serde_json::from_slice(&cipher.open(sealed).expect("the credentials open"))
+            .expect("the credentials are JSON");
+    credentials["key_pkcs8"]
+        .as_str()
+        .unwrap_or_else(|| {
+            let fields: Vec<&String> = credentials
+                .as_object()
+                .map(|fields| fields.keys().collect())
+                .unwrap_or_default();
+            panic!("no key among the fields {fields:?}")
+        })
+        .to_owned()
+}
+
+fn bundle_layout(site: &Site) -> Vec<String> {
+    let root = site.path("layout");
+    fs::create_dir_all(root.join("opt")).expect("the opt directory");
+    fs::create_dir_all(root.join("units")).expect("the unit directory");
+    [
+        ("--opt", root.join("opt")),
+        ("--unit-dir", root.join("units")),
+        ("--systemctl", root.join("systemctl")),
+        ("--agent-socket", root.join("agent.sock")),
+    ]
+    .into_iter()
+    .flat_map(|(flag, path)| [flag.to_owned(), path.display().to_string()])
+    .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_support_bundle_carries_no_secret_value() {
+    logging::init(&Log {
+        level: "info".to_owned(),
+        format: LogFormat::Json,
+    })
+    .expect("the log ring is installed");
+    let pebble = pebble().await;
+    let site = Site::new();
+    let harness = mail(&site, composed(&site))
+        .module(&keel_system::audit::MODULE)
+        .section(
+            "hosting_certificate",
+            json!({
+                "certs_dir": site.path("certs").display().to_string(),
+                "challenges_dir": site.path("acme").display().to_string(),
+                "directory_ca": minica().display().to_string(),
+            }),
+        )
+        .section(
+            "hosting_database",
+            json!({ "dumps_dir": site.path("dumps").display().to_string() }),
+        )
+        .boot()
+        .await;
+    data(
+        &harness
+            .call(
+                Who::Admin,
+                "settings.set",
+                json!({ "key": "hosting.certificate.directory", "value": pebble.directory }),
+            )
+            .await,
+    );
+    let web = site_for(&harness, true).await;
+    installed_becomes_other_than(&harness, &site, "-").await;
+    let key = account_key(&harness).await;
+    let url = harness.database().config().database.expose().to_owned();
+
+    let domain = created_id(
+        &harness,
+        "hosting.mail.domain.create",
+        json!({ "name": DOMAIN }),
+    )
+    .await;
+    active_row(&harness, "hosting_mail_domain", &domain).await;
+    let mailbox = created_id(
+        &harness,
+        "hosting.mail.mailbox.create",
+        json!({ "domain": domain, "local": "info", "password": MAILBOX_SECRET }),
+    )
+    .await;
+    active_row(&harness, "hosting_mailbox", &mailbox).await;
+    let wp = created_id(
+        &harness,
+        "hosting.database.create",
+        json!({ "name": "hp_shop_wp" }),
+    )
+    .await;
+    active_row(&harness, "hosting_database", &wp).await;
+    let login = created_id(
+        &harness,
+        "hosting.database.user.create",
+        json!({ "name": "hp_shop_app", "password": DATABASE_SECRET, "databases": [wp] }),
+    )
+    .await;
+    active_row(&harness, "hosting_database_user", &login).await;
+    let ftp = created_id(
+        &harness,
+        "hosting.ftp.create",
+        json!({ "site": web, "name": "upload", "password": FTP_SECRET, "directory": "" }),
+    )
+    .await;
+    active_row(&harness, "hosting_ftp_user", &ftp).await;
+    let changed = harness
+        .call(
+            Who::A1,
+            "hosting.database.user.edit",
+            json!({ "id": login, "password": format!("{DATABASE_SECRET}-2"), "databases": [wp] }),
+        )
+        .await;
+    data(&changed);
+    eventually("the audit trail of the password change", async || {
+        !rows(
+            &harness,
+            "SELECT id::text FROM audit_call WHERE function = 'hosting.database.user.edit'",
+        )
+        .await
+        .is_empty()
+    })
+    .await;
+
+    let socket = site.path("run").join("core.sock");
+    fs::create_dir_all(site.path("run")).expect("the run directory");
+    let _serving = Socket::new(harness.dispatcher().clone())
+        .start(&socket)
+        .await
+        .expect("the control socket serves");
+    let listen = TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("a free port");
+    let config = site.path("config.yaml");
+    fs::write(
+        &config,
+        format!(
+            "listen: {listen}\nsocket: {}\ndata_dir: {}\ndatabase: {url}\nlog: {{ level: info, format: json }}\n",
+            socket.display(),
+            site.path("lib").display(),
+        ),
+    )
+    .expect("the config file");
+    let out = site.path("bundle.tar.zst");
+    let mut args = vec![
+        "keel".to_owned(),
+        "--config".to_owned(),
+        config.display().to_string(),
+        "support-bundle".to_owned(),
+        "--out".to_owned(),
+        out.display().to_string(),
+    ];
+    args.extend(bundle_layout(&site));
+    let runtime = Runtime::new()
+        .module(&keel_system::settings::MODULE)
+        .module(&keel_system::audit::MODULE)
+        .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
+        .module(&keel_system::stats::MODULE)
+        .product(&keel_dns::MANIFEST)
+        .product(&keel_panel::MANIFEST);
+    let exit = tokio::task::spawn_blocking(move || runtime.run_from(args))
+        .await
+        .expect("the bundle command finishes");
+    assert_eq!(exit, ExitCode::SUCCESS);
+
+    let entries = support::read_entries(&out).expect("the bundle opens");
+    let entry = |name: &str| {
+        entries
+            .iter()
+            .find(|(entry, _)| entry == name)
+            .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned())
+            .unwrap_or_else(|| panic!("{name} is in the bundle"))
+    };
+    assert!(entry("audit.jsonl").contains("hosting.mail.mailbox.create"));
+    assert!(entry("audit.jsonl").contains("hosting.database.user.edit"));
+    assert!(
+        entry("logs.jsonl").contains("hosting"),
+        "the ring carries the panel's work"
+    );
+    let secrets = [
+        MAILBOX_SECRET.to_owned(),
+        DATABASE_SECRET.to_owned(),
+        FTP_SECRET.to_owned(),
+        key.clone(),
+        key[..32].to_owned(),
+    ];
+    for (name, bytes) in &entries {
+        let text = String::from_utf8_lossy(bytes);
+        for secret in &secrets {
+            assert!(
+                !text.contains(secret.as_str()),
+                "{name} carries a secret value"
+            );
+        }
+    }
     harness.finish().await;
 }

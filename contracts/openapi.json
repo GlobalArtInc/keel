@@ -4768,6 +4768,93 @@
         }
       }
     },
+    "/api/v1/call/dns.zone.claim": {
+      "post": {
+        "operationId": "dns.zone.claim",
+        "tags": [
+          "dns"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "read",
+          "access": {
+            "level": "user"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Claim",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 253
+                  },
+                  "account": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Claimed",
+                      "type": "object",
+                      "properties": {
+                        "foreign": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "foreign"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/dns.zone.create": {
       "post": {
         "operationId": "dns.zone.create",

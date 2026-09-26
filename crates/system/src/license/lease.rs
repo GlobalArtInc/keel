@@ -8,6 +8,7 @@ pub const KV_KEY: &str = "license_lease";
 pub const ERROR_SIGNATURE: &str = "license.error.signature";
 pub const ERROR_LEASE: &str = "license.error.lease";
 pub const ERROR_INSTANCE: &str = "license.error.instance";
+pub const ERROR_OLDER: &str = "license.error.older";
 const ERROR_STORED: &str = "license.error.stored";
 
 const FIELD: &str = "lease";
@@ -51,6 +52,18 @@ impl Lease {
                 .param("instance", lease.instance_id.to_string()));
         }
         Ok(lease)
+    }
+
+    pub(super) fn replaces(&self, installed: Option<&Lease>) -> Result<()> {
+        match installed {
+            Some(installed) if self.issued_at < installed.issued_at => {
+                Err(KeelError::validation(ERROR_OLDER)
+                    .field(FIELD)
+                    .param("issued", self.issued_at.to_rfc3339())
+                    .param("installed", installed.issued_at.to_rfc3339()))
+            }
+            _ => Ok(()),
+        }
     }
 
     pub(super) fn edition(&self, product: &str) -> Option<&str> {
@@ -140,6 +153,20 @@ mod tests {
         assert_eq!(lease.state(lease.grace_ends_at()), LicenseState::ReadOnly);
         assert_eq!(lease.edition("dns"), Some("pro"));
         assert_eq!(lease.edition("panel"), None);
+    }
+
+    #[test]
+    fn a_lease_replaces_one_issued_at_the_same_time_or_earlier_but_never_a_newer_one() {
+        let expires = Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap();
+        let installed = lease(expires, 30);
+        let mut older = lease(expires + Days::new(365), 30);
+        older.issued_at = installed.issued_at - Days::new(1);
+        let error = older.replaces(Some(&installed)).unwrap_err();
+        assert_eq!(error.key(), ERROR_OLDER);
+        assert_eq!(error.field_path(), Some(FIELD));
+        assert!(lease(expires, 0).replaces(Some(&installed)).is_ok());
+        assert!(older.replaces(None).is_ok());
+        assert!(installed.replaces(Some(&older)).is_ok());
     }
 
     #[test]

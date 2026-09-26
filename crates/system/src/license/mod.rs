@@ -1,5 +1,7 @@
 mod clock;
 mod functions;
+#[cfg(test)]
+mod fuzz;
 mod grant;
 mod lease;
 mod problems;
@@ -10,7 +12,7 @@ use keel_sdk::system::{Features, Installation, LicenseKey};
 use grant::Grant;
 
 pub use clock::{JOB_ID as CLOCK_JOB, KV_CLOCK};
-pub use lease::{ERROR_INSTANCE, ERROR_LEASE, ERROR_SIGNATURE, KV_KEY};
+pub use lease::{ERROR_INSTANCE, ERROR_LEASE, ERROR_OLDER, ERROR_SIGNATURE, KV_KEY};
 pub use problems::{EXPIRED, EXPIRING, PRODUCT_UNLISTED};
 
 pub const GET: &str = "license.get";
