@@ -566,6 +566,9 @@ check "boot lists the demo product" json_is "$site/boot.json" 'any(p["id"] == "d
 check "boot carries the demo brand" json_is "$site/boot.json" 'doc["brand"]["name"] == "product.demo.brand" and doc["brand"]["hue"] == 264 and doc["brand"]["chroma"] == 0.18'
 check "boot names the keel version" json_is "$site/boot.json" "doc['keel']['version'] == '$version' and doc['keel']['api'] == 1"
 check "boot describes the demo product with its brand" json_is "$site/boot.json" 'doc["products"][0] == {"id": "demo", "name": "product.demo.brand", "edition": "full", "brand": {"name": "product.demo.brand", "logo": "/brand/demo/logo.svg", "hue": 264, "chroma": 0.18}}'
+check "GET /api/v1/instance is 200 without a session" http_is "$site/instance.json" 200 GET /api/v1/instance
+check "the handshake names the instance id, the version, protocol 1, the demo product, an ed25519 key and the peers feature" json_is "$site/instance.json" "doc['instanceId'] == open('$site/lib/instance.id').read().strip() and doc['keel'] == '$version' and doc['protocol'] == 1 and doc['products'] == ['demo'] and doc['publicKey'].startswith('ed25519:MCowBQYDK2VwAyEA') and len(doc['publicKey']) == 68 and 'peers' in doc['features'] and doc['serviceKinds'] == []"
+check "the instance key is sealed in keel_kv" sql_is "SELECT value->>'alg' FROM keel.keel_kv WHERE key = 'instance_key'" "A256GCM"
 check "GET /brand/logo.svg is 200" http_is "$site/logo.svg" 200 GET /brand/logo.svg
 check "the effective logo is the demo's SVG" cmp -s "$site/logo.svg" products/demo/brand/logo.svg
 check "the effective logo is served as image/svg+xml no-store" svg_is_served "$site/logo.svg"
@@ -801,6 +804,8 @@ check "keel serve stops on SIGTERM while the export runs" stop_serve
 check "the export is interrupted with its checkpoint kept" test "$(task_sql "SELECT state || ' ' || (checkpoint_json->>'written' = progress_done::text)::text FROM keel.task_job WHERE id = '$paced_id'")" = "interrupted true"
 start_serve resumed
 check "task.get answers done after the restart" task_reaches "$site/export-resumed.json" "$paced_id" done
+check "GET /api/v1/instance after the restart is 200" http_is "$site/instance-resumed.json" 200 GET /api/v1/instance
+check "the handshake keeps its instance key across the restart" json_is "$site/instance-resumed.json" "doc['publicKey'] == $(json_get "$site/instance.json" 'json.dumps(doc["publicKey"])')"
 check "the resumed export answers the note count with each exported line exactly once" json_is "$site/export-resumed.json" "doc['data']['state'] == 'done' and doc['data']['progress'] == '4/4' and doc['data']['result'] == {'exported': 4, 'download': {'function': 'task.download', 'params': {'id': '$paced_id'}}} and doc['data']['error'] is None and sorted(line.split(' ', 1)[1] for line in doc['data']['logTail']) == ['exported alpha', 'exported beta', 'exported hers', 'exported x']"
 check "the resumed export file holds each record once" test "$(cut -d, -f2 "$site/lib/tasks/$paced_id.out" | sort | tr '\n' ' ')" = "alpha beta hers title x "
 check "ctl note.delete of two ids runs inline" keel_ok "$site/delete-inline.json" ctl note.delete "ids=$(json_get "$site/import.json" 'json.dumps(doc["data"]["ids"])')"

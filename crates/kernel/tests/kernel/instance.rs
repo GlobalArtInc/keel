@@ -1,10 +1,18 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
-use keel_kernel::instance::{INSTANCE_ID_FILE, KV_INSTANCE_ID, KV_SECRET_KEY, SECRET_KEY_FILE};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use ed25519_dalek::SigningKey;
+use keel_kernel::instance::{
+    INSTANCE_ID_FILE, KV_INSTANCE_ID, KV_INSTANCE_KEY, KV_SECRET_KEY, SECRET_KEY_FILE,
+};
 use keel_kernel::secret::{Key, Sealed};
 use keel_kernel::{Instance, InstanceError};
-use keel_testkit::TestDatabase;
+use keel_sdk::InstanceInfoSource;
+use keel_sdk::prelude::*;
+use keel_testkit::{Harness, TestDatabase, Who};
+use keel_types::{InstanceInfo, PROTOCOL};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 async fn kv(storage: &keel_kernel::Storage, key: &str) -> Option<serde_json::Value> {
@@ -88,7 +96,7 @@ async fn the_secret_key_is_reused_and_the_instance_id_is_stable_across_restarts(
     assert_eq!(kv(&storage, KV_SECRET_KEY).await, wrapped);
     assert_eq!(
         test.count(&storage, "SELECT count(*) FROM keel_kv").await,
-        2
+        3
     );
 
     storage.close().await.unwrap();
@@ -185,6 +193,206 @@ async fn a_lost_instance_id_file_is_restored_from_the_database_and_a_foreign_one
         error.to_string().contains(&first.id().to_string()),
         "{error}"
     );
+
+    storage.close().await.unwrap();
+    test.finish().await;
+}
+
+const SPKI_PREFIX: &str = "ed25519:MCowBQYDK2VwAyEA";
+
+macro_rules! contributing {
+    ($module:ident, $init:ident, $id:literal, $product:ident, $i18n:literal, $source:expr) => {
+        fn $init(r: &mut Registrar) -> keel_sdk::Result<()> {
+            r.contribute($source);
+            Ok(())
+        }
+
+        static $module: ModuleDef = ModuleDef {
+            id: $id,
+            version: "0.1.0",
+            sdk: keel_sdk::VERSION,
+            requires: &[],
+            migrations: None,
+            init: $init,
+        };
+
+        static $product: ProductManifest = ProductManifest {
+            id: $id,
+            name: concat!("product.", $id, ".brand"),
+            version: "0.1.0",
+            api: keel_types::DESCRIPTOR_VERSION,
+            brand: Brand {
+                logo: concat!("product.", $id, ".logo"),
+                hue: 200,
+                chroma: 0.1,
+            },
+            modules: &[&$module],
+            bridges: &[],
+            menu: &[],
+            levels: LevelLabels {
+                labels: &[],
+                disabled: &[],
+            },
+            account_kinds: &["user"],
+            editions: &[Edition {
+                id: "lite",
+                features: &[],
+            }],
+            i18n: &[("en", $i18n)],
+            assets: &[],
+        };
+    };
+}
+
+contributing!(
+    SKY_MODULE,
+    sky_init,
+    "sky",
+    SKY,
+    r#"{ "product": { "sky": { "brand": "Sky" } } }"#,
+    InstanceInfoSource::new()
+        .feature("tasks")
+        .feature("events")
+        .service_kind("sky.zones")
+);
+contributing!(
+    SEA_MODULE,
+    sea_init,
+    "sea",
+    SEA,
+    r#"{ "product": { "sea": { "brand": "Sea" } } }"#,
+    InstanceInfoSource::new()
+        .feature("events")
+        .service_kind("sea.boxes")
+);
+contributing!(
+    MOON_MODULE,
+    moon_init,
+    "moon",
+    MOON,
+    r#"{ "product": { "moon": { "brand": "Moon" } } }"#,
+    InstanceInfoSource::new()
+        .feature("craters")
+        .service_kind("moon.craters")
+);
+
+fn relay_init(r: &mut Registrar) -> keel_sdk::Result<()> {
+    r.contribute(InstanceInfoSource::new().feature("peers"));
+    Ok(())
+}
+
+static RELAY: ModuleDef = ModuleDef {
+    id: "relay",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &[],
+    migrations: None,
+    init: relay_init,
+};
+
+#[tokio::test]
+async fn the_handshake_answers_the_instance_key_products_and_contributed_features() {
+    let harness = Harness::new()
+        .module(&RELAY)
+        .product(&SKY)
+        .product(&SEA)
+        .product(&MOON)
+        .enabled(["sky", "sea"])
+        .boot()
+        .await;
+    let http = harness.http().await;
+
+    let answer = http.get(Who::Guest, "/api/v1/instance").await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    let raw: Value = serde_json::from_str(&answer.body).unwrap();
+    let mut members: Vec<&str> = raw
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    members.sort_unstable();
+    assert_eq!(
+        members,
+        [
+            "features",
+            "instanceId",
+            "keel",
+            "products",
+            "protocol",
+            "publicKey",
+            "serviceKinds"
+        ]
+    );
+    let info: InstanceInfo = serde_json::from_value(raw).unwrap();
+    assert_eq!(
+        info,
+        InstanceInfo {
+            instance_id: harness.instance(),
+            keel: harness.registry().platform().version.clone(),
+            protocol: PROTOCOL,
+            products: vec!["sea".to_owned(), "sky".to_owned()],
+            public_key: harness.instance_key().public_key(),
+            features: vec!["events".to_owned(), "peers".to_owned(), "tasks".to_owned()],
+            service_kinds: vec!["sea.boxes".to_owned(), "sky.zones".to_owned()],
+        }
+    );
+    assert!(
+        info.public_key.starts_with(SPKI_PREFIX),
+        "{}",
+        info.public_key
+    );
+
+    let signed_in = http.get(Who::Admin, "/api/v1/instance").await;
+    assert_eq!(signed_in.status, 200);
+    assert_eq!(
+        serde_json::from_str::<InstanceInfo>(&signed_in.body).unwrap(),
+        info
+    );
+
+    drop(http);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn the_instance_key_survives_a_restart_and_is_sealed() {
+    let test = TestDatabase::create().await;
+    let storage = test.storage().await;
+    storage.migrate().await.unwrap();
+    let data_dir = tempfile::tempdir().unwrap();
+
+    let first = Instance::establish(data_dir.path(), storage.db())
+        .await
+        .unwrap();
+    let stored = kv(&storage, KV_INSTANCE_KEY).await.unwrap();
+    let public_key = first.instance_key().public_key();
+    assert!(public_key.starts_with(SPKI_PREFIX), "{public_key}");
+    assert_eq!(
+        format!("{:?}", first.instance_key()),
+        format!("InstanceKey({public_key})")
+    );
+
+    let second = Instance::establish(data_dir.path(), storage.db())
+        .await
+        .unwrap();
+    assert_eq!(second.instance_key().public_key(), public_key);
+    assert_eq!(kv(&storage, KV_INSTANCE_KEY).await, Some(stored.clone()));
+
+    let sealed: Sealed = serde_json::from_value(stored).unwrap();
+    assert_eq!(sealed.alg, "A256GCM");
+    let seed: [u8; 32] = first.key().open(&sealed).unwrap().try_into().unwrap();
+    let published = STANDARD
+        .decode(public_key.strip_prefix("ed25519:").unwrap())
+        .unwrap();
+    assert_eq!(published.len(), 44);
+    assert_eq!(
+        &published[12..],
+        SigningKey::from_bytes(&seed).verifying_key().as_bytes()
+    );
+    let file_key =
+        Key::parse_hex(&fs::read_to_string(data_dir.path().join(SECRET_KEY_FILE)).unwrap())
+            .unwrap();
+    assert!(file_key.open(&sealed).is_err());
 
     storage.close().await.unwrap();
     test.finish().await;

@@ -10,6 +10,8 @@ pub mod cron;
 pub mod license;
 #[cfg(feature = "notify")]
 pub mod notify;
+#[cfg(feature = "peers")]
+pub mod peers;
 #[cfg(feature = "settings")]
 pub mod settings;
 #[cfg(feature = "stats")]

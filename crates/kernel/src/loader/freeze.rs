@@ -35,6 +35,7 @@ use crate::dispatcher::strip::Plan;
 use crate::dispatcher::{CallerHandle, LiveBus, MaskHandle, OutboxFeed};
 use crate::doctor;
 use crate::features::ProductFeatures;
+use crate::instance;
 use crate::keel::{SetupHandle, StoredAccounts, StoredLimits, StoredPrincipals};
 use crate::menu::{SYSTEM_GROUP, group_of, label_of};
 use crate::products::Composed;
@@ -549,6 +550,15 @@ impl Freezer {
             instance: graph.instance(),
             products: graph.products().to_vec(),
         }));
+        if let (Some(id), Some(key)) = (graph.instance(), graph.instance_key()) {
+            services.provide(Arc::new(instance::handshake(
+                id,
+                key,
+                graph.version(),
+                graph.products(),
+                &self.contributions,
+            )));
+        }
         if let Some(key) = graph.license_key() {
             services.provide::<dyn LicenseKey>(key.clone());
         }

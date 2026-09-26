@@ -385,6 +385,12 @@ async fn boot_of(running: &Running) -> Value {
     body
 }
 
+async fn public_key_of(running: &Running) -> Value {
+    let (status, body) = get(running, "/api/v1/instance").await;
+    assert_eq!(status, 200, "{body}");
+    body["publicKey"].clone()
+}
+
 async fn titles_of(site: &Site) -> Vec<String> {
     site.database
         .rows("SELECT title FROM probe_item ORDER BY title")
@@ -411,6 +417,7 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
     assert_eq!(status, 200, "{body}");
     assert!(cookie.is_some(), "the source logs alice in: {body}");
     let source_boot = boot_of(&running).await;
+    let source_key = public_key_of(&running).await;
     let archive = source.archive("site.tar.zst");
     assert_eq!(
         source
@@ -552,6 +559,11 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
     );
     assert_eq!(restored.products(), ["probe"]);
     assert_eq!(boot_of(&restored).await, source_boot);
+    assert_eq!(
+        public_key_of(&restored).await,
+        source_key,
+        "the instance key opens under the restored data key"
+    );
     let (status, cookie, body) = login_with_totp(&restored, &enrolled.secret, 1).await;
     assert_eq!(status, 200, "{body}");
     assert!(
@@ -611,6 +623,7 @@ async fn a_backup_without_the_key_restores_but_the_sealed_values_do_not_open() {
         .await
         .expect("the source starts");
     let enrolled = enrol_alice(&running).await;
+    let source_key = public_key_of(&running).await;
     let archive = source.archive("plain.tar.zst");
     assert_eq!(
         source
@@ -662,6 +675,14 @@ async fn a_backup_without_the_key_restores_but_the_sealed_values_do_not_open() {
         ["0"],
         "the wrapped data key of the dump is dropped when no key opens it"
     );
+    assert_eq!(
+        target
+            .database
+            .rows("SELECT count(*)::text FROM keel_kv WHERE key = 'instance_key'")
+            .await,
+        ["0"],
+        "the instance key sealed under the dropped data key goes with it"
+    );
     let note: Value = serde_json::from_str(
         &std::fs::read_to_string(target.config.data_dir.join("restore.note")).unwrap(),
     )
@@ -677,6 +698,11 @@ async fn a_backup_without_the_key_restores_but_the_sealed_values_do_not_open() {
         std::fs::read_to_string(target.config.data_dir.join("secret.key")).unwrap(),
         std::fs::read_to_string(source.config.data_dir.join("secret.key")).unwrap(),
         "the target generates a key of its own"
+    );
+    assert_ne!(
+        public_key_of(&restored).await,
+        source_key,
+        "the target answers the handshake with an instance key of its own"
     );
     let (status, cookie, body) = login_with_totp(&restored, &enrolled.secret, 0).await;
     assert_eq!(status, 500, "{body}");

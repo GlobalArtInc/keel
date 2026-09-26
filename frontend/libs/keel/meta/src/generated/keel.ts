@@ -446,6 +446,15 @@ export interface Filter {
 export interface GroupResult {
   updated: number;
 }
+export interface InstanceInfo {
+  instanceId: Id;
+  keel: string;
+  protocol: number;
+  products: string[];
+  publicKey: string;
+  features?: string[];
+  serviceKinds?: string[];
+}
 export interface KeelAttrs {
   level?: Level | null;
   secret?: boolean;

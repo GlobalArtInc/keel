@@ -1,0 +1,189 @@
+{
+  "keel": 1,
+  "name": "peer.list",
+  "module": "peer",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_Peer",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Peer"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "Peer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keel": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "scopes": {
+            "$ref": "#/$defs/Scopes"
+          },
+          "status": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "instanceId",
+          "products",
+          "keel",
+          "protocol",
+          "publicKey",
+          "scopes",
+          "status",
+          "createdAt"
+        ]
+      },
+      "Scopes": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "peer.list.title",
+    "search": [
+      "url",
+      "instanceId"
+    ],
+    "columns": [
+      {
+        "key": "url",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "products",
+        "type": "text"
+      },
+      {
+        "key": "keel",
+        "type": "text"
+      },
+      {
+        "key": "protocol",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "status",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "active": "success"
+        }
+      },
+      {
+        "key": "lastSeenAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "empty": {
+      "title": "peer.empty"
+    },
+    "invalidate_on": [
+      "peer.*"
+    ]
+  }
+}

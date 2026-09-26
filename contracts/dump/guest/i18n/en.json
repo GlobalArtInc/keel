@@ -1171,6 +1171,27 @@
         "valid": "Valid"
       }
     },
+    "peer": {
+      "column": {
+        "createdAt": "Paired",
+        "keel": "Version",
+        "lastSeenAt": "Last seen",
+        "products": "Products",
+        "protocol": "Protocol",
+        "status": "Status",
+        "url": "Address"
+      },
+      "empty": "No other installation is paired with this one yet",
+      "error": {
+        "stored": "The stored link {id} cannot be read"
+      },
+      "list": {
+        "title": "Peers"
+      },
+      "status": {
+        "active": "Active"
+      }
+    },
     "settings": {
       "action": {
         "set": "Change"

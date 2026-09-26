@@ -24,6 +24,7 @@ pub mod task;
 pub mod ui;
 
 mod call;
+mod instance;
 mod mail;
 mod services;
 mod stat;
@@ -60,6 +61,7 @@ pub use error::{KeelError, Result};
 pub use function::{FunctionBuilder, FunctionDef, function};
 pub use guard::Guard;
 pub use host::{AgentOp, AgentOpError, AgentScope, ConfigTemplate};
+pub use instance::InstanceInfoSource;
 pub use keel_types::{
     Account, Choice, Choices, FileAttrs, GroupResult, Id, Level, ListQuery, OptionsQuery, Page,
     Principal,

@@ -5,6 +5,7 @@ pub mod envelope;
 pub mod event;
 pub mod expr;
 pub mod id;
+pub mod instance;
 pub mod level;
 pub mod list;
 pub mod log;
@@ -29,6 +30,7 @@ pub use event::{
 };
 pub use expr::{Context, Expr};
 pub use id::Id;
+pub use instance::InstanceInfo;
 pub use level::Level;
 pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
 pub use log::{LogLevel, LogLine};

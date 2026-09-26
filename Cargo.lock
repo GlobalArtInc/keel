@@ -2530,6 +2530,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chrono-tz",
+ "ed25519-dalek",
  "futures",
  "hostname",
  "ipnet",

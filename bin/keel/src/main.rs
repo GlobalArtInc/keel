@@ -10,6 +10,7 @@ fn main() -> keel::ExitCode {
         .module(&keel_system::license::MODULE)
         .module(&keel_system::update::MODULE)
         .module(&keel_system::backup::MODULE)
+        .module(&keel_system::peers::MODULE)
         .module(&keel_system::stats::MODULE)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"));
     #[cfg(feature = "demo")]

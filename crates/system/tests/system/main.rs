@@ -44,6 +44,8 @@ mod notify_channels;
 mod notify_mail;
 #[cfg(all(feature = "auth", feature = "notify", feature = "settings"))]
 mod password_reset;
+#[cfg(feature = "peers")]
+mod peers;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings;
 #[cfg(feature = "settings")]

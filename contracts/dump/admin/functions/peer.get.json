@@ -1,0 +1,127 @@
+{
+  "keel": 1,
+  "name": "peer.get",
+  "module": "peer",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Peer",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "instanceId": {
+        "type": "string"
+      },
+      "products": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "keel": {
+        "type": "string"
+      },
+      "protocol": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "publicKey": {
+        "type": "string"
+      },
+      "scopes": {
+        "$ref": "#/$defs/Scopes"
+      },
+      "status": {
+        "type": "string"
+      },
+      "lastSeenAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "instanceId",
+      "products",
+      "keel",
+      "protocol",
+      "publicKey",
+      "scopes",
+      "status",
+      "createdAt"
+    ],
+    "$defs": {
+      "Scopes": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  }
+}

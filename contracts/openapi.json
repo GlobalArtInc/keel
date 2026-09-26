@@ -17019,6 +17019,211 @@
         }
       }
     },
+    "/api/v1/call/peer.get": {
+      "post": {
+        "operationId": "peer.get",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Peer",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "instanceId": {
+                          "type": "string"
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "keel": {
+                          "type": "string"
+                        },
+                        "protocol": {
+                          "type": "integer",
+                          "format": "int32"
+                        },
+                        "url": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "publicKey": {
+                          "type": "string"
+                        },
+                        "scopes": {
+                          "$ref": "#/components/schemas/Scopes"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "lastSeenAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "instanceId",
+                        "products",
+                        "keel",
+                        "protocol",
+                        "publicKey",
+                        "scopes",
+                        "status",
+                        "createdAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/peer.list": {
+      "post": {
+        "operationId": "peer.list",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_Peer",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Peer"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/settings.brand.delete": {
       "post": {
         "operationId": "settings.brand.delete",
@@ -21490,6 +21695,67 @@
           "interrupted"
         ]
       },
+      "Peer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keel": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "scopes": {
+            "$ref": "#/components/schemas/Scopes"
+          },
+          "status": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "instanceId",
+          "products",
+          "keel",
+          "protocol",
+          "publicKey",
+          "scopes",
+          "status",
+          "createdAt"
+        ]
+      },
       "Period": {
         "type": "object",
         "properties": {
@@ -21879,6 +22145,28 @@
           "scheduledAt",
           "startedAt",
           "outcome"
+        ]
+      },
+      "Scopes": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
         ]
       },
       "Secret": {

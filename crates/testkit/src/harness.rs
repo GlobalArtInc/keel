@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use axum::Router;
 use chrono::{DateTime, Utc};
 use keel_kernel::dispatcher::{LiveBus, SchemaError};
+use keel_kernel::instance::InstanceKey;
 use keel_kernel::loader::BootError;
 use keel_kernel::secret::{Key, KeyError};
 use keel_kernel::{
@@ -92,6 +93,7 @@ impl DataDir {
 pub struct Harness {
     clock: Arc<FixedClock>,
     instance: Id,
+    instance_key: InstanceKey,
     key: Key,
     kernel: Mutex<Kernel>,
     dispatcher: Arc<Dispatcher>,
@@ -237,10 +239,12 @@ impl Builder {
             }
         }
         let instance = self.instance.unwrap_or_else(Id::generate);
+        let instance_key = InstanceKey::generate()?;
         let mut composition = Composition::new()
             .clock(clock.clone())
             .key(key.clone())
             .instance(instance)
+            .instance_key(instance_key.clone())
             .data_dir(data_dir.path())
             .module(&auth::MODULE);
         if let Some(license_key) = self.license_key {
@@ -295,6 +299,7 @@ impl Builder {
         Ok(Harness {
             clock,
             instance,
+            instance_key,
             key,
             kernel: Mutex::new(kernel),
             dispatcher,
@@ -329,6 +334,10 @@ impl Harness {
 
     pub fn instance(&self) -> Id {
         self.instance
+    }
+
+    pub fn instance_key(&self) -> &InstanceKey {
+        &self.instance_key
     }
 
     pub fn key(&self) -> &Key {

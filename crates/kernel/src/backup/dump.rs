@@ -10,7 +10,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::BackupError;
-use crate::instance::KV_SECRET_KEY;
+use crate::instance::{KV_INSTANCE_KEY, KV_SECRET_KEY};
 use crate::migrations::LEDGER;
 use crate::secret::{Key, Sealed};
 
@@ -361,11 +361,13 @@ async fn reconcile_data_key(
     if opens {
         return Ok(DataKey::Kept);
     }
-    sqlx::query(DROP_SECRET_KEY)
-        .bind(KV_SECRET_KEY)
-        .execute(&mut *conn)
-        .await
-        .map_err(sql("drop the wrapped data key"))?;
+    for key in [KV_SECRET_KEY, KV_INSTANCE_KEY] {
+        sqlx::query(DROP_SECRET_KEY)
+            .bind(key)
+            .execute(&mut *conn)
+            .await
+            .map_err(sql("drop the wrapped data key"))?;
+    }
     Ok(DataKey::Dropped)
 }
 

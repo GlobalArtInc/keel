@@ -9,6 +9,7 @@ use keel_types::Id;
 use serde_json::Value;
 
 use crate::clock::{Clock, SystemClock};
+use crate::instance::InstanceKey;
 use crate::keel;
 use crate::keel::SYSTEM_KIND;
 use crate::secret::Key;
@@ -24,6 +25,7 @@ pub struct Composition {
     clock: Arc<dyn Clock>,
     key: Option<Key>,
     instance: Option<Id>,
+    instance_key: Option<InstanceKey>,
     license_key: Option<Arc<dyn LicenseKey>>,
     sections: Sections,
     data_dir: PathBuf,
@@ -38,6 +40,7 @@ pub struct Graph {
     clock: Arc<dyn Clock>,
     key: Option<Key>,
     instance: Option<Id>,
+    instance_key: Option<InstanceKey>,
     license_key: Option<Arc<dyn LicenseKey>>,
     sections: Sections,
     data_dir: PathBuf,
@@ -145,6 +148,7 @@ impl Default for Composition {
             clock: Arc::new(SystemClock),
             key: None,
             instance: None,
+            instance_key: None,
             license_key: None,
             sections: Sections::default(),
             data_dir: PathBuf::from(crate::config::DATA_DIR),
@@ -193,6 +197,11 @@ impl Composition {
 
     pub fn instance(mut self, id: Id) -> Self {
         self.instance = Some(id);
+        self
+    }
+
+    pub fn instance_key(mut self, key: InstanceKey) -> Self {
+        self.instance_key = Some(key);
         self
     }
 
@@ -346,6 +355,7 @@ impl Composition {
                 clock: self.clock,
                 key: self.key,
                 instance: self.instance,
+                instance_key: self.instance_key,
                 license_key: self.license_key,
                 sections: self.sections,
                 data_dir: self.data_dir,
@@ -520,6 +530,10 @@ impl Graph {
 
     pub(crate) fn instance(&self) -> Option<Id> {
         self.instance
+    }
+
+    pub(crate) fn instance_key(&self) -> Option<&InstanceKey> {
+        self.instance_key.as_ref()
     }
 
     pub(crate) fn license_key(&self) -> Option<&Arc<dyn LicenseKey>> {

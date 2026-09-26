@@ -164,6 +164,7 @@ impl Runtime {
             .composition(enabled)?
             .key(instance.key().clone())
             .instance(instance.id())
+            .instance_key(instance.instance_key().clone())
             .sections(Sections::new(&config.file, config.sections.clone()))
             .data_dir(config.data_dir.clone());
         let kernel = Kernel::boot(composition, storage).await?;

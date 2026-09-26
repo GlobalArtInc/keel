@@ -7,6 +7,7 @@ mod cookie;
 mod descriptors;
 mod events;
 mod i18n;
+mod instance;
 mod lines;
 mod live;
 mod proxy;
@@ -225,7 +226,8 @@ impl Http {
             .layer(middleware::from_fn_with_state(
                 self.state.clone(),
                 auth::authenticate,
-            ));
+            ))
+            .route("/instance", get(instance::serve));
         Router::new()
             .route("/healthz", get(healthz))
             .route("/readyz", get(readyz))
