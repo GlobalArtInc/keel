@@ -1,6 +1,10 @@
 use keel::prelude::*;
+use keel::sdk::escape_like;
+use keel::sdk::sea_orm::sea_query::Expr;
+use keel::sdk::sea_orm::sea_query::extension::postgres::PgExpr;
 use keel::sdk::sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 
 use crate::host::Effects;
@@ -13,6 +17,8 @@ const GET: &str = "hosting.user.get";
 const CREATE: &str = "hosting.user.create";
 const EDIT: &str = "hosting.user.edit";
 const DELETE: &str = "hosting.user.delete";
+const OPTIONS: &str = "hosting.user.options";
+const MAX_OPTIONS: u32 = 100;
 const EXISTS: &str = "hosting.user.error.exists";
 const NAME: &str = r"^[a-z][a-z0-9_-]{0,28}$";
 
@@ -213,6 +219,43 @@ pub(crate) fn delete() -> FunctionDef {
             let deleted = u64::try_from(names.len()).unwrap_or(u64::MAX);
             remove_after_commit(&call, names)?;
             Ok(Deleted { deleted })
+        })
+}
+
+pub(crate) fn options() -> FunctionDef {
+    function::<OptionsQuery, Choices>(OPTIONS)
+        .kind(Kind::Options)
+        .access(Level::User, READ)
+        .feature(FEATURE)
+        .unowned()
+        .handler(|call: Call<OptionsQuery>| async move {
+            let query = call.params();
+            let limit = query.limit.clamp(1, MAX_OPTIONS);
+            let mut select = call
+                .account_scope()
+                .apply(user::Entity::find())
+                .filter(user::Column::State.eq(user::STATE_ACTIVE));
+            if !query.search.is_empty() {
+                let pattern = format!("%{}%", escape_like(&query.search));
+                select = select.filter(Expr::col(user::Column::Name).ilike(pattern.as_str()));
+            }
+            if let Some(cursor) = &query.cursor {
+                select = select.filter(user::Column::Id.gt(cursor.as_str()));
+            }
+            let mut rows = select
+                .order_by_asc(user::Column::Id)
+                .limit(u64::from(limit) + 1)
+                .all(call.db())
+                .await?;
+            let more = rows.len() > limit as usize;
+            rows.truncate(limit as usize);
+            Ok(Choices {
+                data: rows
+                    .into_iter()
+                    .map(|row| Choice::new(row.id, row.name))
+                    .collect(),
+                more,
+            })
         })
 }
 

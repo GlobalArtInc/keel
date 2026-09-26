@@ -1,0 +1,175 @@
+{
+  "keel": 1,
+  "name": "hosting.site.create",
+  "module": "hosting_site",
+  "kind": "wizard",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.site.manage",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "SiteCreate",
+    "type": "object",
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.user.options"
+        }
+      },
+      "domain": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 253,
+        "x-keel": {
+          "check": "domain"
+        }
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "default": [],
+        "x-keel": {
+          "check": "domain"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "root": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+        "default": null
+      },
+      "php": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^[0-9]{1,2}\\.[0-9]{1,2}$",
+        "default": null,
+        "x-keel": {
+          "options": "hosting.site.php"
+        }
+      },
+      "dnsZone": {
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "required": [
+      "user",
+      "domain"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingSite",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "root": {
+        "type": "string"
+      },
+      "php": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "userId",
+      "domain",
+      "aliases",
+      "root",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.site.create.title",
+    "pages": [
+      {
+        "id": "site",
+        "fields": [
+          "user",
+          "domain",
+          "aliases",
+          "root"
+        ]
+      },
+      {
+        "id": "php",
+        "fields": [
+          "php"
+        ]
+      },
+      {
+        "id": "dns",
+        "fields": [
+          "dnsZone"
+        ]
+      }
+    ]
+  }
+}

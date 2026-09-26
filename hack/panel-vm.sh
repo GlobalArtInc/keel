@@ -15,25 +15,35 @@ USER_NAME=hp_$NAME
 HOME_DIR=$WWW/keel-panel-$NAME
 NOLOGIN=/usr/sbin/nologin
 LOGIN_SHELL=/bin/bash
+DOMAIN=$NAME.test
+ALIAS=www.$DOMAIN
+VHOST=/etc/nginx/conf.d/keel-panel-$DOMAIN.conf
+DOC_ROOT=$HOME_DIR/$DOMAIN
 
 usage() {
   cat <<EOF
 usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh run
 
-Proves the hosting users of the panel bundle on a virtual machine, run as
-root from a checkout of the repository.
+Proves the hosting users and the sites of the panel bundle on a virtual
+machine, run as root from a checkout of the repository.
 
-"install" prepares $WWW, then runs deploy/install.sh --product panel
---binary <archive> --yes and prints the setup link.
+"install" installs nginx, php-fpm and curl, prepares $WWW, then runs
+deploy/install.sh --product panel --binary <archive> --yes and prints the
+setup link.
 
 "run" proves the running installation over the control socket as the user
 keel. It creates a user account and in it the hosting user $NAME, waits for
 it to turn active and finds the operating-system account $USER_NAME with a
 uid inside the uid_range of $POLICY, the home $HOME_DIR owned by it and no
-login shell. It grants the shell and takes it back, suspends the account
-and finds $USER_NAME locked and expired, resumes it and finds it open
-again, then deletes the account and finds $USER_NAME and its home gone,
+login shell. It grants the shell and takes it back. It creates the site
+$DOMAIN with the alias $ALIAS on the newest PHP of /etc/php, waits for it to
+turn active, finds its server block in /etc/nginx/conf.d and its pool in the
+pool.d of that PHP, both accepted by nginx -t and php-fpm -t, writes an
+index.php into $DOC_ROOT as $USER_NAME and fetches it through nginx. It
+suspends the account and finds $USER_NAME locked and expired and the site
+answering 403, resumes it and finds both open again, then deletes the
+account and finds the server block, the pool, $USER_NAME and its home gone,
 with every change in the journal of $AGENT_UNIT.
 EOF
 }
@@ -71,6 +81,7 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm curl
   install -d -m 0755 -o root -g root "$WWW"
   local log
   log=$(mktemp)
@@ -169,6 +180,22 @@ agent_logged() {
   journalctl -u "$AGENT_UNIT" --since "$1" --no-pager | grep -qF -- "$2"
 }
 
+php_version() {
+  find /etc/php -mindepth 3 -maxdepth 3 -path '*/fpm/pool.d' 2>/dev/null | cut -d/ -f4 | sort -V | tail -n 1
+}
+
+site_state_is() {
+  [ "$(call hosting.site.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "$2" ]
+}
+
+fetched() {
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $2" http://127.0.0.1/)" = "$1" ]
+}
+
+serves_index() {
+  [ "$(curl -fsS -H "Host: $1" http://127.0.0.1/ 2>/dev/null)" = "keel-panel" ]
+}
+
 task_done() {
   [ "$(call task.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "done" ]
 }
@@ -197,25 +224,53 @@ run_proof() {
   check "keel ctl hosting.user.edit takes the shell back" call hosting.user.edit "id=$id" shell=false
   check "$USER_NAME is back to $NOLOGIN" eventually shell_is "$NOLOGIN"
 
+  say "--- a site"
+  local php pool site
+  php=$(php_version)
+  [ -n "$php" ] || fail "no php-fpm under /etc/php; run install first"
+  pool=/etc/php/$php/fpm/pool.d/keel-panel-$DOMAIN.conf
+  check "the policy names the pool root of php$php-fpm" grep -qF "pools-$php: /etc/php/$php/fpm/pool.d" "$POLICY"
+  check "the policy names the check of php$php-fpm" grep -qF "php$php-fpm.test" "$POLICY"
+  site=$(call hosting.site.create "user=$id" "domain=$DOMAIN" "aliases=[\"$ALIAS\"]" "php=\"$php\"" | field data.id) || fail "keel ctl hosting.site.create failed"
+  check "the site $DOMAIN turns active" eventually site_state_is "$site" active
+  check "the server block $VHOST serves $DOMAIN and $ALIAS" grep -qF "server_name $DOMAIN $ALIAS;" "$VHOST"
+  check "the server block passes PHP to the pool of php$php" grep -qF "fastcgi_pass unix:/run/php/keel-panel-$site-$php.sock;" "$VHOST"
+  check "the server block refuses symlinks another account owns" grep -qF 'disable_symlinks if_not_owner from=$document_root;' "$VHOST"
+  check "the pool $pool runs as $USER_NAME" grep -qxF "user = $USER_NAME" "$pool"
+  check "nginx accepts the configuration" nginx -t
+  check "php-fpm$php accepts the configuration" "php-fpm$php" -t
+  say "  the home $HOME_DIR has mode $(stat -c %a "$HOME_DIR"); the panel does not create the document root, so the proof writes it as $USER_NAME and lets nginx search the home"
+  chmod o+x "$HOME_DIR"
+  runuser -u "$USER_NAME" -- /bin/sh -c "mkdir -p '$DOC_ROOT' && chmod 0755 '$DOC_ROOT' && printf '%s' '<?php echo \"keel-\" . \"panel\";' > '$DOC_ROOT/index.php' && chmod 0644 '$DOC_ROOT/index.php'"
+  check "nginx serves the index.php of $DOMAIN through the pool" eventually serves_index "$DOMAIN"
+  check "nginx serves it under the alias $ALIAS" serves_index "$ALIAS"
+
   say "--- suspend and resume"
   check "keel ctl keel.account.suspend suspends $account" call keel.account.suspend "id=$account"
   check "the operating-system account is locked and expired while its account is suspended" eventually locked
   check "the hosting user is suspended" state_is "$id" suspended
+  check "the site answers 403 while its account is suspended" eventually fetched 403 "$DOMAIN"
   check "keel ctl keel.account.resume resumes $account" call keel.account.resume "id=$account"
   check "$USER_NAME no longer expires once its account is resumed" eventually open_again
   check "the hosting user is active again" state_is "$id" active
+  check "the site serves its index again" eventually serves_index "$DOMAIN"
 
   say "--- the account deleted"
   task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
   check "keel ctl keel.account.delete queues a task" test -n "$task"
   check "the deletion task is done" eventually task_done "$task"
   check "$USER_NAME and its home are gone" eventually gone
+  check "the server block $VHOST is gone" test ! -e "$VHOST"
+  check "the pool $pool is gone" test ! -e "$pool"
+  check "nginx still accepts the configuration" nginx -t
   check "the agent journal carries host.user.create" agent_logged "$since" host.user.create
   check "the agent journal carries host.user.modify" agent_logged "$since" host.user.modify
   check "the agent journal carries host.user.delete" agent_logged "$since" host.user.delete
+  check "the agent journal carries host.template.apply" agent_logged "$since" host.template.apply
+  check "the agent journal carries host.fs.remove" agent_logged "$since" host.fs.remove
 
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
-  say "panel's hosting users are proven on this machine: an account inside the range with its home, the shell, the lock of a suspended account and the removal with the account"
+  say "panel's hosting users and sites are proven on this machine: an account inside the range with its home, the shell, a site on nginx and php-fpm, the lock and the refusal of a suspended account and the removal with the account"
 }
 
 case ${1:-} in

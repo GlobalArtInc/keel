@@ -2389,6 +2389,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-hosting-web"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-host",
+ "keel-hosting-users",
+]
+
+[[package]]
 name = "keel-kernel"
 version = "0.2.0"
 dependencies = [
@@ -2438,6 +2447,7 @@ dependencies = [
  "keel",
  "keel-host",
  "keel-hosting-users",
+ "keel-hosting-web",
  "keel-system",
  "keel-testkit",
  "tempfile",

@@ -12,6 +12,7 @@ repository.workspace = true
 keel = { workspace = true }
 keel-host = { workspace = true }
 keel-hosting-users = { workspace = true }
+keel-hosting-web = { workspace = true }
 
 [dev-dependencies]
 keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "license"] }

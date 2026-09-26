@@ -11,6 +11,8 @@ use keel_testkit::{Harness, Reply, Who, tokio};
 pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 pub(crate) const FIRST_UID: u32 = 100_000;
 pub(crate) const LAST_UID: u32 = 100_009;
+pub(crate) const PHP: &str = "8.4";
+pub(crate) const OLDER_PHP: &str = "8.3";
 
 const GETENT: &str = "db=$1; shift\n[ \"${1:-}\" = -- ] && shift\ncase $db in passwd) file=ROOT/passwd;; group) file=ROOT/group;; *) exit 1;; esac\nif [ $# -eq 0 ]; then cat \"$file\"; exit 0; fi\nline=$(awk -F: -v k=\"$1\" '$1 == k || $3 == k' \"$file\")\n[ -n \"$line\" ] || exit 2\nprintf '%s\\n' \"$line\"\n";
 const USERADD: &str = "echo \"useradd $*\" >> LOG\nuid=; gid=; shell=; home=\nwhile [ $# -gt 1 ]; do\n  case $1 in\n    --uid) uid=$2; shift 2;;\n    --gid) gid=$2; shift 2;;\n    --shell) shell=$2; shift 2;;\n    --home-dir) home=$2; shift 2;;\n    --create-home) mkdir -p \"$home\"; shift;;\n    --no-create-home) shift;;\n    *) echo \"useradd: unexpected $1\" >&2; exit 3;;\n  esac\ndone\nprintf '%s:x:%s:%s::%s:%s\\n' \"$1\" \"$uid\" \"$gid\" \"$home\" \"$shell\" >> ROOT/passwd\n";
@@ -18,6 +20,8 @@ const USERDEL: &str = "echo \"userdel $*\" >> LOG\nfor last; do :; done\nhome=$(
 const GROUPADD: &str =
     "echo \"groupadd $*\" >> LOG\nprintf '%s:x:%s:\\n' \"$3\" \"$2\" >> ROOT/group\n";
 const GROUPDEL: &str = "echo \"groupdel $*\" >> LOG\nawk -F: -v k=\"$1\" '$1 != k' ROOT/group > ROOT/group.new && mv ROOT/group.new ROOT/group\n";
+const CHECK: &str = "echo \"NAME $*\" >> LOG\nif [ -f FLAG ]; then echo \"NAME: [emerg] the configuration of the test is broken\" >&2; exit 1; fi\nexit 0\n";
+const SYSTEMCTL: &str = "echo \"systemctl $*\" >> LOG\nexit 0\n";
 const USERMOD: &str = "echo \"usermod $*\" >> LOG\nshell=; lock=\nwhile [ $# -gt 1 ]; do\n  case $1 in\n    --shell) shell=$2; shift 2;;\n    --expiredate) shift 2;;\n    --lock) lock=yes; shift;;\n    --unlock) lock=no; shift;;\n    *) echo \"usermod: unexpected $1\" >&2; exit 3;;\n  esac\ndone\nif [ \"$lock\" = yes ]; then : > ROOT/locked-$1; fi\nif [ \"$lock\" = no ]; then rm -f ROOT/locked-$1; fi\nif [ -n \"$shell\" ]; then awk -F: -v OFS=: -v k=\"$1\" -v s=\"$shell\" '$1 == k { $7 = s } { print }' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd; fi\nexit 0\n";
 
 pub(crate) struct Site {
@@ -27,8 +31,12 @@ pub(crate) struct Site {
 impl Site {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        for sub in ["www", "bin"] {
+        for sub in ["www", "bin", "vhosts"] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
+        }
+        for version in [PHP, OLDER_PHP] {
+            fs::create_dir(dir.path().join(format!("pools-{version}")))
+                .expect("a pool directory of the site");
         }
         let site = Self { dir };
         fs::write(site.path("passwd"), "root:x:0:0:root:/root:/bin/sh\n").expect("passwd");
@@ -41,8 +49,19 @@ impl Site {
             ("groupadd", GROUPADD),
             ("groupdel", GROUPDEL),
             ("usermod", USERMOD),
+            ("systemctl", SYSTEMCTL),
         ] {
             site.stub(name, body);
+        }
+        for tool in [
+            "nginx".to_owned(),
+            format!("php-fpm{PHP}"),
+            format!("php-fpm{OLDER_PHP}"),
+        ] {
+            let body = CHECK
+                .replace("FLAG", &site.flag(&tool).display().to_string())
+                .replace("NAME", &tool);
+            site.stub(&tool, &body);
         }
         site
     }
@@ -63,7 +82,9 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www} }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older} }}
+  services: [nginx, php*-fpm]
+  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"] }}
   products:
     panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}
   tools:
@@ -73,9 +94,13 @@ impl Site {
     groupadd: {bin}/groupadd
     groupdel: {bin}/groupdel
     usermod: {bin}/usermod
+    systemctl: {bin}/systemctl
     shells: {shells}
 ",
             www = self.path("www").display(),
+            vhosts = self.path("vhosts").display(),
+            pools = self.path(&format!("pools-{PHP}")).display(),
+            older = self.path(&format!("pools-{OLDER_PHP}")).display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )
@@ -93,6 +118,32 @@ impl Site {
             .lines()
             .find(|line| line.split(':').next() == Some(user))
             .map(str::to_owned)
+    }
+
+    fn flag(&self, tool: &str) -> PathBuf {
+        self.path(&format!("{tool}.broken"))
+    }
+
+    pub(crate) fn break_check(&self, tool: &str, broken: bool) {
+        if broken {
+            fs::write(self.flag(tool), "").expect("the flag of a broken check");
+        } else {
+            fs::remove_file(self.flag(tool)).expect("the flag of a broken check is removed");
+        }
+    }
+
+    pub(crate) fn vhost(&self, domain: &str) -> PathBuf {
+        self.path("vhosts")
+            .join(format!("keel-panel-{domain}.conf"))
+    }
+
+    pub(crate) fn pool(&self, domain: &str) -> PathBuf {
+        self.pool_of(PHP, domain)
+    }
+
+    pub(crate) fn pool_of(&self, version: &str, domain: &str) -> PathBuf {
+        self.path(&format!("pools-{version}"))
+            .join(format!("keel-panel-{domain}.conf"))
     }
 
     pub(crate) fn locked(&self, user: &str) -> bool {
@@ -125,9 +176,18 @@ fn write_tool(path: &Path, body: &str) {
 }
 
 pub(crate) async fn panel(site: &Site) -> Harness {
-    Harness::new()
-        .product(&keel_panel::MANIFEST)
-        .module(&keel_system::tasks::MODULE)
+    panel_with(site, &[]).await
+}
+
+pub(crate) async fn panel_with(site: &Site, modules: &[&'static ModuleDef]) -> Harness {
+    modules
+        .iter()
+        .fold(
+            Harness::new()
+                .product(&keel_panel::MANIFEST)
+                .module(&keel_system::tasks::MODULE),
+            |harness, module| harness.module(module),
+        )
         .agent(&site.policy())
         .boot()
         .await

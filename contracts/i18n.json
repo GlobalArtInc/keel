@@ -43,7 +43,8 @@
       "id_env": "KEEL_OWNLATE_PROJECT_PANEL",
       "directories": {
         "products/panel/i18n": ["product.panel", "menu.panel"],
-        "products/panel/crates/hosting-users/i18n": ["hosting"]
+        "products/panel/crates/hosting-users/i18n": ["hosting"],
+        "products/panel/crates/hosting-web/i18n": ["hosting.site"]
       }
     }
   ]

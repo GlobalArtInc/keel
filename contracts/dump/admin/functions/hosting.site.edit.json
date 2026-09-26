@@ -1,0 +1,144 @@
+{
+  "keel": 1,
+  "name": "hosting.site.edit",
+  "module": "hosting_site",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.site.manage",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "SiteEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "default": [],
+        "x-keel": {
+          "check": "domain"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "root": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$"
+      },
+      "php": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^[0-9]{1,2}\\.[0-9]{1,2}$",
+        "default": null,
+        "x-keel": {
+          "options": "hosting.site.php"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "root"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingSite",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "root": {
+        "type": "string"
+      },
+      "php": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "userId",
+      "domain",
+      "aliases",
+      "root",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.site.edit.title",
+    "read": "hosting.site.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "aliases",
+          "root",
+          "php"
+        ]
+      }
+    ]
+  }
+}

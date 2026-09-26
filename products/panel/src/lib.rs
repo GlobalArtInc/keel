@@ -12,7 +12,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         hue: 264,
         chroma: 0.18,
     },
-    modules: &[&keel_host::MODULE, &keel_hosting_users::MODULE],
+    modules: &[
+        &keel_host::MODULE,
+        &keel_hosting_users::MODULE,
+        &keel_hosting_web::MODULE,
+    ],
     menu: &[MenuGroup {
         id: "panel",
         label: "menu.panel",
@@ -27,11 +31,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     editions: &[
         Edition {
             id: "lite",
-            features: &["panel.users"],
+            features: &["panel.users", "panel.web"],
         },
         Edition {
             id: "pro",
-            features: &["panel.users"],
+            features: &["panel.users", "panel.web"],
         },
     ],
     i18n: &[
@@ -54,11 +58,11 @@ mod tests {
     const PLATFORM_FILL: &str = "#315fcf";
 
     #[test]
-    fn the_bundle_names_host_and_the_hosting_users_one_group_and_the_lite_and_pro_editions() {
+    fn the_bundle_names_host_the_hosting_users_and_sites_one_group_and_the_lite_and_pro_editions() {
         assert_eq!(MANIFEST.id, "panel");
         assert_eq!(
             MANIFEST.module_ids().collect::<Vec<_>>(),
-            ["host", "hosting"]
+            ["host", "hosting", "hosting_site"]
         );
         assert_eq!(MANIFEST.menu.len(), 1);
         assert_eq!(MANIFEST.menu[0].id, "panel");
@@ -68,7 +72,7 @@ mod tests {
         assert_eq!(editions, ["lite", "pro"]);
         let edition = MANIFEST.default_edition().expect("the lite edition");
         assert_eq!(edition.id, "lite");
-        assert_eq!(edition.features, ["panel.users"]);
+        assert_eq!(edition.features, ["panel.users", "panel.web"]);
         let logo = MANIFEST.logo().expect("the logo asset");
         assert_eq!(logo.id, LOGO);
         assert_eq!(logo.content_type, "image/svg+xml");

@@ -101,6 +101,11 @@ check "deploy/agent.yaml carries one uid_range line under policy" test "$(grep -
 check "deploy/agent.yaml starts with the policy key" test "$(head -n 1 deploy/agent.yaml)" = "policy:"
 check "deploy/agent.yaml names the check of the zones on named" grep -qF 'named.check: ["named-checkconf", "-z"]' deploy/agent.yaml
 check "host-vm.sh expects that check in the installed policy" grep -qF 'named.check' hack/host-vm.sh
+check "deploy/agent.yaml names the check of the server blocks on nginx" grep -qF 'nginx.test: ["nginx", "-t"]' deploy/agent.yaml
+for version in 8.2 8.3 8.4; do
+  check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
+  check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml
+done
 for product in bill dns panel; do
   check "deploy/agent.yaml carries the section of $product" grep -qE "^    $product: \{ .*drop_in_prefix: keel-$product- \}$" deploy/agent.yaml
 done

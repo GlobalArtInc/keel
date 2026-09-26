@@ -469,9 +469,23 @@ policy:
         assert!(!range.contains(165_536));
         assert_eq!(policy.root("zones"), Some(Path::new("/etc/bind/zones")));
         assert_eq!(policy.root("named"), Some(Path::new("/etc/bind/keel")));
-        for root in ["www", "vhosts", "pools", "mail", "certs"] {
+        for root in ["www", "vhosts", "mail", "certs"] {
             assert!(policy.root(root).is_some_and(Path::is_absolute), "{root}");
         }
+        for version in ["8.2", "8.3", "8.4"] {
+            assert_eq!(
+                policy.root(&format!("pools-{version}")),
+                Some(Path::new(&format!("/etc/php/{version}/fpm/pool.d")))
+            );
+            assert_eq!(
+                policy.check(&format!("php{version}-fpm.test")),
+                Some([format!("php-fpm{version}"), "-t".to_owned()].as_slice())
+            );
+        }
+        assert_eq!(
+            policy.check("nginx.test"),
+            Some(["nginx".to_owned(), "-t".to_owned()].as_slice())
+        );
         for service in [
             "named",
             "nginx",

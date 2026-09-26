@@ -18,6 +18,7 @@ keel-dns-zones = { path = "products/dns/crates/dns-zones" }
 keel-host = { path = "crates/host" }
 keel-host-agent = { path = "crates/host-agent" }
 keel-hosting-users = { path = "products/panel/crates/hosting-users" }
+keel-hosting-web = { path = "products/panel/crates/hosting-web" }
 keel-kernel = { path = "crates/kernel" }
 keel-panel = { path = "products/panel" }
 keel-release = { path = "crates/release" }

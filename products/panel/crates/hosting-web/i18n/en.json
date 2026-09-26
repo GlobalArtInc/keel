@@ -1,0 +1,60 @@
+{
+  "hosting": {
+    "site": {
+      "action": {
+        "create": "New site",
+        "delete": "Delete",
+        "edit": "Edit"
+      },
+      "aliases": "Aliases",
+      "column": {
+        "accountId": "Account",
+        "domain": "Domain",
+        "error": "Error",
+        "php": "PHP",
+        "root": "Document root",
+        "state": "State",
+        "suspended": "Suspended"
+      },
+      "create": {
+        "title": "New site"
+      },
+      "dnsZone": "Create a DNS zone for the domain",
+      "domain": "Domain",
+      "edit": {
+        "title": "Site"
+      },
+      "empty": "No sites yet",
+      "error": {
+        "alias_twice": "The alias {name} repeats the domain or another alias",
+        "dns_unavailable": "No DNS is available to this installation, so no zone can be created",
+        "exists": "The name {name} is already served by a site",
+        "home": "The home directory {home} is not a plain absolute path",
+        "name": "{name} is not a host name",
+        "php": "{php} is not a PHP version",
+        "root": "{root} is not a relative path inside the home directory",
+        "user": "No such hosting user",
+        "user_busy": "The user still serves {sites} site(s); delete them first",
+        "user_gone": "The hosting user {user} of the site does not exist on the host",
+        "user_pending": "The hosting user {user} is not ready yet"
+      },
+      "list": {
+        "title": "Sites"
+      },
+      "page": {
+        "dns": "DNS",
+        "main": "Site",
+        "php": "PHP",
+        "site": "Site"
+      },
+      "php": "PHP version",
+      "root": "Document root, inside the user's home directory",
+      "state": {
+        "active": "Active",
+        "error": "Error",
+        "pending": "Pending"
+      },
+      "user": "Hosting user"
+    }
+  }
+}

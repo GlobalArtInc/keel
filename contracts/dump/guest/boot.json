@@ -46,7 +46,8 @@
   "principal": null,
   "features": [
     "dns.zones",
-    "panel.users"
+    "panel.users",
+    "panel.web"
   ],
   "license": {
     "state": "none",

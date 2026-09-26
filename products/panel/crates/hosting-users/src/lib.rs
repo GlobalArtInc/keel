@@ -1,12 +1,17 @@
+pub mod api;
 mod functions;
 mod host;
 mod lifecycle;
 mod limit;
+mod lookup;
 mod user;
 
 use keel::prelude::*;
 use keel::sdk::limit::Unit;
 use keel_host::api::HostExecutor;
+
+use api::HostingUsers;
+use lookup::Lookup;
 
 const PRODUCT: &str = "panel";
 const USER_PREFIX: &str = "hp_";
@@ -28,11 +33,13 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     r.require::<dyn HostExecutor>()
+        .provide::<dyn HostingUsers>(Arc::new(Lookup))
         .function(functions::list())
         .function(functions::get())
         .function(functions::create())
         .function(functions::edit())
         .function(functions::delete())
+        .function(functions::options())
         .permission("hosting.user.read", &[Level::User, Level::Reseller])
         .permission("hosting.user.manage", &[Level::User, Level::Reseller])
         .menu(

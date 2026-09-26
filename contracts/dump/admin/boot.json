@@ -55,7 +55,8 @@
   },
   "features": [
     "dns.zones",
-    "panel.users"
+    "panel.users",
+    "panel.web"
   ],
   "license": {
     "state": "none",
@@ -136,6 +137,13 @@
           "func": "hosting.user.list",
           "kind": "list",
           "icon": "users"
+        },
+        {
+          "path": "panel/sites",
+          "label": "hosting.site.list.title",
+          "func": "hosting.site.list",
+          "kind": "list",
+          "icon": "globe"
         }
       ]
     },

@@ -34,7 +34,8 @@
     "enabledBy": "install",
     "modules": [
       "host",
-      "hosting"
+      "hosting",
+      "hosting_site"
     ]
   }
 ]

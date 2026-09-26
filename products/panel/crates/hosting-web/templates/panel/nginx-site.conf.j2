@@ -1,0 +1,35 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ domain }}{% for alias in aliases %} {{ alias }}{% endfor %};
+    root {{ root }};
+    disable_symlinks if_not_owner from=$document_root;
+{%- if suspended %}
+
+    return 403;
+{%- else %}
+    index{% if socket %} index.php{% endif %} index.html index.htm;
+
+    location ~ /\.(?!well-known/) {
+        deny all;
+    }
+{%- if socket %}
+
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        try_files $uri =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:{{ socket }};
+    }
+{%- else %}
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{%- endif %}
+{%- endif %}
+}

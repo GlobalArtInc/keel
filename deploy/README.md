@@ -286,10 +286,30 @@ runuser -u keel -- keel ctl hosting.user.list --as <login> --out table
 getent passwd hp_alice
 ```
 
-The shipped policy also names the roots and the units the later modules of the bundle use: the
-server blocks under `vhosts`, the php-fpm pools under `pools`, the mail maps under `mail`, the
-certificates under `certs`, and `nginx`, `php*-fpm`, `postfix`, `dovecot`, `mariadb` and
-`vsftpd`.
+A site belongs to a hosting user: a domain with its aliases, a document root inside the user's
+home (the domain unless another relative path is given) and a PHP version or none. After the
+transaction commits its php-fpm pool `keel-panel-<domain>.conf` is rendered into the `pool.d` of
+that PHP, the root `pools-<version>` of `file_roots`, checked with `php<version>-fpm.test` and
+`php<version>-fpm` reloaded; then its server block `keel-panel-<domain>.conf` is rendered into
+`/etc/nginx/conf.d`, the root `vhosts`, checked with `nginx.test` and nginx reloaded. A failed
+check leaves the previous file in place and turns the site to `error` with the tool's output.
+Suspending its account makes the server block answer 403, and deleting the site or its account
+removes both files and reloads both services. A hosting user that still has sites cannot be
+deleted:
+
+```
+runuser -u keel -- keel ctl hosting.site.create --as <login> user=<user id> domain=example.test 'php="8.4"'
+runuser -u keel -- keel ctl hosting.site.list --as <login> --out table
+curl -H 'Host: example.test' http://127.0.0.1/
+```
+
+The shipped policy names the pool roots and the checks of PHP 8.2, 8.3 and 8.4, the versions
+Debian and Ubuntu carry; another version needs its `pools-<version>` root and its
+`php<version>-fpm.test` check added to `/etc/keel/agent.yaml`, which the installer keeps across
+updates. The panel does not create the document root: the hosting user fills it, and nginx needs
+to search the home to serve it. The policy also names the roots and the units the later modules
+of the bundle use: the mail maps under `mail`, the certificates under `certs`, and `postfix`,
+`dovecot`, `mariadb` and `vsftpd`.
 
 ## Updates
 

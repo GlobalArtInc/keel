@@ -1,0 +1,12 @@
+[{{ pool }}]
+user = {{ user }}
+group = {{ user }}
+listen = {{ socket }}
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+pm = ondemand
+pm.max_children = 5
+pm.process_idle_timeout = 10s
+security.limit_extensions = .php
+php_admin_value[open_basedir] = {{ home }}/:/tmp/
