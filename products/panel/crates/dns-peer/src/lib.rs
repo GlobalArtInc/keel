@@ -1,5 +1,5 @@
 use keel::prelude::*;
-use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone};
+use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone, ZoneRecord};
 
 const UNPAIRED: &str = "dns_peer.error.unpaired";
 
@@ -25,5 +25,9 @@ struct Peer;
 impl DnsProvider for Peer {
     async fn add_zone(&self, _: &Invoke<'_>, zone: &SiteZone) -> Result<()> {
         Err(KeelError::unavailable(UNPAIRED).param("zone", zone.name.as_str()))
+    }
+
+    async fn add_records(&self, _: &Invoke<'_>, _: &SiteZone, _: &[ZoneRecord]) -> Result<bool> {
+        Ok(false)
     }
 }

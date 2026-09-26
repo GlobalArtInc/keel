@@ -1,0 +1,104 @@
+{
+  "keel": 1,
+  "name": "hosting.mail.mailbox.get",
+  "module": "hosting_mail",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.mail.read",
+    "feature": "panel.mail"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingMailbox",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "domainId": {
+        "type": "string"
+      },
+      "local": {
+        "type": "string"
+      },
+      "address": {
+        "type": "string"
+      },
+      "quota": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "forwards": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "domainId",
+      "local",
+      "address",
+      "quota",
+      "aliases",
+      "forwards",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  }
+}

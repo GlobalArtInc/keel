@@ -29,6 +29,15 @@ SIBLING=${USER_NAME}xwp
 DATABASE_PASSWORD="it's $STAMP \\ \"quoted\""
 STAGING=https://acme-staging-v02.api.letsencrypt.org/directory
 ACME_DIRECTORY=${KEEL_PANEL_VM_ACME:-$STAGING}
+MAIL_MAPS=/etc/postfix/keel
+MAIL_PASSWD_DIR=/etc/dovecot/keel
+MAIL_PASSWD=$MAIL_PASSWD_DIR/keel-panel-passwd
+MAILDIRS=/var/lib/keel-panel-mail
+MAIL_DROP_IN=/etc/dovecot/conf.d/90-keel-panel.conf
+MAIL_DOMAIN=mail-$NAME.test
+MAILBOX=box@$MAIL_DOMAIN
+MAIL_ALIAS=info@$MAIL_DOMAIN
+MAIL_PASSWORD=mail-$STAMP-secret
 
 usage() {
   cat <<EOF
@@ -36,13 +45,16 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh run
        hack/panel-vm.sh ssl <domain>
        hack/panel-vm.sh db
+       hack/panel-vm.sh mail
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
-"install" installs nginx, php-fpm, mariadb, curl, openssl and zstd,
-prepares $WWW, the certificate root $CERTS, the challenge root $CHALLENGES
-and the dump root $DUMPS, then runs
+"install" installs nginx, php-fpm, mariadb, postfix, dovecot, curl, openssl
+and zstd, prepares $WWW, the certificate root $CERTS, the challenge root
+$CHALLENGES and the dump root $DUMPS, points postfix at the virtual maps under
+$MAIL_MAPS and dovecot, as the system user vmail, at the passwd-file
+$MAIL_PASSWD and the maildirs under $MAILDIRS through $MAIL_DROP_IN, then runs
 deploy/install.sh --product panel --binary <archive> --yes and prints the
 setup link.
 
@@ -81,6 +93,17 @@ resumes it and finds it open again. It runs backup.create and finds the dump
 of $DATABASE in the archive and $DUMPS empty, then deletes the account and
 finds the database and the user dropped, with mariadb.exec in the journal
 of $AGENT_UNIT and no password in it.
+
+"mail" proves the mail on the running installation. It creates an account
+with the mail domain $MAIL_DOMAIN and the mailbox $MAILBOX with a quota and the
+alias $MAIL_ALIAS, finds both in the virtual maps through postmap -q, the
+passwd-file owned by dovecot with mode 0640 and an ARGON2ID hash, and
+doveadm auth test accepting the password and refusing another. It sends a mail
+to the mailbox and one to the alias through sendmail and finds both in the
+maildir. It suspends the account and finds the login refused, resumes it and
+finds it accepted again. It runs backup.create and finds the maildirs in the
+archive and $DUMPS empty, then deletes the account and finds the mailbox gone
+from the maps and the passwd-file and its maildir removed.
 EOF
 }
 
@@ -117,10 +140,12 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client curl openssl zstd
+  printf '%s\n' "postfix postfix/main_mailer_type select Internet Site" "postfix postfix/mailname string $(hostname -f)" | debconf-set-selections
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd curl openssl zstd
   install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
   install -d -m 0711 -o root -g root "$DUMPS"
   install -d -m 0700 -o root -g root "$CERTS"
+  prepare_mail
   local log
   log=$(mktemp)
   if ! bash deploy/install.sh --product panel --binary "$archive" --yes 2>&1 | tee "$log"; then
@@ -131,6 +156,52 @@ install_keel() {
   check "the installer printed the setup link" grep -qF "setup link:   https://" "$log"
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
   say "keel is installed with panel; run: hack/panel-vm.sh run"
+}
+
+prepare_mail() {
+  getent passwd vmail >/dev/null || useradd --system --home-dir "$MAILDIRS" --no-create-home --shell "$NOLOGIN" vmail
+  install -d -m 0755 -o root -g root "$MAIL_MAPS"
+  install -d -m 0750 -o root -g dovecot "$MAIL_PASSWD_DIR"
+  install -d -m 0700 -o vmail -g vmail "$MAILDIRS"
+  local map
+  for map in domains mailboxes aliases; do
+    [ -f "$MAIL_MAPS/keel-panel-$map" ] || install -m 0644 -o root -g root /dev/null "$MAIL_MAPS/keel-panel-$map"
+    postmap "hash:$MAIL_MAPS/keel-panel-$map"
+  done
+  [ -f "$MAIL_PASSWD" ] || install -m 0640 -o dovecot -g dovecot /dev/null "$MAIL_PASSWD"
+  postconf -e \
+    "virtual_mailbox_domains = hash:$MAIL_MAPS/keel-panel-domains" \
+    "virtual_mailbox_maps = hash:$MAIL_MAPS/keel-panel-mailboxes" \
+    "virtual_alias_maps = hash:$MAIL_MAPS/keel-panel-aliases" \
+    "virtual_transport = lmtp:unix:private/dovecot-lmtp"
+  cat >"$MAIL_DROP_IN" <<CONF
+mail_driver = maildir
+mail_path = ~/Maildir
+mail_uid = vmail
+mail_gid = vmail
+passdb passwd-file {
+  passwd_file_path = $MAIL_PASSWD
+}
+userdb passwd-file {
+  passwd_file_path = $MAIL_PASSWD
+}
+mail_plugins {
+  quota = yes
+}
+quota "User quota" {
+  driver = count
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+CONF
+  doveconf -n >/dev/null || fail "doveconf -n refuses $MAIL_DROP_IN"
+  postfix check || fail "postfix check refuses the virtual maps"
+  systemctl restart dovecot postfix
 }
 
 as_keel() {
@@ -477,11 +548,120 @@ db_proof() {
   say "panel's databases are proven on this machine: a database and its user in mariadb, the grant, the lock of a suspended account, the dump in the backup and the drop with the account"
 }
 
+mailbox_state_is() {
+  [ "$(call hosting.mail.mailbox.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "$2" ]
+}
+
+mail_domain_state_is() {
+  [ "$(call hosting.mail.domain.list 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["data"]["data"]
+print(next((row["state"] for row in rows if row["id"] == sys.argv[1]), ""))
+' "$1")" = "$2" ]
+}
+
+mapped() {
+  [ "$(postmap -q "$1" "hash:$MAIL_MAPS/keel-panel-$2")" = "$3" ]
+}
+
+unmapped() {
+  ! postmap -q "$1" "hash:$MAIL_MAPS/keel-panel-$2" >/dev/null
+}
+
+passwd_placed() {
+  [ "$(stat -c '%U:%G %a' "$MAIL_PASSWD")" = "dovecot:dovecot 640" ] && grep -q "^$MAILBOX:{ARGON2ID}\$argon2id\$" "$MAIL_PASSWD"
+}
+
+logs_in() {
+  doveadm auth test "$MAILBOX" "$1" >/dev/null 2>&1
+}
+
+refused_login() {
+  ! logs_in "$1"
+}
+
+delivered() {
+  grep -rqsF -- "$2" "$MAILDIRS/keel-panel-$1/Maildir/new"
+}
+
+send_mail() {
+  printf 'From: root@localhost\nTo: %s\nSubject: keel %s\n\n%s\n' "$1" "$2" "$2" | sendmail -f root@localhost "$1"
+}
+
+archived_maildir() {
+  local archive
+  archive=$(ls -t "$BACKUPS"/*.tar.zst 2>/dev/null | head -n 1)
+  [ -n "$archive" ] && tar --zstd -xOf "$archive" sources/hosting_mail.maildirs/maildirs.tar | tar -t | grep -q "^./keel-panel-$1/Maildir/new/"
+}
+
+mailbox_gone() {
+  unmapped "$MAILBOX" mailboxes && ! grep -q "^$MAILBOX:" "$MAIL_PASSWD" && [ ! -e "$MAILDIRS/keel-panel-$1" ]
+}
+
+mail_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  systemctl is-active --quiet postfix || fail "postfix is not running; run install first"
+  systemctl is-active --quiet dovecot || fail "dovecot is not running; run install first"
+  [ -f "$MAIL_DROP_IN" ] || fail "$MAIL_DROP_IN is missing; run install first"
+  local since account domain mailbox task
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- a mail domain and a mailbox"
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  domain=$(call hosting.mail.domain.create "name=$MAIL_DOMAIN" "account=$account" | field data.id) || fail "keel ctl hosting.mail.domain.create failed"
+  check "the mail domain $MAIL_DOMAIN turns active" eventually mail_domain_state_is "$domain" active
+  mailbox=$(call hosting.mail.mailbox.create "domain=$domain" local=box "password=$MAIL_PASSWORD" quota=64 'aliases=["info"]' | field data.id) || fail "keel ctl hosting.mail.mailbox.create failed"
+  check "the mailbox $MAILBOX turns active" eventually mailbox_state_is "$mailbox" active
+  check "postfix finds $MAIL_DOMAIN in the domain map" mapped "$MAIL_DOMAIN" domains OK
+  check "postfix finds $MAILBOX in the mailbox map" mapped "$MAILBOX" mailboxes "keel-panel-$mailbox/Maildir/"
+  check "postfix maps $MAIL_ALIAS to $MAILBOX" mapped "$MAIL_ALIAS" aliases "$MAILBOX"
+  check "the passwd-file belongs to dovecot with mode 0640 and an ARGON2ID hash" passwd_placed
+  check "dovecot accepts the password of $MAILBOX" logs_in "$MAIL_PASSWORD"
+  check "dovecot refuses another password" refused_login "not-$MAIL_PASSWORD"
+
+  say "--- delivery"
+  check "sendmail takes a mail to $MAILBOX" send_mail "$MAILBOX" "direct-$STAMP"
+  check "sendmail takes a mail to $MAIL_ALIAS" send_mail "$MAIL_ALIAS" "alias-$STAMP"
+  check "the mail to $MAILBOX lands in its maildir" eventually delivered "$mailbox" "direct-$STAMP"
+  check "the mail to $MAIL_ALIAS lands in the same maildir" eventually delivered "$mailbox" "alias-$STAMP"
+  check "the maildir belongs to vmail" test "$(stat -c %U "$MAILDIRS/keel-panel-$mailbox")" = vmail
+
+  say "--- suspend and resume"
+  check "keel ctl keel.account.suspend suspends $account" call keel.account.suspend "id=$account"
+  check "dovecot refuses $MAILBOX while its account is suspended" eventually refused_login "$MAIL_PASSWORD"
+  check "keel ctl keel.account.resume resumes $account" call keel.account.resume "id=$account"
+  check "dovecot accepts $MAILBOX again" eventually logs_in "$MAIL_PASSWORD"
+
+  say "--- the backup"
+  task=$(call backup.create | field data.task.id) || task=""
+  check "the backup task is done" eventually task_done "$task"
+  check "the archive carries the maildir of $MAILBOX" archived_maildir "$mailbox"
+  check "no archive is left in $DUMPS" test -z "$(ls -A "$DUMPS")"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "$MAILBOX is gone from the maps, the passwd-file and $MAILDIRS" eventually mailbox_gone "$mailbox"
+  check "$MAIL_DOMAIN is gone from the domain map" eventually unmapped "$MAIL_DOMAIN" domains
+  check "the agent journal carries the templates and postmap" agent_logged "$since" "op=host.exec"
+  check "the agent journal carries no mail password" no_mail_password_in_journal "$since"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's mail is proven on this machine: the virtual maps and the passwd-file, delivery to a mailbox and an alias, the login refused while suspended, the maildirs in the backup and the removal with the account"
+}
+
+no_mail_password_in_journal() {
+  ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$MAIL_PASSWORD"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
   run) shift; run_proof "$@" ;;
   ssl) shift; ssl_proof "$@" ;;
   db) shift; db_proof "$@" ;;
+  mail) shift; mail_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

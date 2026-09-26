@@ -1176,6 +1176,97 @@
         },
         "user": "Hosting user"
       },
+      "mail": {
+        "domain": {
+          "account": "Account",
+          "action": {
+            "create": "New mail domain",
+            "delete": "Delete"
+          },
+          "column": {
+            "accountId": "Account",
+            "error": "Error",
+            "name": "Domain",
+            "state": "State"
+          },
+          "create": {
+            "title": "New mail domain"
+          },
+          "empty": "No mail domains yet",
+          "error": {
+            "exists": "The mail domain {name} already exists"
+          },
+          "list": {
+            "title": "Mail domains"
+          },
+          "name": "Domain",
+          "page": {
+            "main": "Domain",
+            "owner": "Owner"
+          },
+          "state": {
+            "active": "Active",
+            "error": "Error",
+            "pending": "Pending"
+          }
+        },
+        "error": {
+          "backup": "The mail archive {file} could not be copied into the backup",
+          "detached": "The mail module has not started yet",
+          "domain": "{name} is not a domain name",
+          "forward": "{name} is not an address mail can be forwarded to",
+          "hashing": "The password could not be hashed",
+          "local": "{name} is not a mailbox name: lowercase letters, digits, dots, underscores and dashes",
+          "password": "A password carries no control characters",
+          "too_many": "At most {max} names",
+          "twice": "{name} is given twice or names the mailbox itself"
+        },
+        "mailbox": {
+          "action": {
+            "create": "New mailbox",
+            "delete": "Delete",
+            "edit": "Edit"
+          },
+          "aliases": "Aliases at the same domain",
+          "column": {
+            "accountId": "Account",
+            "address": "Address",
+            "error": "Error",
+            "quota": "Quota, MiB",
+            "state": "State",
+            "suspended": "Suspended"
+          },
+          "create": {
+            "title": "New mailbox"
+          },
+          "domain": "Mail domain",
+          "edit": {
+            "title": "Mailbox"
+          },
+          "empty": "No mailboxes yet",
+          "error": {
+            "domain": "The mail domain is not one of yours",
+            "exists": "The address {name} is already taken in this domain",
+            "id": "There is no mailbox {id}"
+          },
+          "forwards": "Forward a copy to",
+          "list": {
+            "title": "Mailboxes"
+          },
+          "local": "Name before the @",
+          "page": {
+            "main": "Mailbox",
+            "routing": "Aliases and forwards"
+          },
+          "password": "Password",
+          "quota": "Quota in MiB, 0 for none",
+          "state": {
+            "active": "Active",
+            "error": "Error",
+            "pending": "Pending"
+          }
+        }
+      },
       "certificate": {
         "action": {
           "delete": "Delete",

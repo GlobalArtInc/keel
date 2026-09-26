@@ -11,9 +11,23 @@ pub struct SiteZone {
     pub own_account: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZoneRecord {
+    pub kind: &'static str,
+    pub name: String,
+    pub value: String,
+    pub priority: Option<u16>,
+}
+
 #[async_trait]
 pub trait DnsProvider: Send + Sync {
     async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()>;
+    async fn add_records(
+        &self,
+        invoke: &Invoke<'_>,
+        zone: &SiteZone,
+        records: &[ZoneRecord],
+    ) -> Result<bool>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

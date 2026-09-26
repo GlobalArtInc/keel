@@ -1,0 +1,115 @@
+{
+  "keel": 1,
+  "name": "hosting.mail.domain.create",
+  "module": "hosting_mail",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.mail.manage",
+    "feature": "panel.mail"
+  },
+  "key": "id",
+  "params": {
+    "title": "DomainCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 253,
+        "x-keel": {
+          "check": "domain"
+        }
+      },
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingMailDomain",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "name",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.mail.domain.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name"
+        ]
+      },
+      {
+        "id": "owner",
+        "fields": [
+          "account"
+        ],
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ]
+  }
+}

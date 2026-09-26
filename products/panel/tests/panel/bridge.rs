@@ -64,7 +64,7 @@ fn seen_for(name: &str) -> Vec<Seen> {
         .collect()
 }
 
-fn with_dns(site: &Site) -> Builder {
+pub(crate) fn with_dns(site: &Site) -> Builder {
     composed(site)
         .product(&keel_dns::MANIFEST)
         .module(&keel_system::stats::MODULE)

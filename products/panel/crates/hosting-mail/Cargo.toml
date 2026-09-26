@@ -1,0 +1,15 @@
+[package]
+name = "keel-hosting-mail"
+description = "The hosting-mail module of KeelPanel: mail domains and mailboxes per account, rendered as the virtual maps of postfix and the passwd-file of dovecot through the host agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+argon2 = { workspace = true }
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-web = { workspace = true }

@@ -105,6 +105,10 @@ check "deploy/agent.yaml names the check of the server blocks on nginx" grep -qF
 check "deploy/agent.yaml carries the certificate and challenge roots of the panel" grep -qF 'certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme' deploy/agent.yaml
 check "deploy/agent.yaml carries the database dump root of the panel" grep -qF 'dumps: /var/lib/keel-panel-dumps' deploy/agent.yaml
 check "deploy/agent.yaml lets mariadb.exec run the mariadb client and dump" grep -qF '{ mariadb: [mariadb, --batch, --skip-column-names] }, { mariadb-dump: [mariadb-dump, ' deploy/agent.yaml
+check "deploy/agent.yaml carries the passwd-file and maildir roots of the panel" grep -qF 'mail: /etc/postfix/keel, dovecot: /etc/dovecot/keel, maildirs: /var/lib/keel-panel-mail' deploy/agent.yaml
+check "deploy/agent.yaml names the checks of postfix and dovecot" grep -qF 'postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"]' deploy/agent.yaml
+check "deploy/agent.yaml lets postmap build the three virtual maps" grep -qF '{ postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }' deploy/agent.yaml
+check "deploy/agent.yaml lets the maildirs be archived to standard output" grep -qF '{ mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do
   check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
   check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml

@@ -37,7 +37,8 @@
       "hosting",
       "hosting_site",
       "hosting_certificate",
-      "hosting_database"
+      "hosting_database",
+      "hosting_mail"
     ]
   }
 ]

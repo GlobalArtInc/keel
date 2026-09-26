@@ -24,6 +24,7 @@ const CHECK: &str = "echo \"NAME $*\" >> LOG\nif [ -f FLAG ]; then echo \"NAME: 
 const SYSTEMCTL: &str = "echo \"systemctl $*\" >> LOG\nexit 0\n";
 const MARIADB: &str = "input=$(cat)\n{ echo \"mariadb $*\"; printf '%s\\n' \"$input\"; } >> LOG\n";
 const MARIADB_DUMP: &str = "echo \"mariadb-dump $*\" >> LOG\nfor last; do :; done\nprintf -- '-- dump of %s\\n' \"$last\"\n";
+const TAR: &str = "echo \"tar $*\" >> LOG\nprintf 'the maildirs of the test\\n'\n";
 const USERMOD: &str = "echo \"usermod $*\" >> LOG\nshell=; lock=\nwhile [ $# -gt 1 ]; do\n  case $1 in\n    --shell) shell=$2; shift 2;;\n    --expiredate) shift 2;;\n    --lock) lock=yes; shift;;\n    --unlock) lock=no; shift;;\n    *) echo \"usermod: unexpected $1\" >&2; exit 3;;\n  esac\ndone\nif [ \"$lock\" = yes ]; then : > ROOT/locked-$1; fi\nif [ \"$lock\" = no ]; then rm -f ROOT/locked-$1; fi\nif [ -n \"$shell\" ]; then awk -F: -v OFS=: -v k=\"$1\" -v s=\"$shell\" '$1 == k { $7 = s } { print }' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd; fi\nexit 0\n";
 
 pub(crate) struct Site {
@@ -34,7 +35,8 @@ impl Site {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for sub in [
-            "www", "bin", "vhosts", "zones", "named", "certs", "acme", "dumps",
+            "www", "bin", "vhosts", "zones", "named", "certs", "acme", "dumps", "mail", "dovecot",
+            "maildirs",
         ] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
@@ -56,6 +58,7 @@ impl Site {
             ("systemctl", SYSTEMCTL),
             ("mariadb", MARIADB),
             ("mariadb-dump", MARIADB_DUMP),
+            ("tar", TAR),
         ] {
             site.stub(name, body);
         }
@@ -64,6 +67,9 @@ impl Site {
             "nginx".to_owned(),
             format!("php-fpm{PHP}"),
             format!("php-fpm{OLDER_PHP}"),
+            "postfix".to_owned(),
+            "doveconf".to_owned(),
+            "postmap".to_owned(),
         ] {
             let body = CHECK
                 .replace("FLAG", &site.flag(&tool).display().to_string())
@@ -89,10 +95,10 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps} }}
-  services: [nginx, php*-fpm, named]
-  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"] }}
-  exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}]
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs} }}
+  services: [nginx, php*-fpm, named, postfix, dovecot]
+  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"], postfix.check: [\"{bin}/postfix\", check], dovecot.check: [\"{bin}/doveconf\", -n] }}
+  exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}, {{ postmap: [\"{bin}/postmap\", \"hash:{mail}/keel-panel-domains\", \"hash:{mail}/keel-panel-mailboxes\", \"hash:{mail}/keel-panel-aliases\"] }}, {{ mail.archive: [\"{bin}/tar\", --create, --file=-, \"--directory={maildirs}\", .] }}]
   products:
     panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}
     dns: {{ drop_in_prefix: keel-dns- }}
@@ -115,6 +121,9 @@ impl Site {
             certs = self.path("certs").display(),
             acme = self.path("acme").display(),
             dumps = self.path("dumps").display(),
+            mail = self.path("mail").display(),
+            dovecot = self.path("dovecot").display(),
+            maildirs = self.path("maildirs").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )

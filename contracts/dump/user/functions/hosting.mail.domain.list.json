@@ -1,0 +1,147 @@
+{
+  "keel": 1,
+  "name": "hosting.mail.domain.list",
+  "module": "hosting_mail",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.mail.read",
+    "feature": "panel.mail"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingMailDomain",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingMailDomain"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingMailDomain": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "name",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.mail.domain.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.mail.domain.create",
+        "icon": "plus"
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.mail.domain.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "name",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.mail.domain.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.mail.*"
+    ]
+  }
+}

@@ -440,6 +440,41 @@ fn exec_runs_only_allowlisted_binaries_with_their_fixed_arguments() {
 }
 
 #[test]
+fn exec_with_a_dest_writes_the_output_into_a_root_as_a_file_of_the_kernel() {
+    let mut site = Site::start("exec-dest");
+    let answer = site.call(
+        "host.exec",
+        "dns",
+        json!({ "name": "certbot.renew", "dest": { "root": "dumps", "name": "keel-dns-renew.log" } }),
+    );
+    let captured = site.root().join("dumps/keel-dns-renew.log");
+    let text = fs::read_to_string(&captured).expect("the captured output");
+    assert_eq!(text, "Congratulations, all renewals succeeded\n");
+    assert_eq!(data(&answer), &json!({ "bytes": text.len() }));
+    let meta = fs::metadata(&captured).expect("the captured metadata");
+    assert_eq!(meta.mode() & 0o777, 0o600);
+    assert_eq!(meta.uid(), own_uid());
+    assert!(!site.root().join("dumps/.keel-dns-renew.log.tmp").exists());
+
+    for name in ["../renew.log", "renew.log"] {
+        let answer = site.call(
+            "host.exec",
+            "dns",
+            json!({ "name": "certbot.renew", "dest": { "root": "dumps", "name": name } }),
+        );
+        refused(&answer, "host.error.policy");
+    }
+    let answer = site.call(
+        "host.exec",
+        "dns",
+        json!({ "name": "broken", "dest": { "root": "dumps", "name": "keel-dns-broken.log" } }),
+    );
+    refused(&answer, "host.error.exec_failed");
+    assert!(!site.root().join("dumps/keel-dns-broken.log").exists());
+    assert!(!site.root().join("dumps/.keel-dns-broken.log.tmp").exists());
+}
+
+#[test]
 fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root() {
     const SESSION: &str =
         "SET SESSION sql_mode = (SELECT REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', ''));";

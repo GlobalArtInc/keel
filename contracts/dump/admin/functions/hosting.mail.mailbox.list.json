@@ -1,0 +1,210 @@
+{
+  "keel": 1,
+  "name": "hosting.mail.mailbox.list",
+  "module": "hosting_mail",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.mail.read",
+    "feature": "panel.mail"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingMailbox",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingMailbox"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingMailbox": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "domainId": {
+            "type": "string"
+          },
+          "local": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "quota": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "forwards": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "domainId",
+          "local",
+          "address",
+          "quota",
+          "aliases",
+          "forwards",
+          "suspended",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.mail.mailbox.list.title",
+    "search": [
+      "address"
+    ],
+    "columns": [
+      {
+        "key": "address",
+        "type": "link",
+        "to": {
+          "screen": "hosting.mail.mailbox.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "quota",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "suspended",
+        "type": "boolean"
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      },
+      {
+        "key": "accountId",
+        "type": "text",
+        "filter": {
+          "remote": "keel.account.options"
+        },
+        "access": {
+          "level": "reseller"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.mail.mailbox.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "hosting.mail.mailbox.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.mail.mailbox.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "address",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.mail.mailbox.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.mail.*"
+    ]
+  }
+}

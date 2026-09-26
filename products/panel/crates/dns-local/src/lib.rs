@@ -1,8 +1,11 @@
 use keel::prelude::*;
 use keel::types::FieldError;
-use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone};
+use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone, ZoneRecord};
 
 const CREATE: &str = "dns.zone.create";
+const LIST: &str = "dns.zone.list";
+const RECORD_CREATE: &str = "dns.record.create";
+const PAGE: u32 = 100;
 const ZONE_NAME: &str = "name";
 const SITE_DOMAIN: &str = "domain";
 const SITE_ZONE: &str = "dnsZone";
@@ -32,6 +35,48 @@ impl DnsProvider for Local {
             .map(drop)
             .map_err(onto_the_site)
     }
+
+    async fn add_records(
+        &self,
+        invoke: &Invoke<'_>,
+        zone: &SiteZone,
+        records: &[ZoneRecord],
+    ) -> Result<bool> {
+        let page = invoke(LIST, json!({ "search": zone.name, "pageSize": PAGE })).await?;
+        let Some(id) = zone_id(&page, zone) else {
+            return Ok(false);
+        };
+        for record in records {
+            invoke(
+                RECORD_CREATE,
+                json!({
+                    "zone": id,
+                    "type": record.kind,
+                    "name": record.name,
+                    "value": record.value,
+                    "priority": record.priority,
+                }),
+            )
+            .await?;
+        }
+        Ok(true)
+    }
+}
+
+fn zone_id(page: &Value, zone: &SiteZone) -> Option<String> {
+    let account = zone.account.to_string();
+    page["data"]
+        .as_array()?
+        .iter()
+        .find(|row| {
+            row["name"].as_str() == Some(zone.name.as_str())
+                && match row["accountId"].as_str() {
+                    Some(owner) => owner == account,
+                    None => zone.own_account,
+                }
+        })
+        .and_then(|row| row["id"].as_str())
+        .map(str::to_owned)
 }
 
 fn onto_the_site(error: KeelError) -> KeelError {
@@ -86,6 +131,30 @@ mod tests {
             onto_the_site(other).to_call_error().fields[0].path,
             "dnsZone"
         );
+    }
+
+    #[test]
+    fn a_zone_is_found_by_its_exact_name_within_the_account() {
+        let account = Id::generate();
+        let zone = SiteZone {
+            name: "example.org".to_owned(),
+            account,
+            own_account: true,
+        };
+        let page = json!({ "data": [
+            { "id": "z1", "name": "mail.example.org", "accountId": account.to_string() },
+            { "id": "z2", "name": "example.org", "accountId": Id::generate().to_string() },
+            { "id": "z3", "name": "example.org", "accountId": account.to_string() },
+        ], "total": 3 });
+        assert_eq!(zone_id(&page, &zone).as_deref(), Some("z3"));
+        assert_eq!(zone_id(&json!({ "data": [], "total": 0 }), &zone), None);
+        let scoped = json!({ "data": [{ "id": "z4", "name": "example.org" }], "total": 1 });
+        assert_eq!(zone_id(&scoped, &zone).as_deref(), Some("z4"));
+        let behalf = SiteZone {
+            own_account: false,
+            ..zone
+        };
+        assert_eq!(zone_id(&scoped, &behalf), None);
     }
 
     #[test]

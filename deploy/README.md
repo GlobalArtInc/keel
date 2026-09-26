@@ -213,7 +213,8 @@ outside the policy is refused with `host.error.policy` and appears there too:
 - `host.quota.*` over `setquota` and `repquota`, answering `host.error.unavailable` on a host
   without them;
 - `host.exec` for the entries of `exec_allow`, a binary name run without arguments or `name:
-  [binary, arguments…]` run with exactly those.
+  [binary, arguments…]` run with exactly those; given a `dest`, the output goes into that file of
+  a root instead of the answer, created afresh with mode 0600 and owned by the kernel's user.
 
 The agent also executes the operations and renders the configuration templates the compiled
 products contribute. A template is read from `/etc/keel/templates/<id>` when the operator put one
@@ -308,8 +309,19 @@ Debian and Ubuntu carry; another version needs its `pools-<version>` root and it
 `php<version>-fpm.test` check added to `/etc/keel/agent.yaml`, which the installer keeps across
 updates. The panel does not create the document root: the hosting user fills it, and nginx needs
 to search the home to serve it. The policy also names the roots and the units the later modules
-of the bundle use: the mail maps under `mail`, the certificates under `certs`, and `postfix`,
-`dovecot`, `mariadb` and `vsftpd`.
+of the bundle use: the certificates under `certs`, and `postfix`, `dovecot`, `mariadb` and
+`vsftpd`.
+
+Mail domains and mailboxes belong to an account. After each change the three virtual maps of
+postfix (`keel-panel-domains`, `keel-panel-mailboxes`, `keel-panel-aliases`) are rendered into
+`/etc/postfix/keel`, the root `mail`, each checked with `postfix.check`, then the `postmap` entry
+of `exec_allow` rebuilds them and postfix is reloaded; the passwd-file `keel-panel-passwd` of
+dovecot, owned by `dovecot` with mode 0640 and carrying `{ARGON2ID}` hashes, is rendered into
+`/etc/dovecot/keel`, the root `dovecot`, checked with `dovecot.check` and dovecot reloaded. A
+mailbox's home is `/var/lib/keel-panel-mail/keel-panel-<mailbox id>`, the root `maildirs`, which
+dovecot fills as the user `vmail`; the backup carries it through the `mail.archive` entry. The
+installer does not configure postfix and dovecot yet: `hack/panel-vm.sh install` shows the
+`main.cf` keys and the dovecot drop-in the maps and the passwd-file need.
 
 ## Updates
 

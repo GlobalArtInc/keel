@@ -48,7 +48,8 @@
     "dns.zones",
     "panel.users",
     "panel.web",
-    "panel.databases"
+    "panel.databases",
+    "panel.mail"
   ],
   "license": {
     "state": "none",

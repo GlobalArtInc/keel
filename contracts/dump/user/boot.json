@@ -57,7 +57,8 @@
     "dns.zones",
     "panel.users",
     "panel.web",
-    "panel.databases"
+    "panel.databases",
+    "panel.mail"
   ],
   "license": {
     "state": "none",
@@ -169,6 +170,20 @@
           "func": "hosting.database.user.list",
           "kind": "list",
           "icon": "key"
+        },
+        {
+          "path": "panel/mail-domains",
+          "label": "hosting.mail.domain.list.title",
+          "func": "hosting.mail.domain.list",
+          "kind": "list",
+          "icon": "mail"
+        },
+        {
+          "path": "panel/mailboxes",
+          "label": "hosting.mail.mailbox.list.title",
+          "func": "hosting.mail.mailbox.list",
+          "kind": "list",
+          "icon": "inbox"
         }
       ]
     },

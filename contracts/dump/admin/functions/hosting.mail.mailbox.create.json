@@ -1,0 +1,183 @@
+{
+  "keel": 1,
+  "name": "hosting.mail.mailbox.create",
+  "module": "hosting_mail",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.mail.manage",
+    "feature": "panel.mail"
+  },
+  "key": "id",
+  "params": {
+    "title": "MailboxCreate",
+    "type": "object",
+    "properties": {
+      "domain": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.mail.domain.options"
+        }
+      },
+      "local": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9]([A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$"
+      },
+      "password": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        },
+        "minLength": 8,
+        "maxLength": 128
+      },
+      "quota": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "maximum": 1048576,
+        "default": 1024
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "default": [],
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "forwards": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "default": [],
+        "x-keel": {
+          "check": "email"
+        },
+        "x-ui": {
+          "control": "tags"
+        }
+      }
+    },
+    "required": [
+      "domain",
+      "local",
+      "password"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "HostingMailbox",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "domainId": {
+        "type": "string"
+      },
+      "local": {
+        "type": "string"
+      },
+      "address": {
+        "type": "string"
+      },
+      "quota": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "aliases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "forwards": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "domainId",
+      "local",
+      "address",
+      "quota",
+      "aliases",
+      "forwards",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.mail.mailbox.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "domain",
+          "local",
+          "password",
+          "quota"
+        ]
+      },
+      {
+        "id": "routing",
+        "fields": [
+          "aliases",
+          "forwards"
+        ]
+      }
+    ]
+  }
+}

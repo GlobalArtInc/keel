@@ -14,6 +14,7 @@ keel-dns-local = { workspace = true }
 keel-dns-peer = { workspace = true }
 keel-host = { workspace = true }
 keel-hosting-db = { workspace = true }
+keel-hosting-mail = { workspace = true }
 keel-hosting-ssl = { workspace = true }
 keel-hosting-users = { workspace = true }
 keel-hosting-web = { workspace = true }

@@ -70,6 +70,12 @@ struct Output {
     output: String,
 }
 
+#[derive(Deserialize)]
+#[serde(crate = "keel_sdk::serde")]
+struct Captured {
+    bytes: u64,
+}
+
 impl Host<'_> {
     pub fn users(&self) -> Users<'_> {
         Users::new(self)
@@ -106,6 +112,13 @@ impl Host<'_> {
     pub async fn exec(&self, name: &str) -> Result<String> {
         let answer: Output = self.call("host.exec", json!({ "name": name })).await?;
         Ok(answer.output)
+    }
+
+    pub async fn exec_into(&self, name: &str, dest: &Dest) -> Result<u64> {
+        let answer: Captured = self
+            .call("host.exec", json!({ "name": name, "dest": dest }))
+            .await?;
+        Ok(answer.bytes)
     }
 
     pub async fn op<A, R>(&self, name: &str, args: &A) -> Result<R>
@@ -187,12 +200,19 @@ mod tests {
     async fn exec_and_a_product_operation_send_their_name_and_arguments_and_read_the_answer() {
         let recorder = Recorder::answering(vec![
             json!({ "output": "done\n" }),
+            json!({ "bytes": 5 }),
             json!({ "lines": 3 }),
             json!({ "unexpected": true }),
         ]);
         let executor: &dyn HostExecutor = &recorder;
         let host = executor.on(origin());
         assert_eq!(host.exec("stamp").await.unwrap(), "done\n");
+        assert_eq!(
+            host.exec_into("stamp", &Dest::new("dumps", "keel-demo-stamp.txt"))
+                .await
+                .unwrap(),
+            5
+        );
         let stat: Lines = host
             .op(
                 "note.digest.stat",
@@ -217,6 +237,10 @@ mod tests {
             recorder.calls(),
             [
                 ("host.exec".to_owned(), json!({ "name": "stamp" })),
+                (
+                    "host.exec".to_owned(),
+                    json!({ "name": "stamp", "dest": { "root": "dumps", "name": "keel-demo-stamp.txt" } })
+                ),
                 (
                     "note.digest.stat".to_owned(),
                     json!({ "name": "keel-demo-digest.txt" })
