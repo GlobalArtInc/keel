@@ -195,9 +195,18 @@ impl Site {
 
     fn exchange(&self, line: &str) -> Option<Value> {
         let mut stream = UnixStream::connect(&self.socket).expect("a connection");
-        stream
-            .write_all(format!("{line}\n").as_bytes())
-            .expect("the request is sent");
+        match stream.write_all(format!("{line}\n").as_bytes()) {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::BrokenPipe | ErrorKind::ConnectionReset
+                ) =>
+            {
+                return None;
+            }
+            Err(error) => panic!("the request is sent: {error}"),
+        }
         let mut reader = BufReader::new(stream);
         let mut answer = String::new();
         let read = match reader.read_line(&mut answer) {
