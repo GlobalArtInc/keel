@@ -21,6 +21,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_hosting_mail::MODULE,
         &keel_hosting_ftp::MODULE,
         &keel_hosting_backup::MODULE,
+        &keel_hosting_services::MODULE,
     ],
     bridges: &[Bridge {
         to: "dns",
@@ -94,7 +95,8 @@ mod tests {
                 "hosting_database",
                 "hosting_mail",
                 "hosting_ftp",
-                "hosting_backup"
+                "hosting_backup",
+                "hosting_service"
             ]
         );
         assert_eq!(MANIFEST.bridges.len(), 1);

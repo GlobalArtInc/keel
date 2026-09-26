@@ -65,18 +65,15 @@ fn seen_for(name: &str) -> Vec<Seen> {
 }
 
 pub(crate) fn with_dns(site: &Site) -> Builder {
-    composed(site)
-        .product(&keel_dns::MANIFEST)
-        .module(&keel_system::stats::MODULE)
-        .section(
-            "dns",
-            json!({
-                "zones_dir": site.path("zones").display().to_string(),
-                "include_dir": site.path("named").display().to_string(),
-                "nameserver": "ns1.example.net",
-                "hostmaster": "hostmaster.example.net",
-            }),
-        )
+    composed(site).product(&keel_dns::MANIFEST).section(
+        "dns",
+        json!({
+            "zones_dir": site.path("zones").display().to_string(),
+            "include_dir": site.path("named").display().to_string(),
+            "nameserver": "ns1.example.net",
+            "hostmaster": "hostmaster.example.net",
+        }),
+    )
 }
 
 async fn user(harness: &Harness, who: Who, name: &str) -> String {

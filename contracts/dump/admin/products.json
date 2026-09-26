@@ -40,7 +40,8 @@
       "hosting_database",
       "hosting_mail",
       "hosting_ftp",
-      "hosting_backup"
+      "hosting_backup",
+      "hosting_service"
     ]
   }
 ]

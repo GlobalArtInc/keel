@@ -17,6 +17,7 @@ keel-hosting-backup = { workspace = true }
 keel-hosting-db = { workspace = true }
 keel-hosting-ftp = { workspace = true }
 keel-hosting-mail = { workspace = true }
+keel-hosting-services = { workspace = true }
 keel-hosting-ssl = { workspace = true }
 keel-hosting-users = { workspace = true }
 keel-hosting-web = { workspace = true }

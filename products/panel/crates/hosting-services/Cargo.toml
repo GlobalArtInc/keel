@@ -1,0 +1,14 @@
+[package]
+name = "keel-hosting-services"
+description = "The hosting-services module of KeelPanel: the services of the host agent's policy with their state, memory and uptime, started, stopped, restarted and reloaded by an admin, and a problem while one is down"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-system = { workspace = true, features = ["notify"] }

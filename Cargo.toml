@@ -23,6 +23,7 @@ keel-hosting-backup = { path = "products/panel/crates/hosting-backup" }
 keel-hosting-db = { path = "products/panel/crates/hosting-db" }
 keel-hosting-ftp = { path = "products/panel/crates/hosting-ftp" }
 keel-hosting-mail = { path = "products/panel/crates/hosting-mail" }
+keel-hosting-services = { path = "products/panel/crates/hosting-services" }
 keel-hosting-ssl = { path = "products/panel/crates/hosting-ssl" }
 keel-hosting-users = { path = "products/panel/crates/hosting-users" }
 keel-hosting-web = { path = "products/panel/crates/hosting-web" }

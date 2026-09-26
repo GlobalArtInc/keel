@@ -11,6 +11,16 @@ pub struct ServiceState {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(crate = "keel_sdk::serde")]
+pub struct ServiceStatus {
+    pub name: String,
+    pub state: String,
+    pub installed: bool,
+    pub memory: Option<u64>,
+    pub since: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(crate = "keel_sdk::serde")]
 pub struct PackageChange {
     pub name: String,
     pub from: Option<String>,
@@ -71,6 +81,12 @@ struct ServiceList {
 
 #[derive(Deserialize)]
 #[serde(crate = "keel_sdk::serde")]
+struct ServiceStatuses {
+    services: Vec<ServiceStatus>,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "keel_sdk::serde")]
 struct Version {
     version: Option<String>,
 }
@@ -110,8 +126,21 @@ impl<'a> Services<'a> {
         self.act("host.service.restart", name, validate).await
     }
 
+    pub async fn start(&self, name: &str, validate: Option<&str>) -> Result<()> {
+        self.act("host.service.start", name, validate).await
+    }
+
+    pub async fn stop(&self, name: &str) -> Result<()> {
+        self.act("host.service.stop", name, None).await
+    }
+
     pub async fn list(&self) -> Result<Vec<ServiceState>> {
         let answer: ServiceList = self.host.call("host.service.list", json!({})).await?;
+        Ok(answer.services)
+    }
+
+    pub async fn status(&self) -> Result<Vec<ServiceStatus>> {
+        let answer: ServiceStatuses = self.host.call("host.service.status", json!({})).await?;
         Ok(answer.services)
     }
 
@@ -278,6 +307,53 @@ mod tests {
                     json!({ "user": "hp_site", "root": "www", "blocks": { "soft": 1000, "hard": 4000 }, "inodes": { "soft": 1000, "hard": 4000 } })
                 ),
                 ("host.quota.list".to_owned(), json!({ "root": "www" })),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn start_and_stop_send_the_unit_and_status_reads_memory_and_start() {
+        let recorder = Recorder::answering(vec![
+            json!({ "name": "nginx", "start": true }),
+            json!({ "name": "nginx", "stop": true }),
+            json!({ "services": [
+                { "name": "nginx", "state": "active", "installed": true, "memory": 7340032, "since": 1790000000 },
+                { "name": "vsftpd", "state": "inactive", "installed": false, "memory": null, "since": null }
+            ] }),
+        ]);
+        let executor: &dyn HostExecutor = &recorder;
+        let host = executor.on(origin());
+        let services = host.services();
+        services.start("nginx", Some("nginx.test")).await.unwrap();
+        services.stop("nginx").await.unwrap();
+        assert_eq!(
+            services.status().await.unwrap(),
+            [
+                ServiceStatus {
+                    name: "nginx".to_owned(),
+                    state: "active".to_owned(),
+                    installed: true,
+                    memory: Some(7_340_032),
+                    since: Some(1_790_000_000),
+                },
+                ServiceStatus {
+                    name: "vsftpd".to_owned(),
+                    state: "inactive".to_owned(),
+                    installed: false,
+                    memory: None,
+                    since: None,
+                }
+            ]
+        );
+        assert_eq!(
+            recorder.calls(),
+            [
+                (
+                    "host.service.start".to_owned(),
+                    json!({ "name": "nginx", "validate": "nginx.test" })
+                ),
+                ("host.service.stop".to_owned(), json!({ "name": "nginx" })),
+                ("host.service.status".to_owned(), json!({})),
             ]
         );
     }

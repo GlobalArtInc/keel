@@ -306,7 +306,7 @@ fn write_stubs(root: &Path) {
         root,
         "systemctl",
         &format!(
-            "echo \"systemctl $*\" >> LOG\nif [ \"$1\" = list-unit-files ]; then if [ -f ROOT/unit-files ]; then cat ROOT/unit-files; fi; exit 0; fi\nif [ \"$1\" = is-active ]; then shift; for unit; do if [ -e ROOT/inactive-$unit ]; then echo inactive; else echo active; fi; done; exit 0; fi\nif [ -e ROOT/fail-systemctl ]; then rm -f ROOT/fail-systemctl; echo '{SYSTEMCTL_MESSAGE}' >&2; exit 1; fi\n"
+            "echo \"systemctl $*\" >> LOG\nif [ \"$1\" = list-unit-files ]; then if [ -f ROOT/unit-files ]; then cat ROOT/unit-files; fi; exit 0; fi\nif [ \"$1\" = is-active ]; then shift; for unit; do if [ -e ROOT/inactive-$unit ]; then echo inactive; else echo active; fi; done; exit 0; fi\nif [ \"$1\" = show ]; then if [ -f ROOT/show ]; then cat ROOT/show; fi; exit 0; fi\nif [ -e ROOT/fail-systemctl ]; then rm -f ROOT/fail-systemctl; echo '{SYSTEMCTL_MESSAGE}' >&2; exit 1; fi\n"
         ),
     );
     stub(
@@ -1186,6 +1186,70 @@ fn service_operations_reach_listed_units_through_systemctl_alone() {
 }
 
 #[test]
+fn start_and_stop_reach_listed_units_and_status_reads_their_memory_and_start() {
+    let mut site = Site::start("service-status");
+    let answer = site.call("host.service.stop", "dns", json!({ "name": "named" }));
+    assert_eq!(answer["data"], json!({ "name": "named", "stop": true }));
+    let answer = site.call(
+        "host.service.start",
+        "dns",
+        json!({ "name": "named", "validate": "named.check" }),
+    );
+    assert_eq!(answer["data"], json!({ "name": "named", "start": true }));
+    refused(
+        &site.call("host.service.stop", "dns", json!({ "name": "sshd" })),
+        "host.error.policy",
+    );
+    refused(
+        &site.call(
+            "host.service.stop",
+            "dns",
+            json!({ "name": "named", "validate": "named.check" }),
+        ),
+        "host.error.args",
+    );
+    fs::write(
+        site.root().join("unit-files"),
+        "php8.4-fpm.service enabled enabled\n",
+    )
+    .unwrap();
+    fs::write(
+        site.root().join("show"),
+        "ActiveState=active\nLoadState=loaded\nMemoryCurrent=7340032\nActiveEnterTimestamp=@1790000000\n\nActiveState=failed\nLoadState=loaded\nMemoryCurrent=[not set]\nActiveEnterTimestamp=@1789000000\n",
+    )
+    .unwrap();
+    let answer = site.call("host.service.status", "dns", json!({}));
+    assert_eq!(
+        answer["data"],
+        json!({ "services": [
+            { "name": "named", "state": "active", "installed": true, "memory": 7340032, "since": 1790000000 },
+            { "name": "php8.4-fpm", "state": "failed", "installed": true, "memory": null, "since": null }
+        ] }),
+        "{answer}"
+    );
+    fs::write(site.root().join("show"), "ActiveState=active\n").unwrap();
+    let answer = site.call("host.service.status", "dns", json!({}));
+    assert!(
+        refused(&answer, "host.error.exec_failed").contains("1 block(s) for 2 unit(s)"),
+        "{answer}"
+    );
+    assert_eq!(
+        site.calls(),
+        [
+            "systemctl stop named",
+            "named-checkconf -z",
+            "systemctl start named",
+            "systemctl list-unit-files --no-legend --type=service php*-fpm.service",
+            "systemctl show --timestamp=unix --property=LoadState,ActiveState,MemoryCurrent,ActiveEnterTimestamp named php8.4-fpm",
+            "systemctl list-unit-files --no-legend --type=service php*-fpm.service",
+            "systemctl show --timestamp=unix --property=LoadState,ActiveState,MemoryCurrent,ActiveEnterTimestamp named php8.4-fpm"
+        ]
+    );
+    let line = site.audit_line(1);
+    assert!(line.contains("op=host.service.stop"), "{line}");
+}
+
+#[test]
 fn the_socket_is_bound_again_when_it_disappears() {
     let mut site = Site::start("rebind");
     assert_eq!(site.call("host.service.list", "dns", json!({}))["ok"], true);
@@ -1294,6 +1358,9 @@ fn every_catalogue_operation_refuses_an_argument_it_does_not_know() {
         "host.service.reload",
         "host.service.restart",
         "host.service.list",
+        "host.service.start",
+        "host.service.stop",
+        "host.service.status",
         "host.template.apply",
         "host.pkg.install",
         "host.pkg.remove",

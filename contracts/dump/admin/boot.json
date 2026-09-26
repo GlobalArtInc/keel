@@ -219,6 +219,16 @@
           "func": "hosting.backup.schedule.list",
           "kind": "list",
           "icon": "calendar"
+        },
+        {
+          "path": "panel/services",
+          "label": "hosting.service.list.title",
+          "func": "hosting.service.list",
+          "kind": "list",
+          "icon": "activity",
+          "badge": {
+            "problem": "hosting.service.down"
+          }
         }
       ]
     },

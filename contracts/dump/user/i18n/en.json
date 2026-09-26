@@ -1446,87 +1446,38 @@
         "records": "Records; {zone}, {ip} and {ip6} are replaced when a zone is created"
       }
     },
-    "task": {
-      "action": {
-        "cancel": "Cancel",
-        "open": "Open"
-      },
-      "column": {
-        "accountId": "Account",
-        "createdAt": "Created",
-        "finishedAt": "Finished",
-        "function": "Function",
-        "progress": "Progress",
-        "state": "State"
-      },
-      "empty": "No tasks have run yet",
-      "error": {
-        "cancelled": "The task was cancelled",
-        "finished": "The task has already ended as {state}",
-        "interrupted": "The task was interrupted by a restart",
-        "log": "The task log at {path} could not be written",
-        "no_file": "The task {id} left no file to download",
-        "not_found": "The task does not exist",
-        "not_local": "The task runs on another node and cannot be cancelled from here",
-        "not_running": "The task worker has not started",
-        "principal": "The stored principal of task {id} cannot be read",
-        "state": "The stored state {state} of task {id} is unknown"
-      },
-      "id": "Task",
-      "list": {
-        "title": "Tasks"
-      },
-      "state": {
-        "cancelled": "Cancelled",
-        "done": "Done",
-        "failed": "Failed",
-        "interrupted": "Interrupted",
-        "queued": "Queued",
-        "running": "Running"
-      }
-    },
-    "backup": {
-      "action": {
-        "create": "Take a backup",
-        "refresh": "Refresh",
-        "restore": "Restore"
-      },
-      "archive": "Archive",
-      "column": {
-        "at": "Taken",
-        "bytes": "Size",
-        "file": "Archive",
-        "keel": "Keel version",
-        "products": "Products",
-        "secretKey": "Secret key",
-        "sources": "Sources",
-        "tables": "Tables"
-      },
-      "create": {
-        "title": "Take a backup"
-      },
-      "empty": "No backup has been taken yet",
-      "error": {
-        "directory": "The backup directory {path} could not be read",
-        "inline": "The backup runs as a task; call it through the task runner",
-        "link": "The archive {archive} could not be offered for download at {output}",
-        "name": "{archive} is not the name of an archive under the backup directory",
-        "not_found": "There is no archive named {archive} under the backup directory"
-      },
-      "list": {
-        "title": "Backups"
-      },
-      "progress": {
-        "archive": "Dumping the database and packing the archive",
-        "check": "Reading the archive manifest",
-        "link": "Offering the archive for download",
-        "request": "Writing the restore request"
-      },
-      "restore": {
-        "title": "Restore a backup"
-      }
-    },
     "hosting": {
+      "service": {
+        "action": {
+          "reload": "Reload",
+          "restart": "Restart",
+          "start": "Start",
+          "stop": "Stop"
+        },
+        "column": {
+          "installed": "Installed",
+          "memoryMib": "Memory, MiB",
+          "name": "Service",
+          "since": "Running since",
+          "state": "State"
+        },
+        "down": "The service {name} is {state}",
+        "empty": "The policy of the host agent lists no services",
+        "error": {
+          "detached": "The service watch has not started yet"
+        },
+        "list": {
+          "title": "Services"
+        },
+        "state": {
+          "activating": "Starting",
+          "active": "Running",
+          "deactivating": "Stopping",
+          "failed": "Failed",
+          "inactive": "Stopped",
+          "reloading": "Reloading"
+        }
+      },
       "file-manager": {
         "action": {
           "cancel": "Cancel",
@@ -2084,6 +2035,86 @@
           "error": "Error",
           "pending": "In progress"
         }
+      }
+    },
+    "task": {
+      "action": {
+        "cancel": "Cancel",
+        "open": "Open"
+      },
+      "column": {
+        "accountId": "Account",
+        "createdAt": "Created",
+        "finishedAt": "Finished",
+        "function": "Function",
+        "progress": "Progress",
+        "state": "State"
+      },
+      "empty": "No tasks have run yet",
+      "error": {
+        "cancelled": "The task was cancelled",
+        "finished": "The task has already ended as {state}",
+        "interrupted": "The task was interrupted by a restart",
+        "log": "The task log at {path} could not be written",
+        "no_file": "The task {id} left no file to download",
+        "not_found": "The task does not exist",
+        "not_local": "The task runs on another node and cannot be cancelled from here",
+        "not_running": "The task worker has not started",
+        "principal": "The stored principal of task {id} cannot be read",
+        "state": "The stored state {state} of task {id} is unknown"
+      },
+      "id": "Task",
+      "list": {
+        "title": "Tasks"
+      },
+      "state": {
+        "cancelled": "Cancelled",
+        "done": "Done",
+        "failed": "Failed",
+        "interrupted": "Interrupted",
+        "queued": "Queued",
+        "running": "Running"
+      }
+    },
+    "backup": {
+      "action": {
+        "create": "Take a backup",
+        "refresh": "Refresh",
+        "restore": "Restore"
+      },
+      "archive": "Archive",
+      "column": {
+        "at": "Taken",
+        "bytes": "Size",
+        "file": "Archive",
+        "keel": "Keel version",
+        "products": "Products",
+        "secretKey": "Secret key",
+        "sources": "Sources",
+        "tables": "Tables"
+      },
+      "create": {
+        "title": "Take a backup"
+      },
+      "empty": "No backup has been taken yet",
+      "error": {
+        "directory": "The backup directory {path} could not be read",
+        "inline": "The backup runs as a task; call it through the task runner",
+        "link": "The archive {archive} could not be offered for download at {output}",
+        "name": "{archive} is not the name of an archive under the backup directory",
+        "not_found": "There is no archive named {archive} under the backup directory"
+      },
+      "list": {
+        "title": "Backups"
+      },
+      "progress": {
+        "archive": "Dumping the database and packing the archive",
+        "check": "Reading the archive manifest",
+        "link": "Offering the archive for download",
+        "request": "Writing the restore request"
+      },
+      "restore": {
+        "title": "Restore a backup"
       }
     },
     "note": {

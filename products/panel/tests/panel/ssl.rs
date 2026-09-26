@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use keel::prelude::*;
 use keel::sdk::chrono::{DateTime, Datelike, Days, Utc};
-use keel_system::cron::api::{Outcome, Scheduler};
 use keel_testkit::{Harness, Who, tokio};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
@@ -16,7 +15,7 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
-use crate::support::{Site, composed, create, data, eventually, rows, state_becomes};
+use crate::support::{Site, composed, create, data, eventually, rows, run_job, state_becomes};
 
 const DIRECTORY_VARIABLE: &str = "KEEL_TEST_ACME_URL";
 const MANAGEMENT_VARIABLE: &str = "KEEL_TEST_ACME_MANAGEMENT";
@@ -257,29 +256,6 @@ async fn installed_becomes_other_than(harness: &Harness, site: &Site, previous: 
     })
     .await;
     stem
-}
-
-fn scheduler(harness: &Harness) -> Arc<Scheduler> {
-    harness
-        .registry()
-        .services()
-        .get::<Scheduler>()
-        .expect("the cron module provides the scheduler")
-}
-
-async fn run_job(harness: &Harness, job: &str) {
-    let scheduler = scheduler(harness);
-    let waiting = Arc::clone(&scheduler);
-    eventually("the cron leader takes the lock", async || {
-        waiting.is_leader()
-    })
-    .await;
-    let started = scheduler.run_now(job).await.expect("the job starts");
-    assert_eq!(
-        scheduler.wait(started.run).await.expect("the run ends"),
-        Outcome::Ok,
-        "{job}"
-    );
 }
 
 async fn issued(harness: &Harness) -> u64 {

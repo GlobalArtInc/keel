@@ -14,7 +14,7 @@ pub use accounts::{Created, Group, Groups, User, Users};
 pub use files::{Attributes, Dest, Entry, FileContent, Files, Template};
 pub use system::{
     Cron, CronJob, Limits, PackageChange, PackageChanges, Packages, Quota, QuotaReport,
-    ServiceState, Services, Usage, UserQuota,
+    ServiceState, ServiceStatus, Services, Usage, UserQuota,
 };
 
 #[async_trait]

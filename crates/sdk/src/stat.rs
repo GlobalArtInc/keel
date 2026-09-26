@@ -19,6 +19,7 @@ pub struct StatCollector {
     unit: Unit,
     interval: Duration,
     per_account: bool,
+    per_subject: bool,
     collect: Collect,
 }
 
@@ -33,11 +34,27 @@ impl StatCollector {
             unit,
             interval,
             per_account: false,
+            per_subject: false,
             collect: Arc::new(move |db| {
                 collect(db)
                     .map(|value| value.map(|value| vec![(String::new(), value)]))
                     .boxed()
             }),
+        }
+    }
+
+    pub fn per_subject<F, Fut>(key: &str, unit: Unit, interval: Duration, collect: F) -> Self
+    where
+        F: Fn(Db) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<(String, f64)>>> + Send + 'static,
+    {
+        Self {
+            key: key.to_owned(),
+            unit,
+            interval,
+            per_account: false,
+            per_subject: true,
+            collect: Arc::new(move |db| collect(db).boxed()),
         }
     }
 
@@ -51,6 +68,7 @@ impl StatCollector {
             unit,
             interval,
             per_account: true,
+            per_subject: false,
             collect: Arc::new(move |db| {
                 collect(db)
                     .map(|values| {
@@ -80,6 +98,10 @@ impl StatCollector {
 
     pub fn is_per_account(&self) -> bool {
         self.per_account
+    }
+
+    pub fn is_per_subject(&self) -> bool {
+        self.per_subject
     }
 
     pub fn sample(&self, db: Db) -> BoxFuture<'static, Result<Vec<(String, f64)>>> {
@@ -120,6 +142,7 @@ mod tests {
         assert_eq!(collector.unit(), Unit::Count);
         assert_eq!(collector.interval(), Duration::from_secs(3600));
         assert!(!collector.is_per_account());
+        assert!(!collector.is_per_subject());
         assert_eq!(
             collector.sample(db()).await.unwrap(),
             [(String::new(), 3.0)]
@@ -127,6 +150,23 @@ mod tests {
         assert_eq!(
             format!("{collector:?}"),
             "StatCollector { key: \"keel.accounts\", unit: \"count\", interval: 3600s, per_account: false }"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_per_subject_collector_samples_a_value_per_named_subject_of_the_installation() {
+        let collector = StatCollector::per_subject(
+            "demo.service.memory",
+            Unit::Bytes,
+            Duration::from_secs(300),
+            |_| async { Ok(vec![("nginx".to_owned(), 7_340_032.0)]) },
+        );
+        assert!(collector.is_per_subject());
+        assert!(!collector.is_per_account());
+        assert_eq!(collector.unit().as_str(), "bytes");
+        assert_eq!(
+            collector.sample(db()).await.unwrap(),
+            [("nginx".to_owned(), 7_340_032.0)]
         );
     }
 
@@ -140,6 +180,7 @@ mod tests {
             move |_| async move { Ok(vec![(account, 2.0)]) },
         );
         assert!(collector.is_per_account());
+        assert!(!collector.is_per_subject());
         assert_eq!(
             collector.sample(db()).await.unwrap(),
             [(account.to_string(), 2.0)]

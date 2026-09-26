@@ -1,0 +1,37 @@
+{
+  "keel": 1,
+  "name": "hosting.service.restart",
+  "module": "hosting_service",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "key": "name",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "required": [
+      "name"
+    ]
+  },
+  "result": {
+    "title": "Done",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+}

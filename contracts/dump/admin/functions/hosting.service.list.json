@@ -1,0 +1,185 @@
+{
+  "keel": 1,
+  "name": "hosting.service.list",
+  "module": "hosting_service",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "name",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_ServiceRow",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ServiceRow"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "ServiceRow": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "memoryMib": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "installed"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.service.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "activating": "info",
+          "active": "success",
+          "deactivating": "warning",
+          "failed": "danger",
+          "inactive": "neutral",
+          "reloading": "info"
+        },
+        "filter": {
+          "options": [
+            "active",
+            "inactive",
+            "failed"
+          ]
+        }
+      },
+      {
+        "key": "installed",
+        "type": "boolean"
+      },
+      {
+        "key": "memoryMib",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "since",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "start",
+        "role": "button",
+        "function": "hosting.service.start",
+        "icon": "play",
+        "params": {
+          "name": "$id"
+        }
+      },
+      {
+        "id": "stop",
+        "role": "button",
+        "function": "hosting.service.stop",
+        "icon": "square",
+        "params": {
+          "name": "$id"
+        },
+        "confirm": {
+          "destructive": true,
+          "items": "name"
+        }
+      },
+      {
+        "id": "restart",
+        "role": "button",
+        "function": "hosting.service.restart",
+        "icon": "rotate-cw",
+        "params": {
+          "name": "$id"
+        },
+        "confirm": true
+      },
+      {
+        "id": "reload",
+        "role": "button",
+        "function": "hosting.service.reload",
+        "icon": "refresh-cw",
+        "params": {
+          "name": "$id"
+        }
+      },
+      {
+        "id": "refresh",
+        "role": "refresh"
+      }
+    ],
+    "row_actions": [
+      "start",
+      "stop",
+      "restart",
+      "reload"
+    ],
+    "empty": {
+      "title": "hosting.service.empty"
+    },
+    "invalidate_on": [
+      "hosting.service.*"
+    ]
+  }
+}

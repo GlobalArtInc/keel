@@ -3,12 +3,16 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Unit {
     Count,
+    Bytes,
+    Seconds,
 }
 
 impl Unit {
     pub const fn as_str(self) -> &'static str {
         match self {
             Unit::Count => "count",
+            Unit::Bytes => "bytes",
+            Unit::Seconds => "seconds",
         }
     }
 }

@@ -2477,6 +2477,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-hosting-services"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-host",
+ "keel-system",
+]
+
+[[package]]
 name = "keel-hosting-ssl"
 version = "0.2.0"
 dependencies = [
@@ -2565,6 +2574,7 @@ dependencies = [
  "keel-hosting-db",
  "keel-hosting-ftp",
  "keel-hosting-mail",
+ "keel-hosting-services",
  "keel-hosting-ssl",
  "keel-hosting-users",
  "keel-hosting-web",

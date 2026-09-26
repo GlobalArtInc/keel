@@ -9,6 +9,10 @@ UNIT=keel.service
 AGENT_UNIT=keel-privileged.service
 WWW=/var/www
 WAIT=${KEEL_PANEL_VM_WAIT:-60}
+REFUSED_SERVICE=cron
+POLL_JOB=notify.problems.poll
+COLLECT_JOB=stats.collect
+SAMPLE_WAIT=360
 STAMP=$(date +%s)
 NAME=vm$STAMP
 USER_NAME=hp_$NAME
@@ -68,6 +72,7 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh files
        hack/panel-vm.sh backup
        hack/panel-vm.sh config
+       hack/panel-vm.sh services
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
@@ -180,6 +185,17 @@ line $CONFIG_POOL, finds both in the server block and the pool, both accepted by
 nginx -t and php-fpm -t, nginx sending the header and
 hosting.site.config.get answering the installed server block, then deletes
 the account.
+
+"services" proves the services of the panel on the running installation. It
+finds nginx and postfix in hosting.service.list running, with their memory
+and the instant they started. It restarts nginx and finds a new main process,
+reloads it, and finds $REFUSED_SERVICE, a unit outside the services of
+$POLICY, refused and still running. It stops postfix, finds it inactive and,
+after a run of $POLL_JOB, the problem hosting.service.down open for it, starts
+it again and finds the problem cleared by the next run. It then waits up to
+six minutes for $COLLECT_JOB to sample the memory and the uptime of nginx and
+reads both through stats.series, with host.service.stop in the journal of
+$AGENT_UNIT.
 EOF
 }
 
@@ -1204,6 +1220,103 @@ config_proof() {
   say "panel's configuration editor is proven on this machine: an override nginx -t refuses never reached the running nginx, and an accepted one was rendered into the server block and the pool and served"
 }
 
+service_state_is() {
+  [ "$(call hosting.service.list 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["data"]["data"]
+row = next((row for row in rows if row["name"] == sys.argv[1]), None)
+print("" if row is None else row["state"] + (" measured" if row["memoryMib"] and row["since"] else ""))
+' "$1")" = "$2" ]
+}
+
+main_pid() {
+  systemctl show --property=MainPID --value "$1"
+}
+
+runs_anew() {
+  [ "$(main_pid "$1")" != "$2" ] && systemctl is-active --quiet "$1"
+}
+
+refused_service() {
+  local out
+  out=$(as_keel ctl hosting.service.stop "name=$1" --out json 2>&1) && return 1
+  grep -qF host.error.policy <<<"$out"
+}
+
+down_is() {
+  [ "$(call notify.problem.list 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["data"]["data"]
+print(any(row["key"] == "hosting.service.down" and row["subject"] == sys.argv[1] and row["open"] for row in rows))
+' "$1")" = "$2" ]
+}
+
+polled_down_is() {
+  call cron.job.run "id=$POLL_JOB" >/dev/null 2>&1 || true
+  sleep 2
+  down_is "$1" "$2"
+}
+
+sampled() {
+  local from to
+  from=$(date -u -d '-1 hour' '+%Y-%m-%dT%H:%M:%SZ')
+  to=$(date -u -d '+1 hour' '+%Y-%m-%dT%H:%M:%SZ')
+  call stats.series "key=$1" "subject=$2" "from=$from" "to=$to" resolution=raw 2>/dev/null | python3 -c '
+import json, sys
+points = json.load(sys.stdin)["data"]["points"]
+sys.exit(0 if points and points[-1]["value"] > 0 else 1)
+'
+}
+
+sampled_within() {
+  local waited=0
+  while [ "$waited" -lt "$SAMPLE_WAIT" ]; do
+    if sampled "$1" "$2"; then
+      return 0
+    fi
+    sleep 10
+    waited=$((waited + 10))
+  done
+  return 1
+}
+
+services_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  local since pid
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- the services of the policy"
+  check "hosting.service.list shows nginx running with its memory and start" service_state_is nginx "active measured"
+  check "hosting.service.list shows postfix running with its memory and start" service_state_is postfix "active measured"
+
+  say "--- restart, reload and a unit outside the policy"
+  pid=$(main_pid nginx)
+  check "hosting.service.restart restarts nginx" call hosting.service.restart name=nginx
+  check "nginx runs under a new main process" runs_anew nginx "$pid"
+  check "hosting.service.reload reloads nginx" call hosting.service.reload name=nginx
+  check "stopping $REFUSED_SERVICE is refused by the policy" refused_service "$REFUSED_SERVICE"
+  check "$REFUSED_SERVICE still runs" systemctl is-active --quiet "$REFUSED_SERVICE"
+
+  say "--- a stopped service is a problem until it runs again"
+  check "hosting.service.stop stops postfix" call hosting.service.stop name=postfix
+  check "postfix is inactive" eval '! systemctl is-active --quiet postfix'
+  check "hosting.service.list shows postfix inactive" service_state_is postfix inactive
+  check "a run of $POLL_JOB opens hosting.service.down for postfix" eventually polled_down_is postfix True
+  check "hosting.service.start starts postfix" call hosting.service.start name=postfix
+  check "postfix runs again" systemctl is-active --quiet postfix
+  check "the next run of $POLL_JOB clears it" eventually polled_down_is postfix False
+
+  say "--- statistics"
+  check "stats.series answers the memory of nginx" sampled_within hosting.service.memory nginx
+  check "stats.series answers the uptime of nginx" sampled_within hosting.service.uptime nginx
+  check "the agent journal carries host.service.stop" agent_logged "$since" "host.service.stop"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's services are proven on this machine: the units of the policy were listed with their memory and start, restarted, reloaded, stopped and started through the agent, a unit outside the policy was refused, a stopped one raised hosting.service.down until it ran again and their memory and uptime were sampled"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
@@ -1215,5 +1328,6 @@ case ${1:-} in
   files) shift; files_proof "$@" ;;
   backup) shift; backup_proof "$@" ;;
   config) shift; config_proof "$@" ;;
+  services) shift; services_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

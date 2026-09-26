@@ -1,0 +1,35 @@
+{
+  "hosting": {
+    "service": {
+      "action": {
+        "reload": "Reload",
+        "restart": "Restart",
+        "start": "Start",
+        "stop": "Stop"
+      },
+      "column": {
+        "installed": "Installed",
+        "memoryMib": "Memory, MiB",
+        "name": "Service",
+        "since": "Running since",
+        "state": "State"
+      },
+      "down": "The service {name} is {state}",
+      "empty": "The policy of the host agent lists no services",
+      "error": {
+        "detached": "The service watch has not started yet"
+      },
+      "list": {
+        "title": "Services"
+      },
+      "state": {
+        "activating": "Starting",
+        "active": "Running",
+        "deactivating": "Stopping",
+        "failed": "Failed",
+        "inactive": "Stopped",
+        "reloading": "Reloading"
+      }
+    }
+  }
+}

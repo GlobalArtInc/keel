@@ -6,6 +6,7 @@ mod files;
 mod ftp;
 mod license;
 mod mail;
+mod services;
 mod sites;
 mod ssl;
 mod support;

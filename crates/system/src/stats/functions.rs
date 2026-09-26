@@ -162,6 +162,7 @@ async fn subject_of(call: &Call<SeriesQuery>, collector: &Collector) -> Result<S
         }
         return match &query.subject {
             None => Ok(String::new()),
+            Some(subject) if collector.def.is_per_subject() => Ok(subject.clone()),
             Some(subject) => Err(refused_subject(&query.key, subject)),
         };
     }

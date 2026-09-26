@@ -18,6 +18,7 @@ const LOAD: &str = "probe.load";
 const ITEMS: &str = "probe.items";
 const KV_LOAD: &str = "probe_load";
 const KV_ITEMS: &str = "probe_items";
+const UNITS: &str = "units.memory";
 
 static PROBE: ModuleDef = ModuleDef {
     id: "probe",
@@ -67,6 +68,30 @@ fn init(r: &mut Registrar) -> Result<()> {
                 items.push((account.parse().expect("an account id"), count));
             }
             Ok(items)
+        },
+    ));
+    Ok(())
+}
+
+static UNITS_PROBE: ModuleDef = ModuleDef {
+    id: "units",
+    version: "0.1.0",
+    sdk: VERSION,
+    requires: &[],
+    migrations: None,
+    init: init_units,
+};
+
+fn init_units(r: &mut Registrar) -> Result<()> {
+    r.contribute(StatCollector::per_subject(
+        UNITS,
+        Unit::Bytes,
+        Duration::from_secs(300),
+        |_| async {
+            Ok(vec![
+                ("nginx".to_owned(), 7_340_032.0),
+                ("postfix".to_owned(), 1_048_576.0),
+            ])
         },
     ));
     Ok(())
@@ -542,5 +567,52 @@ async fn a_per_account_series_is_scoped_to_the_callers_account() {
         keys(&harness, Who::Reseller).await,
         ["probe.items count 60 account"]
     );
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_per_subject_series_answers_each_named_subject_to_an_admin_alone() {
+    let harness = Harness::new()
+        .module(&keel_system::cron::MODULE)
+        .module(&MODULE)
+        .module(&UNITS_PROBE)
+        .clock(at("2026-09-24T00:00:00Z"))
+        .boot()
+        .await;
+    collect_at(&harness, "2026-09-24T00:05:00Z").await;
+    let window = |subject: Option<&str>| {
+        let mut params = json!({
+            "key": UNITS,
+            "from": "2026-09-24T00:00:00Z",
+            "to": "2026-09-24T01:00:00Z",
+            "resolution": "raw",
+        });
+        if let Some(subject) = subject {
+            params["subject"] = json!(subject);
+        }
+        params
+    };
+    let nginx = series(&harness, Who::Admin, window(Some("nginx"))).await;
+    assert_eq!(values(&nginx), [7_340_032.0]);
+    assert_eq!(data(&nginx)["subject"], json!("nginx"));
+    assert_eq!(
+        values(&series(&harness, Who::Admin, window(Some("postfix"))).await),
+        [1_048_576.0]
+    );
+    assert!(
+        values(&series(&harness, Who::Admin, window(None)).await).is_empty(),
+        "no sample is kept without a subject"
+    );
+    refused(
+        &series(&harness, Who::A1, window(Some("nginx"))).await,
+        ErrorCode::NotFound,
+        ERROR_KEY,
+    );
+    assert!(
+        keys(&harness, Who::Admin)
+            .await
+            .contains(&"units.memory bytes 300 installation".to_owned())
+    );
+    assert!(keys(&harness, Who::A1).await.is_empty());
     harness.finish().await;
 }

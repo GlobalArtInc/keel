@@ -6,6 +6,8 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use keel::prelude::*;
+use keel_system::cron::ERROR_RUNNING;
+use keel_system::cron::api::{Outcome, Scheduler};
 use keel_testkit::{Builder, Harness, Reply, Who, tokio};
 
 pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
@@ -22,7 +24,28 @@ const GROUPADD: &str =
 const GROUPDEL: &str = "echo \"groupdel $*\" >> LOG\nawk -F: -v k=\"$1\" '$1 != k' ROOT/group > ROOT/group.new && mv ROOT/group.new ROOT/group\n";
 const CHECK: &str = "echo \"NAME $*\" >> LOG\nif [ -f FLAG ]; then echo \"NAME: [emerg] the configuration of the test is broken\" >&2; exit 1; fi\nexit 0\n";
 const NGINX: &str = "echo \"nginx $*\" >> LOG\nif [ -f FLAG ]; then echo \"nginx: [emerg] the configuration of the test is broken\" >&2; exit 1; fi\nif grep -qs keel_test_refused ROOT/vhosts/*.conf; then echo \"nginx: [emerg] unknown directive \\\"keel_test_refused\\\" in ROOT/vhosts\" >&2; exit 1; fi\nexit 0\n";
-const SYSTEMCTL: &str = "echo \"systemctl $*\" >> LOG\nexit 0\n";
+const SYSTEMCTL: &str = r#"echo "systemctl $*" >> LOG
+case $1 in
+  list-unit-files) printf 'php8.4-fpm.service enabled enabled\nphp8.3-fpm.service enabled enabled\n' ;;
+  show)
+    shift
+    sep=
+    for unit; do
+      case $unit in -*) continue ;; esac
+      [ -n "$sep" ] && echo
+      sep=1
+      if [ -e "ROOT/stopped-$unit" ]; then
+        printf 'LoadState=loaded\nActiveState=inactive\nMemoryCurrent=[not set]\nActiveEnterTimestamp=@1789000000\n'
+      else
+        printf 'LoadState=loaded\nActiveState=active\nMemoryCurrent=7340032\nActiveEnterTimestamp=@1790000000\n'
+      fi
+    done
+    ;;
+  stop) : > "ROOT/stopped-$2" ;;
+  start | restart) rm -f "ROOT/stopped-$2" ;;
+esac
+exit 0
+"#;
 const MARIADB: &str = "input=$(cat)\n{ echo \"mariadb $*\"; printf '%s\\n' \"$input\"; } >> LOG\n";
 const MARIADB_DUMP: &str = "echo \"mariadb-dump $*\" >> LOG\nfor last; do :; done\nprintf -- '-- dump of %s\\n' \"$last\"\n";
 const TAR: &str = "echo \"tar $*\" >> LOG\nprintf 'the maildirs of the test\\n'\n";
@@ -225,6 +248,11 @@ impl Site {
         self.path(&format!("locked-{user}")).exists()
     }
 
+    pub(crate) fn stop(&self, service: &str) {
+        fs::write(self.path(&format!("stopped-{service}")), "")
+            .expect("the service is marked stopped");
+    }
+
     pub(crate) fn calls(&self) -> Vec<String> {
         fs::read_to_string(self.path("calls.log"))
             .unwrap_or_default()
@@ -261,6 +289,7 @@ pub(crate) fn composed(site: &Site) -> Builder {
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
         .module(&keel_system::settings::MODULE)
+        .module(&keel_system::stats::MODULE)
         .section(
             "hosting",
             json!({ "transfer_dir": site.path("transfer").display().to_string() }),
@@ -306,4 +335,35 @@ pub(crate) async fn state_becomes(harness: &Harness, id: &str, state: &str) {
         async || rows(harness, &sql).await == [state],
     )
     .await;
+}
+
+fn scheduler(harness: &Harness) -> Arc<Scheduler> {
+    harness
+        .registry()
+        .services()
+        .get::<Scheduler>()
+        .expect("the cron module provides the scheduler")
+}
+
+pub(crate) async fn run_job(harness: &Harness, job: &str) {
+    let scheduler = scheduler(harness);
+    let waiting = Arc::clone(&scheduler);
+    eventually("the cron leader takes the lock", async || {
+        waiting.is_leader()
+    })
+    .await;
+    let started = loop {
+        match scheduler.run_now(job).await {
+            Ok(started) => break started,
+            Err(error) if error.key() == ERROR_RUNNING => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(error) => panic!("{job} did not start: {error:?}"),
+        }
+    };
+    assert_eq!(
+        scheduler.wait(started.run).await.expect("the run ends"),
+        Outcome::Ok,
+        "{job}"
+    );
 }
