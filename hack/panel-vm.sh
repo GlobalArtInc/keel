@@ -34,7 +34,11 @@ DATABASE_USER=${USER_NAME}_app
 SIBLING=${USER_NAME}xwp
 DATABASE_PASSWORD="it's $STAMP \\ \"quoted\""
 STAGING=https://acme-staging-v02.api.letsencrypt.org/directory
+PRODUCTION=https://acme-v02.api.letsencrypt.org/directory
 ACME_DIRECTORY=${KEEL_PANEL_VM_ACME:-$STAGING}
+PANEL_PACKAGES=(nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile)
+PANEL_UNITS=(nginx.service mariadb.service postfix.service dovecot.service vsftpd.service)
+PROOF_TOOLS=(curl openssl python3 zstd)
 MAIL_MAPS=/etc/postfix/keel
 MAIL_PASSWD_DIR=/etc/dovecot/keel
 MAIL_PASSWD=$MAIL_PASSWD_DIR/keel-panel-passwd
@@ -65,7 +69,7 @@ usage() {
   cat <<EOF
 usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh run
-       hack/panel-vm.sh ssl <domain>
+       hack/panel-vm.sh ssl <domain> [--production]
        hack/panel-vm.sh db
        hack/panel-vm.sh mail
        hack/panel-vm.sh ftp
@@ -77,16 +81,19 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
-"install" installs nginx, php-fpm, mariadb, postfix, dovecot, vsftpd,
-libpam-pwdfile, curl, openssl and zstd, prepares $WWW, the certificate root
-$CERTS, the challenge root $CHALLENGES, the dump root $DUMPS and the site
-backup root $SITE_BACKUPS, points postfix
-at the virtual maps under $MAIL_MAPS and dovecot, as the system user vmail, at
-the passwd-file $MAIL_PASSWD and the maildirs under $MAILDIRS through
-$MAIL_DROP_IN, writes $FTP_CONF for virtual users authenticated by the PAM
-service $FTP_PAM against the user file $FTP_PASSWD, each mapped and chrooted by
-its file under $FTP_USERS, then runs deploy/install.sh --product panel
---binary <archive> --yes and prints the setup link.
+"install" is meant for a clean Debian 13 machine. It installs the tools of
+its own proofs, ${PROOF_TOOLS[*]}, and runs deploy/install.sh --product panel
+--binary <archive> --yes, which installs the packages of panel from the
+distribution. It then finds each of ${PANEL_PACKAGES[*]}
+installed; ${PANEL_UNITS[*]} and the php-fpm unit enabled and
+running; $WWW, the certificate root $CERTS readable by root alone, the
+challenge root $CHALLENGES, the dump root $DUMPS, the site backup root
+$SITE_BACKUPS and the transfer root $TRANSFER owned by keel; postfix
+pointing at the virtual maps under $MAIL_MAPS and dovecot, as the system user
+vmail, at the passwd-file $MAIL_PASSWD and the maildirs under $MAILDIRS
+through $MAIL_DROP_IN; $FTP_CONF naming the PAM service $FTP_PAM, whose user
+file is $FTP_PASSWD, and the per-account files under $FTP_USERS; and the
+setup link printed.
 
 "run" proves the running installation over the control socket as the user
 keel. It creates a user account and in it the hosting user $NAME, waits for
@@ -102,15 +109,19 @@ answering 403, resumes it and finds both open again, then deletes the
 account and finds the server block, the pool, $USER_NAME and its home gone,
 with every change in the journal of $AGENT_UNIT.
 
-"ssl <domain>" needs a domain whose address is this machine, with port 80
-reachable from the internet. It points the setting
-hosting.certificate.directory at $ACME_DIRECTORY (KEEL_PANEL_VM_ACME
-overrides it; the default is the Let's Encrypt staging directory), creates
-an account, a hosting user and the site <domain> with a Let's Encrypt
-certificate, waits for the certificate to turn active, finds the server block
-listening on 443 with the pair under $CERTS, the key readable by root alone,
-no challenge left in $CHALLENGES and nginx serving <domain> over TLS with the
-issued certificate, then deletes the account and finds the pair gone.
+"ssl <domain> [--production]" needs a domain whose address is this machine,
+with port 80 reachable from the internet. It points the setting
+hosting.certificate.directory at the Let's Encrypt staging directory
+$STAGING, or with --production at
+$PRODUCTION (KEEL_PANEL_VM_ACME names another directory, a test
+server for one), creates an account, a hosting user and, through
+hosting.site.create, the function of the site wizard, the site <domain> with a
+Let's Encrypt certificate. It waits for the certificate to turn active, finds
+the server block listening on 443 with the pair under $CERTS, the key
+readable by root alone, no challenge left in $CHALLENGES and nginx serving
+<domain> over TLS with the issued certificate, prints the subject, the issuer,
+the expiry and the fingerprint of the certificate nginx served, then deletes
+the account and finds the pair gone.
 
 "db" proves the databases on the running installation. It creates an
 account with the hosting user $NAME, the database $DATABASE and the database
@@ -232,13 +243,7 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
-  printf '%s\n' "postfix postfix/main_mailer_type select Internet Site" "postfix postfix/mailname string $(hostname -f)" | debconf-set-selections
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile curl openssl zstd
-  install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
-  install -d -m 0711 -o root -g root "$DUMPS" "$SITE_BACKUPS"
-  install -d -m 0700 -o root -g root "$CERTS"
-  prepare_mail
-  prepare_ftp
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${PROOF_TOOLS[@]}"
   local log
   log=$(mktemp)
   if ! bash deploy/install.sh --product panel --binary "$archive" --yes 2>&1 | tee "$log"; then
@@ -247,84 +252,45 @@ install_keel() {
   check "$UNIT is active" systemctl is-active --quiet "$UNIT"
   check "$AGENT_UNIT is active" systemctl is-active --quiet "$AGENT_UNIT"
   check "the installer printed the setup link" grep -qF "setup link:   https://" "$log"
-  install -d -m 0700 -o keel -g keel "$TRANSFER"
+  local package unit
+  for package in "${PANEL_PACKAGES[@]}"; do
+    check "the package $package is installed" package_installed "$package"
+  done
+  for unit in "${PANEL_UNITS[@]}" "$(php_unit)"; do
+    check "$unit is enabled and running" unit_running "$unit"
+  done
+  check "$WWW, $CHALLENGES, $DUMPS and $SITE_BACKUPS are root's" owned_dirs root "$WWW" "$CHALLENGES" "$DUMPS" "$SITE_BACKUPS"
+  check "$CERTS is readable by root alone" test "$(stat -c '%U %a' "$CERTS")" = "root 700"
+  check "$TRANSFER is keel's alone" test "$(stat -c '%U %a' "$TRANSFER")" = "keel 700"
+  check "postfix delivers the virtual mailboxes to dovecot" test "$(postconf -h virtual_transport)" = "lmtp:unix:private/dovecot-lmtp"
+  check "postfix reads the domains of $MAIL_MAPS" test "$(postconf -h virtual_mailbox_domains)" = "hash:$MAIL_MAPS/keel-panel-domains"
+  check "dovecot reads the passwd-file $MAIL_PASSWD" grep -qF "passwd_file_path = $MAIL_PASSWD" "$MAIL_DROP_IN"
+  check "dovecot accepts its configuration" doveconf -n
+  check "$MAILDIRS is vmail's" test "$(stat -c '%U %a' "$MAILDIRS")" = "vmail 700"
+  check "$FTP_CONF names the PAM service and the per-account files" grep -qxF "user_config_dir=$FTP_USERS" "$FTP_CONF"
+  check "the PAM service reads $FTP_PASSWD" grep -qF "pwdfile=$FTP_PASSWD" "$FTP_PAM"
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
   say "keel is installed with panel; run: hack/panel-vm.sh run"
 }
 
-prepare_mail() {
-  getent passwd vmail >/dev/null || useradd --system --home-dir "$MAILDIRS" --no-create-home --shell "$NOLOGIN" vmail
-  install -d -m 0755 -o root -g root "$MAIL_MAPS"
-  install -d -m 0750 -o root -g dovecot "$MAIL_PASSWD_DIR"
-  install -d -m 0700 -o vmail -g vmail "$MAILDIRS"
-  local map
-  for map in domains mailboxes aliases; do
-    [ -f "$MAIL_MAPS/keel-panel-$map" ] || install -m 0644 -o root -g root /dev/null "$MAIL_MAPS/keel-panel-$map"
-    postmap "hash:$MAIL_MAPS/keel-panel-$map"
-  done
-  [ -f "$MAIL_PASSWD" ] || install -m 0640 -o dovecot -g dovecot /dev/null "$MAIL_PASSWD"
-  postconf -e \
-    "virtual_mailbox_domains = hash:$MAIL_MAPS/keel-panel-domains" \
-    "virtual_mailbox_maps = hash:$MAIL_MAPS/keel-panel-mailboxes" \
-    "virtual_alias_maps = hash:$MAIL_MAPS/keel-panel-aliases" \
-    "virtual_transport = lmtp:unix:private/dovecot-lmtp"
-  cat >"$MAIL_DROP_IN" <<CONF
-mail_driver = maildir
-mail_path = ~/Maildir
-mail_uid = vmail
-mail_gid = vmail
-passdb passwd-file {
-  passwd_file_path = $MAIL_PASSWD
-}
-userdb passwd-file {
-  passwd_file_path = $MAIL_PASSWD
-}
-mail_plugins {
-  quota = yes
-}
-quota "User quota" {
-  driver = count
-}
-service lmtp {
-  unix_listener /var/spool/postfix/private/dovecot-lmtp {
-    mode = 0600
-    user = postfix
-    group = postfix
-  }
-}
-CONF
-  doveconf -n >/dev/null || fail "doveconf -n refuses $MAIL_DROP_IN"
-  postfix check || fail "postfix check refuses the virtual maps"
-  systemctl restart dovecot postfix
+package_installed() {
+  [ "$(dpkg-query -W -f '${Status}' "$1" 2>/dev/null)" = "install ok installed" ]
 }
 
-prepare_ftp() {
-  install -d -m 0700 -o root -g root "$FTP_DIR" "$FTP_USERS"
-  [ -f "$FTP_PASSWD" ] || install -m 0600 -o root -g root /dev/null "$FTP_PASSWD"
-  [ -f "$FTP_CONF.orig" ] || cp -p "$FTP_CONF" "$FTP_CONF.orig"
-  cat >"$FTP_PAM" <<CONF
-auth required pam_pwdfile.so pwdfile=$FTP_PASSWD
-account required pam_permit.so
-CONF
-  cat >"$FTP_CONF" <<CONF
-listen=YES
-listen_ipv6=NO
-anonymous_enable=NO
-local_enable=YES
-write_enable=YES
-local_umask=022
-guest_enable=YES
-guest_username=nobody
-virtual_use_local_privs=YES
-pam_service_name=keel-panel-ftp
-user_config_dir=$FTP_USERS
-chroot_local_user=YES
-allow_writeable_chroot=YES
-secure_chroot_dir=/var/run/vsftpd/empty
-hide_ids=YES
-CONF
-  vsftpd "$FTP_CONF" -v </dev/null >/dev/null || fail "vsftpd refuses $FTP_CONF"
-  systemctl restart vsftpd
+php_unit() {
+  systemctl list-unit-files --type=service --no-legend 'php*-fpm.service' | awk '{print $1}' | sort -V | tail -n 1
+}
+
+unit_running() {
+  [ -n "$1" ] && systemctl is-enabled --quiet "$1" && systemctl is-active --quiet "$1"
+}
+
+owned_dirs() {
+  local owner=$1 dir
+  shift
+  for dir in "$@"; do
+    [ -d "$dir" ] && [ "$(stat -c %U "$dir")" = "$owner" ] || return 1
+  done
 }
 
 as_keel() {
@@ -525,8 +491,19 @@ served_certificate() {
   openssl s_client -connect 127.0.0.1:443 -servername "$1" </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256 2>/dev/null
 }
 
+served_details() {
+  openssl s_client -connect 127.0.0.1:443 -servername "$1" </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -enddate -fingerprint -sha256 2>/dev/null
+}
+
 ssl_proof() {
-  local domain=${1:-}
+  local domain=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --production) ACME_DIRECTORY=$PRODUCTION; shift ;;
+      -*) usage >&2; fail "unknown argument: $1" ;;
+      *) [ -z "$domain" ] || { usage >&2; fail "one domain only"; }; domain=$1; shift ;;
+    esac
+  done
   [ -n "$domain" ] || { usage >&2; fail "the domain is required"; }
   need_root
   [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
@@ -554,7 +531,8 @@ ssl_proof() {
   check "nginx accepts the configuration" nginx -t
   check "nginx serves $domain over TLS" served_over_tls "$domain"
   check "nginx serves the issued certificate" test "$(served_certificate "$domain")" = "$(openssl x509 -in "$CERTS/$stem.crt" -noout -fingerprint -sha256)"
-  say "  issued by: $(openssl x509 -in "$CERTS/$stem.crt" -noout -issuer)"
+  say "  the certificate nginx served for $domain:"
+  served_details "$domain" | sed 's/^/    /'
 
   say "--- the account deleted"
   task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""

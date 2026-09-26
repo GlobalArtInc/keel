@@ -29,6 +29,29 @@ PG_SOCKET_DIR=/run/postgresql
 PG_MIN_VERSION=150000
 READY_TIMEOUT=${KEEL_INSTALL_READY_TIMEOUT:-90}
 MANIFEST_MAX_BYTES=1048576
+PANEL_PACKAGES=(nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile)
+PANEL_UNITS=(nginx.service mariadb.service postfix.service dovecot.service vsftpd.service)
+PANEL_PHP_UNITS='php*-fpm.service'
+PANEL_WWW=/var/www
+PANEL_CERTS=/etc/ssl/keel
+PANEL_CHALLENGES=/var/lib/keel-panel-acme
+PANEL_DUMPS=/var/lib/keel-panel-dumps
+PANEL_BACKUPS=/var/lib/keel-panel-backups
+PANEL_TRANSFER=/var/lib/keel-panel-transfer
+PANEL_MAIL_MAPS=/etc/postfix/keel
+PANEL_MAIL_MAP_NAMES=(domains mailboxes aliases)
+PANEL_MAIL_PASSWD_DIR=/etc/dovecot/keel
+PANEL_MAIL_PASSWD=$PANEL_MAIL_PASSWD_DIR/keel-panel-passwd
+PANEL_MAILDIRS=/var/lib/keel-panel-mail
+PANEL_MAIL_USER=vmail
+PANEL_MAIL_DROP_IN=/etc/dovecot/conf.d/90-keel-panel.conf
+PANEL_FTP_CONF=/etc/vsftpd.conf
+PANEL_FTP_PAM=keel-panel-ftp
+PANEL_PAM_DIR=/etc/pam.d
+PANEL_FTP_DIR=/etc/vsftpd/keel
+PANEL_FTP_PASSWD=$PANEL_FTP_DIR/keel-panel-passwd
+PANEL_FTP_USERS=/etc/vsftpd/keel-users
+NOLOGIN=/usr/sbin/nologin
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
 products=""
@@ -50,6 +73,7 @@ db_created=0
 install_curl=0
 install_openssl=0
 policy_written=0
+products_prepared=0
 
 usage() {
   cat <<EOF
@@ -64,6 +88,13 @@ policy $AGENT_POLICY, the systemd units keel.service, keel-privileged.service,
 keel-update.path and keel-update.service, and the enabled products. The first
 administrator is created in the browser through the one-time setup link the
 service prints at its first start; the installer prints that link.
+
+A product that runs daemons on the host brings them: panel installs
+${PANEL_PACKAGES[*]}
+from the distribution, points postfix and dovecot at the virtual mailboxes and
+vsftpd at the virtual FTP accounts the panel writes, prepares the roots of
+$AGENT_POLICY it uses, and enables and starts
+${PANEL_UNITS[*]} and $PANEL_PHP_UNITS.
 
   --product <id>[,<id>]   product bundles to enable (required), for example demo
   --channel <name>        the release channel, stable or beta (default $DEFAULT_CHANNEL)
@@ -139,6 +170,9 @@ on_exit() {
         say "install.sh: run $here/uninstall.sh --purge to clear them before trying again." >&2
       else
         say "install.sh: the installation did not complete; nothing of keel is left on the host" >&2
+      fi
+      if [ "$products_prepared" -eq 1 ]; then
+        say "install.sh: the packages and the host configuration of the products stay installed; uninstall.sh does not remove them and install.sh prepares them again on the next attempt." >&2
       fi
     fi
   fi
@@ -758,6 +792,146 @@ install_units() {
   systemctl enable "${ENABLED_UNITS[@]}"
 }
 
+product_packages() {
+  case $1 in
+    panel) printf '%s\n' "${PANEL_PACKAGES[@]}" ;;
+  esac
+}
+
+prepare_products() {
+  local id
+  for id in "${product_ids[@]}"; do
+    case $id in
+      panel) prepare_panel ;;
+    esac
+  done
+}
+
+prepare_panel() {
+  local -a packages=()
+  local package
+  while IFS= read -r package; do
+    packages+=("$package")
+  done < <(product_packages panel)
+  need debconf-set-selections
+  printf '%s\n' "postfix postfix/main_mailer_type select Internet Site" "postfix postfix/mailname string $(hostname -f 2>/dev/null || hostname)" | debconf-set-selections
+  products_prepared=1
+  apt_install "${packages[@]}"
+  begin "preparing the roots of panel"
+  install -d -m 0755 -o root -g root "$PANEL_WWW" "$PANEL_CHALLENGES"
+  install -d -m 0711 -o root -g root "$PANEL_DUMPS" "$PANEL_BACKUPS"
+  install -d -m 0700 -o root -g root "$PANEL_CERTS"
+  install -d -m 0700 -o keel -g keel "$PANEL_TRANSFER"
+  prepare_panel_mail
+  prepare_panel_ftp
+  start_panel_units
+}
+
+prepare_panel_mail() {
+  begin "pointing postfix and dovecot at the mailboxes of panel"
+  need postconf postmap doveconf postfix
+  if ! getent passwd "$PANEL_MAIL_USER" >/dev/null; then
+    useradd --system --home-dir "$PANEL_MAILDIRS" --no-create-home --shell "$NOLOGIN" "$PANEL_MAIL_USER"
+  fi
+  install -d -m 0755 -o root -g root "$PANEL_MAIL_MAPS"
+  install -d -m 0750 -o root -g dovecot "$PANEL_MAIL_PASSWD_DIR"
+  install -d -m 0700 -o "$PANEL_MAIL_USER" -g "$PANEL_MAIL_USER" "$PANEL_MAILDIRS"
+  local map
+  for map in "${PANEL_MAIL_MAP_NAMES[@]}"; do
+    [ -f "$PANEL_MAIL_MAPS/keel-panel-$map" ] || install -m 0644 -o root -g root /dev/null "$PANEL_MAIL_MAPS/keel-panel-$map"
+    postmap "hash:$PANEL_MAIL_MAPS/keel-panel-$map"
+  done
+  [ -f "$PANEL_MAIL_PASSWD" ] || install -m 0640 -o dovecot -g dovecot /dev/null "$PANEL_MAIL_PASSWD"
+  postconf -e \
+    "virtual_mailbox_domains = hash:$PANEL_MAIL_MAPS/keel-panel-domains" \
+    "virtual_mailbox_maps = hash:$PANEL_MAIL_MAPS/keel-panel-mailboxes" \
+    "virtual_alias_maps = hash:$PANEL_MAIL_MAPS/keel-panel-aliases" \
+    "virtual_transport = lmtp:unix:private/dovecot-lmtp"
+  cat >"$PANEL_MAIL_DROP_IN" <<CONF
+mail_driver = maildir
+mail_path = ~/Maildir
+mail_uid = $PANEL_MAIL_USER
+mail_gid = $PANEL_MAIL_USER
+passdb passwd-file {
+  passwd_file_path = $PANEL_MAIL_PASSWD
+}
+userdb passwd-file {
+  passwd_file_path = $PANEL_MAIL_PASSWD
+}
+mail_plugins {
+  quota = yes
+}
+quota "User quota" {
+  driver = count
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+CONF
+  chmod 0644 "$PANEL_MAIL_DROP_IN"
+  doveconf -n >/dev/null || fail "doveconf -n refuses $PANEL_MAIL_DROP_IN; panel needs dovecot 2.4, the one of Debian 13"
+  postfix check || fail "postfix check refuses the virtual maps under $PANEL_MAIL_MAPS"
+}
+
+prepare_panel_ftp() {
+  begin "pointing vsftpd at the FTP accounts of panel"
+  need vsftpd
+  install -d -m 0700 -o root -g root "$PANEL_FTP_DIR" "$PANEL_FTP_USERS"
+  [ -f "$PANEL_FTP_PASSWD" ] || install -m 0600 -o root -g root /dev/null "$PANEL_FTP_PASSWD"
+  if [ -f "$PANEL_FTP_CONF" ] && [ ! -f "$PANEL_FTP_CONF.orig" ]; then
+    cp -p "$PANEL_FTP_CONF" "$PANEL_FTP_CONF.orig"
+  fi
+  cat >"$PANEL_PAM_DIR/$PANEL_FTP_PAM" <<CONF
+auth required pam_pwdfile.so pwdfile=$PANEL_FTP_PASSWD
+account required pam_permit.so
+CONF
+  cat >"$PANEL_FTP_CONF" <<CONF
+listen=YES
+listen_ipv6=NO
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+local_umask=022
+guest_enable=YES
+guest_username=nobody
+virtual_use_local_privs=YES
+pam_service_name=$PANEL_FTP_PAM
+user_config_dir=$PANEL_FTP_USERS
+chroot_local_user=YES
+allow_writeable_chroot=YES
+secure_chroot_dir=/var/run/vsftpd/empty
+hide_ids=YES
+CONF
+  chmod 0644 "$PANEL_PAM_DIR/$PANEL_FTP_PAM" "$PANEL_FTP_CONF"
+  vsftpd "$PANEL_FTP_CONF" -v </dev/null >/dev/null || fail "vsftpd refuses $PANEL_FTP_CONF"
+}
+
+start_panel_units() {
+  local -a php=() units down=()
+  local found
+  while IFS= read -r found; do
+    php+=("$found")
+  done < <(systemctl list-unit-files --type=service --no-legend "$PANEL_PHP_UNITS" | awk '{print $1}')
+  if [ "${#php[@]}" -eq 0 ]; then
+    fail "php-fpm installed no unit matching $PANEL_PHP_UNITS"
+  fi
+  units=("${PANEL_UNITS[@]}" "${php[@]}")
+  begin "enabling and starting ${units[*]}"
+  systemctl enable "${units[@]}"
+  systemctl restart "${units[@]}"
+  local unit
+  for unit in "${units[@]}"; do
+    systemctl is-active --quiet "$unit" || down+=("$unit")
+  done
+  if [ "${#down[@]}" -gt 0 ]; then
+    fail "${down[*]} did not start; see journalctl -u ${down[0]}"
+  fi
+}
+
 run_keel() {
   (cd "$LIB" && runuser -u keel -- env -i HOME="$LIB" USER=keel LOGNAME=keel PATH=/usr/sbin:/usr/bin:/sbin:/bin "$OPT/bin/current" "$@")
 }
@@ -877,6 +1051,11 @@ report() {
   say "  units:        keel.service (Type=notify, watchdog), keel-privileged.service and keel-update.path (enabled, running);"
   say "                keel-update.service runs once per update request"
   say "  postgres:     database keel, role keel, peer authentication on $PG_SOCKET_DIR port $pg_port"
+  if [ "$products_prepared" -eq 1 ]; then
+    say "  panel:        ${PANEL_UNITS[*]} and $PANEL_PHP_UNITS enabled and running;"
+    say "                sites under $PANEL_WWW, certificates under $PANEL_CERTS, mailboxes under $PANEL_MAILDIRS,"
+    say "                FTP accounts through the PAM service $PANEL_FTP_PAM ($PANEL_FTP_CONF.orig keeps the previous $PANEL_FTP_CONF)"
+  fi
   say ""
   say "  URL:          https://$host:$port/"
   if listen_unspecified; then
@@ -931,6 +1110,7 @@ main() {
   check_peer_auth
   install_files
   install_policy
+  prepare_products
   install_units
   prepare_database
   start_service

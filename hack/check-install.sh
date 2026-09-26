@@ -195,6 +195,18 @@ check "panel-vm.sh proves an FTP session chrooted to its site" grep -qF 'check "
 check "panel-vm.sh proves a site restored from its backup" grep -qF 'check "the index of the site is back after the restore, owned by $USER_NAME"' hack/panel-vm.sh
 check "panel-vm.sh proves an archive changed by keel is not restored" grep -qF 'check "the restore of an archive keel changed fails"' hack/panel-vm.sh
 check "panel-vm.sh proves the mariadb client of the agent runs sandboxed" grep -qF 'check "the mariadb client refuses a shell escape under --sandbox"' hack/panel-vm.sh
+check "panel-vm.sh leaves the packages of panel to install.sh" test "$(grep -cE 'apt-get install .*\b(nginx|php-fpm|mariadb-server|postfix|dovecot-core|vsftpd)\b' hack/panel-vm.sh)" = "0"
+check "panel-vm.sh finds every package of panel installed" grep -qF 'check "the package $package is installed" package_installed "$package"' hack/panel-vm.sh
+check "panel-vm.sh finds every unit of panel running" grep -qF 'check "$unit is enabled and running" unit_running "$unit"' hack/panel-vm.sh
+check "panel-vm.sh takes the Let's Encrypt staging directory unless --production is given" grep -qF 'ACME_DIRECTORY=$PRODUCTION' hack/panel-vm.sh
+check "panel-vm.sh names --production in its usage" grep -qE '^       hack/panel-vm.sh ssl <domain> \[--production\]$' hack/panel-vm.sh
+check "install.sh prepares the products after the policy and before the units" test "$(grep -nE '^  install_policy$' deploy/install.sh | cut -d: -f1)" -lt "$(grep -nE '^  prepare_products$' deploy/install.sh | cut -d: -f1)" -a "$(grep -nE '^  prepare_products$' deploy/install.sh | cut -d: -f1)" -lt "$(grep -nE '^  install_units$' deploy/install.sh | cut -d: -f1)"
+check "install.sh installs the packages of panel through the package manager" grep -qF '  apt_install "${packages[@]}"' deploy/install.sh
+for root in /var/www /etc/ssl/keel /var/lib/keel-panel-acme /var/lib/keel-panel-dumps /var/lib/keel-panel-backups /var/lib/keel-panel-transfer /etc/postfix/keel /etc/dovecot/keel /var/lib/keel-panel-mail /etc/vsftpd/keel /etc/vsftpd/keel-users; do
+  check "install.sh prepares the root $root the policy names" test "$(grep -cF -- ": $root" deploy/agent.yaml)" -ge 1 -a "$(grep -cE "^PANEL_[A-Z_]+=$root$" deploy/install.sh)" = "1"
+done
+check "install.sh checks vsftpd.conf the way vsftpd.check of the policy does" grep -qF 'PANEL_FTP_CONF=/etc/vsftpd.conf' deploy/install.sh
+check "install.sh names the passwd-file the panel writes into the dovecot root" grep -qF 'PANEL_MAIL_PASSWD=$PANEL_MAIL_PASSWD_DIR/keel-panel-passwd' deploy/install.sh
 check "install-vm.sh runs the installer through curl and bash from the served channel" grep -qF 'curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/"' hack/install-vm.sh
 check "install-vm.sh checks that root runs keel privileged alone" grep -qF 'check "root runs keel privileged and nothing else of keel"' hack/install-vm.sh
 check "install-vm.sh follows the setup link" grep -qF 'check "keel.setup.admin with the key creates the first administrator"' hack/install-vm.sh
@@ -361,6 +373,119 @@ if ossl=$(find_openssl); then
   check "install.sh allots the first range when nothing claims it" allots "$ossl" "$rehearsal/empty-subuid" "100000 165535"
 else
   echo "no OpenSSL 1.1.1 or newer on this host; the signature check of install.sh is not exercised here"
+fi
+
+panel_packages=(nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile)
+panel_units=(nginx.service mariadb.service postfix.service dovecot.service vsftpd.service php8.4-fpm.service)
+
+packages_of() {
+  bash -c 'set -Eeuo pipefail; source deploy/install.sh; product_packages "$1"' bash "$1" | tr '\n' ' '
+}
+
+prepare_panel_under() {
+  local dir=$1
+  bash -c '
+set -Eeuo pipefail
+source deploy/install.sh
+dir=$1
+calls=$dir/calls
+: >"$calls"
+record() { printf "%s\n" "$*" >>"$calls"; }
+PANEL_WWW=$dir/www
+PANEL_CERTS=$dir/certs
+PANEL_CHALLENGES=$dir/acme
+PANEL_DUMPS=$dir/dumps
+PANEL_BACKUPS=$dir/backups
+PANEL_TRANSFER=$dir/transfer
+PANEL_MAIL_MAPS=$dir/mail
+PANEL_MAIL_PASSWD_DIR=$dir/dovecot
+PANEL_MAIL_PASSWD=$PANEL_MAIL_PASSWD_DIR/keel-panel-passwd
+PANEL_MAILDIRS=$dir/maildirs
+PANEL_MAIL_DROP_IN=$dir/90-keel-panel.conf
+PANEL_FTP_CONF=$dir/vsftpd.conf
+PANEL_PAM_DIR=$dir/pam.d
+PANEL_FTP_DIR=$dir/ftp
+PANEL_FTP_PASSWD=$PANEL_FTP_DIR/keel-panel-passwd
+PANEL_FTP_USERS=$dir/ftp-users
+mkdir -p "$PANEL_PAM_DIR"
+printf "listen=NO\n" >"$PANEL_FTP_CONF"
+apt_install() { record apt_install "$@"; }
+debconf-set-selections() { cat >"$dir/debconf"; }
+getent() { return 2; }
+useradd() { record useradd "$@"; }
+postmap() { record postmap "$@"; }
+postconf() { record postconf "$@"; }
+postfix() { record postfix "$@"; }
+doveconf() { record doveconf "$@"; }
+vsftpd() { record vsftpd "$@"; }
+systemctl() {
+  record systemctl "$@"
+  if [ "$1" = list-unit-files ]; then
+    printf "php8.4-fpm.service enabled enabled\n"
+  fi
+}
+install() {
+  record install "$@"
+  local directories=0
+  local -a paths=()
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -d) directories=1; shift ;;
+      -m|-o|-g) shift 2 ;;
+      *) paths+=("$1"); shift ;;
+    esac
+  done
+  if [ "$directories" -eq 1 ]; then
+    mkdir -p "${paths[@]}"
+  else
+    cp "${paths[0]}" "${paths[1]}"
+  fi
+}
+product_ids=(panel)
+prepare_products >/dev/null
+' bash "$dir"
+}
+
+recorded() {
+  grep -qxF -- "$2" "$1/calls"
+}
+
+recorded_before() {
+  local first second
+  first=$(grep -nxF -- "$2" "$1/calls" | head -n 1 | cut -d: -f1)
+  second=$(grep -nxF -- "$3" "$1/calls" | head -n 1 | cut -d: -f1)
+  [ -n "$first" ] && [ -n "$second" ] && [ "$first" -lt "$second" ]
+}
+
+prepared=$(mktemp -d)
+trap 'rm -rf "$prepared"; [ -z "${rehearsal:-}" ] || rm -rf "$rehearsal"' EXIT
+check "install.sh names the packages of panel" test "$(packages_of panel)" = "${panel_packages[*]} "
+check "install.sh installs no package for dns" test -z "$(packages_of dns)"
+if prepare_panel_under "$prepared"; then
+  check "install.sh --product panel installs the packages of panel in one apt_install" recorded "$prepared" "apt_install ${panel_packages[*]}"
+  check "install.sh answers the mailer question of postfix before the packages" grep -qF 'postfix postfix/main_mailer_type select Internet Site' "$prepared/debconf"
+  check "install.sh enables the units of panel with the php-fpm unit found" recorded "$prepared" "systemctl enable ${panel_units[*]}"
+  check "install.sh starts the units of panel after their configuration" recorded "$prepared" "systemctl restart ${panel_units[*]}"
+  for unit in "${panel_units[@]}"; do
+    check "install.sh finds $unit running" recorded "$prepared" "systemctl is-active --quiet $unit"
+  done
+  check "install.sh installs the packages before it enables the units" recorded_before "$prepared" "apt_install ${panel_packages[*]}" "systemctl enable ${panel_units[*]}"
+  check "install.sh gives the transfer root to keel alone" recorded "$prepared" "install -d -m 0700 -o keel -g keel $prepared/transfer"
+  check "install.sh gives the certificate root to root alone" recorded "$prepared" "install -d -m 0700 -o root -g root $prepared/certs"
+  check "install.sh creates the mail user vmail without a login" recorded "$prepared" "useradd --system --home-dir $prepared/maildirs --no-create-home --shell /usr/sbin/nologin vmail"
+  for map in domains mailboxes aliases; do
+    check "install.sh builds the empty map keel-panel-$map" recorded "$prepared" "postmap hash:$prepared/mail/keel-panel-$map"
+  done
+  check "install.sh points postfix at the virtual mailboxes over LMTP" recorded "$prepared" "postconf -e virtual_mailbox_domains = hash:$prepared/mail/keel-panel-domains virtual_mailbox_maps = hash:$prepared/mail/keel-panel-mailboxes virtual_alias_maps = hash:$prepared/mail/keel-panel-aliases virtual_transport = lmtp:unix:private/dovecot-lmtp"
+  check "install.sh points dovecot at the passwd-file of the panel" grep -qxF "  passwd_file_path = $prepared/dovecot/keel-panel-passwd" "$prepared/90-keel-panel.conf"
+  check "install.sh checks dovecot and postfix before it starts them" recorded_before "$prepared" "doveconf -n" "systemctl restart ${panel_units[*]}"
+  check "install.sh points vsftpd at the per-account files of the panel" grep -qxF "user_config_dir=$prepared/ftp-users" "$prepared/vsftpd.conf"
+  check "install.sh authenticates FTP through its PAM service" grep -qxF "pam_service_name=keel-panel-ftp" "$prepared/vsftpd.conf"
+  check "the PAM service reads the user file of the panel" grep -qxF "auth required pam_pwdfile.so pwdfile=$prepared/ftp/keel-panel-passwd" "$prepared/pam.d/keel-panel-ftp"
+  check "install.sh keeps the previous vsftpd.conf" grep -qxF "listen=NO" "$prepared/vsftpd.conf.orig"
+  check "install.sh checks vsftpd.conf before it starts vsftpd" recorded_before "$prepared" "vsftpd $prepared/vsftpd.conf -v" "systemctl restart ${panel_units[*]}"
+else
+  problem "install.sh --product panel did not prepare the host against the recording stubs"
 fi
 
 if [ "$problems" -gt 0 ]; then

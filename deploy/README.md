@@ -111,7 +111,8 @@ whole directory is copied; a release archive carries all of them under `deploy/`
    first-party product (`bill`, `dns`, `panel`), with the allotted range written under
    `policy.uid_range` as `{ from: <first>, to: <last> }`. An `agent.yaml` left by an earlier
    installation is kept as it is and the installer says so, since the operator may have edited
-   it; the allotted range is then not written.
+   it; the allotted range is then not written. With `panel` among the products the installer
+   then installs, configures and starts the daemons of the panel (see "Running KeelPanel").
 9. Installs the four units from `/opt/keel/versions/<version>/deploy/systemd/`, placed there
    from `deploy/systemd/` when the release does not carry them: `keel.service` (the kernel,
    user `keel`, `Type=notify` with `WatchdogSec=60`), `keel-privileged.service` (the one root
@@ -156,7 +157,9 @@ runuser -u keel -- keel ctl auth.password.set principal=<id> password=<password>
 On a failure after the host was changed the units are stopped, disabled and removed and
 `/opt/keel` is deleted; `/etc/keel`, `/var/lib/keel`, the unix user and the database are left in
 place and `uninstall.sh --purge` clears them before another attempt. Steps 3 to 5 are
-idempotent, so a partially prepared host can be purged and installed again.
+idempotent, so a partially prepared host can be purged and installed again. With `--product panel`
+the packages and the configuration of its daemons stay in place as well, and a new attempt
+prepares them again.
 
 ## What runs, and as whom
 
@@ -275,7 +278,21 @@ A zone whose check fails turns to `error` with the tool's output, raises the pro
 
 ## Running KeelPanel
 
-`--product panel` installs the bundle. A hosting user is an operating-system account named
+`--product panel` installs the bundle and the daemons it drives. Before the units of keel are
+installed, the installer answers the mailer question of postfix with `Internet Site`, installs
+`nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd
+vsftpd libpam-pwdfile` from the distribution in one `apt-get install`, and prepares what the
+roots of `file_roots` in `/etc/keel/agent.yaml` need: `/var/www`, `/var/lib/keel-panel-acme`,
+`/var/lib/keel-panel-dumps` and `/var/lib/keel-panel-backups` for root, `/etc/ssl/keel` for root
+alone and `/var/lib/keel-panel-transfer` for `keel` alone. It points postfix and dovecot at the
+mailboxes and vsftpd at the FTP accounts as described below, checks each configuration with the
+check the policy names for it, then enables and restarts `nginx`, `mariadb`, `postfix`,
+`dovecot`, `vsftpd` and every `php*-fpm` unit and stops if one of them is not running. The
+dovecot drop-in is written for dovecot 2.4, the one of Debian 13. `hack/panel-vm.sh install`
+runs the installer on a clean machine and checks every package, unit and root. Enabling `panel`
+later on an installation of another product installs none of this.
+
+A hosting user is an operating-system account named
 `hp_<name>` inside `uid_range`, with its home `/var/www/keel-panel-<name>` under the `www` root
 of `file_roots` and no login shell unless shell access is granted. It is created after the
 transaction commits; suspending its account locks it, resuming unlocks it, and deleting the
@@ -320,8 +337,11 @@ dovecot, owned by `dovecot` with mode 0640 and carrying `{ARGON2ID}` hashes, is 
 `/etc/dovecot/keel`, the root `dovecot`, checked with `dovecot.check` and dovecot reloaded. A
 mailbox's home is `/var/lib/keel-panel-mail/keel-panel-<mailbox id>`, the root `maildirs`, which
 dovecot fills as the user `vmail`; the backup carries it through the `mail.archive` entry. The
-installer does not configure postfix and dovecot yet: `hack/panel-vm.sh install` shows the
-`main.cf` keys and the dovecot drop-in the maps and the passwd-file need.
+installer creates the system user `vmail`, the empty maps, the empty passwd-file, the `main.cf`
+keys `virtual_mailbox_domains`, `virtual_mailbox_maps`, `virtual_alias_maps` and
+`virtual_transport = lmtp:unix:private/dovecot-lmtp`, and the dovecot drop-in
+`/etc/dovecot/conf.d/90-keel-panel.conf` that reads the passwd-file and listens for LMTP in the
+spool of postfix.
 
 FTP accounts belong to a site and are virtual users of vsftpd, named `hp_<name>` and chrooted to
 a directory under the document root of the site, given relative to that root; a directory that
@@ -333,10 +353,11 @@ names of the product's accounts rather than the drop-in prefix: `guest_username`
 onto the hosting user of the site and `local_root` sets the chroot. Both belong to root with mode
 0600 and are checked with `vsftpd.check`, which parses `/etc/vsftpd.conf`; vsftpd reads them at
 each login, so nothing is reloaded. The logins of a suspended account leave the user file, and
-deleting a site or its account removes its FTP accounts. The installer does not configure vsftpd
-yet: `hack/panel-vm.sh install` writes the `vsftpd.conf` keys and the PAM service
-`keel-panel-ftp` on `pam_pwdfile` that the files need, and `hack/panel-vm.sh ftp` proves the
-chroot, an upload as the hosting user, the suspension and the removal on a machine.
+deleting a site or its account removes its FTP accounts. The installer keeps the distribution's
+file as `/etc/vsftpd.conf.orig` and writes a `/etc/vsftpd.conf` for virtual users mapped by the
+files of `/etc/vsftpd/keel-users` and authenticated by the PAM service `keel-panel-ftp` on
+`pam_pwdfile` against the user file, and `hack/panel-vm.sh ftp` proves the chroot, an upload as
+the hosting user, the suspension and the removal on a machine.
 
 Site backups archive a site with its files, the databases of its hosting user and the mailboxes
 of the mail domain named like the site, as a task, into `/var/lib/keel-panel-backups`, the root
@@ -558,7 +579,8 @@ then every bundle the binary carries may be enabled.
 ```
 
 Both ask for confirmation unless `--yes` is passed. Without `--purge` nothing in Postgres is
-touched. The Postgres server itself is never removed.
+touched. The Postgres server itself is never removed. The daemons the panel installed with
+`--product panel`, their packages and their configuration are left in place as well.
 
 ## Trying the installer in a container
 

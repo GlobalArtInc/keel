@@ -28,6 +28,7 @@ panel_tag=@panel
 hosting_user=files
 config_domain=config.example.org
 config_directive="client_max_body_size 64m;"
+wizard_domain=wizard.e2e.test
 hosting_range="{ from: 100000, to: 100009 }"
 reset_login=bob
 reset_address=bob@example.org
@@ -242,17 +243,38 @@ hosting_user_active() {
 }
 
 site_active() {
-  local id=$1 waited=0
+  local id=$1 domain=$2 waited=0
   while [ "$waited" -lt "$((timeout * 10))" ]; do
     if keel_ok "$site/site-state.json" ctl hosting.site.get "id=$id" --out json \
       && json_is "$site/site-state.json" "doc['ok'] is True and doc['data']['state'] == 'active'" 2>/dev/null; then
-      test -f "$site/agent/vhosts/keel-panel-$config_domain.conf"
+      test -f "$site/agent/vhosts/keel-panel-$domain.conf"
       return
     fi
     sleep 0.1
     waited=$((waited + 1))
   done
   cat "$site/site-state.json" >&2
+  return 1
+}
+
+wizard_site_with_zone() {
+  local waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/wizard-sites.json" ctl hosting.site.list --as "$user_login" "search=$wizard_domain" --out json \
+      && keel_ok "$site/wizard-zones.json" ctl dns.zone.list --as "$user_login" "search=$wizard_domain" --out json \
+      && json_is "$site/wizard-sites.json" "[(row['domain'], row['state']) for row in doc['data']['data']] == [('$wizard_domain', 'active')]" 2>/dev/null \
+      && json_is "$site/wizard-zones.json" "[(row['name'], row['state'], row['served']) for row in doc['data']['data']] == [('$wizard_domain', 'active', True)]" 2>/dev/null; then
+      test "$(sql "SELECT account_id FROM keel.hosting_site WHERE domain = '$wizard_domain'")" = "$user_account" \
+        && test "$(sql "SELECT account_id FROM keel.dns_zone WHERE name = '$wizard_domain'")" = "$user_account" \
+        && test -f "$site/agent/vhosts/keel-panel-$wizard_domain.conf" \
+        && test -f "$site/agent/zones/keel-dns-$wizard_domain.zone" \
+        && grep -qF "keel-dns-$wizard_domain.conf" "$site/agent/named/keel-dns-zones.conf"
+      return
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/wizard-sites.json" "$site/wizard-zones.json" >&2
   return 1
 }
 
@@ -546,12 +568,15 @@ hosting_user_id=$(json_get "$site/hosting-user.json" 'doc["data"]["id"]')
 check "the hosting user $hosting_user turns active with its home" hosting_user_active "$hosting_user_id"
 check "ctl hosting.site.create --as alice creates the site $config_domain" keel_ok "$site/config-site.json" ctl hosting.site.create --as "$user_login" "user=$hosting_user_id" "domain=$config_domain"
 config_site_id=$(json_get "$site/config-site.json" 'doc["data"]["id"]')
-check "the site $config_domain turns active with its server block" site_active "$config_site_id"
+check "the site $config_domain turns active with its server block" site_active "$config_site_id" "$config_domain"
 (
   cd "$frontend"
   env "${e2e_env[@]}" "KEEL_E2E_HOSTING_USER=hp_$hosting_user" "KEEL_E2E_SITE=$config_domain" \
-    "KEEL_E2E_SITE_DIRECTIVE=$config_directive" pnpm e2e --grep "$panel_tag"
+    "KEEL_E2E_SITE_DIRECTIVE=$config_directive" "KEEL_E2E_WIZARD_SITE=$wizard_domain" pnpm e2e --grep "$panel_tag"
 )
+check "the site $wizard_domain of the wizard and its zone are active in alice's account, with the server block, the zone file and its include" wizard_site_with_zone
+check "the zone $dns_zone dns refused left no site behind" test "$(sql "SELECT count(*) FROM keel.hosting_site WHERE domain = '$dns_zone'")" = "0"
+check "the zone $dns_zone stays the one alice created over the CLI" test "$(sql "SELECT count(*) FROM keel.dns_zone WHERE name = '$dns_zone'")" = "1"
 check "the server block of $config_domain carries the directive the configuration editor saved" grep -qF "    $config_directive" "$site/agent/vhosts/keel-panel-$config_domain.conf"
 check "the refused directive never stayed in the server block of $config_domain" test "$(grep -c keel_e2e_refused "$site/agent/vhosts/keel-panel-$config_domain.conf")" = 0
 check "ctl hosting.site.config.get answers the saved override of $config_domain" keel_ok "$site/config-get.json" ctl hosting.site.config.get "id=$config_site_id" --out json
