@@ -265,7 +265,9 @@ mod privileged {
         child.kill().expect("the agent is stopped");
         child.wait().expect("the agent is reaped");
         let text = fs::read_to_string(&log).unwrap_or_default();
-        let templates = if cfg!(feature = "dns") { 4 } else { 1 };
+        let templates = 1
+            + if cfg!(feature = "dns") { 3 } else { 0 }
+            + if cfg!(feature = "panel") { 2 } else { 0 };
         assert!(
             text.contains(&format!("operations=1 templates={templates}")),
             "{text}"

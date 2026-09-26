@@ -294,7 +294,7 @@ mod tests {
             );
             dictionaries += synced.unchanged;
         }
-        assert_eq!(dictionaries, 42);
+        assert_eq!(dictionaries, 44);
 
         let demo = projects.named("keel-demo").unwrap();
         let mut release = release_of_tree(demo, &repository);
