@@ -12,7 +12,7 @@ use keel::sdk::tokio::sync::Mutex;
 use keel_host::api::HostExecutor;
 use keel_hosting_users::api::HostingUsers;
 
-use host::{NGINX_CHECK, POOL_TEMPLATE, SERVER_TEMPLATE};
+use host::{NGINX_CHECK, POOL_TEMPLATE, Renderer, SERVER_TEMPLATE};
 
 const PRODUCT: &str = "panel";
 const FEATURE: &str = "panel.web";
@@ -33,9 +33,12 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     let turn = Arc::new(Mutex::new(()));
+    let renderer = Arc::new(Renderer::new(Arc::clone(&turn)));
+    let started = Arc::clone(&renderer);
     r.require::<dyn HostExecutor>()
         .require::<dyn HostingUsers>()
         .require::<dyn api::DnsProvider>()
+        .provide::<dyn api::Sites>(renderer)
         .function(functions::list())
         .function(functions::get())
         .function(functions::create(Arc::clone(&turn)))
@@ -69,6 +72,7 @@ fn init(r: &mut Registrar) -> Result<()> {
             include_str!("../templates/panel/php-fpm-pool.conf.j2"),
         ))
         .i18n("en", include_str!("../i18n/en.json"))
-        .i18n("ru", include_str!("../i18n/ru.json"));
+        .i18n("ru", include_str!("../i18n/ru.json"))
+        .start(move |ctx| async move { started.attach(&ctx) });
     Ok(())
 }

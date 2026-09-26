@@ -6,7 +6,7 @@ use keel::sdk::sea_orm::{
 use keel::sdk::serde_json;
 use keel_hosting_users::api::{HostingUser, HostingUsers};
 
-use crate::api::{DnsProvider, SiteZone};
+use crate::api::{DnsProvider, SiteCertificates, SiteZone};
 use crate::host::{Effects, Gone, Turn};
 use crate::names::{self, ALIASES_MAX, PHP_PATTERN, ROOT_MAX, ROOT_PATTERN};
 use crate::{FEATURE, site};
@@ -22,6 +22,7 @@ const PHP: &str = "hosting.site.php";
 const EXISTS: &str = "hosting.site.error.exists";
 const USER: &str = "hosting.site.error.user";
 const USER_PENDING: &str = "hosting.site.error.user_pending";
+const SITE_ID: &str = "hosting.site.error.site_id";
 const VERSIONS: [&str; 3] = ["8.2", "8.3", "8.4"];
 const SERIALISE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('hosting_site:names', 0))";
 const TAKEN: &str = "SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n WHERE EXISTS (SELECT 1 FROM hosting_site s WHERE s.id <> $1 AND (s.domain = n OR s.aliases @> to_jsonb(n))) LIMIT 1";
@@ -52,6 +53,8 @@ struct SiteCreate {
     php: Option<String>,
     #[serde(default)]
     dns_zone: bool,
+    #[serde(default)]
+    lets_encrypt: bool,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -156,7 +159,8 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
         .ui(Form::new("hosting.site.create.title")
             .page("site", ["user", "domain", "aliases", "root"])
             .page("php", ["php"])
-            .page("dns", ["dnsZone"]))
+            .page("dns", ["dnsZone"])
+            .page("tls", ["letsEncrypt"]))
         .handler(move |call: Call<SiteCreate>| {
             let turn = Arc::clone(&turn);
             async move {
@@ -187,9 +191,9 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 }
                 .insert(tx)
                 .await?;
+                let invoke = |func: &str, params: Value| call.invoke(func, params);
                 if params.dns_zone {
                     let dns = call.require::<dyn DnsProvider>()?;
-                    let invoke = |func: &str, params: Value| call.invoke(func, params);
                     dns.add_zone(
                         &invoke,
                         &SiteZone {
@@ -199,6 +203,15 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                         },
                     )
                     .await?;
+                }
+                if params.lets_encrypt {
+                    let site: Id = row
+                        .id
+                        .parse()
+                        .map_err(|_| KeelError::internal(SITE_ID).param("site", row.id.as_str()))?;
+                    call.require::<dyn SiteCertificates>()?
+                        .request(&invoke, &site)
+                        .await?;
                 }
                 apply_after_commit(&call, &turn, vec![row.id.clone()])?;
                 Ok(row)

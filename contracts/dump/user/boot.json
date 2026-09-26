@@ -144,6 +144,16 @@
           "func": "hosting.site.list",
           "kind": "list",
           "icon": "globe"
+        },
+        {
+          "path": "panel/certificates",
+          "label": "hosting.certificate.list.title",
+          "func": "hosting.certificate.list",
+          "kind": "list",
+          "icon": "shield-check",
+          "badge": {
+            "problem": "hosting.certificate.expiring"
+          }
         }
       ]
     },

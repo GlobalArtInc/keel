@@ -1,0 +1,191 @@
+{
+  "keel": 1,
+  "name": "hosting.certificate.list",
+  "module": "hosting_certificate",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.certificate.read",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingCertificate",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingCertificate"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingCertificate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notAfter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "kind",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.certificate.list.title",
+    "search": [
+      "domain"
+    ],
+    "columns": [
+      {
+        "key": "domain",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "kind",
+        "type": "status",
+        "map": {
+          "acme": "info",
+          "uploaded": "neutral"
+        }
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "notAfter",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "request",
+        "role": "new",
+        "screen": "hosting.certificate.request",
+        "icon": "lock"
+      },
+      {
+        "id": "upload",
+        "role": "button",
+        "screen": "hosting.certificate.upload",
+        "icon": "upload"
+      },
+      {
+        "id": "renew",
+        "role": "button",
+        "function": "hosting.certificate.request",
+        "icon": "refresh-cw",
+        "params": {
+          "site": "$siteId"
+        },
+        "confirm": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.certificate.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "domain"
+        }
+      }
+    ],
+    "row_actions": [
+      "renew",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.certificate.empty",
+      "action": "request"
+    },
+    "invalidate_on": [
+      "hosting.certificate.*"
+    ]
+  }
+}

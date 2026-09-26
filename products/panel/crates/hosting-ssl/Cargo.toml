@@ -1,0 +1,22 @@
+[package]
+name = "keel-hosting-ssl"
+description = "The hosting-ssl module of KeelPanel: certificates per site from an ACME directory over HTTP-01, or uploaded, installed through the host agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+base64 = { workspace = true }
+instant-acme = { workspace = true }
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-web = { workspace = true }
+keel-system = { workspace = true, features = ["cron", "notify"] }
+rustls = { workspace = true }
+x509-parser = { workspace = true }
+
+[dev-dependencies]
+rcgen = { workspace = true }

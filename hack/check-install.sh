@@ -102,6 +102,7 @@ check "deploy/agent.yaml starts with the policy key" test "$(head -n 1 deploy/ag
 check "deploy/agent.yaml names the check of the zones on named" grep -qF 'named.check: ["named-checkconf", "-z"]' deploy/agent.yaml
 check "host-vm.sh expects that check in the installed policy" grep -qF 'named.check' hack/host-vm.sh
 check "deploy/agent.yaml names the check of the server blocks on nginx" grep -qF 'nginx.test: ["nginx", "-t"]' deploy/agent.yaml
+check "deploy/agent.yaml carries the certificate and challenge roots of the panel" grep -qF 'certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do
   check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
   check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml
@@ -177,6 +178,7 @@ check "panel-vm.sh --help prints the usage and exits 0" prints_usage hack/panel-
 check "panel-vm.sh installs through install.sh with panel from a local archive" grep -qF 'bash deploy/install.sh --product panel --binary "$archive" --yes' hack/panel-vm.sh
 check "panel-vm.sh proves the lock of a suspended account" grep -qF 'check "the operating-system account is locked and expired while its account is suspended"' hack/panel-vm.sh
 check "panel-vm.sh proves the removal with the account" grep -qF 'check "$USER_NAME and its home are gone"' hack/panel-vm.sh
+check "panel-vm.sh proves nginx serving an issued certificate" grep -qF 'check "nginx serves the issued certificate"' hack/panel-vm.sh
 check "install-vm.sh runs the installer through curl and bash from the served channel" grep -qF 'curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/"' hack/install-vm.sh
 check "install-vm.sh checks that root runs keel privileged alone" grep -qF 'check "root runs keel privileged and nothing else of keel"' hack/install-vm.sh
 check "install-vm.sh follows the setup link" grep -qF 'check "keel.setup.admin with the key creates the first administrator"' hack/install-vm.sh

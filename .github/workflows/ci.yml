@@ -45,6 +45,13 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      pebble:
+        image: ghcr.io/letsencrypt/pebble:2.10.1
+        ports: ['14000', '15000']
+        env:
+          PEBBLE_VA_ALWAYS_VALID: '1'
+          PEBBLE_VA_NOSLEEP: '1'
+          PEBBLE_WFE_NONCEREJECT: '0'
 
     steps:
       - name: Checkout
@@ -110,6 +117,23 @@ jobs:
             sleep 2
           done
           echo "the mail catcher did not come up" >&2
+          exit 1
+
+      - name: Find the IPv4 ports of the ACME test server
+        run: |
+          directory=$(docker port "${{ job.services.pebble.id }}" 14000/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          management=$(docker port "${{ job.services.pebble.id }}" 15000/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
+          test -n "$directory" && test -n "$management"
+          echo "KEEL_TEST_ACME_URL=https://127.0.0.1:$directory/dir" >> "$GITHUB_ENV"
+          echo "KEEL_TEST_ACME_MANAGEMENT=https://127.0.0.1:$management" >> "$GITHUB_ENV"
+
+      - name: Wait for the ACME test server
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf --cacert products/panel/tests/panel/pebble-minica.pem "$KEEL_TEST_ACME_URL" >/dev/null && exit 0
+            sleep 2
+          done
+          echo "the ACME test server did not come up" >&2
           exit 1
 
       - name: Format

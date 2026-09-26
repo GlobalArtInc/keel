@@ -1,0 +1,102 @@
+{
+  "keel": 1,
+  "name": "hosting.certificate.request",
+  "module": "hosting_certificate",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.certificate.manage",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "Requested",
+    "type": "object",
+    "properties": {
+      "site": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.certificate.sites"
+        }
+      }
+    },
+    "required": [
+      "site"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingCertificate",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "notAfter": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "kind",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.certificate.request.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "site"
+        ]
+      }
+    ]
+  }
+}

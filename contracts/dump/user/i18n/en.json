@@ -1067,16 +1067,20 @@
         "empty": "No sites yet",
         "error": {
           "alias_twice": "The alias {name} repeats the domain or another alias",
+          "detached": "The site renderer has not started yet",
           "exists": "The name {name} is already served by a site",
           "home": "The home directory {home} is not a plain absolute path",
           "name": "{name} is not a host name",
           "php": "{php} is not a PHP version",
           "root": "{root} is not a relative path inside the home directory",
+          "site_id": "The site id {site} is not an id",
+          "tls_path": "The certificate path {path} is not a plain absolute path",
           "user": "No such hosting user",
           "user_busy": "The user still serves {sites} site(s); delete them first",
           "user_gone": "The hosting user {user} of the site does not exist on the host",
           "user_pending": "The hosting user {user} is not ready yet"
         },
+        "letsEncrypt": "Request a Let's Encrypt certificate for the domain and its aliases",
         "list": {
           "title": "Sites"
         },
@@ -1084,7 +1088,8 @@
           "dns": "DNS",
           "main": "Site",
           "php": "PHP",
-          "site": "Site"
+          "site": "Site",
+          "tls": "Certificate"
         },
         "php": "PHP version",
         "root": "Document root, inside the user's home directory",
@@ -1094,6 +1099,66 @@
           "pending": "Pending"
         },
         "user": "Hosting user"
+      },
+      "certificate": {
+        "action": {
+          "delete": "Delete",
+          "renew": "Renew now",
+          "request": "Let's Encrypt certificate",
+          "upload": "Upload a certificate"
+        },
+        "certificate": "Certificate chain, PEM",
+        "column": {
+          "accountId": "Account",
+          "domain": "Domain",
+          "error": "Error",
+          "kind": "Source",
+          "notAfter": "Valid until",
+          "state": "State"
+        },
+        "empty": "No certificates yet",
+        "error": {
+          "acme": "The ACME directory answered: {detail}",
+          "certificate": "The certificate cannot be read: {detail}",
+          "challenge": "The directory offers no HTTP-01 challenge for {name}",
+          "credentials": "The stored ACME account cannot be opened",
+          "detached": "The certificate store has not started yet",
+          "directory_ca": "The trust anchor {path} of the ACME directory cannot be used: {detail}",
+          "expired": "The certificate expired at {notAfter}",
+          "id": "{id} is not an id",
+          "key": "The private key must be one PEM block of an RSA, EC or PKCS #8 key",
+          "names": "The certificate does not cover {name}",
+          "order": "The order for {names} ended {status}: {detail}",
+          "pair": "The private key does not belong to the certificate: {detail}",
+          "pem": "This is not PEM text: {detail}",
+          "site": "No such site",
+          "site_row": "The site cannot be read: {detail}",
+          "token": "The challenge token {token} is not a plain token"
+        },
+        "expiring": "The certificate of {domain} expires at {notAfter}",
+        "key": "Private key, PEM",
+        "kind": {
+          "acme": "Let's Encrypt",
+          "uploaded": "Uploaded"
+        },
+        "list": {
+          "title": "Certificates"
+        },
+        "page": {
+          "main": "Certificate"
+        },
+        "request": {
+          "title": "Let's Encrypt certificate"
+        },
+        "site": "Site",
+        "state": {
+          "active": "Active",
+          "error": "Error",
+          "pending": "Pending"
+        },
+        "upload": {
+          "title": "Upload a certificate"
+        }
       }
     },
     "notify": {

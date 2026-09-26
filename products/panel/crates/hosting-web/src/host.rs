@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use keel::prelude::*;
 use keel::sdk::sea_orm::sea_query::Expr;
@@ -7,6 +8,7 @@ use keel::sdk::tokio::sync::Mutex;
 use keel_host::api::{Dest, Host, HostExecutor, Origin};
 use keel_hosting_users::api::HostingUsers;
 
+use crate::api::{SiteCertificates, SiteTls, Sites};
 use crate::{PRODUCT, names, site};
 
 pub(crate) const SERVER_TEMPLATE: &str = "panel/nginx-site.conf.j2";
@@ -19,6 +21,8 @@ const DROP_IN_PREFIX: &str = "keel-panel-";
 const SOCKETS: &str = "/run/php";
 const MODE: &str = "0644";
 const USER_GONE: &str = "hosting.site.error.user_gone";
+const DETACHED: &str = "hosting.site.error.detached";
+const SITE_ID: &str = "hosting.site.error.site_id";
 
 pub(crate) type Turn = Arc<Mutex<()>>;
 
@@ -42,6 +46,7 @@ pub(crate) struct Effects {
     host: Arc<dyn HostExecutor>,
     users: Arc<dyn HostingUsers>,
     clock: Arc<dyn Clock>,
+    certificates: Option<Arc<dyn SiteCertificates>>,
     turn: Turn,
 }
 
@@ -51,14 +56,28 @@ impl Effects {
             host: call.require::<dyn HostExecutor>()?,
             users: call.require::<dyn HostingUsers>()?,
             clock: call.require::<dyn Clock>()?,
+            certificates: call.require::<dyn SiteCertificates>().ok(),
+            turn: Arc::clone(turn),
+        })
+    }
+
+    fn started(ctx: &Context, turn: &Turn) -> Result<Self> {
+        Ok(Self {
+            host: ctx.require::<dyn HostExecutor>()?,
+            users: ctx.require::<dyn HostingUsers>()?,
+            clock: ctx.require::<dyn Clock>()?,
+            certificates: ctx.require::<dyn SiteCertificates>().ok(),
             turn: Arc::clone(turn),
         })
     }
 
     pub(crate) async fn apply(&self, ctx: &AfterContext, ids: &[String]) -> Result<()> {
+        self.apply_on(ctx.db()?, origin(ctx), ids).await
+    }
+
+    async fn apply_on(&self, db: &Db, origin: Origin, ids: &[String]) -> Result<()> {
         let _turn = self.turn.lock().await;
-        let db = ctx.db()?;
-        let host = self.host.on(origin(ctx));
+        let host = self.host.on(origin);
         let mut first = None;
         for id in ids {
             let Some(row) = site::Entity::find_by_id(id.as_str()).one(db).await? else {
@@ -110,6 +129,7 @@ impl Effects {
         let applied = names::php(row.php_applied.as_deref())?;
         let file = file_of(&domain);
         let socket = php.as_deref().map(|version| socket_of(&row.id, version));
+        let tls = self.tls(db, &row.id).await?;
         if let (Some(version), Some(socket)) = (php.as_deref(), socket.as_deref()) {
             host.template(POOL_TEMPLATE)
                 .vars(&json!({
@@ -133,6 +153,11 @@ impl Effects {
                 "root": root,
                 "socket": socket,
                 "suspended": row.suspended,
+                "acme": tls.as_ref().map(|tls| tls.challenges.as_str()),
+                "tls": tls.as_ref().and_then(|tls| tls.pair.as_ref()).map(|pair| json!({
+                    "certificate": pair.certificate,
+                    "key": pair.key,
+                })),
             }))
             .dest(VHOSTS, &file)
             .mode(MODE)
@@ -150,6 +175,22 @@ impl Effects {
         }
         served?;
         Ok(())
+    }
+
+    async fn tls(&self, db: &Db, site: &str) -> Result<Option<SiteTls>> {
+        let Some(source) = &self.certificates else {
+            return Ok(None);
+        };
+        let id: Id = site
+            .parse()
+            .map_err(|_| KeelError::internal(SITE_ID).param("site", site))?;
+        let tls = source.tls(db, &id).await?;
+        names::tls_path(&tls.challenges)?;
+        if let Some(pair) = &tls.pair {
+            names::tls_path(&pair.certificate)?;
+            names::tls_path(&pair.key)?;
+        }
+        Ok(Some(tls))
     }
 
     pub(crate) async fn remove(&self, ctx: &AfterContext, sites: &[Gone]) -> Result<()> {
@@ -191,6 +232,37 @@ impl Effects {
                 .await?;
         }
         Ok(())
+    }
+}
+
+pub(crate) struct Renderer {
+    turn: Turn,
+    effects: OnceLock<Effects>,
+}
+
+impl Renderer {
+    pub(crate) fn new(turn: Turn) -> Self {
+        Self {
+            turn,
+            effects: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn attach(&self, ctx: &Context) -> Result<()> {
+        let effects = Effects::started(ctx, &self.turn)?;
+        let _ = self.effects.set(effects);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Sites for Renderer {
+    async fn render(&self, db: &Db, origin: Origin, site: &Id) -> Result<()> {
+        let effects = self
+            .effects
+            .get()
+            .ok_or_else(|| KeelError::internal(DETACHED))?;
+        effects.apply_on(db, origin, &[site.to_string()]).await
     }
 }
 

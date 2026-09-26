@@ -1,6 +1,6 @@
 policy:
   uid_range: { from: 100000, to: 165535 }
-  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools-8.2: /etc/php/8.2/fpm/pool.d, pools-8.3: /etc/php/8.3/fpm/pool.d, pools-8.4: /etc/php/8.4/fpm/pool.d, mail: /etc/postfix/keel, certs: /etc/ssl/keel }
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools-8.2: /etc/php/8.2/fpm/pool.d, pools-8.3: /etc/php/8.3/fpm/pool.d, pools-8.4: /etc/php/8.4/fpm/pool.d, mail: /etc/postfix/keel, certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme }
   services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"] }
   exec_allow: [certbot, quotatool]

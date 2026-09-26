@@ -1,0 +1,91 @@
+{
+  "keel": 1,
+  "name": "hosting.certificate.sites",
+  "module": "hosting_certificate",
+  "kind": "options",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.certificate.read",
+    "feature": "panel.web"
+  },
+  "params": {
+    "title": "OptionsQuery",
+    "type": "object",
+    "properties": {
+      "search": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "limit": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 0,
+        "default": 20
+      },
+      "cursor": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Choices",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Choice"
+        }
+      },
+      "more": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "data",
+      "more"
+    ],
+    "$defs": {
+      "Choice": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ]
+      }
+    }
+  }
+}

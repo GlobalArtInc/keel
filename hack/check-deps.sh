@@ -240,7 +240,7 @@ for product in $products; do
   modules=$(sed -n 1p <<<"$rules")
   expected_dependants=$(sed -n 2p <<<"$rules")
   siblings=$(sed -n 3p <<<"$rules")
-  direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -vx keel-host || true; } | sort -u | tr '\n' ' ')
+  direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | { grep -vx keel-host || true; } | sort -u | tr '\n' ' ')
   for module in $modules $siblings; do
     direct=$(tr ' ' '\n' <<<"$direct" | { grep -vx "$module" || true; } | { grep -v '^$' || true; } | tr '\n' ' ')
   done

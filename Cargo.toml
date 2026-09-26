@@ -19,6 +19,7 @@ keel-dns-templates = { path = "products/dns/crates/dns-templates" }
 keel-dns-zones = { path = "products/dns/crates/dns-zones" }
 keel-host = { path = "crates/host" }
 keel-host-agent = { path = "crates/host-agent" }
+keel-hosting-ssl = { path = "products/panel/crates/hosting-ssl" }
 keel-hosting-users = { path = "products/panel/crates/hosting-users" }
 keel-hosting-web = { path = "products/panel/crates/hosting-web" }
 keel-kernel = { path = "crates/kernel" }
@@ -50,6 +51,7 @@ hostname = "0.4"
 http = "1"
 indexmap = { version = "2", features = ["serde"] }
 insta = { version = "1", features = ["json", "redactions"] }
+instant-acme = { version = "0.8", default-features = false, features = ["hyper-rustls", "rcgen", "ring"] }
 ipnet = "2"
 jsonschema = { version = "0.56", default-features = false }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "tokio1", "tokio1-rustls", "ring", "webpki-roots"] }
@@ -86,6 +88,7 @@ tower-http = { version = "0.7", features = ["limit", "request-id", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ulid = { version = "3", features = ["serde"] }
+x509-parser = { version = "0.18", default-features = false }
 zstd = "0.14"
 
 [profile.dev]

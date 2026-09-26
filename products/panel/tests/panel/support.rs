@@ -31,7 +31,7 @@ pub(crate) struct Site {
 impl Site {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        for sub in ["www", "bin", "vhosts", "zones", "named"] {
+        for sub in ["www", "bin", "vhosts", "zones", "named", "certs", "acme"] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
         for version in [PHP, OLDER_PHP] {
@@ -83,7 +83,7 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named} }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme} }}
   services: [nginx, php*-fpm, named]
   checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"] }}
   products:
@@ -105,6 +105,8 @@ impl Site {
             older = self.path(&format!("pools-{OLDER_PHP}")).display(),
             zones = self.path("zones").display(),
             named = self.path("named").display(),
+            certs = self.path("certs").display(),
+            acme = self.path("acme").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )
@@ -187,6 +189,9 @@ pub(crate) fn composed(site: &Site) -> Builder {
     Harness::new()
         .product(&keel_panel::MANIFEST)
         .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
+        .module(&keel_system::settings::MODULE)
         .agent(&site.policy())
 }
 

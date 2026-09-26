@@ -67,8 +67,6 @@ fn seen_for(name: &str) -> Vec<Seen> {
 fn with_dns(site: &Site) -> Builder {
     composed(site)
         .product(&keel_dns::MANIFEST)
-        .module(&keel_system::cron::MODULE)
-        .module(&keel_system::notify::MODULE)
         .module(&keel_system::stats::MODULE)
         .section(
             "dns",

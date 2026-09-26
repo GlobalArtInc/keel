@@ -1,12 +1,27 @@
 server {
     listen 80;
     listen [::]:80;
+{%- if tls %}
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    ssl_certificate {{ tls.certificate }};
+    ssl_certificate_key {{ tls.key }};
+{%- endif %}
     server_name {{ domain }}{% for alias in aliases %} {{ alias }}{% endfor %};
     root {{ root }};
     disable_symlinks if_not_owner from=$document_root;
+{%- if acme %}
+
+    location ~ "^/\.well-known/acme-challenge/([-_A-Za-z0-9]+)$" {
+        default_type text/plain;
+        alias {{ acme }}/keel-panel-$1;
+    }
+{%- endif %}
 {%- if suspended %}
 
-    return 403;
+    location / {
+        return 403;
+    }
 {%- else %}
     index{% if socket %} index.php{% endif %} index.html index.htm;
 

@@ -19,16 +19,22 @@ DOMAIN=$NAME.test
 ALIAS=www.$DOMAIN
 VHOST=/etc/nginx/conf.d/keel-panel-$DOMAIN.conf
 DOC_ROOT=$HOME_DIR/$DOMAIN
+CERTS=/etc/ssl/keel
+CHALLENGES=/var/lib/keel-panel-acme
+STAGING=https://acme-staging-v02.api.letsencrypt.org/directory
+ACME_DIRECTORY=${KEEL_PANEL_VM_ACME:-$STAGING}
 
 usage() {
   cat <<EOF
 usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh run
+       hack/panel-vm.sh ssl <domain>
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
-"install" installs nginx, php-fpm and curl, prepares $WWW, then runs
+"install" installs nginx, php-fpm, curl and openssl, prepares $WWW, the
+certificate root $CERTS and the challenge root $CHALLENGES, then runs
 deploy/install.sh --product panel --binary <archive> --yes and prints the
 setup link.
 
@@ -45,6 +51,16 @@ suspends the account and finds $USER_NAME locked and expired and the site
 answering 403, resumes it and finds both open again, then deletes the
 account and finds the server block, the pool, $USER_NAME and its home gone,
 with every change in the journal of $AGENT_UNIT.
+
+"ssl <domain>" needs a domain whose address is this machine, with port 80
+reachable from the internet. It points the setting
+hosting.certificate.directory at $ACME_DIRECTORY (KEEL_PANEL_VM_ACME
+overrides it; the default is the Let's Encrypt staging directory), creates
+an account, a hosting user and the site <domain> with a Let's Encrypt
+certificate, waits for the certificate to turn active, finds the server block
+listening on 443 with the pair under $CERTS, the key readable by root alone,
+no challenge left in $CHALLENGES and nginx serving <domain> over TLS with the
+issued certificate, then deletes the account and finds the pair gone.
 EOF
 }
 
@@ -81,8 +97,9 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm curl
-  install -d -m 0755 -o root -g root "$WWW"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm curl openssl
+  install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
+  install -d -m 0700 -o root -g root "$CERTS"
   local log
   log=$(mktemp)
   if ! bash deploy/install.sh --product panel --binary "$archive" --yes 2>&1 | tee "$log"; then
@@ -273,9 +290,68 @@ run_proof() {
   say "panel's hosting users and sites are proven on this machine: an account inside the range with its home, the shell, a site on nginx and php-fpm, the lock and the refusal of a suspended account and the removal with the account"
 }
 
+certificate_state_is() {
+  [ "$(call hosting.certificate.list 2>/dev/null | field data.data.0.state 2>/dev/null)" = "$1" ]
+}
+
+pair_gone() {
+  [ -z "$(find "$CERTS" -name 'keel-panel-*' -print -quit)" ]
+}
+
+served_over_tls() {
+  [ "$(curl -s -o /dev/null -w '%{http_code}' --insecure --resolve "$1:443:127.0.0.1" "https://$1/")" != "000" ]
+}
+
+served_certificate() {
+  openssl s_client -connect 127.0.0.1:443 -servername "$1" </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256 2>/dev/null
+}
+
+ssl_proof() {
+  local domain=${1:-}
+  [ -n "$domain" ] || { usage >&2; fail "the domain is required"; }
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  [ -d "$CERTS" ] && [ -d "$CHALLENGES" ] || fail "$CERTS or $CHALLENGES is missing; run install first"
+  local since account id site vhost stem task
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+  vhost=/etc/nginx/conf.d/keel-panel-$domain.conf
+
+  say "--- a site with a certificate from $ACME_DIRECTORY"
+  check "keel ctl settings.set points at the directory" call settings.set key=hosting.certificate.directory "value=\"$ACME_DIRECTORY\""
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+  site=$(call hosting.site.create "user=$id" "domain=$domain" letsEncrypt=true | field data.id) || fail "keel ctl hosting.site.create failed"
+  check "the site $domain turns active" eventually site_state_is "$site" active
+  WAIT=$((WAIT * 3)) check "the certificate of $domain turns active" eventually certificate_state_is active
+  stem=$(grep -oE 'keel-panel-[0-9a-z]+\.crt' "$vhost" | head -n 1)
+  stem=${stem%.crt}
+  check "the server block listens on 443" grep -qF "listen 443 ssl;" "$vhost"
+  check "the server block names the pair under $CERTS" grep -qF "ssl_certificate $CERTS/$stem.crt;" "$vhost"
+  check "the server block serves the challenges from $CHALLENGES" grep -qF "alias $CHALLENGES/keel-panel-\$1;" "$vhost"
+  check "the key $CERTS/$stem.key is readable by root alone" test "$(stat -c %a "$CERTS/$stem.key")" = 600
+  check "no challenge is left in $CHALLENGES" test -z "$(ls -A "$CHALLENGES")"
+  check "nginx accepts the configuration" nginx -t
+  check "nginx serves $domain over TLS" served_over_tls "$domain"
+  check "nginx serves the issued certificate" test "$(served_certificate "$domain")" = "$(openssl x509 -in "$CERTS/$stem.crt" -noout -fingerprint -sha256)"
+  say "  issued by: $(openssl x509 -in "$CERTS/$stem.crt" -noout -issuer)"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "the pair is gone from $CERTS" eventually pair_gone
+  check "nginx still accepts the configuration" nginx -t
+  check "the agent journal carries host.fs.write" agent_logged "$since" host.fs.write
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's certificates are proven on this machine: a site on a real domain got its certificate from $ACME_DIRECTORY over HTTP-01 and nginx served it"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
   run) shift; run_proof "$@" ;;
+  ssl) shift; ssl_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

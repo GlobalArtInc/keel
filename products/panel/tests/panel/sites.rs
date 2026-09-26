@@ -290,6 +290,22 @@ async fn suspending_the_account_refuses_its_sites_and_deleting_it_removes_them()
                 .is_ok_and(|text| text.contains("return 403;") == refused)
         })
         .await;
+        let vhost = read(&site.vhost("a.example"));
+        assert!(
+            vhost.contains(
+                "    location ~ \"^/\\.well-known/acme-challenge/([-_A-Za-z0-9]+)$\" {\n"
+            ),
+            "{vhost}"
+        );
+        assert_eq!(
+            vhost.contains("    location / {\n        return 403;\n    }\n"),
+            refused,
+            "{vhost}"
+        );
+        assert!(
+            !vhost.lines().any(|line| line == "    return 403;"),
+            "{vhost}"
+        );
         served(&harness, &mine, "active").await;
         assert!(!read(&site.vhost("c.example")).contains("return 403;"));
     }

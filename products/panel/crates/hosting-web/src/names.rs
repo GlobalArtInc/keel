@@ -12,6 +12,7 @@ const ALIAS_TWICE: &str = "hosting.site.error.alias_twice";
 const ROOT: &str = "hosting.site.error.root";
 const PHP: &str = "hosting.site.error.php";
 const HOME: &str = "hosting.site.error.home";
+const TLS_PATH: &str = "hosting.site.error.tls_path";
 
 pub(crate) fn host_name(value: &str, field: &str) -> Result<String> {
     let name = value.to_ascii_lowercase();
@@ -64,19 +65,30 @@ pub(crate) fn php(value: Option<&str>) -> Result<Option<String>> {
 }
 
 pub(crate) fn home(value: &str) -> Result<&str> {
-    let plain = value.strip_prefix('/').is_some_and(|rest| {
+    if is_plain_absolute(value) {
+        Ok(value)
+    } else {
+        Err(KeelError::internal(HOME).param("home", value))
+    }
+}
+
+pub(crate) fn tls_path(value: &str) -> Result<&str> {
+    if is_plain_absolute(value) {
+        Ok(value)
+    } else {
+        Err(KeelError::internal(TLS_PATH).param("path", value))
+    }
+}
+
+fn is_plain_absolute(value: &str) -> bool {
+    value.strip_prefix('/').is_some_and(|rest| {
         rest.split('/').all(|segment| {
             !matches!(segment, "" | "." | "..")
                 && segment
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
         })
-    });
-    if plain {
-        Ok(value)
-    } else {
-        Err(KeelError::internal(HOME).param("home", value))
-    }
+    })
 }
 
 fn is_relative(value: &str) -> bool {

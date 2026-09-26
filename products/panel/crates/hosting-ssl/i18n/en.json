@@ -1,0 +1,64 @@
+{
+  "hosting": {
+    "certificate": {
+      "action": {
+        "delete": "Delete",
+        "renew": "Renew now",
+        "request": "Let's Encrypt certificate",
+        "upload": "Upload a certificate"
+      },
+      "certificate": "Certificate chain, PEM",
+      "column": {
+        "accountId": "Account",
+        "domain": "Domain",
+        "error": "Error",
+        "kind": "Source",
+        "notAfter": "Valid until",
+        "state": "State"
+      },
+      "empty": "No certificates yet",
+      "error": {
+        "acme": "The ACME directory answered: {detail}",
+        "certificate": "The certificate cannot be read: {detail}",
+        "challenge": "The directory offers no HTTP-01 challenge for {name}",
+        "credentials": "The stored ACME account cannot be opened",
+        "detached": "The certificate store has not started yet",
+        "directory_ca": "The trust anchor {path} of the ACME directory cannot be used: {detail}",
+        "expired": "The certificate expired at {notAfter}",
+        "id": "{id} is not an id",
+        "key": "The private key must be one PEM block of an RSA, EC or PKCS #8 key",
+        "names": "The certificate does not cover {name}",
+        "order": "The order for {names} ended {status}: {detail}",
+        "pair": "The private key does not belong to the certificate: {detail}",
+        "pem": "This is not PEM text: {detail}",
+        "site": "No such site",
+        "site_row": "The site cannot be read: {detail}",
+        "token": "The challenge token {token} is not a plain token"
+      },
+      "expiring": "The certificate of {domain} expires at {notAfter}",
+      "key": "Private key, PEM",
+      "kind": {
+        "acme": "Let's Encrypt",
+        "uploaded": "Uploaded"
+      },
+      "list": {
+        "title": "Certificates"
+      },
+      "page": {
+        "main": "Certificate"
+      },
+      "request": {
+        "title": "Let's Encrypt certificate"
+      },
+      "site": "Site",
+      "state": {
+        "active": "Active",
+        "error": "Error",
+        "pending": "Pending"
+      },
+      "upload": {
+        "title": "Upload a certificate"
+      }
+    }
+  }
+}

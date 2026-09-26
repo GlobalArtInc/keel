@@ -35,7 +35,8 @@
     "modules": [
       "host",
       "hosting",
-      "hosting_site"
+      "hosting_site",
+      "hosting_certificate"
     ]
   }
 ]

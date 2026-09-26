@@ -1,0 +1,125 @@
+{
+  "keel": 1,
+  "name": "hosting.certificate.upload",
+  "module": "hosting_certificate",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.certificate.manage",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "Uploaded",
+    "type": "object",
+    "properties": {
+      "site": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.certificate.sites"
+        }
+      },
+      "certificate": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536,
+        "x-ui": {
+          "control": "code"
+        }
+      },
+      "key": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        },
+        "maxLength": 16384
+      }
+    },
+    "required": [
+      "site",
+      "certificate",
+      "key"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "HostingCertificate",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "notAfter": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "kind",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.certificate.upload.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "site",
+          "certificate",
+          "key"
+        ]
+      }
+    ]
+  }
+}

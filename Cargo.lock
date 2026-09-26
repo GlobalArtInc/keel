@@ -1737,6 +1737,8 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls",
+ "rustls-native-certs",
+ "rustls-platform-verifier",
  "tokio",
  "tokio-rustls",
  "tower-service",
@@ -2002,6 +2004,32 @@ dependencies = [
  "serde",
  "similar",
  "tempfile",
+]
+
+[[package]]
+name = "instant-acme"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f05ad37c421b962354c358d347d4a6130151df9407978372d3ad7f0c8f71a64"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "http",
+ "http-body",
+ "http-body-util",
+ "httpdate",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "rcgen",
+ "ring",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -2397,6 +2425,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-hosting-ssl"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "instant-acme",
+ "keel",
+ "keel-host",
+ "keel-hosting-web",
+ "keel-system",
+ "rcgen",
+ "rustls",
+ "x509-parser",
+]
+
+[[package]]
 name = "keel-hosting-users"
 version = "0.2.0"
 dependencies = [
@@ -2465,11 +2508,15 @@ dependencies = [
  "keel-dns-local",
  "keel-dns-peer",
  "keel-host",
+ "keel-hosting-ssl",
  "keel-hosting-users",
  "keel-hosting-web",
  "keel-system",
  "keel-testkit",
+ "rcgen",
+ "rustls",
  "tempfile",
+ "testcontainers",
 ]
 
 [[package]]

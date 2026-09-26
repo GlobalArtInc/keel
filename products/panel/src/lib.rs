@@ -16,6 +16,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_host::MODULE,
         &keel_hosting_users::MODULE,
         &keel_hosting_web::MODULE,
+        &keel_hosting_ssl::MODULE,
     ],
     bridges: &[Bridge {
         to: "dns",
@@ -67,7 +68,7 @@ mod tests {
         assert_eq!(MANIFEST.id, "panel");
         assert_eq!(
             MANIFEST.module_ids().collect::<Vec<_>>(),
-            ["host", "hosting", "hosting_site"]
+            ["host", "hosting", "hosting_site", "hosting_certificate"]
         );
         assert_eq!(MANIFEST.bridges.len(), 1);
         assert_eq!(MANIFEST.bridges[0].to, "dns");

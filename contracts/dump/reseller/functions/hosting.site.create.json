@@ -66,6 +66,10 @@
       "dnsZone": {
         "type": "boolean",
         "default": false
+      },
+      "letsEncrypt": {
+        "type": "boolean",
+        "default": false
       }
     },
     "required": [
@@ -168,6 +172,12 @@
         "id": "dns",
         "fields": [
           "dnsZone"
+        ]
+      },
+      {
+        "id": "tls",
+        "fields": [
+          "letsEncrypt"
         ]
       }
     ]
