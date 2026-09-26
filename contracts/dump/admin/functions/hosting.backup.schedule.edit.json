@@ -1,0 +1,107 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.schedule.edit",
+  "module": "hosting_backup",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.manage",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "title": "ScheduleEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "schedule": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "keep": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 1,
+        "maximum": 30,
+        "default": 7
+      }
+    },
+    "required": [
+      "id",
+      "schedule"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingBackupSchedule",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "schedule": {
+        "type": "string"
+      },
+      "keep": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "nextAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "schedule",
+      "keep",
+      "nextAt",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.backup.schedule.edit.title",
+    "read": "hosting.backup.schedule.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "schedule",
+          "keep"
+        ]
+      }
+    ]
+  }
+}

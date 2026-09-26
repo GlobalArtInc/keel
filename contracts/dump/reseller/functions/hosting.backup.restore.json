@@ -1,0 +1,69 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.restore",
+  "module": "hosting_backup",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.manage",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Restored",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "files": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "databases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "mailboxes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "files",
+      "databases",
+      "mailboxes"
+    ]
+  },
+  "ui": {
+    "title": "hosting.backup.restore.title",
+    "result": "task"
+  }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "keel-hosting-backup"
+description = "The hosting-backup module of KeelPanel: per-site archives of the files, databases and mailboxes of a site, taken and restored as tasks through the host agent, on a schedule per site with retention by count"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+croner = { workspace = true }
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-db = { workspace = true }
+keel-hosting-mail = { workspace = true }
+keel-hosting-web = { workspace = true }
+keel-system = { workspace = true, features = ["cron"] }
+rustix = { workspace = true, features = ["process"] }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+tar = { workspace = true }
+thiserror = { workspace = true }
+zstd = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

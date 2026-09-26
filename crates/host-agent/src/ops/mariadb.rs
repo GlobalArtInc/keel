@@ -1,14 +1,19 @@
+use std::fs::OpenOptions;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
+use nix::fcntl::OFlag;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{Call, Dest};
+use super::{Call, Dest, seal};
 use crate::process;
 use crate::protocol::Failure;
 
 const CLIENT: &str = "mariadb";
 const DUMP: &str = "mariadb-dump";
+const DUMPS_ROOT: &str = "dumps";
+const SANDBOX: &str = "--sandbox";
 const HOST: &str = "localhost";
 const NAME_LIMIT: usize = 64;
 const PASSWORD_LIMIT: usize = 256;
@@ -39,6 +44,8 @@ pub(super) enum Statement {
     Revoke { user: String, database: String },
     #[serde(rename = "dump")]
     Dump { database: String, dest: Dest },
+    #[serde(rename = "import")]
+    Import { database: String, source: Dest },
 }
 
 pub(super) fn exec(call: &Call<'_>, statement: Statement) -> Result<Value, Failure> {
@@ -114,13 +121,16 @@ pub(super) fn exec(call: &Call<'_>, statement: Statement) -> Result<Value, Failu
             )
         }
         Statement::Dump { database, dest } => dump(call, name_of(&database, prefix)?, &dest),
+        Statement::Import { database, source } => {
+            import(call, name_of(&database, prefix)?, &source)
+        }
     }
 }
 
 fn run(call: &Call<'_>, statement: &str, secret: Option<&str>) -> Result<Value, Failure> {
-    let (program, args) = entry(call, CLIENT)?;
+    let (program, args) = client(call)?;
     let script = format!("{SESSION}\n{statement}\n");
-    process::feed(program, args, script.as_bytes()).map_err(|failure| redact(failure, secret))?;
+    process::feed(program, &args, script.as_bytes()).map_err(|failure| redact(failure, secret))?;
     Ok(json!({}))
 }
 
@@ -128,8 +138,37 @@ fn dump(call: &Call<'_>, database: &str, dest: &Dest) -> Result<Value, Failure> 
     let (program, base) = entry(call, DUMP)?;
     let mut args = base.to_vec();
     args.push(database.to_owned());
-    let bytes = super::exec::capture(call, dest, program, &args)?;
+    let bytes = super::exec::capture(call, dest, program, &args, true)?;
     Ok(json!({ "bytes": bytes }))
+}
+
+fn import(call: &Call<'_>, database: &str, source: &Dest) -> Result<Value, Failure> {
+    if source.root != DUMPS_ROOT {
+        return Err(Failure::policy(format!(
+            "an import reads a dump of the root {DUMPS_ROOT}, not of {}",
+            source.root
+        )));
+    }
+    let (program, mut args) = client(call)?;
+    let path = call.resolve(source)?;
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(OFlag::O_NOFOLLOW.bits())
+        .open(&path)
+        .map_err(|error| Failure::io(path.display(), &error))?;
+    seal::verify(&path, &mut file)?;
+    args.push(database.to_owned());
+    process::from_file(program, &args, file)?;
+    Ok(json!({}))
+}
+
+fn client<'a>(call: &'a Call<'_>) -> Result<(&'a Path, Vec<String>), Failure> {
+    let (program, base) = entry(call, CLIENT)?;
+    let mut args = base.to_vec();
+    if !args.iter().any(|arg| arg == SANDBOX) {
+        args.push(SANDBOX.to_owned());
+    }
+    Ok((program, args))
 }
 
 fn entry<'a>(call: &'a Call<'_>, name: &str) -> Result<(&'a Path, &'a [String]), Failure> {

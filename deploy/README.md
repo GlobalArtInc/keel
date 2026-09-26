@@ -338,6 +338,26 @@ yet: `hack/panel-vm.sh install` writes the `vsftpd.conf` keys and the PAM servic
 `keel-panel-ftp` on `pam_pwdfile` that the files need, and `hack/panel-vm.sh ftp` proves the
 chroot, an upload as the hosting user, the suspension and the removal on a machine.
 
+Site backups archive a site with its files, the databases of its hosting user and the mailboxes
+of the mail domain named like the site, as a task, into `/var/lib/keel-panel-backups`, the root
+`backups`, one `keel-panel-<backup id>.tar.zst` per backup owned by the `keel` user with mode 0600
+so that the panel can offer it for download; the directory itself belongs to root with mode 0711.
+The databases are dumped through `mariadb.exec` into `dumps` first; the agent operation
+`hosting.backup.pack` of the policy class `backup` walks the document root and the maildirs by
+descriptor without following a link, and `hosting.backup.unpack` puts the files back as the
+hosting user and the mail as the owner of `/var/lib/keel-panel-mail`, while `mariadb.exec import`
+loads the dumps. The agent records the SHA-256 of every dump and archive it writes in a file
+`.<name>.sha256` beside it, owned by root with mode 0600, which no operation of the catalogue can
+name: a dump that changed after `mariadb-dump` wrote it is not packed, an archive that changed after
+the pack is not unpacked, and `import` loads only a dump in `dumps` that the unpack wrote as root
+with its digest intact. The `mariadb` entry of `exec_allow` carries `--sandbox`, and the agent adds
+it when an entry lacks it, so the client refuses the shell and file commands of a dump. A schedule per site is five cron fields in UTC checked at the top of every hour
+by the job `hosting.backup.scheduled`, and each finished backup keeps the newest archives of the
+site, seven or the count of its schedule. Deleting a site or its account removes its archives. The
+archive root is `hosting_backup.archives_dir` of `config.yaml`; `hack/panel-vm.sh backup` proves a
+backup, a restore and the retention on a machine. The archives stay on this host: a remote target
+comes later.
+
 ## Updates
 
 The screen "Updates" of the system group shows the running version and the head of the channel

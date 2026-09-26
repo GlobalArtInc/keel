@@ -39,7 +39,8 @@
       "hosting_certificate",
       "hosting_database",
       "hosting_mail",
-      "hosting_ftp"
+      "hosting_ftp",
+      "hosting_backup"
     ]
   }
 ]

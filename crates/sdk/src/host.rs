@@ -16,6 +16,8 @@ pub trait AgentScope {
     fn policy(&self) -> &Value;
 
     fn resolve(&self, root: &str, name: &str) -> Result<PathBuf, AgentOpError>;
+
+    fn caller_uid(&self) -> u32;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -174,6 +176,10 @@ mod tests {
         fn resolve(&self, root: &str, name: &str) -> Result<PathBuf, AgentOpError> {
             Ok(PathBuf::from(format!("/{root}/{name}")))
         }
+
+        fn caller_uid(&self) -> u32 {
+            990
+        }
     }
 
     #[derive(Deserialize, JsonSchema)]
@@ -187,6 +193,7 @@ mod tests {
         path: String,
         product: String,
         greeting: String,
+        owner: u32,
     }
 
     fn answer(scope: &dyn AgentScope, args: Args) -> Result<Answer, AgentOpError> {
@@ -199,6 +206,7 @@ mod tests {
             path: scope.resolve("zones", &args.name)?.display().to_string(),
             product: scope.product().to_owned(),
             greeting: greeting.to_owned(),
+            owner: scope.caller_uid(),
         })
     }
 
@@ -210,7 +218,7 @@ mod tests {
         let scope = Scope(json!({ "greeting": "hello" }));
         assert_eq!(
             op.run(&scope, json!({ "name": "a" })).unwrap(),
-            json!({ "path": "/zones/a", "product": "demo", "greeting": "hello" })
+            json!({ "path": "/zones/a", "product": "demo", "greeting": "hello", "owner": 990 })
         );
         let refused = op
             .run(&scope, json!({ "name": "a", "path": "/etc" }))

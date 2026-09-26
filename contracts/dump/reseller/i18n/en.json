@@ -1973,6 +1973,88 @@
             "pending": "Pending"
           }
         }
+      },
+      "backup": {
+        "action": {
+          "create": "Back up a site",
+          "delete": "Delete",
+          "download": "Download",
+          "restore": "Restore"
+        },
+        "column": {
+          "accountId": "Account",
+          "bytes": "Size, bytes",
+          "createdAt": "Taken",
+          "domain": "Site",
+          "error": "Error",
+          "scheduled": "Scheduled",
+          "state": "State"
+        },
+        "confirm": {
+          "restore": "The files, databases and mailboxes of the site are put back as they were in this backup; changes made since are overwritten."
+        },
+        "create": {
+          "title": "Back up a site"
+        },
+        "empty": "No site backups yet",
+        "error": {
+          "gone": "The archive of backup {id} is missing from the host",
+          "id": "There is no site backup {id}",
+          "not_ready": "Backup {id} has not completed",
+          "site": "The site is not one of yours",
+          "site_gone": "The site {site} of the backup is gone",
+          "site_row": "The site {site} could not be read"
+        },
+        "list": {
+          "title": "Site backups"
+        },
+        "page": {
+          "main": "Site backup"
+        },
+        "restore": {
+          "title": "Restore a site"
+        },
+        "schedule": {
+          "action": {
+            "create": "New schedule",
+            "delete": "Delete",
+            "edit": "Edit"
+          },
+          "column": {
+            "accountId": "Account",
+            "domain": "Site",
+            "keep": "Keep",
+            "nextAt": "Next run",
+            "schedule": "Schedule"
+          },
+          "create": {
+            "title": "New backup schedule"
+          },
+          "edit": {
+            "title": "Backup schedule"
+          },
+          "empty": "No backup schedules yet",
+          "error": {
+            "exists": "The site {site} already has a backup schedule",
+            "expression": "{schedule} is not a schedule: five cron fields, minute hour day month weekday",
+            "id": "There is no backup schedule {id}"
+          },
+          "keep": "Archives kept, the newest first",
+          "list": {
+            "title": "Backup schedules"
+          },
+          "page": {
+            "main": "Backup schedule"
+          },
+          "schedule": "Schedule in UTC as five cron fields, such as 0 3 * * * for every night at 03:00; checked at the top of every hour",
+          "site": "Site"
+        },
+        "site": "Site",
+        "state": {
+          "active": "Ready",
+          "error": "Error",
+          "pending": "In progress"
+        }
       }
     },
     "note": {

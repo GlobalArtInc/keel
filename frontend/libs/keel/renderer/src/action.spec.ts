@@ -309,6 +309,43 @@ describe('the action runner', () => {
     expect(client.calls[0].params).toEqual({ id: 'z2', algorithm: 'ecdsa' });
   });
 
+  it('an action of role download fetches its function through the download route and posts nothing', async () => {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      catalogue: { lang: 'en', messages: MESSAGES },
+    });
+    client.file('dns.zone.file', {
+      ok: true,
+      file: { blob: new Blob(['$ORIGIN b.org.\n']), filename: 'b.org.zone' },
+    });
+    const clicks: string[] = [];
+    URL.createObjectURL = jest.fn(() => 'blob:zone');
+    URL.revokeObjectURL = jest.fn();
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicks.push(`${this.getAttribute('href')} as ${this.download}`);
+    });
+    const file: Action = {
+      id: 'file',
+      role: 'download',
+      function: 'dns.zone.file',
+      params: { id: '$id' },
+    };
+    const outcome = await (
+      await runner(client)
+    ).run({
+      descriptor: LIST,
+      action: file,
+      rows: [ZONES[1]],
+    });
+    expect(outcome).toBeNull();
+    expect(client.calls).toHaveLength(0);
+    expect(client.downloads).toEqual([{ func: 'dns.zone.file', params: { id: 'z2' } }]);
+    expect(clicks).toEqual(['blob:zone as b.org.zone']);
+    click.mockRestore();
+  });
+
   it('the route /f/<func> of a kind: action descriptor runs the same runner with $id from the route parameters', async () => {
     const client = new KeelMockClient({
       boot: BOOT,

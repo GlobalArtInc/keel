@@ -268,8 +268,9 @@ mod privileged {
         let templates = 1
             + if cfg!(feature = "dns") { 3 } else { 0 }
             + if cfg!(feature = "panel") { 6 } else { 0 };
+        let operations = 1 + if cfg!(feature = "panel") { 2 } else { 0 };
         assert!(
-            text.contains(&format!("operations=1 templates={templates}")),
+            text.contains(&format!("operations={operations} templates={templates}")),
             "{text}"
         );
         let line = text

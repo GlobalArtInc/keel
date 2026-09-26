@@ -16,7 +16,7 @@ const PASSWORD: &str = "correct horse battery";
 const SPF: &str = "\"v=spf1 mx -all\"";
 const BROKEN: &str = "postfix: [emerg] the configuration of the test is broken";
 
-fn mail(site: &Site, builder: Builder) -> Builder {
+pub(crate) fn mail(site: &Site, builder: Builder) -> Builder {
     let owner = fs::metadata(site.path("passwd")).expect("the passwd of the site");
     let (uid, gid) = (owner.uid(), owner.gid());
     let passwd = fs::read_to_string(site.path("passwd")).expect("passwd");

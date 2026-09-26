@@ -2417,11 +2417,33 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sha2 0.11.0",
+ "subtle",
  "tempfile",
  "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "keel-hosting-backup"
+version = "0.2.0"
+dependencies = [
+ "croner",
+ "keel",
+ "keel-host",
+ "keel-hosting-db",
+ "keel-hosting-mail",
+ "keel-hosting-web",
+ "keel-system",
+ "rustix",
+ "sha2 0.11.0",
+ "subtle",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "zstd",
 ]
 
 [[package]]
@@ -2539,6 +2561,7 @@ dependencies = [
  "keel-dns-local",
  "keel-dns-peer",
  "keel-host",
+ "keel-hosting-backup",
  "keel-hosting-db",
  "keel-hosting-ftp",
  "keel-hosting-mail",
@@ -2549,8 +2572,10 @@ dependencies = [
  "keel-testkit",
  "rcgen",
  "rustls",
+ "tar",
  "tempfile",
  "testcontainers",
+ "zstd",
 ]
 
 [[package]]

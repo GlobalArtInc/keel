@@ -20,6 +20,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_hosting_db::MODULE,
         &keel_hosting_mail::MODULE,
         &keel_hosting_ftp::MODULE,
+        &keel_hosting_backup::MODULE,
     ],
     bridges: &[Bridge {
         to: "dns",
@@ -46,6 +47,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
                 "panel.databases",
                 "panel.mail",
                 "panel.ftp",
+                "panel.backup",
             ],
         },
         Edition {
@@ -56,6 +58,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
                 "panel.databases",
                 "panel.mail",
                 "panel.ftp",
+                "panel.backup",
             ],
         },
     ],
@@ -90,7 +93,8 @@ mod tests {
                 "hosting_certificate",
                 "hosting_database",
                 "hosting_mail",
-                "hosting_ftp"
+                "hosting_ftp",
+                "hosting_backup"
             ]
         );
         assert_eq!(MANIFEST.bridges.len(), 1);
@@ -112,7 +116,8 @@ mod tests {
                 "panel.web",
                 "panel.databases",
                 "panel.mail",
-                "panel.ftp"
+                "panel.ftp",
+                "panel.backup"
             ]
         );
         let logo = MANIFEST.logo().expect("the logo asset");

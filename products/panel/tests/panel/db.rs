@@ -10,7 +10,7 @@ use crate::support::{
     PATIENCE, Site, composed, create, data, eventually, panel, rows, state_becomes,
 };
 
-const CLIENT: &str = "mariadb --batch --skip-column-names";
+const CLIENT: &str = "mariadb --batch --sandbox --skip-column-names";
 const PASSWORD: &str = "it's a \"pass\\word\"";
 
 fn statements(site: &Site) -> Vec<String> {

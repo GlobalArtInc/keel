@@ -54,6 +54,16 @@ pub(crate) fn feed(program: &Path, args: &[String], input: &[u8]) -> Result<Outp
     checked(program, output)
 }
 
+pub(crate) fn from_file(program: &Path, args: &[String], input: File) -> Result<Output, Failure> {
+    let output = command(program, args)
+        .stdin(Stdio::from(input))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| unavailable(program, &error))?;
+    checked(program, output)
+}
+
 pub(crate) fn into_file(program: &Path, args: &[String], out: File) -> Result<Output, Failure> {
     checked(program, redirected(program, args, Stdio::null(), out)?)
 }
@@ -202,6 +212,8 @@ mod tests {
         let file = File::create(&target).unwrap();
         into_file(&tool, &["a b".to_owned()], file).unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "a b|");
+        let output = from_file(&tool, &["-y".to_owned()], File::open(&target).unwrap()).unwrap();
+        assert_eq!(stdout(&output), "-y|a b|");
         write_tool(&tool, "#!/bin/sh\necho 'refused' >&2\nexit 1\n");
         let failure = feed(&tool, &[], b"x").unwrap_err();
         assert_eq!(failure.detail, "refused");

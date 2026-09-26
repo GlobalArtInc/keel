@@ -23,6 +23,8 @@ CERTS=/etc/ssl/keel
 CHALLENGES=/var/lib/keel-panel-acme
 DUMPS=/var/lib/keel-panel-dumps
 BACKUPS=/var/lib/keel/backups
+SITE_BACKUPS=/var/lib/keel-panel-backups
+SITE_MAILBOX=box@$DOMAIN
 DATABASE=${USER_NAME}_wp
 DATABASE_USER=${USER_NAME}_app
 SIBLING=${USER_NAME}xwp
@@ -62,13 +64,15 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh mail
        hack/panel-vm.sh ftp
        hack/panel-vm.sh files
+       hack/panel-vm.sh backup
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
 "install" installs nginx, php-fpm, mariadb, postfix, dovecot, vsftpd,
 libpam-pwdfile, curl, openssl and zstd, prepares $WWW, the certificate root
-$CERTS, the challenge root $CHALLENGES and the dump root $DUMPS, points postfix
+$CERTS, the challenge root $CHALLENGES, the dump root $DUMPS and the site
+backup root $SITE_BACKUPS, points postfix
 at the virtual maps under $MAIL_MAPS and dovecot, as the system user vmail, at
 the passwd-file $MAIL_PASSWD and the maildirs under $MAILDIRS through
 $MAIL_DROP_IN, writes $FTP_CONF for virtual users authenticated by the PAM
@@ -145,6 +149,23 @@ back. It finds a link $USER_NAME plants towards /etc refused as a path leaving
 the home, and a mode change of a file root placed in the home refused because
 the worker runs as $USER_NAME, then deletes the folder and the account, with
 the operations of host.home in the journal of $AGENT_UNIT.
+
+"backup" proves the site backups on the running installation. It creates an
+account with the hosting user $NAME, the site $DOMAIN, the database $DATABASE
+with a table and a row, the mail domain $DOMAIN with the mailbox
+$SITE_MAILBOX and a delivered mail, and in $DOC_ROOT an index, a link to it and
+a link to /etc/shadow, all written as $USER_NAME. It runs hosting.backup.create
+and finds the archive in $SITE_BACKUPS owned by keel with mode 0600 beside its
+digest owned by root with mode 0600, carrying the index, the dump of
+$DATABASE and the mail, the link to /etc/shadow as a link and nothing of
+/etc/shadow, and $DUMPS empty. It overwrites the index, removes the link,
+drops the table and removes the mail, appends one byte to the archive as keel
+and finds the restore failing with the index still overwritten, puts the
+archive back, runs hosting.backup.restore and finds the index, the link, the
+row and the mail back, owned by $USER_NAME and vmail, and the mariadb client
+refusing a shell escape under --sandbox. It sets a schedule keeping one archive,
+takes a second backup and finds the first archive gone, then deletes the
+account and finds the archives of the site removed.
 EOF
 }
 
@@ -184,7 +205,7 @@ install_keel() {
   printf '%s\n' "postfix postfix/main_mailer_type select Internet Site" "postfix postfix/mailname string $(hostname -f)" | debconf-set-selections
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile curl openssl zstd
   install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
-  install -d -m 0711 -o root -g root "$DUMPS"
+  install -d -m 0711 -o root -g root "$DUMPS" "$SITE_BACKUPS"
   install -d -m 0700 -o root -g root "$CERTS"
   prepare_mail
   prepare_ftp
@@ -379,6 +400,10 @@ serves_index() {
 
 task_done() {
   [ "$(call task.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "done" ]
+}
+
+task_failed() {
+  [ "$(call task.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "failed" ]
 }
 
 run_proof() {
@@ -828,6 +853,156 @@ ftp_proof() {
   say "panel's FTP is proven on this machine: a virtual user of vsftpd chrooted to a directory of its site as the site's user, a directory outside the site refused, the login refused while suspended and the removal with the account"
 }
 
+backup_state() {
+  call task.get "id=$1" 2>/dev/null | field "data.result.$2" 2>/dev/null
+}
+
+archive_of() {
+  printf '%s/keel-panel-%s.tar.zst' "$SITE_BACKUPS" "$1"
+}
+
+archive_placed() {
+  local archive
+  archive=$(archive_of "$1")
+  [ -f "$archive" ] && [ "$(stat -c '%U %a' "$archive")" = "keel 600" ]
+}
+
+seal_placed() {
+  local seal
+  seal=$SITE_BACKUPS/.keel-panel-$1.tar.zst.sha256
+  [ -f "$seal" ] && [ "$(stat -c '%U %a' "$seal")" = "root 600" ]
+}
+
+tamper_archive() {
+  local archive
+  archive=$(archive_of "$1")
+  cp -p "$archive" "$archive.orig" && runuser -u keel -- /bin/sh -c "printf x >> '$archive'"
+}
+
+untamper_archive() {
+  local archive
+  archive=$(archive_of "$1")
+  runuser -u keel -- /bin/sh -c "cat '$archive.orig' > '$archive'" && rm -f "$archive.orig"
+}
+
+defaced_index() {
+  [ "$(cat "$DOC_ROOT/index.php" 2>/dev/null)" = "defaced" ]
+}
+
+sandboxed_client() {
+  local marker=/tmp/keel-panel-escape-$STAMP
+  rm -f "$marker"
+  printf '\\! touch %s\nSELECT 1;\n' "$marker" | mariadb --batch --sandbox --skip-column-names >/dev/null 2>&1
+  [ ! -e "$marker" ]
+}
+
+archive_lists() {
+  tar --zstd -tvf "$(archive_of "$1")" | grep -qF -- "$2"
+}
+
+archive_holds_no_shadow() {
+  ! tar --zstd -xOf "$(archive_of "$1")" --wildcards 'files/*' 2>/dev/null | grep -qF -- "$(head -n 1 /etc/shadow)"
+}
+
+dumps_empty() {
+  [ -z "$(ls -A "$DUMPS")" ]
+}
+
+restored_index() {
+  [ "$(cat "$DOC_ROOT/index.php" 2>/dev/null)" = "backup-$STAMP" ] && [ "$(stat -c %U "$DOC_ROOT/index.php")" = "$USER_NAME" ]
+}
+
+restored_link() {
+  [ "$(readlink "$DOC_ROOT/home.php")" = "index.php" ] && [ "$(stat -c %U "$DOC_ROOT/home.php")" = "$USER_NAME" ]
+}
+
+restored_row() {
+  [ "$(mariadb --batch --skip-column-names -e "SELECT v FROM \`$DATABASE\`.proof" 2>/dev/null)" = "kept-$STAMP" ]
+}
+
+restored_mail() {
+  local found
+  found=$(grep -rlsF -- "backup-mail-$STAMP" "$MAILDIRS/keel-panel-$1/Maildir/new" | head -n 1)
+  [ -n "$found" ] && [ "$(stat -c %U "$found")" = "vmail" ]
+}
+
+backup_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  systemctl is-active --quiet mariadb || fail "mariadb is not running; run install first"
+  [ -d "$SITE_BACKUPS" ] || fail "$SITE_BACKUPS is missing; run install first"
+  local since account id site database domain mailbox task first second
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- a site with its files, a database and a mailbox"
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+  site=$(call hosting.site.create "user=$id" "domain=$DOMAIN" | field data.id) || fail "keel ctl hosting.site.create failed"
+  check "the site $DOMAIN turns active" eventually site_state_is "$site" active
+  database=$(call hosting.database.create "name=$DATABASE" | field data.id) || fail "keel ctl hosting.database.create failed"
+  check "the database $DATABASE turns active" eventually database_state_is "$database" active
+  check "mariadb has the database $DATABASE" database_exists
+  mariadb -e "CREATE TABLE \`$DATABASE\`.proof (v TEXT); INSERT INTO \`$DATABASE\`.proof VALUES ('kept-$STAMP')"
+  domain=$(call hosting.mail.domain.create "name=$DOMAIN" "account=$account" | field data.id) || fail "keel ctl hosting.mail.domain.create failed"
+  check "the mail domain $DOMAIN turns active" eventually mail_domain_state_is "$domain" active
+  mailbox=$(call hosting.mail.mailbox.create "domain=$domain" local=box "password=$MAIL_PASSWORD" | field data.id) || fail "keel ctl hosting.mail.mailbox.create failed"
+  check "the mailbox $SITE_MAILBOX turns active" eventually mailbox_state_is "$mailbox" active
+  send_mail "$SITE_MAILBOX" "backup-mail-$STAMP"
+  check "the mail reaches $SITE_MAILBOX" eventually delivered "$mailbox" "backup-mail-$STAMP"
+  runuser -u "$USER_NAME" -- /bin/sh -c "mkdir -p '$DOC_ROOT' && printf '%s' 'backup-$STAMP' > '$DOC_ROOT/index.php' && ln -sf index.php '$DOC_ROOT/home.php' && ln -sf /etc/shadow '$DOC_ROOT/shadow'"
+
+  say "--- a backup"
+  task=$(call hosting.backup.create "site=$site" | field data.task.id) || task=""
+  check "the backup task is done" eventually task_done "$task"
+  first=$(backup_state "$task" id)
+  check "the backup is ready" test "$(backup_state "$task" state)" = active
+  check "the archive lies in $SITE_BACKUPS owned by keel with mode 0600" archive_placed "$first"
+  check "the digest of the archive lies beside it owned by root with mode 0600" seal_placed "$first"
+  check "the archive carries the index" archive_lists "$first" "files/index.php"
+  check "the archive carries the dump of $DATABASE" archive_lists "$first" "databases/$DATABASE.sql"
+  check "the archive carries the mail of $SITE_MAILBOX" archive_lists "$first" "mail/$SITE_MAILBOX/Maildir/new/"
+  check "the link to /etc/shadow stays a link in the archive" archive_lists "$first" "files/shadow -> /etc/shadow"
+  check "the archive holds nothing of /etc/shadow" archive_holds_no_shadow "$first"
+  check "$DUMPS is empty again" dumps_empty
+
+  say "--- the restore"
+  runuser -u "$USER_NAME" -- /bin/sh -c "printf '%s' defaced > '$DOC_ROOT/index.php' && rm -f '$DOC_ROOT/home.php'"
+  mariadb -e "DROP TABLE \`$DATABASE\`.proof"
+  grep -rlsF -- "backup-mail-$STAMP" "$MAILDIRS/keel-panel-$mailbox/Maildir/new" | xargs -r rm -f
+  tamper_archive "$first" || fail "the archive could not be changed as keel"
+  task=$(call hosting.backup.restore "id=$first" | field data.task.id) || task=""
+  check "the restore of an archive keel changed fails" eventually task_failed "$task"
+  check "the index stays overwritten after the refused restore" defaced_index
+  untamper_archive "$first" || fail "the archive could not be put back"
+  task=$(call hosting.backup.restore "id=$first" | field data.task.id) || task=""
+  check "the restore task is done" eventually task_done "$task"
+  check "the index of the site is back after the restore, owned by $USER_NAME" restored_index
+  check "the link is back, owned by $USER_NAME" restored_link
+  check "the row of $DATABASE is back" restored_row
+  check "the mail is back, owned by vmail" restored_mail "$mailbox"
+  check "$DUMPS is empty after the restore" dumps_empty
+  check "the mariadb client refuses a shell escape under --sandbox" sandboxed_client
+
+  say "--- retention"
+  check "a schedule keeping one archive is set" call hosting.backup.schedule.create "site=$site" "schedule=0 3 * * *" keep=1
+  task=$(call hosting.backup.create "site=$site" | field data.task.id) || task=""
+  check "the second backup task is done" eventually task_done "$task"
+  second=$(backup_state "$task" id)
+  check "the second archive is kept" archive_placed "$second"
+  check "the first archive is removed" test ! -e "$(archive_of "$first")"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "the archives of the site are removed" eventually test ! -e "$(archive_of "$second")"
+  check "the agent journal carries the pack and the unpack" agent_logged "$since" "hosting.backup.unpack"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's site backups are proven on this machine: the files, a database and the mail of a site packed as the archive of the site, a link never followed, the restore as the site's user and vmail, retention by count and the removal with the account"
+}
+
 no_ftp_password_in_journal() {
   ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$FTP_PASSWORD"
 }
@@ -965,5 +1140,6 @@ case ${1:-} in
   mail) shift; mail_proof "$@" ;;
   ftp) shift; ftp_proof "$@" ;;
   files) shift; files_proof "$@" ;;
+  backup) shift; backup_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

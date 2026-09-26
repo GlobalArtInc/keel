@@ -79,6 +79,7 @@ impl Site {
             "ftp",
             "ftp-users",
             "transfer",
+            "backups",
         ] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
@@ -139,12 +140,12 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs}, ftp: {ftp}, ftp-users: {ftp_users}, transfer: {transfer} }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs}, ftp: {ftp}, ftp-users: {ftp_users}, transfer: {transfer}, backups: {backups} }}
   services: [nginx, php*-fpm, named, postfix, dovecot]
   checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"], postfix.check: [\"{bin}/postfix\", check], dovecot.check: [\"{bin}/doveconf\", -n], vsftpd.check: [\"{bin}/vsftpd\", /etc/vsftpd.conf, -v] }}
-  exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}, {{ postmap: [\"{bin}/postmap\", \"hash:{mail}/keel-panel-domains\", \"hash:{mail}/keel-panel-mailboxes\", \"hash:{mail}/keel-panel-aliases\"] }}, {{ mail.archive: [\"{bin}/tar\", --create, --file=-, \"--directory={maildirs}\", .] }}]
+  exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --sandbox, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}, {{ postmap: [\"{bin}/postmap\", \"hash:{mail}/keel-panel-domains\", \"hash:{mail}/keel-panel-mailboxes\", \"hash:{mail}/keel-panel-aliases\"] }}, {{ mail.archive: [\"{bin}/tar\", --create, --file=-, \"--directory={maildirs}\", .] }}]
   products:
-    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [ftp-users] }}
+    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [ftp-users], classes: {{ backup: {{ archives: backups, homes: www, maildirs: maildirs, dumps: dumps }} }} }}
     dns: {{ drop_in_prefix: keel-dns- }}
   tools:
     getent: {bin}/getent
@@ -172,6 +173,7 @@ impl Site {
             ftp = self.path("ftp").display(),
             ftp_users = self.path("ftp-users").display(),
             transfer = self.path("transfer").display(),
+            backups = self.path("backups").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )

@@ -295,7 +295,7 @@ fn accounts(mailboxes: &[mailbox::Model], config: &MailConfig) -> Vec<Account> {
         .collect()
 }
 
-fn maildir_of(id: &str) -> String {
+pub(crate) fn maildir_of(id: &str) -> String {
     format!("{DROP_IN_PREFIX}{id}")
 }
 

@@ -59,7 +59,8 @@
     "panel.web",
     "panel.databases",
     "panel.mail",
-    "panel.ftp"
+    "panel.ftp",
+    "panel.backup"
   ],
   "license": {
     "state": "none",
@@ -198,6 +199,20 @@
           "func": "hosting.ftp.list",
           "kind": "list",
           "icon": "upload"
+        },
+        {
+          "path": "panel/backups",
+          "label": "hosting.backup.list.title",
+          "func": "hosting.backup.list",
+          "kind": "list",
+          "icon": "archive"
+        },
+        {
+          "path": "panel/backup-schedules",
+          "label": "hosting.backup.schedule.list.title",
+          "func": "hosting.backup.schedule.list",
+          "kind": "list",
+          "icon": "calendar"
         }
       ]
     },

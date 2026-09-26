@@ -1,3 +1,4 @@
+pub mod api;
 mod config;
 mod database;
 mod databases;
@@ -7,6 +8,7 @@ mod lifecycle;
 mod limit;
 mod login;
 mod logins;
+mod lookup;
 mod names;
 
 use keel::prelude::*;
@@ -16,6 +18,7 @@ use keel_hosting_users::api::HostingUsers;
 
 use config::{DatabaseConfig, SECTION};
 use host::Dumps;
+use lookup::Lookup;
 
 const PRODUCT: &str = "panel";
 const USER_PREFIX: &str = "hp_";
@@ -42,6 +45,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let started = Arc::clone(&dumps);
     r.require::<dyn HostExecutor>()
         .require::<dyn HostingUsers>()
+        .provide::<dyn api::Databases>(Arc::new(Lookup))
         .function(databases::list())
         .function(databases::create())
         .function(databases::delete())

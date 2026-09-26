@@ -13,6 +13,7 @@ keel = { workspace = true }
 keel-dns-local = { workspace = true }
 keel-dns-peer = { workspace = true }
 keel-host = { workspace = true }
+keel-hosting-backup = { workspace = true }
 keel-hosting-db = { workspace = true }
 keel-hosting-ftp = { workspace = true }
 keel-hosting-mail = { workspace = true }
@@ -26,5 +27,7 @@ keel-system = { workspace = true, features = ["auth", "settings", "audit", "task
 keel-testkit = { workspace = true }
 rcgen = { workspace = true }
 rustls = { workspace = true }
+tar = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
+zstd = { workspace = true }

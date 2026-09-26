@@ -1,9 +1,11 @@
+pub mod api;
 mod config;
 mod domain;
 mod domains;
 mod host;
 mod lifecycle;
 mod limit;
+mod lookup;
 mod mailbox;
 mod mailboxes;
 mod names;
@@ -15,6 +17,7 @@ use keel_hosting_web::api::DnsProvider;
 
 use config::{MailConfig, SECTION};
 use host::{DOVECOT_CHECK, MAP_TEMPLATE, Mail, PASSWD_TEMPLATE, POSTFIX_CHECK};
+use lookup::Lookup;
 
 const PRODUCT: &str = "panel";
 const FEATURE: &str = "panel.mail";
@@ -47,6 +50,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let archived = Arc::clone(&mail);
     r.require::<dyn HostExecutor>()
         .require::<dyn DnsProvider>()
+        .provide::<dyn api::Mailboxes>(Arc::new(Lookup))
         .function(domains::list())
         .function(domains::create(Arc::clone(&mail)))
         .function(domains::delete(Arc::clone(&mail)))

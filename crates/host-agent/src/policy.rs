@@ -563,6 +563,16 @@ policy:
             ["ftp-users"]
         );
         assert_eq!(
+            policy.root("backups"),
+            Some(Path::new("/var/lib/keel-panel-backups"))
+        );
+        assert_eq!(
+            policy.product("panel").unwrap().classes.get("backup"),
+            Some(
+                &serde_json::json!({ "archives": "backups", "homes": "www", "maildirs": "maildirs", "dumps": "dumps" })
+            )
+        );
+        assert_eq!(
             policy.check("vsftpd.check"),
             Some(
                 [

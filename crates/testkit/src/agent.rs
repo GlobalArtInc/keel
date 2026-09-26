@@ -101,6 +101,10 @@ impl AgentScope for Scope<'_, '_> {
             .resolve(root, name)
             .map_err(|failure| AgentOpError::new(failure.key(), failure.detail()))
     }
+
+    fn caller_uid(&self) -> u32 {
+        self.0.caller_uid()
+    }
 }
 
 fn operation(op: AgentOp) -> Operation {

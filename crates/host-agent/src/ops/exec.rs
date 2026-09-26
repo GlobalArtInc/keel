@@ -7,7 +7,7 @@ use nix::fcntl::OFlag;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{Call, Dest};
+use super::{Call, Dest, seal};
 use crate::process;
 use crate::protocol::Failure;
 
@@ -30,7 +30,7 @@ pub(super) fn exec(call: &Call<'_>, args: Exec) -> Result<Value, Failure> {
         .split_first()
         .ok_or_else(|| Failure::policy(format!("the entry {} has no binary", args.name)))?;
     if let Some(dest) = &args.dest {
-        let bytes = capture(call, dest, Path::new(program), rest)?;
+        let bytes = capture(call, dest, Path::new(program), rest, false)?;
         return Ok(json!({ "bytes": bytes }));
     }
     let output = process::succeed(Path::new(program), rest)?;
@@ -42,8 +42,9 @@ pub(super) fn capture(
     dest: &Dest,
     program: &Path,
     args: &[String],
+    sealed: bool,
 ) -> Result<u64, Failure> {
-    capture_with(call, dest, |file| {
+    capture_with(call, dest, sealed, |file| {
         process::into_file(program, args, file).map(drop)
     })
 }
@@ -51,6 +52,7 @@ pub(super) fn capture(
 pub(super) fn capture_with(
     call: &Call<'_>,
     dest: &Dest,
+    sealed: bool,
     run: impl FnOnce(File) -> Result<(), Failure>,
 ) -> Result<u64, Failure> {
     let target = call.resolve(dest)?;
@@ -61,20 +63,32 @@ pub(super) fn capture_with(
         return Err(Failure::io(temporary.display(), &error));
     }
     let file = OpenOptions::new()
+        .read(true)
         .write(true)
         .create_new(true)
         .mode(CAPTURE_MODE)
         .custom_flags(OFlag::O_NOFOLLOW.bits())
         .open(&temporary)
         .map_err(|error| Failure::io(temporary.display(), &error))?;
-    let written = fchown(&file, Some(call.admitted), None)
+    let written = file
+        .try_clone()
         .map_err(|error| Failure::io(temporary.display(), &error))
-        .and_then(|()| run(file))
+        .and_then(|mut kept| {
+            run(file)?;
+            if sealed {
+                seal::record(&target, &mut kept)?;
+            }
+            fchown(&kept, Some(call.admitted), None)
+                .map_err(|error| Failure::io(temporary.display(), &error))
+        })
         .and_then(|()| {
             fs::rename(&temporary, &target).map_err(|error| Failure::io(target.display(), &error))
         });
     if let Err(failure) = written {
         let _ = fs::remove_file(&temporary);
+        if sealed {
+            let _ = seal::discard(&target);
+        }
         return Err(failure);
     }
     Ok(fs::symlink_metadata(&target)

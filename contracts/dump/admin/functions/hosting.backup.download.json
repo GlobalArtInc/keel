@@ -1,0 +1,49 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.download",
+  "module": "hosting_backup",
+  "kind": "download",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.read",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "DownloadFile",
+    "type": "object",
+    "properties": {
+      "filename": {
+        "type": "string"
+      },
+      "contentType": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "filename",
+      "contentType"
+    ]
+  }
+}

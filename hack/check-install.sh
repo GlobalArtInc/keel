@@ -104,7 +104,7 @@ check "host-vm.sh expects that check in the installed policy" grep -qF 'named.ch
 check "deploy/agent.yaml names the check of the server blocks on nginx" grep -qF 'nginx.test: ["nginx", "-t"]' deploy/agent.yaml
 check "deploy/agent.yaml carries the certificate and challenge roots of the panel" grep -qF 'certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme' deploy/agent.yaml
 check "deploy/agent.yaml carries the database dump root of the panel" grep -qF 'dumps: /var/lib/keel-panel-dumps' deploy/agent.yaml
-check "deploy/agent.yaml lets mariadb.exec run the mariadb client and dump" grep -qF '{ mariadb: [mariadb, --batch, --skip-column-names] }, { mariadb-dump: [mariadb-dump, ' deploy/agent.yaml
+check "deploy/agent.yaml lets mariadb.exec run the mariadb client and dump" grep -qF '{ mariadb: [mariadb, --batch, --sandbox, --skip-column-names] }, { mariadb-dump: [mariadb-dump, ' deploy/agent.yaml
 check "deploy/agent.yaml carries the passwd-file and maildir roots of the panel" grep -qF 'mail: /etc/postfix/keel, dovecot: /etc/dovecot/keel, maildirs: /var/lib/keel-panel-mail' deploy/agent.yaml
 check "deploy/agent.yaml names the checks of postfix and dovecot" grep -qF 'postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"]' deploy/agent.yaml
 check "deploy/agent.yaml lets postmap build the three virtual maps" grep -qF '{ postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }' deploy/agent.yaml
@@ -112,7 +112,8 @@ check "deploy/agent.yaml lets the maildirs be archived to standard output" grep 
 check "deploy/agent.yaml carries the user file and the per-account files of vsftpd" grep -qF 'ftp: /etc/vsftpd/keel, ftp-users: /etc/vsftpd/keel-users' deploy/agent.yaml
 check "deploy/agent.yaml carries the transfer root the file manager stages uploads and downloads in" grep -qF 'transfer: /var/lib/keel-panel-transfer' deploy/agent.yaml
 check "deploy/agent.yaml names the check of vsftpd" grep -qF 'vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"]' deploy/agent.yaml
-check "deploy/agent.yaml names the per-account files of vsftpd after the accounts of the panel" grep -qF 'panel: { user_prefix: hp_, account_roots: [ftp-users], drop_in_prefix: keel-panel- }' deploy/agent.yaml
+check "deploy/agent.yaml names the per-account files of vsftpd after the accounts of the panel" grep -qF 'panel: { user_prefix: hp_, account_roots: [ftp-users], classes: { backup: { archives: backups, homes: www, maildirs: maildirs, dumps: dumps } }, drop_in_prefix: keel-panel- }' deploy/agent.yaml
+check "deploy/agent.yaml carries the archive root of the site backups" grep -qF 'backups: /var/lib/keel-panel-backups }' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do
   check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
   check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml
@@ -191,6 +192,9 @@ check "panel-vm.sh proves the removal with the account" grep -qF 'check "$USER_N
 check "panel-vm.sh proves nginx serving an issued certificate" grep -qF 'check "nginx serves the issued certificate"' hack/panel-vm.sh
 check "panel-vm.sh proves a database user reaching its database" grep -qF 'check "$DATABASE_USER creates a table in $DATABASE with its password"' hack/panel-vm.sh
 check "panel-vm.sh proves an FTP session chrooted to its site" grep -qF 'check "/ of the session is $FTP_CHROOT with nothing of the host above it"' hack/panel-vm.sh
+check "panel-vm.sh proves a site restored from its backup" grep -qF 'check "the index of the site is back after the restore, owned by $USER_NAME"' hack/panel-vm.sh
+check "panel-vm.sh proves an archive changed by keel is not restored" grep -qF 'check "the restore of an archive keel changed fails"' hack/panel-vm.sh
+check "panel-vm.sh proves the mariadb client of the agent runs sandboxed" grep -qF 'check "the mariadb client refuses a shell escape under --sandbox"' hack/panel-vm.sh
 check "install-vm.sh runs the installer through curl and bash from the served channel" grep -qF 'curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/"' hack/install-vm.sh
 check "install-vm.sh checks that root runs keel privileged alone" grep -qF 'check "root runs keel privileged and nothing else of keel"' hack/install-vm.sh
 check "install-vm.sh follows the setup link" grep -qF 'check "keel.setup.admin with the key creates the first administrator"' hack/install-vm.sh

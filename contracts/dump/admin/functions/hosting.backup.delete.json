@@ -1,0 +1,51 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.delete",
+  "module": "hosting_backup",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.manage",
+    "feature": "panel.backup"
+  },
+  "key": "ids",
+  "params": {
+    "title": "Batch",
+    "type": "object",
+    "properties": {
+      "ids": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Id"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "ids"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Deleted",
+    "type": "object",
+    "properties": {
+      "deleted": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "deleted"
+    ]
+  }
+}

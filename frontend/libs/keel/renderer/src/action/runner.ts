@@ -5,6 +5,7 @@ import { entityPrefix, type Action, type Descriptor, type Envelope } from '@glob
 import { PhxConfirmService, PhxToastService, type PhxConfirmOptions } from '@globalart/phoenix-ui';
 import { firstValueFrom } from 'rxjs';
 import { CONFIRM_COUNT_KEY, CONFIRM_MANY_KEY, CONFIRM_ONE_KEY, describeError } from '../messages';
+import { KeelDownloads } from '../tasks/download';
 import { KeelTasks } from '../tasks/follow';
 
 export const ROW_PLACEHOLDER = '$id';
@@ -65,6 +66,7 @@ export class KeelActionRunner {
   private readonly confirms = inject(PhxConfirmService);
   private readonly toasts = inject(PhxToastService);
   private readonly tasks = inject(KeelTasks);
+  private readonly downloads = inject(KeelDownloads);
 
   label(request: ActionRequest): string {
     return this.i18n.t(labelKeyOf(request.descriptor, request.action));
@@ -77,6 +79,10 @@ export class KeelActionRunner {
     }
     const label = this.label(request);
     if (!(await this.confirmed(request, label))) {
+      return null;
+    }
+    if (request.action.role === 'download') {
+      await this.downloads.save({ function: func, params: bodyOf(request) }, label);
       return null;
     }
     const envelope = await firstValueFrom(

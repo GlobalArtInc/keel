@@ -133,7 +133,7 @@ pub(super) fn read(call: &Call<'_>, args: Read) -> Result<Value, Failure> {
     let path = locate(&account, &args.path, Follow::Target)?;
     let argv = worker(call, &account, READ, &[&path])?;
     let keel = &call.policy.tools().keel;
-    let bytes = capture_with(call, &args.dest, |file| {
+    let bytes = capture_with(call, &args.dest, false, |file| {
         settle(process::redirected(keel, &argv, Stdio::null(), file)?).map(drop)
     })?;
     Ok(json!({ "bytes": bytes }))

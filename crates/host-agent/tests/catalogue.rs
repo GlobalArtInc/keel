@@ -37,6 +37,7 @@ struct Stat {
     name: String,
     lines: usize,
     bytes: usize,
+    owner: u32,
 }
 
 fn stat(scope: &dyn AgentScope, args: StatArgs) -> Result<Stat, AgentOpError> {
@@ -59,6 +60,7 @@ fn stat(scope: &dyn AgentScope, args: StatArgs) -> Result<Stat, AgentOpError> {
         name: args.name,
         lines: text.lines().count(),
         bytes: text.len(),
+        owner: scope.caller_uid(),
     })
 }
 
@@ -140,6 +142,10 @@ impl AgentScope for Scope<'_, '_> {
         self.0
             .resolve(root, name)
             .map_err(|failure| AgentOpError::new(failure.key(), failure.detail()))
+    }
+
+    fn caller_uid(&self) -> u32 {
+        self.0.caller_uid()
     }
 }
 
@@ -346,7 +352,15 @@ fn write_stubs(root: &Path) {
     stub(
         root,
         "mariadb",
-        "input=$(cat)\n{ printf 'mariadb|'; printf '%s|' \"$@\"; printf '\\n%s\\n' \"$input\"; } >> LOG\nif [ -e ROOT/fail-mariadb ]; then rm -f ROOT/fail-mariadb; printf \"ERROR 1064 (42000) at line 2: You have an error near '%s'\\n%s\\n\" \"$input\" \"$input\" >&2; exit 1; fi\n",
+        r#"input=$(cat)
+{ printf 'mariadb|'; printf '%s|' "$@"; printf '\n%s\n' "$input"; } >> LOG
+if [ -e ROOT/fail-mariadb ]; then rm -f ROOT/fail-mariadb; printf "ERROR 1064 (42000) at line 2: You have an error near '%s'\n%s\n" "$input" "$input" >&2; exit 1; fi
+case " $* " in *" --sandbox "*) sandboxed=1;; *) sandboxed=0;; esac
+if printf '%s\n' "$input" | grep -q '^\\!'; then
+  if [ $sandboxed = 1 ]; then echo 'ERROR at line 1: Not allowed in the sandbox mode' >&2; exit 1; fi
+  printf '%s\n' "$input" | sed -n 's/^\\!//p' | sh
+fi
+"#,
     );
     stub(
         root,
@@ -494,7 +508,7 @@ fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root()
     let line = site.audit_line(site.last_id());
     assert!(line.contains("op=mariadb.exec"), "{line}");
     assert!(line.contains("outcome=ok"), "{line}");
-    let client = "mariadb|--batch|";
+    let client = "mariadb|--batch|--sandbox|";
     assert_eq!(
         site.calls(),
         [
@@ -599,12 +613,189 @@ fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root()
         site.calls().last().map(String::as_str),
         Some("mariadb-dump|--single-transaction|kd_site_wp|")
     );
+    let seal = site.root().join("dumps/.keel-demo-1.sql.sha256");
+    assert_eq!(
+        fs::read_to_string(&seal).expect("the digest of the dump"),
+        sha256(text.as_bytes())
+    );
+    let meta = fs::metadata(&seal).expect("the digest metadata");
+    assert_eq!(meta.mode() & 0o777, 0o600);
+    assert_eq!(meta.uid(), own_uid());
+    let answer = site.call(
+        "host.fs.remove",
+        "demo",
+        json!({ "dest": { "root": "dumps", "name": "keel-demo-1.sql" } }),
+    );
+    assert_eq!(data(&answer), &json!({ "removed": true }));
+    assert!(!dumped.exists());
+    assert!(!seal.exists(), "the digest leaves with the dump");
     let answer = site.call(
         "mariadb.exec",
         "demo",
         json!({ "statement": "dump", "database": "kd_site_wp", "dest": { "root": "dumps", "name": "../x.sql" } }),
     );
     refused(&answer, "host.error.policy");
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn sealed_dump(site: &Site, name: &str, content: &str) -> PathBuf {
+    let dump = site.root().join("dumps").join(name);
+    fs::write(&dump, content).expect("a dump");
+    fs::set_permissions(&dump, fs::Permissions::from_mode(0o600)).expect("the dump mode");
+    let seal = site.root().join("dumps").join(format!(".{name}.sha256"));
+    fs::write(&seal, sha256(content.as_bytes())).expect("the digest");
+    fs::set_permissions(&seal, fs::Permissions::from_mode(0o600)).expect("the digest mode");
+    dump
+}
+
+#[test]
+fn mariadb_exec_imports_only_a_dump_the_agent_sealed_into_one_database() {
+    let mut site = Site::start("import");
+    let dump = sealed_dump(
+        &site,
+        "keel-demo-2.sql",
+        "DROP TABLE IF EXISTS `t`;\nCREATE TABLE `t` (a INT);\n",
+    );
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-2.sql" } }),
+    );
+    assert_eq!(data(&answer), &json!({}));
+    assert_eq!(
+        site.calls(),
+        [
+            "mariadb|--batch|--sandbox|kd_site_wp|",
+            "DROP TABLE IF EXISTS `t`;",
+            "CREATE TABLE `t` (a INT);",
+        ]
+    );
+    std::os::unix::fs::symlink(&dump, site.root().join("dumps/keel-demo-3.sql")).expect("a link");
+    sealed_dump(&site, "keel-demo-4.sql", "CREATE TABLE `u` (a INT);\n");
+    fs::write(
+        site.root().join("dumps/keel-demo-4.sql"),
+        "CREATE TABLE `u` (a INT);\r",
+    )
+    .expect("one byte changed");
+    sealed_dump(&site, "keel-demo-5.sql", "CREATE TABLE `v` (a INT);\n");
+    fs::set_permissions(
+        site.root().join("dumps/keel-demo-5.sql"),
+        fs::Permissions::from_mode(0o620),
+    )
+    .expect("a dump its group may write");
+    sealed_dump(&site, "keel-demo-6.sql", "CREATE TABLE `w` (a INT);\n");
+    fs::remove_file(site.root().join("dumps/.keel-demo-6.sql.sha256")).expect("no digest");
+    sealed_dump(&site, "keel-demo-7.sql", "CREATE TABLE `x` (a INT);\n");
+    fs::copy(
+        site.root().join("dumps/keel-demo-7.sql"),
+        site.root().join("notes/keel-demo-7.sql"),
+    )
+    .expect("a copy in another root");
+    fs::copy(
+        site.root().join("dumps/.keel-demo-7.sql.sha256"),
+        site.root().join("notes/.keel-demo-7.sql.sha256"),
+    )
+    .expect("its digest in another root");
+    for (args, key) in [
+        (
+            json!({ "statement": "import", "database": "mysql", "source": { "root": "dumps", "name": "keel-demo-2.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "../keel-demo-2.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-3.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-4.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-5.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-6.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "notes", "name": "keel-demo-7.sql" } }),
+            "host.error.policy",
+        ),
+        (
+            json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-absent.sql" } }),
+            "host.error.io",
+        ),
+    ] {
+        let answer = site.call("mariadb.exec", "demo", args.clone());
+        refused(&answer, key);
+        let line = site.audit_line(site.last_id());
+        assert!(line.contains(&format!("outcome={key}")), "{args}: {line}");
+    }
+    assert_eq!(site.calls().len(), 3, "{:?}", site.calls());
+}
+
+#[test]
+fn mariadb_exec_refuses_to_import_a_file_written_by_host_fs_write() {
+    let mut site = Site::start("forged");
+    let marker = site.root().join("forged-marker");
+    let content = format!(
+        "\\! touch {}\nGRANT ALL ON *.* TO 'kd_site'@'localhost' WITH GRANT OPTION;\n",
+        marker.display()
+    );
+    let answer = site.call(
+        "host.fs.write",
+        "demo",
+        json!({ "dest": { "root": "dumps", "name": "keel-demo-forged.sql" }, "content": content }),
+    );
+    assert_eq!(data(&answer), &json!({ "changed": true }));
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-forged.sql" } }),
+    );
+    let detail = refused(&answer, "host.error.policy");
+    assert!(detail.contains("no digest"), "{detail}");
+    let line = site.audit_line(site.last_id());
+    assert!(line.contains("outcome=host.error.policy"), "{line}");
+    assert!(site.calls().is_empty(), "{:?}", site.calls());
+    assert!(!marker.exists());
+}
+
+#[test]
+fn mariadb_exec_runs_the_client_sandboxed_so_a_shell_escape_in_a_dump_runs_nothing() {
+    let mut site = Site::start("sandbox");
+    let marker = site.root().join("escape-marker");
+    sealed_dump(
+        &site,
+        "keel-demo-escape.sql",
+        &format!(
+            "\\! touch {}\nCREATE TABLE `t` (a INT);\n",
+            marker.display()
+        ),
+    );
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "import", "database": "kd_site_wp", "source": { "root": "dumps", "name": "keel-demo-escape.sql" } }),
+    );
+    let detail = refused(&answer, "host.error.exec_failed");
+    assert!(detail.contains("sandbox"), "{detail}");
+    assert_eq!(
+        site.calls().first().map(String::as_str),
+        Some("mariadb|--batch|--sandbox|kd_site_wp|")
+    );
+    assert!(!marker.exists(), "the shell escape ran");
 }
 
 #[test]
@@ -936,7 +1127,7 @@ fn a_product_agent_op_is_executed_under_its_policy_class_and_audited() {
     let answer = site.call(DIGEST_STAT, "demo", json!({ "name": DIGEST_FILE }));
     assert_eq!(
         data(&answer),
-        &json!({ "product": "demo", "name": DIGEST_FILE, "lines": 3, "bytes": 14 })
+        &json!({ "product": "demo", "name": DIGEST_FILE, "lines": 3, "bytes": 14, "owner": own_uid() })
     );
     let line = site.audit_line(site.last_id());
     for field in [

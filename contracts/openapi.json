@@ -5550,6 +5550,1168 @@
         }
       }
     },
+    "/api/v1/call/hosting.backup.create": {
+      "post": {
+        "operationId": "hosting.backup.create",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SitePick",
+                "type": "object",
+                "properties": {
+                  "site": {
+                    "$ref": "#/components/schemas/Id",
+                    "x-keel": {
+                      "options": "hosting.backup.sites"
+                    }
+                  }
+                },
+                "required": [
+                  "site"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingBackup",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "siteId": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "bytes": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "format": "int64"
+                        },
+                        "databases": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mailboxes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "scheduled": {
+                          "type": "boolean"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "siteId",
+                        "domain",
+                        "databases",
+                        "mailboxes",
+                        "scheduled",
+                        "state",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.delete": {
+      "post": {
+        "operationId": "hosting.backup.delete",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Batch",
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/x/hosting_backup/download": {
+      "get": {
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "download",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          },
+          "result": {
+            "title": "DownloadFile",
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "filename",
+              "contentType"
+            ]
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file is streamed under Content-Type and Content-Disposition; the metadata of the result schema names it.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "hosting.backup.download.get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "The parameters as one JSON object; bare pairs of the query are accepted instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Pick",
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/components/schemas/Id"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "download",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          },
+          "result": {
+            "title": "DownloadFile",
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "filename",
+              "contentType"
+            ]
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file is streamed under Content-Type and Content-Disposition; the metadata of the result schema names it.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "hosting.backup.download",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.list": {
+      "post": {
+        "operationId": "hosting.backup.list",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_HostingBackup",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HostingBackup"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.restore": {
+      "post": {
+        "operationId": "hosting.backup.restore",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Restored",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "databases": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "mailboxes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "files",
+                        "databases",
+                        "mailboxes"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.schedule.create": {
+      "post": {
+        "operationId": "hosting.backup.schedule.create",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ScheduleCreate",
+                "type": "object",
+                "properties": {
+                  "site": {
+                    "$ref": "#/components/schemas/Id",
+                    "x-keel": {
+                      "options": "hosting.backup.sites"
+                    }
+                  },
+                  "schedule": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "keep": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 1,
+                    "maximum": 30,
+                    "default": 7
+                  }
+                },
+                "required": [
+                  "site",
+                  "schedule"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingBackupSchedule",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "siteId": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "schedule": {
+                          "type": "string"
+                        },
+                        "keep": {
+                          "type": "integer",
+                          "format": "int32"
+                        },
+                        "nextAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "siteId",
+                        "domain",
+                        "schedule",
+                        "keep",
+                        "nextAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.schedule.delete": {
+      "post": {
+        "operationId": "hosting.backup.schedule.delete",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Batch",
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.schedule.edit": {
+      "post": {
+        "operationId": "hosting.backup.schedule.edit",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.manage",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ScheduleEdit",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "schedule": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "keep": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 1,
+                    "maximum": 30,
+                    "default": 7
+                  }
+                },
+                "required": [
+                  "id",
+                  "schedule"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingBackupSchedule",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "siteId": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "schedule": {
+                          "type": "string"
+                        },
+                        "keep": {
+                          "type": "integer",
+                          "format": "int32"
+                        },
+                        "nextAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "siteId",
+                        "domain",
+                        "schedule",
+                        "keep",
+                        "nextAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.schedule.get": {
+      "post": {
+        "operationId": "hosting.backup.schedule.get",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingBackupSchedule",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "siteId": {
+                          "type": "string"
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "schedule": {
+                          "type": "string"
+                        },
+                        "keep": {
+                          "type": "integer",
+                          "format": "int32"
+                        },
+                        "nextAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "siteId",
+                        "domain",
+                        "schedule",
+                        "keep",
+                        "nextAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.schedule.list": {
+      "post": {
+        "operationId": "hosting.backup.schedule.list",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_HostingBackupSchedule",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HostingBackupSchedule"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.backup.sites": {
+      "post": {
+        "operationId": "hosting.backup.sites",
+        "tags": [
+          "hosting_backup"
+        ],
+        "x-keel": {
+          "kind": "options",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.backup.read",
+            "feature": "panel.backup"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OptionsQuery",
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "default": 20
+                  },
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Choices",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Choice"
+                          }
+                        },
+                        "more": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "more"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/hosting.certificate.delete": {
       "post": {
         "operationId": "hosting.certificate.delete",
@@ -18779,6 +19941,121 @@
           "granted",
           "createdAt",
           "createdBy"
+        ]
+      },
+      "HostingBackup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "databases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mailboxes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scheduled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "databases",
+          "mailboxes",
+          "scheduled",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "HostingBackupSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "keep": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "schedule",
+          "keep",
+          "nextAt",
+          "createdAt",
+          "updatedAt"
         ]
       },
       "HostingCertificate": {

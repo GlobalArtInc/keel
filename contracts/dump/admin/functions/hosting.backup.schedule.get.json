@@ -1,0 +1,81 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.schedule.get",
+  "module": "hosting_backup",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.read",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingBackupSchedule",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "schedule": {
+        "type": "string"
+      },
+      "keep": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "nextAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "schedule",
+      "keep",
+      "nextAt",
+      "createdAt",
+      "updatedAt"
+    ]
+  }
+}

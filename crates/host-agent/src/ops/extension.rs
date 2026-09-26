@@ -77,6 +77,10 @@ impl OperationCall<'_> {
         self.policy
     }
 
+    pub fn caller_uid(&self) -> u32 {
+        self.call.admitted
+    }
+
     pub fn resolve(&self, root: &str, name: &str) -> Result<PathBuf, Failure> {
         self.call.resolve(&Dest {
             root: root.to_owned(),

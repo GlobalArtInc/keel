@@ -1,3 +1,4 @@
+mod backup;
 mod bridge;
 mod db;
 mod files;

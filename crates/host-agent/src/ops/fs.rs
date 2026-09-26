@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::files::{Kind, Placement, Previous, place, settle};
-use super::{Call, Dest};
+use super::{Call, Dest, seal};
 use crate::protocol::{ERROR_IO, ERROR_NOT_FOUND, Failure};
 
 #[derive(Debug, Deserialize)]
@@ -118,6 +118,9 @@ pub(super) fn remove(call: &Call<'_>, args: Remove) -> Result<Value, Failure> {
         fs::remove_file(&target)
     };
     removed.map_err(|error| Failure::io(target.display(), &error))?;
+    if !meta.is_dir() {
+        seal::discard(&target)?;
+    }
     Ok(json!({ "removed": true }))
 }
 

@@ -283,6 +283,8 @@ impl Sites for Renderer {
         Ok(Some(DocumentRoot {
             user,
             path: document_path(&home, &row.root)?,
+            root: names::root(&row.root)?,
+            home,
         }))
     }
 }

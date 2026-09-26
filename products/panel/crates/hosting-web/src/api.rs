@@ -52,6 +52,8 @@ pub trait SiteCertificates: Send + Sync {
 pub struct DocumentRoot {
     pub user: String,
     pub path: String,
+    pub home: String,
+    pub root: String,
 }
 
 #[async_trait]

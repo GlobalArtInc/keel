@@ -50,7 +50,8 @@
     "panel.web",
     "panel.databases",
     "panel.mail",
-    "panel.ftp"
+    "panel.ftp",
+    "panel.backup"
   ],
   "license": {
     "state": "none",

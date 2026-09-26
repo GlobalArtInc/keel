@@ -1,0 +1,217 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.list",
+  "module": "hosting_backup",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.read",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingBackup",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingBackup"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingBackup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "databases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mailboxes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scheduled": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "databases",
+          "mailboxes",
+          "scheduled",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.backup.list.title",
+    "search": [
+      "domain"
+    ],
+    "columns": [
+      {
+        "key": "domain",
+        "type": "text",
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "createdAt",
+        "type": "datetime",
+        "sortable": true
+      },
+      {
+        "key": "bytes",
+        "type": "number",
+        "sortable": true
+      },
+      {
+        "key": "scheduled",
+        "type": "boolean"
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.backup.create",
+        "icon": "plus"
+      },
+      {
+        "id": "download",
+        "role": "download",
+        "function": "hosting.backup.download",
+        "params": {
+          "id": "$id"
+        }
+      },
+      {
+        "id": "restore",
+        "role": "button",
+        "function": "hosting.backup.restore",
+        "icon": "history",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": {
+          "destructive": true,
+          "items": "domain"
+        }
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.backup.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "domain",
+          "input": "count"
+        }
+      },
+      {
+        "id": "refresh",
+        "role": "refresh"
+      }
+    ],
+    "row_actions": [
+      "download",
+      "restore",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.backup.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.backup.*"
+    ]
+  }
+}

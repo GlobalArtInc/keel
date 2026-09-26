@@ -8,6 +8,7 @@ mod home;
 mod mariadb;
 mod pkg;
 mod quota;
+mod seal;
 mod service;
 mod template;
 mod user;

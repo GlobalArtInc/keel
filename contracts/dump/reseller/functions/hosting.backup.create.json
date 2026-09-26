@@ -1,0 +1,116 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.create",
+  "module": "hosting_backup",
+  "kind": "form",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.manage",
+    "feature": "panel.backup"
+  },
+  "params": {
+    "title": "SitePick",
+    "type": "object",
+    "properties": {
+      "site": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.backup.sites"
+        }
+      }
+    },
+    "required": [
+      "site"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingBackup",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "bytes": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int64"
+      },
+      "databases": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "mailboxes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "scheduled": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "databases",
+      "mailboxes",
+      "scheduled",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.backup.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "site"
+        ]
+      }
+    ],
+    "result": "task"
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "keel": 1,
+  "name": "hosting.backup.schedule.list",
+  "module": "hosting_backup",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.backup.read",
+    "feature": "panel.backup"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingBackupSchedule",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingBackupSchedule"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingBackupSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "schedule": {
+            "type": "string"
+          },
+          "keep": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nextAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "schedule",
+          "keep",
+          "nextAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.backup.schedule.list.title",
+    "search": [
+      "domain"
+    ],
+    "columns": [
+      {
+        "key": "domain",
+        "type": "link",
+        "to": {
+          "screen": "hosting.backup.schedule.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "schedule",
+        "type": "text"
+      },
+      {
+        "key": "keep",
+        "type": "number"
+      },
+      {
+        "key": "nextAt",
+        "type": "datetime",
+        "sortable": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.backup.schedule.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "hosting.backup.schedule.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.backup.schedule.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "domain"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.backup.schedule.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.backup.*"
+    ]
+  }
+}
