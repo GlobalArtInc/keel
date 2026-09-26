@@ -190,7 +190,7 @@ impl Site {
         capture_journal();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let root = dir.path();
-        for sub in ["zones", "notes", "bin", "cron.d", "templates/note"] {
+        for sub in ["zones", "notes", "dumps", "bin", "cron.d", "templates/note"] {
             fs::create_dir_all(root.join(sub)).expect("the tree");
         }
         let uid = own_uid();
@@ -211,7 +211,7 @@ impl Site {
         .expect("the package archive");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, notes: {root}/notes }}\n  services: [named]\n  checks: {{ {DIGEST_CHECK}: [\"{root}/bin/digest-check\"], other.check: [\"{root}/bin/other-check\"] }}\n  exec_allow:\n    - uname\n    - {{ note.recompute: [/opt/keel/bin/current, ctl, note.recompute] }}\n    - {{ note.stamp: [/usr/bin/logger, -t, note, \"it's 100%\"] }}\n    - {{ certbot.renew: [\"{root}/bin/certbot\", renew, --quiet, --deploy-hook, \"systemctl reload nginx\"] }}\n    - {{ broken: [\"{root}/bin/broken\"] }}\n  products:\n    demo: {{ user_prefix: kd_, drop_in_prefix: keel-demo-, classes: {{ {DIGEST_CLASS}: {{ root: notes }} }} }}\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    apt_get: {root}/bin/apt-get\n    dpkg_query: {root}/bin/dpkg-query\n    apt_cache: {root}/bin/apt-cache\n    setquota: {root}/bin/setquota\n    repquota: {root}/bin/repquota\n    cron_dir: {root}/cron.d\n",
+            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, notes: {root}/notes, dumps: {root}/dumps }}\n  services: [named]\n  checks: {{ {DIGEST_CHECK}: [\"{root}/bin/digest-check\"], other.check: [\"{root}/bin/other-check\"] }}\n  exec_allow:\n    - uname\n    - {{ note.recompute: [/opt/keel/bin/current, ctl, note.recompute] }}\n    - {{ note.stamp: [/usr/bin/logger, -t, note, \"it's 100%\"] }}\n    - {{ certbot.renew: [\"{root}/bin/certbot\", renew, --quiet, --deploy-hook, \"systemctl reload nginx\"] }}\n    - {{ broken: [\"{root}/bin/broken\"] }}\n    - {{ mariadb: [\"{root}/bin/mariadb\", --batch] }}\n    - {{ mariadb-dump: [\"{root}/bin/mariadb-dump\", --single-transaction] }}\n  products:\n    demo: {{ user_prefix: kd_, drop_in_prefix: keel-demo-, classes: {{ {DIGEST_CLASS}: {{ root: notes }} }} }}\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    apt_get: {root}/bin/apt-get\n    dpkg_query: {root}/bin/dpkg-query\n    apt_cache: {root}/bin/apt-cache\n    setquota: {root}/bin/setquota\n    repquota: {root}/bin/repquota\n    cron_dir: {root}/cron.d\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -343,6 +343,16 @@ fn write_stubs(root: &Path) {
         "broken",
         "echo broken >> LOG\necho 'the certificate authority is unreachable' >&2\nexit 2\n",
     );
+    stub(
+        root,
+        "mariadb",
+        "input=$(cat)\n{ printf 'mariadb|'; printf '%s|' \"$@\"; printf '\\n%s\\n' \"$input\"; } >> LOG\nif [ -e ROOT/fail-mariadb ]; then rm -f ROOT/fail-mariadb; printf \"ERROR 1064 (42000) at line 2: You have an error near '%s'\\n%s\\n\" \"$input\" \"$input\" >&2; exit 1; fi\n",
+    );
+    stub(
+        root,
+        "mariadb-dump",
+        "{ printf 'mariadb-dump|'; printf '%s|' \"$@\"; printf '\\n'; } >> LOG\nfor last; do :; done\nprintf -- '-- dump of %s\\n' \"$last\"\n",
+    );
     stub(root, "digest-check", "echo digest-check >> LOG\n");
     stub(root, "other-check", "echo other-check >> LOG\n");
     stub(root, "systemctl", "echo \"systemctl $*\" >> LOG\n");
@@ -427,6 +437,139 @@ fn exec_runs_only_allowlisted_binaries_with_their_fixed_arguments() {
     let detail = refused(&answer, "host.error.exec_failed");
     assert_eq!(detail, "the certificate authority is unreachable");
     assert_eq!(site.calls().last().map(String::as_str), Some("broken"));
+}
+
+#[test]
+fn mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root() {
+    const SESSION: &str =
+        "SET SESSION sql_mode = (SELECT REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', ''));";
+    let mut site = Site::start("mariadb");
+    for args in [
+        json!({ "statement": "database.create", "database": "kd_site_wp" }),
+        json!({ "statement": "user.create", "user": "kd_site_app", "password": "it's \\ ok" }),
+        json!({ "statement": "grant", "user": "kd_site_app", "database": "kd_site_wp" }),
+        json!({ "statement": "revoke", "user": "kd_site_app", "database": "kd_site_wp" }),
+        json!({ "statement": "user.lock", "user": "kd_site_app" }),
+        json!({ "statement": "user.drop", "user": "kd_site_app" }),
+        json!({ "statement": "database.drop", "database": "kd_site_wp" }),
+    ] {
+        let answer = site.call("mariadb.exec", "demo", args);
+        assert_eq!(data(&answer), &json!({}));
+    }
+    let line = site.audit_line(site.last_id());
+    assert!(line.contains("op=mariadb.exec"), "{line}");
+    assert!(line.contains("outcome=ok"), "{line}");
+    let client = "mariadb|--batch|";
+    assert_eq!(
+        site.calls(),
+        [
+            client,
+            SESSION,
+            "CREATE DATABASE `kd_site_wp` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+            client,
+            SESSION,
+            "CREATE USER 'kd_site_app'@'localhost' IDENTIFIED BY 'it\\'s \\\\ ok';",
+            client,
+            SESSION,
+            "GRANT ALL PRIVILEGES ON `kd\\_site\\_wp`.* TO 'kd_site_app'@'localhost';",
+            client,
+            SESSION,
+            "GRANT SELECT ON `kd\\_site\\_wp`.* TO 'kd_site_app'@'localhost';",
+            "REVOKE ALL PRIVILEGES ON `kd\\_site\\_wp`.* FROM 'kd_site_app'@'localhost';",
+            client,
+            SESSION,
+            "ALTER USER 'kd_site_app'@'localhost' ACCOUNT LOCK;",
+            client,
+            SESSION,
+            "DROP USER IF EXISTS 'kd_site_app'@'localhost';",
+            client,
+            SESSION,
+            "DROP DATABASE IF EXISTS `kd_site_wp`;",
+        ]
+    );
+
+    let before = site.calls().len();
+    for (product, args, key) in [
+        (
+            "demo",
+            json!({ "statement": "database.drop", "database": "mysql" }),
+            "host.error.policy",
+        ),
+        (
+            "demo",
+            json!({ "statement": "grant", "user": "kd_x", "database": "kd_a`b" }),
+            "host.error.policy",
+        ),
+        (
+            "demo",
+            json!({ "statement": "user.create", "user": "root", "password": "x" }),
+            "host.error.policy",
+        ),
+        (
+            "dns",
+            json!({ "statement": "database.create", "database": "kd_x" }),
+            "host.error.policy",
+        ),
+        (
+            "demo",
+            json!({ "statement": "sql", "text": "DROP DATABASE mysql" }),
+            "host.error.args",
+        ),
+        (
+            "demo",
+            json!({ "statement": "database.create", "database": "kd_x", "sql": "x" }),
+            "host.error.args",
+        ),
+        (
+            "demo",
+            json!({ "statement": "user.password", "user": "kd_x", "password": "a\nb" }),
+            "host.error.args",
+        ),
+    ] {
+        let answer = site.call("mariadb.exec", product, args.clone());
+        refused(&answer, key);
+        let line = site.audit_line(site.last_id());
+        assert!(line.contains(&format!("outcome={key}")), "{args}: {line}");
+    }
+    assert_eq!(site.calls().len(), before, "{:?}", site.calls());
+
+    site.fail_next("mariadb");
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "user.password", "user": "kd_site_app", "password": "it's secret" }),
+    );
+    let detail = refused(&answer, "host.error.exec_failed");
+    assert!(!detail.contains("secret"), "{detail}");
+    assert!(
+        detail.starts_with("ERROR 1064 (42000) at line 2: You have an error"),
+        "{detail}"
+    );
+    let line = site.audit_line(site.last_id());
+    assert!(!line.contains("secret"), "{line}");
+
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "dump", "database": "kd_site_wp", "dest": { "root": "dumps", "name": "keel-demo-1.sql" } }),
+    );
+    let dumped = site.root().join("dumps/keel-demo-1.sql");
+    let text = fs::read_to_string(&dumped).expect("the dump");
+    assert_eq!(text, "-- dump of kd_site_wp\n");
+    assert_eq!(data(&answer)["bytes"], json!(text.len()));
+    let meta = fs::metadata(&dumped).expect("the dump metadata");
+    assert_eq!(meta.mode() & 0o777, 0o600);
+    assert_eq!(meta.uid(), own_uid());
+    assert_eq!(
+        site.calls().last().map(String::as_str),
+        Some("mariadb-dump|--single-transaction|kd_site_wp|")
+    );
+    let answer = site.call(
+        "mariadb.exec",
+        "demo",
+        json!({ "statement": "dump", "database": "kd_site_wp", "dest": { "root": "dumps", "name": "../x.sql" } }),
+    );
+    refused(&answer, "host.error.policy");
 }
 
 #[test]
@@ -806,6 +949,10 @@ fn the_agent_refuses_an_operation_named_like_the_catalogue_or_contributed_twice(
         .extend(vec![noop("host.exec")], Vec::new())
         .err();
     assert!(matches!(refused, Some(AgentError::BuiltIn(name)) if name == "host.exec"));
+    let refused = Agent::new(Policy::default(), 0, PathBuf::from("/nonexistent"))
+        .extend(vec![noop("mariadb.exec")], Vec::new())
+        .err();
+    assert!(matches!(refused, Some(AgentError::BuiltIn(name)) if name == "mariadb.exec"));
     let refused = Agent::new(Policy::default(), 0, PathBuf::from("/nonexistent"))
         .extend(vec![noop("note.a"), noop("note.a")], Vec::new())
         .err();

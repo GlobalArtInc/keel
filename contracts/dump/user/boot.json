@@ -56,7 +56,8 @@
   "features": [
     "dns.zones",
     "panel.users",
-    "panel.web"
+    "panel.web",
+    "panel.databases"
   ],
   "license": {
     "state": "none",
@@ -154,6 +155,20 @@
           "badge": {
             "problem": "hosting.certificate.expiring"
           }
+        },
+        {
+          "path": "panel/databases",
+          "label": "hosting.database.list.title",
+          "func": "hosting.database.list",
+          "kind": "list",
+          "icon": "database"
+        },
+        {
+          "path": "panel/database-users",
+          "label": "hosting.database.user.list.title",
+          "func": "hosting.database.user.list",
+          "kind": "list",
+          "icon": "key"
         }
       ]
     },

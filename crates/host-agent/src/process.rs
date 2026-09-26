@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
-use std::io;
+use std::fs::File;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
@@ -20,16 +21,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    spawn(program, args, env).map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            Failure::new(
-                ERROR_UNAVAILABLE,
-                format!("{} is not installed on this host", program.display()),
-            )
-        } else {
-            not_run(program, &error)
-        }
-    })
+    spawn(program, args, env).map_err(|error| unavailable(program, &error))
 }
 
 fn spawn<I, S>(program: &Path, args: I, env: &[(&str, &str)]) -> io::Result<Output>
@@ -37,14 +29,64 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    Command::new(program)
-        .args(args)
-        .env_clear()
-        .env("PATH", PATH)
-        .env("LC_ALL", "C")
+    command(program, args)
         .envs(env.iter().copied())
         .stdin(Stdio::null())
         .output()
+}
+
+pub(crate) fn feed(program: &Path, args: &[String], input: &[u8]) -> Result<Output, Failure> {
+    let mut child = command(program, args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| unavailable(program, &error))?;
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(error) = stdin.write_all(input)
+        && error.kind() != io::ErrorKind::BrokenPipe
+    {
+        return Err(not_run(program, &error));
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| not_run(program, &error))?;
+    checked(program, output)
+}
+
+pub(crate) fn into_file(program: &Path, args: &[String], out: File) -> Result<Output, Failure> {
+    let output = command(program, args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(out))
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| unavailable(program, &error))?;
+    checked(program, output)
+}
+
+fn command<I, S>(program: &Path, args: I) -> Command
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .env_clear()
+        .env("PATH", PATH)
+        .env("LC_ALL", "C");
+    command
+}
+
+fn unavailable(program: &Path, error: &io::Error) -> Failure {
+    if error.kind() == io::ErrorKind::NotFound {
+        Failure::new(
+            ERROR_UNAVAILABLE,
+            format!("{} is not installed on this host", program.display()),
+        )
+    } else {
+        not_run(program, error)
+    }
 }
 
 fn not_run(program: &Path, error: &io::Error) -> Failure {
@@ -139,6 +181,24 @@ mod tests {
             "{}",
             failure.detail
         );
+    }
+
+    #[test]
+    fn a_fed_tool_reads_its_input_on_stdin_and_a_redirected_one_writes_into_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = dir.path().join("tool");
+        write_tool(&tool, "#!/bin/sh\nprintf '%s|' \"$@\"\ncat\n");
+        let output = feed(&tool, &["-x".to_owned()], b"line one\nline two\n").unwrap();
+        assert_eq!(stdout(&output), "-x|line one\nline two\n");
+        let target = dir.path().join("out");
+        let file = File::create(&target).unwrap();
+        into_file(&tool, &["a b".to_owned()], file).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "a b|");
+        write_tool(&tool, "#!/bin/sh\necho 'refused' >&2\nexit 1\n");
+        let failure = feed(&tool, &[], b"x").unwrap_err();
+        assert_eq!(failure.detail, "refused");
+        let failure = feed(&dir.path().join("absent"), &[], b"x").unwrap_err();
+        assert_eq!(failure.key, ERROR_UNAVAILABLE);
     }
 
     #[test]

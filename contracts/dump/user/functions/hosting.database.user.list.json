@@ -1,0 +1,166 @@
+{
+  "keel": 1,
+  "name": "hosting.database.user.list",
+  "module": "hosting_database",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.database.read",
+    "feature": "panel.databases"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingDatabaseUser",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingDatabaseUser"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingDatabaseUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "userId",
+          "name",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.database.user.list.title",
+    "search": [
+      "name"
+    ],
+    "columns": [
+      {
+        "key": "name",
+        "type": "link",
+        "to": {
+          "screen": "hosting.database.user.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral",
+          "suspended": "warning"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "suspended",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.database.user.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "hosting.database.user.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.database.user.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "name",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.database.user.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.database.*"
+    ]
+  }
+}

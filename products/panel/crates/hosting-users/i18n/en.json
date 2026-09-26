@@ -25,7 +25,8 @@
       "empty": "No hosting users yet",
       "error": {
         "account": "The stored account {account} of a hosting user is not an identifier",
-        "exists": "The user {name} already exists"
+        "exists": "The user {name} already exists",
+        "id": "The stored id {id} of a hosting user is not an identifier"
       },
       "list": {
         "title": "Users"

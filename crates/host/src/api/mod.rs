@@ -8,6 +8,8 @@ use keel_sdk::serde_json;
 
 use crate::frame::{ERROR_ARGS, ERROR_FRAME, failure};
 
+const INSTALLATION: &str = "keel";
+
 pub use accounts::{Created, Group, Groups, User, Users};
 pub use files::{Attributes, Dest, Entry, FileContent, Files, Template};
 pub use system::{
@@ -34,6 +36,15 @@ impl Origin {
             product: product.to_owned(),
             login: principal.login.clone(),
             level: principal.level,
+            request_id: request_id.to_owned(),
+        }
+    }
+
+    pub fn installation(product: &str, request_id: &str) -> Self {
+        Self {
+            product: product.to_owned(),
+            login: INSTALLATION.to_owned(),
+            level: Level::Service,
             request_id: request_id.to_owned(),
         }
     }

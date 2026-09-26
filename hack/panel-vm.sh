@@ -21,6 +21,12 @@ VHOST=/etc/nginx/conf.d/keel-panel-$DOMAIN.conf
 DOC_ROOT=$HOME_DIR/$DOMAIN
 CERTS=/etc/ssl/keel
 CHALLENGES=/var/lib/keel-panel-acme
+DUMPS=/var/lib/keel-panel-dumps
+BACKUPS=/var/lib/keel/backups
+DATABASE=${USER_NAME}_wp
+DATABASE_USER=${USER_NAME}_app
+SIBLING=${USER_NAME}xwp
+DATABASE_PASSWORD="it's $STAMP \\ \"quoted\""
 STAGING=https://acme-staging-v02.api.letsencrypt.org/directory
 ACME_DIRECTORY=${KEEL_PANEL_VM_ACME:-$STAGING}
 
@@ -29,12 +35,14 @@ usage() {
 usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh run
        hack/panel-vm.sh ssl <domain>
+       hack/panel-vm.sh db
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
-"install" installs nginx, php-fpm, curl and openssl, prepares $WWW, the
-certificate root $CERTS and the challenge root $CHALLENGES, then runs
+"install" installs nginx, php-fpm, mariadb, curl, openssl and zstd,
+prepares $WWW, the certificate root $CERTS, the challenge root $CHALLENGES
+and the dump root $DUMPS, then runs
 deploy/install.sh --product panel --binary <archive> --yes and prints the
 setup link.
 
@@ -61,6 +69,18 @@ certificate, waits for the certificate to turn active, finds the server block
 listening on 443 with the pair under $CERTS, the key readable by root alone,
 no challenge left in $CHALLENGES and nginx serving <domain> over TLS with the
 issued certificate, then deletes the account and finds the pair gone.
+
+"db" proves the databases on the running installation. It creates an
+account with the hosting user $NAME, the database $DATABASE and the database
+user $DATABASE_USER with a password carrying quotes and a backslash, finds
+the database in mariadb and lets $DATABASE_USER create a table in it with
+that password. It creates $SIBLING as root, which an unescaped grant on
+$DATABASE would match, and finds it closed to the user. It revokes the grant and finds the database closed to the
+user, grants it again, suspends the account and finds the login refused,
+resumes it and finds it open again. It runs backup.create and finds the dump
+of $DATABASE in the archive and $DUMPS empty, then deletes the account and
+finds the database and the user dropped, with mariadb.exec in the journal
+of $AGENT_UNIT and no password in it.
 EOF
 }
 
@@ -97,8 +117,9 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm curl openssl
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client curl openssl zstd
   install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
+  install -d -m 0711 -o root -g root "$DUMPS"
   install -d -m 0700 -o root -g root "$CERTS"
   local log
   log=$(mktemp)
@@ -348,10 +369,119 @@ ssl_proof() {
   say "panel's certificates are proven on this machine: a site on a real domain got its certificate from $ACME_DIRECTORY over HTTP-01 and nginx served it"
 }
 
+sql() {
+  mariadb --batch --skip-column-names -e "$1"
+}
+
+database_state_is() {
+  [ "$(call hosting.database.list 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["data"]["data"]
+print(next((row["state"] for row in rows if row["id"] == sys.argv[1]), ""))
+' "$1" 2>/dev/null)" = "$2" ]
+}
+
+database_user_state_is() {
+  [ "$(call hosting.database.user.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "$2" ]
+}
+
+database_exists() {
+  [ "$(sql "SHOW DATABASES LIKE '$DATABASE'")" = "$DATABASE" ]
+}
+
+database_user_exists() {
+  [ "$(sql "SELECT COUNT(*) FROM mysql.user WHERE User = '$DATABASE_USER'")" = "1" ]
+}
+
+database_gone() {
+  [ -z "$(sql "SHOW DATABASES LIKE '$DATABASE'")" ]
+}
+
+database_user_gone() {
+  [ "$(sql "SELECT COUNT(*) FROM mysql.user WHERE User = '$DATABASE_USER'")" = "0" ]
+}
+
+reaches_database() {
+  MYSQL_PWD=$DATABASE_PASSWORD mariadb --batch -u "$DATABASE_USER" -e "CREATE TABLE IF NOT EXISTS proof (a INT); SELECT COUNT(*) FROM proof" "$DATABASE" >/dev/null 2>&1
+}
+
+closed_to_user() {
+  ! reaches_database
+}
+
+sibling_closed_to_user() {
+  ! MYSQL_PWD=$DATABASE_PASSWORD mariadb --batch -u "$DATABASE_USER" -e "SELECT 1" "$SIBLING" >/dev/null 2>&1
+}
+
+dumped() {
+  local archive
+  archive=$(ls -t "$BACKUPS"/*.tar.zst 2>/dev/null | head -n 1)
+  [ -n "$archive" ] && tar --zstd -tf "$archive" | grep -qx "sources/hosting_database.dumps/$DATABASE.sql"
+}
+
+no_password_in_journal() {
+  ! journalctl -u "$AGENT_UNIT" --since "$1" --no-pager | grep -qF -- "$STAMP"
+}
+
+db_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  systemctl is-active --quiet mariadb || fail "mariadb is not running; run install first"
+  [ -d "$DUMPS" ] || fail "$DUMPS is missing; run install first"
+  local since account id database user task
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- a database and its user"
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+  database=$(call hosting.database.create "name=$DATABASE" | field data.id) || fail "keel ctl hosting.database.create failed"
+  check "the database $DATABASE turns active" eventually database_state_is "$database" active
+  check "mariadb has the database $DATABASE" database_exists
+  user=$(call hosting.database.user.create "name=$DATABASE_USER" "password=$(python3 -c 'import json, sys; print(json.dumps(sys.argv[1]))' "$DATABASE_PASSWORD")" "databases=[\"$database\"]" | field data.id) || fail "keel ctl hosting.database.user.create failed"
+  check "the database user $DATABASE_USER turns active" eventually database_user_state_is "$user" active
+  check "mariadb has the user $DATABASE_USER" database_user_exists
+  check "$DATABASE_USER creates a table in $DATABASE with its password" reaches_database
+  check "root creates $SIBLING beside $DATABASE" sql "CREATE DATABASE \`$SIBLING\`"
+  check "the grant on $DATABASE does not reach $SIBLING" sibling_closed_to_user
+  check "root drops $SIBLING" sql "DROP DATABASE \`$SIBLING\`"
+
+  say "--- the grant"
+  check "keel ctl hosting.database.user.edit revokes the grant" call hosting.database.user.edit "id=$user" "databases=[]"
+  check "$DATABASE is closed to $DATABASE_USER" eventually closed_to_user
+  check "keel ctl hosting.database.user.edit grants it again" call hosting.database.user.edit "id=$user" "databases=[\"$database\"]"
+  check "$DATABASE_USER reaches $DATABASE again" eventually reaches_database
+
+  say "--- suspend and resume"
+  check "keel ctl keel.account.suspend suspends $account" call keel.account.suspend "id=$account"
+  check "the login of $DATABASE_USER is refused while its account is suspended" eventually closed_to_user
+  check "keel ctl keel.account.resume resumes $account" call keel.account.resume "id=$account"
+  check "$DATABASE_USER logs in again" eventually reaches_database
+
+  say "--- the backup"
+  task=$(call backup.create | field data.task.id) || task=""
+  check "the backup task is done" eventually task_done "$task"
+  check "the archive carries the dump of $DATABASE" dumped
+  check "no dump is left in $DUMPS" test -z "$(ls -A "$DUMPS")"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "the database $DATABASE is dropped" eventually database_gone
+  check "the user $DATABASE_USER is dropped" eventually database_user_gone
+  check "the agent journal carries mariadb.exec" agent_logged "$since" mariadb.exec
+  check "the agent journal carries no password" no_password_in_journal "$since"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's databases are proven on this machine: a database and its user in mariadb, the grant, the lock of a suspended account, the dump in the backup and the drop with the account"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
   run) shift; run_proof "$@" ;;
   ssl) shift; ssl_proof "$@" ;;
+  db) shift; db_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

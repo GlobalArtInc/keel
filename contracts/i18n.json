@@ -45,6 +45,7 @@
         "products/panel/i18n": ["product.panel", "menu.panel"],
         "products/panel/crates/hosting-users/i18n": ["hosting"],
         "products/panel/crates/hosting-web/i18n": ["hosting.site"],
+        "products/panel/crates/hosting-db/i18n": ["hosting.database"],
         "products/panel/crates/hosting-ssl/i18n": ["hosting.certificate"],
         "products/panel/crates/dns-peer/i18n": ["dns_peer"]
       }

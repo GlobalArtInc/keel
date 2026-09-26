@@ -1,0 +1,127 @@
+{
+  "keel": 1,
+  "name": "hosting.database.user.create",
+  "module": "hosting_database",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.database.manage",
+    "feature": "panel.databases"
+  },
+  "key": "id",
+  "params": {
+    "title": "DatabaseUserCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 7,
+        "maxLength": 64,
+        "pattern": "^hp_[a-z][a-z0-9_-]*_[a-z0-9]{1,16}$"
+      },
+      "password": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        },
+        "minLength": 8,
+        "maxLength": 128
+      },
+      "databases": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Id"
+        },
+        "default": [],
+        "x-keel": {
+          "options": "hosting.database.options"
+        },
+        "x-ui": {
+          "control": "transfer"
+        }
+      }
+    },
+    "required": [
+      "name",
+      "password"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingDatabaseUser",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "userId",
+      "name",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.database.user.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "password"
+        ]
+      },
+      {
+        "id": "grants",
+        "fields": [
+          "databases"
+        ]
+      }
+    ]
+  }
+}

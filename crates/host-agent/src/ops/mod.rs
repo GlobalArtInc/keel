@@ -4,6 +4,7 @@ mod extension;
 mod files;
 mod fs;
 mod group;
+mod mariadb;
 mod pkg;
 mod quota;
 mod service;
@@ -53,6 +54,7 @@ const OP_CRON_LIST: &str = "host.cron.list";
 const OP_QUOTA_SET: &str = "host.quota.set";
 const OP_QUOTA_LIST: &str = "host.quota.list";
 const OP_EXEC: &str = "host.exec";
+const OP_MARIADB_EXEC: &str = "mariadb.exec";
 const CATALOGUE_PREFIX: &str = "host.";
 
 const NAME_LIMIT: usize = 32;
@@ -113,7 +115,7 @@ impl Context {
     ) -> Result<(), AgentError> {
         for operation in operations {
             let name = operation.name().to_owned();
-            if name.starts_with(CATALOGUE_PREFIX) {
+            if name.starts_with(CATALOGUE_PREFIX) || name == OP_MARIADB_EXEC {
                 return Err(AgentError::BuiltIn(name));
             }
             if self.operations.insert(name.clone(), operation).is_some() {
@@ -183,6 +185,7 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
         OP_QUOTA_SET => quota::set(&call, parse(args)?),
         OP_QUOTA_LIST => quota::list(&call, parse(args)?),
         OP_EXEC => exec::exec(&call, parse(args)?),
+        OP_MARIADB_EXEC => mariadb::exec(&call, parse(args)?),
         other => match context.operations.get(other) {
             Some(operation) => extension::run(&call, operation, args),
             None => Err(Failure::new(

@@ -1,0 +1,83 @@
+{
+  "keel": 1,
+  "name": "hosting.database.create",
+  "module": "hosting_database",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.database.manage",
+    "feature": "panel.databases"
+  },
+  "key": "id",
+  "params": {
+    "title": "DatabaseCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 7,
+        "maxLength": 64,
+        "pattern": "^hp_[a-z][a-z0-9_-]*_[a-z0-9]{1,16}$"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  },
+  "result": {
+    "title": "HostingDatabase",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "userId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "userId",
+      "name",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.database.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name"
+        ]
+      }
+    ]
+  }
+}

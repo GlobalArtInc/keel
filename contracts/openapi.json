@@ -6072,6 +6072,934 @@
         }
       }
     },
+    "/api/v1/call/hosting.database.create": {
+      "post": {
+        "operationId": "hosting.database.create",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.manage",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "DatabaseCreate",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 7,
+                    "maxLength": 64,
+                    "pattern": "^hp_[a-z][a-z0-9_-]*_[a-z0-9]{1,16}$"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingDatabase",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "userId",
+                        "name",
+                        "state",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.delete": {
+      "post": {
+        "operationId": "hosting.database.delete",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.manage",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Batch",
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.list": {
+      "post": {
+        "operationId": "hosting.database.list",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.read",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_HostingDatabase",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HostingDatabase"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.options": {
+      "post": {
+        "operationId": "hosting.database.options",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "options",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.read",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OptionsQuery",
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "default": 20
+                  },
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Choices",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Choice"
+                          }
+                        },
+                        "more": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "more"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.user.create": {
+      "post": {
+        "operationId": "hosting.database.user.create",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.manage",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "DatabaseUserCreate",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 7,
+                    "maxLength": 64,
+                    "pattern": "^hp_[a-z][a-z0-9_-]*_[a-z0-9]{1,16}$"
+                  },
+                  "password": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    },
+                    "x-ui": {
+                      "control": "password"
+                    },
+                    "minLength": 8,
+                    "maxLength": 128
+                  },
+                  "databases": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "default": [],
+                    "x-keel": {
+                      "options": "hosting.database.options"
+                    },
+                    "x-ui": {
+                      "control": "transfer"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingDatabaseUser",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "userId",
+                        "name",
+                        "state",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.user.delete": {
+      "post": {
+        "operationId": "hosting.database.user.delete",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.manage",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Batch",
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.user.edit": {
+      "post": {
+        "operationId": "hosting.database.user.edit",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.manage",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "DatabaseUserEdit",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "password": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Secret"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "x-keel": {
+                      "secret": true
+                    },
+                    "x-ui": {
+                      "control": "password"
+                    },
+                    "minLength": 8,
+                    "maxLength": 128
+                  },
+                  "databases": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "default": [],
+                    "x-keel": {
+                      "options": "hosting.database.options"
+                    },
+                    "x-ui": {
+                      "control": "transfer"
+                    }
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingDatabaseUser",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "userId",
+                        "name",
+                        "state",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.user.get": {
+      "post": {
+        "operationId": "hosting.database.user.get",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.read",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "DatabaseUserView",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "userId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "databases": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Id"
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "userId",
+                        "name",
+                        "state",
+                        "createdAt",
+                        "updatedAt",
+                        "databases"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.database.user.list": {
+      "post": {
+        "operationId": "hosting.database.user.list",
+        "tags": [
+          "hosting_database"
+        ],
+        "x-keel": {
+          "kind": "list",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.database.read",
+            "feature": "panel.databases"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Page_HostingDatabaseUser",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HostingDatabaseUser"
+                          }
+                        },
+                        "total": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        },
+                        "totals": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/hosting.site.create": {
       "post": {
         "operationId": "hosting.site.create",
@@ -15489,6 +16417,92 @@
           "siteId",
           "domain",
           "kind",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "HostingDatabase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "userId",
+          "name",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "HostingDatabaseUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "userId",
+          "name",
           "state",
           "createdAt",
           "updatedAt"

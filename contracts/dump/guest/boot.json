@@ -47,7 +47,8 @@
   "features": [
     "dns.zones",
     "panel.users",
-    "panel.web"
+    "panel.web",
+    "panel.databases"
   ],
   "license": {
     "state": "none",

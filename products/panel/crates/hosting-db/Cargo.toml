@@ -1,0 +1,14 @@
+[package]
+name = "keel-hosting-db"
+description = "The hosting-db module of KeelPanel: MariaDB databases and database users per account, created, granted, dumped and dropped through the host agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-users = { workspace = true }

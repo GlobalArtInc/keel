@@ -498,6 +498,24 @@ policy:
             assert!(policy.allows_service(service), "{service}");
         }
         assert_eq!(policy.tools().usermod, Path::new("usermod"));
+        assert_eq!(
+            policy.root("dumps"),
+            Some(Path::new("/var/lib/keel-panel-dumps"))
+        );
+        assert_eq!(
+            policy
+                .exec("mariadb")
+                .and_then(<[String]>::first)
+                .map(String::as_str),
+            Some("mariadb")
+        );
+        assert_eq!(
+            policy
+                .exec("mariadb-dump")
+                .and_then(<[String]>::first)
+                .map(String::as_str),
+            Some("mariadb-dump")
+        );
         for product in ["bill", "dns", "panel"] {
             assert_eq!(
                 policy.product(product).unwrap().drop_in_prefix.as_deref(),

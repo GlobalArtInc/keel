@@ -1022,7 +1022,8 @@
         "empty": "No hosting users yet",
         "error": {
           "account": "The stored account {account} of a hosting user is not an identifier",
-          "exists": "The user {name} already exists"
+          "exists": "The user {name} already exists",
+          "id": "The stored id {id} of a hosting user is not an identifier"
         },
         "list": {
           "title": "Users"
@@ -1038,6 +1039,81 @@
           "error": "Error",
           "pending": "Pending",
           "suspended": "Suspended"
+        }
+      },
+      "database": {
+        "action": {
+          "create": "New database",
+          "delete": "Delete"
+        },
+        "column": {
+          "accountId": "Account",
+          "error": "Error",
+          "name": "Name",
+          "state": "State"
+        },
+        "create": {
+          "title": "New database"
+        },
+        "empty": "No databases yet",
+        "error": {
+          "account": "The stored account {account} of a database user is not an identifier",
+          "backup": "The dump {file} could not be copied into the backup",
+          "detached": "The database module has not started yet",
+          "exists": "The database {name} already exists",
+          "foreign": "Only databases of the same account can be granted",
+          "password": "A password carries no control characters",
+          "prefix": "{name} does not start with the name of one of your hosting users and an underscore",
+          "user_busy": "The user still owns {databases} database(s) and {users} database user(s); delete them first",
+          "user_exists": "The database user {name} already exists"
+        },
+        "list": {
+          "title": "Databases"
+        },
+        "name": "Name: a hosting user, an underscore and up to 16 lowercase letters or digits, as in hp_alice_wp",
+        "page": {
+          "main": "Database"
+        },
+        "state": {
+          "active": "Active",
+          "error": "Error",
+          "pending": "Pending"
+        },
+        "user": {
+          "action": {
+            "create": "New database user",
+            "delete": "Delete",
+            "edit": "Edit"
+          },
+          "column": {
+            "accountId": "Account",
+            "error": "Error",
+            "name": "Name",
+            "state": "State"
+          },
+          "create": {
+            "title": "New database user"
+          },
+          "databases": "Databases the user may use",
+          "edit": {
+            "title": "Database user"
+          },
+          "empty": "No database users yet",
+          "list": {
+            "title": "Database users"
+          },
+          "name": "Name: a hosting user, an underscore and up to 16 lowercase letters or digits, as in hp_alice_app",
+          "page": {
+            "grants": "Access",
+            "main": "User"
+          },
+          "password": "Password",
+          "state": {
+            "active": "Active",
+            "error": "Error",
+            "pending": "Pending",
+            "suspended": "Suspended"
+          }
         }
       },
       "site": {
