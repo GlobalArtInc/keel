@@ -1,0 +1,131 @@
+{
+  "keel": 1,
+  "name": "hosting.ftp.edit",
+  "module": "hosting_ftp",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.ftp.manage",
+    "feature": "panel.ftp"
+  },
+  "key": "id",
+  "params": {
+    "title": "FtpEdit",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "password": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Secret"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        },
+        "minLength": 8,
+        "maxLength": 128
+      },
+      "directory": {
+        "type": "string",
+        "maxLength": 200,
+        "pattern": "^$|^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+        "default": ""
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "HostingFtpUser",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "login": {
+        "type": "string"
+      },
+      "directory": {
+        "type": "string"
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "login",
+      "directory",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.ftp.edit.title",
+    "read": "hosting.ftp.get",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "password",
+          "directory"
+        ]
+      }
+    ]
+  }
+}

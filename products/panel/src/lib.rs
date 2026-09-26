@@ -19,6 +19,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_hosting_ssl::MODULE,
         &keel_hosting_db::MODULE,
         &keel_hosting_mail::MODULE,
+        &keel_hosting_ftp::MODULE,
     ],
     bridges: &[Bridge {
         to: "dns",
@@ -39,11 +40,23 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     editions: &[
         Edition {
             id: "lite",
-            features: &["panel.users", "panel.web", "panel.databases", "panel.mail"],
+            features: &[
+                "panel.users",
+                "panel.web",
+                "panel.databases",
+                "panel.mail",
+                "panel.ftp",
+            ],
         },
         Edition {
             id: "pro",
-            features: &["panel.users", "panel.web", "panel.databases", "panel.mail"],
+            features: &[
+                "panel.users",
+                "panel.web",
+                "panel.databases",
+                "panel.mail",
+                "panel.ftp",
+            ],
         },
     ],
     i18n: &[
@@ -76,7 +89,8 @@ mod tests {
                 "hosting_site",
                 "hosting_certificate",
                 "hosting_database",
-                "hosting_mail"
+                "hosting_mail",
+                "hosting_ftp"
             ]
         );
         assert_eq!(MANIFEST.bridges.len(), 1);
@@ -93,7 +107,13 @@ mod tests {
         assert_eq!(edition.id, "lite");
         assert_eq!(
             edition.features,
-            ["panel.users", "panel.web", "panel.databases", "panel.mail"]
+            [
+                "panel.users",
+                "panel.web",
+                "panel.databases",
+                "panel.mail",
+                "panel.ftp"
+            ]
         );
         let logo = MANIFEST.logo().expect("the logo asset");
         assert_eq!(logo.id, LOGO);

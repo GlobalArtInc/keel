@@ -1,0 +1,54 @@
+{
+  "hosting": {
+    "ftp": {
+      "action": {
+        "create": "New FTP account",
+        "delete": "Delete",
+        "edit": "Edit"
+      },
+      "column": {
+        "accountId": "Account",
+        "directory": "Directory",
+        "domain": "Site",
+        "error": "Error",
+        "login": "Login",
+        "state": "State",
+        "suspended": "Suspended"
+      },
+      "create": {
+        "title": "New FTP account"
+      },
+      "directory": "Directory under the document root of the site, empty for the root itself",
+      "edit": {
+        "title": "FTP account"
+      },
+      "empty": "No FTP accounts yet",
+      "error": {
+        "detached": "The FTP module has not started yet",
+        "directory": "{directory} is not a directory under the site: names of letters, digits, dots, underscores and dashes joined by /, none starting with a dot",
+        "exists": "The login {name} is already taken",
+        "hashing": "The password could not be hashed",
+        "id": "There is no FTP account {id}",
+        "name": "{name} is not a login: lowercase letters, digits, underscores and dashes, starting with a letter",
+        "password": "A password carries no control characters",
+        "site": "The site is not one of yours",
+        "site_gone": "The site {site} of the FTP account is gone",
+        "site_row": "The site {site} could not be read"
+      },
+      "list": {
+        "title": "FTP accounts"
+      },
+      "name": "Login, after hp_",
+      "page": {
+        "main": "FTP account"
+      },
+      "password": "Password",
+      "site": "Site",
+      "state": {
+        "active": "Active",
+        "error": "Error",
+        "pending": "Pending"
+      }
+    }
+  }
+}

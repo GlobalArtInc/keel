@@ -165,7 +165,7 @@ pub(super) fn mkdir(call: &Call<'_>, args: Mkdir) -> Result<Value, Failure> {
 }
 
 pub(super) fn list(call: &Call<'_>, args: List) -> Result<Value, Failure> {
-    let prefix = call.drop_in_prefix()?;
+    let prefix = call.file_prefix(&args.root)?;
     let dir = call.root_dir(&args.root)?;
     let mut entries = Vec::new();
     for entry in fs::read_dir(&dir).map_err(|error| Failure::io(dir.display(), &error))? {

@@ -1,0 +1,190 @@
+{
+  "keel": 1,
+  "name": "hosting.ftp.list",
+  "module": "hosting_ftp",
+  "kind": "list",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.ftp.read",
+    "feature": "panel.ftp"
+  },
+  "key": "id",
+  "params": {
+    "$ref": "keel://ListQuery"
+  },
+  "result": {
+    "title": "Page_HostingFtpUser",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingFtpUser"
+        }
+      },
+      "total": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      },
+      "totals": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "data",
+      "total"
+    ],
+    "$defs": {
+      "HostingFtpUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "siteId": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "login": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "siteId",
+          "domain",
+          "login",
+          "directory",
+          "suspended",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.ftp.list.title",
+    "search": [
+      "login",
+      "domain"
+    ],
+    "columns": [
+      {
+        "key": "login",
+        "type": "link",
+        "to": {
+          "screen": "hosting.ftp.edit",
+          "params": {
+            "id": "$id"
+          }
+        },
+        "sortable": true,
+        "primary": true
+      },
+      {
+        "key": "domain",
+        "type": "text",
+        "sortable": true
+      },
+      {
+        "key": "directory",
+        "type": "text"
+      },
+      {
+        "key": "suspended",
+        "type": "boolean"
+      },
+      {
+        "key": "state",
+        "type": "status",
+        "map": {
+          "active": "success",
+          "error": "danger",
+          "pending": "neutral"
+        },
+        "filter": {
+          "options": [
+            "pending",
+            "active",
+            "error"
+          ]
+        }
+      },
+      {
+        "key": "error",
+        "type": "text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "hosting.ftp.create",
+        "icon": "plus"
+      },
+      {
+        "id": "edit",
+        "role": "edit",
+        "screen": "hosting.ftp.edit",
+        "default": true
+      },
+      {
+        "id": "delete",
+        "role": "delete",
+        "function": "hosting.ftp.delete",
+        "confirm": {
+          "destructive": true,
+          "items": "login",
+          "input": "count"
+        }
+      }
+    ],
+    "row_actions": [
+      "edit",
+      "delete"
+    ],
+    "empty": {
+      "title": "hosting.ftp.empty",
+      "action": "create"
+    },
+    "invalidate_on": [
+      "hosting.ftp.*"
+    ]
+  }
+}

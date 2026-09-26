@@ -1,0 +1,89 @@
+{
+  "keel": 1,
+  "name": "hosting.ftp.get",
+  "module": "hosting_ftp",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.ftp.read",
+    "feature": "panel.ftp"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingFtpUser",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "siteId": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "login": {
+        "type": "string"
+      },
+      "directory": {
+        "type": "string"
+      },
+      "suspended": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "siteId",
+      "domain",
+      "login",
+      "directory",
+      "suspended",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  }
+}

@@ -1,10 +1,10 @@
 policy:
   uid_range: { from: 100000, to: 165535 }
-  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools-8.2: /etc/php/8.2/fpm/pool.d, pools-8.3: /etc/php/8.3/fpm/pool.d, pools-8.4: /etc/php/8.4/fpm/pool.d, mail: /etc/postfix/keel, dovecot: /etc/dovecot/keel, maildirs: /var/lib/keel-panel-mail, certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme, dumps: /var/lib/keel-panel-dumps }
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools-8.2: /etc/php/8.2/fpm/pool.d, pools-8.3: /etc/php/8.3/fpm/pool.d, pools-8.4: /etc/php/8.4/fpm/pool.d, mail: /etc/postfix/keel, dovecot: /etc/dovecot/keel, maildirs: /var/lib/keel-panel-mail, certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme, dumps: /var/lib/keel-panel-dumps, ftp: /etc/vsftpd/keel, ftp-users: /etc/vsftpd/keel-users }
   services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
-  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"], postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"] }
+  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"], postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"], vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"] }
   exec_allow: [certbot, quotatool, { mariadb: [mariadb, --batch, --skip-column-names] }, { mariadb-dump: [mariadb-dump, --single-transaction, --quick, --routines, --triggers, --events] }, { postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }, { mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }]
   products:
     bill: { drop_in_prefix: keel-bill- }
     dns: { drop_in_prefix: keel-dns- }
-    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }
+    panel: { user_prefix: hp_, account_roots: [ftp-users], drop_in_prefix: keel-panel- }

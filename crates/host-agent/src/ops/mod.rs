@@ -245,12 +245,29 @@ impl Call<'_> {
         }
     }
 
+    fn names_accounts(&self, root: &str) -> bool {
+        self.product.account_roots.iter().any(|named| named == root)
+    }
+
+    fn file_prefix(&self, root: &str) -> Result<&str, Failure> {
+        if self.names_accounts(root) {
+            self.user_prefix()
+        } else {
+            self.drop_in_prefix()
+        }
+    }
+
     fn resolve(&self, dest: &Dest) -> Result<PathBuf, Failure> {
-        let prefix = self.drop_in_prefix()?;
+        let prefix = self.file_prefix(&dest.root)?;
         let root = self.policy.root(&dest.root).ok_or_else(|| {
             Failure::policy(format!("{} is not a file root of the policy", dest.root))
         })?;
-        if !valid_file_name(&dest.name, prefix) {
+        let named = if self.names_accounts(&dest.root) {
+            valid_account_name(&dest.name, prefix)
+        } else {
+            valid_file_name(&dest.name, prefix)
+        };
+        if !named {
             return Err(Failure::policy(format!(
                 "the name {} is not a file name under the prefix {prefix}",
                 dest.name

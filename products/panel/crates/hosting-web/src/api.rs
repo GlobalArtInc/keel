@@ -48,7 +48,14 @@ pub trait SiteCertificates: Send + Sync {
     async fn request(&self, invoke: &Invoke<'_>, site: &Id) -> Result<()>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentRoot {
+    pub user: String,
+    pub path: String,
+}
+
 #[async_trait]
 pub trait Sites: Send + Sync {
     async fn render(&self, db: &Db, origin: Origin, site: &Id) -> Result<()>;
+    async fn document_root(&self, db: &Db, site: &Id) -> Result<Option<DocumentRoot>>;
 }

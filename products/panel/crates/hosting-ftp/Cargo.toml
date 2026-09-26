@@ -1,0 +1,16 @@
+[package]
+name = "keel-hosting-ftp"
+description = "The hosting-ftp module of KeelPanel: FTP accounts chrooted to a directory of a site, served by vsftpd as virtual users of the site's hosting user through the host agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-web = { workspace = true }
+rand = { workspace = true }
+sha-crypt = { workspace = true }

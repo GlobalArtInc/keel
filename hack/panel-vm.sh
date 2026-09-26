@@ -38,6 +38,15 @@ MAIL_DOMAIN=mail-$NAME.test
 MAILBOX=box@$MAIL_DOMAIN
 MAIL_ALIAS=info@$MAIL_DOMAIN
 MAIL_PASSWORD=mail-$STAMP-secret
+FTP_CONF=/etc/vsftpd.conf
+FTP_PAM=/etc/pam.d/keel-panel-ftp
+FTP_DIR=/etc/vsftpd/keel
+FTP_PASSWD=$FTP_DIR/keel-panel-passwd
+FTP_USERS=/etc/vsftpd/keel-users
+FTP_NAME=${NAME}up
+FTP_LOGIN=hp_$FTP_NAME
+FTP_PASSWORD=ftp-$STAMP-secret
+FTP_CHROOT=$DOC_ROOT/uploads
 
 usage() {
   cat <<EOF
@@ -46,17 +55,20 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh ssl <domain>
        hack/panel-vm.sh db
        hack/panel-vm.sh mail
+       hack/panel-vm.sh ftp
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
 
-"install" installs nginx, php-fpm, mariadb, postfix, dovecot, curl, openssl
-and zstd, prepares $WWW, the certificate root $CERTS, the challenge root
-$CHALLENGES and the dump root $DUMPS, points postfix at the virtual maps under
-$MAIL_MAPS and dovecot, as the system user vmail, at the passwd-file
-$MAIL_PASSWD and the maildirs under $MAILDIRS through $MAIL_DROP_IN, then runs
-deploy/install.sh --product panel --binary <archive> --yes and prints the
-setup link.
+"install" installs nginx, php-fpm, mariadb, postfix, dovecot, vsftpd,
+libpam-pwdfile, curl, openssl and zstd, prepares $WWW, the certificate root
+$CERTS, the challenge root $CHALLENGES and the dump root $DUMPS, points postfix
+at the virtual maps under $MAIL_MAPS and dovecot, as the system user vmail, at
+the passwd-file $MAIL_PASSWD and the maildirs under $MAILDIRS through
+$MAIL_DROP_IN, writes $FTP_CONF for virtual users authenticated by the PAM
+service $FTP_PAM against the user file $FTP_PASSWD, each mapped and chrooted by
+its file under $FTP_USERS, then runs deploy/install.sh --product panel
+--binary <archive> --yes and prints the setup link.
 
 "run" proves the running installation over the control socket as the user
 keel. It creates a user account and in it the hosting user $NAME, waits for
@@ -104,6 +116,18 @@ maildir. It suspends the account and finds the login refused, resumes it and
 finds it accepted again. It runs backup.create and finds the maildirs in the
 archive and $DUMPS empty, then deletes the account and finds the mailbox gone
 from the maps and the passwd-file and its maildir removed.
+
+"ftp" proves the FTP accounts on the running installation. It finds that
+vsftpd refuses a configuration with an unknown option, the way vsftpd.check
+of $POLICY reads $FTP_CONF. It creates an account with the hosting user
+$NAME and the site $DOMAIN, refuses an FTP account whose directory leaves
+the site, and creates $FTP_LOGIN chrooted to $FTP_CHROOT. It finds the user
+file and the file of $FTP_LOGIN owned by root with mode 0600, logs in over
+FTP, finds / of the session to be $FTP_CHROOT with nothing of the host above
+it, uploads a file that lands there owned by $USER_NAME and finds another
+password refused. It suspends the account and finds the login refused,
+resumes it and finds it accepted again, then deletes the account and finds
+$FTP_LOGIN gone from the user file and its file under $FTP_USERS removed.
 EOF
 }
 
@@ -141,11 +165,12 @@ install_keel() {
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
   printf '%s\n' "postfix postfix/main_mailer_type select Internet Site" "postfix postfix/mailname string $(hostname -f)" | debconf-set-selections
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd curl openssl zstd
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile curl openssl zstd
   install -d -m 0755 -o root -g root "$WWW" "$CHALLENGES"
   install -d -m 0711 -o root -g root "$DUMPS"
   install -d -m 0700 -o root -g root "$CERTS"
   prepare_mail
+  prepare_ftp
   local log
   log=$(mktemp)
   if ! bash deploy/install.sh --product panel --binary "$archive" --yes 2>&1 | tee "$log"; then
@@ -202,6 +227,35 @@ CONF
   doveconf -n >/dev/null || fail "doveconf -n refuses $MAIL_DROP_IN"
   postfix check || fail "postfix check refuses the virtual maps"
   systemctl restart dovecot postfix
+}
+
+prepare_ftp() {
+  install -d -m 0700 -o root -g root "$FTP_DIR" "$FTP_USERS"
+  [ -f "$FTP_PASSWD" ] || install -m 0600 -o root -g root /dev/null "$FTP_PASSWD"
+  [ -f "$FTP_CONF.orig" ] || cp -p "$FTP_CONF" "$FTP_CONF.orig"
+  cat >"$FTP_PAM" <<CONF
+auth required pam_pwdfile.so pwdfile=$FTP_PASSWD
+account required pam_permit.so
+CONF
+  cat >"$FTP_CONF" <<CONF
+listen=YES
+listen_ipv6=NO
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+local_umask=022
+guest_enable=YES
+guest_username=nobody
+virtual_use_local_privs=YES
+pam_service_name=keel-panel-ftp
+user_config_dir=$FTP_USERS
+chroot_local_user=YES
+allow_writeable_chroot=YES
+secure_chroot_dir=/var/run/vsftpd/empty
+hide_ids=YES
+CONF
+  vsftpd "$FTP_CONF" -v </dev/null >/dev/null || fail "vsftpd refuses $FTP_CONF"
+  systemctl restart vsftpd
 }
 
 as_keel() {
@@ -652,6 +706,114 @@ mail_proof() {
   say "panel's mail is proven on this machine: the virtual maps and the passwd-file, delivery to a mailbox and an alias, the login refused while suspended, the maildirs in the backup and the removal with the account"
 }
 
+ftp_state_is() {
+  [ "$(call hosting.ftp.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "$2" ]
+}
+
+ftp_fetch() {
+  curl -fsS --max-time 20 --user "$FTP_LOGIN:$1" "ftp://127.0.0.1$2" 2>/dev/null
+}
+
+ftp_logs_in() {
+  ftp_fetch "$FTP_PASSWORD" / >/dev/null
+}
+
+ftp_refused() {
+  ! ftp_fetch "$1" / >/dev/null
+}
+
+ftp_files_placed() {
+  [ "$(stat -c '%U:%G %a' "$FTP_PASSWD")" = "root:root 600" ] \
+    && [ "$(stat -c '%U:%G %a' "$FTP_USERS/$FTP_LOGIN")" = "root:root 600" ] \
+    && grep -qF "$FTP_LOGIN:\$6\$rounds=5000\$" "$FTP_PASSWD" \
+    && [ "$(cat "$FTP_USERS/$FTP_LOGIN")" = "$(printf 'guest_username=%s\nlocal_root=%s' "$USER_NAME" "$FTP_CHROOT")" ]
+}
+
+ftp_chrooted() {
+  local listing
+  listing=$(ftp_fetch "$FTP_PASSWORD" / | awk '{print $NF}' | sort | tr '\n' ' ')
+  [ "$listing" = "inside.txt " ] \
+    && [ "$(ftp_fetch "$FTP_PASSWORD" /inside.txt)" = "keel-panel-ftp" ] \
+    && ! ftp_fetch "$FTP_PASSWORD" /etc/passwd >/dev/null \
+    && ! ftp_fetch "$FTP_PASSWORD" /../index.php >/dev/null
+}
+
+ftp_uploads() {
+  local file
+  file=$(mktemp)
+  printf 'uploaded-%s\n' "$STAMP" >"$file"
+  curl -fsS --max-time 20 --user "$FTP_LOGIN:$FTP_PASSWORD" -T "$file" "ftp://127.0.0.1/uploaded.txt" >/dev/null 2>&1
+  rm -f "$file"
+  [ "$(cat "$FTP_CHROOT/uploaded.txt" 2>/dev/null)" = "uploaded-$STAMP" ] && [ "$(stat -c %U "$FTP_CHROOT/uploaded.txt")" = "$USER_NAME" ]
+}
+
+broken_conf_refused() {
+  local broken status
+  broken=$(mktemp)
+  cp "$FTP_CONF" "$broken"
+  printf 'keel_no_such_option=YES\n' >>"$broken"
+  status=0
+  vsftpd "$broken" -v </dev/null >/dev/null 2>&1 || status=$?
+  rm -f "$broken"
+  [ "$status" -ne 0 ]
+}
+
+ftp_gone() {
+  ! grep -q "^$FTP_LOGIN:" "$FTP_PASSWD" && [ ! -e "$FTP_USERS/$FTP_LOGIN" ]
+}
+
+ftp_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  systemctl is-active --quiet vsftpd || fail "vsftpd is not running; run install first"
+  [ -f "$FTP_PAM" ] || fail "$FTP_PAM is missing; run install first"
+  local since account id site ftp task
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- the check"
+  check "vsftpd accepts $FTP_CONF" vsftpd "$FTP_CONF" -v </dev/null
+  check "vsftpd refuses a configuration with an unknown option" broken_conf_refused
+
+  say "--- a site with an FTP account"
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+  site=$(call hosting.site.create "user=$id" "domain=$DOMAIN" | field data.id) || fail "keel ctl hosting.site.create failed"
+  check "the site $DOMAIN turns active" eventually site_state_is "$site" active
+  runuser -u "$USER_NAME" -- /bin/sh -c "mkdir -p '$FTP_CHROOT' && printf '%s' keel-panel-ftp > '$FTP_CHROOT/inside.txt' && printf '%s' outside > '$DOC_ROOT/index.php'"
+  check "an FTP account whose directory leaves the site is refused" \
+    test -z "$(call hosting.ftp.create "site=$site" "name=$FTP_NAME" "password=$FTP_PASSWORD" 'directory=../..' 2>/dev/null)"
+  ftp=$(call hosting.ftp.create "site=$site" "name=$FTP_NAME" "password=$FTP_PASSWORD" directory=uploads | field data.id) || fail "keel ctl hosting.ftp.create failed"
+  check "the FTP account $FTP_LOGIN turns active" eventually ftp_state_is "$ftp" active
+  check "the user file and the file of $FTP_LOGIN belong to root with mode 0600" ftp_files_placed
+  check "$FTP_LOGIN logs in over FTP" eventually ftp_logs_in
+  check "/ of the session is $FTP_CHROOT with nothing of the host above it" ftp_chrooted
+  check "an upload lands in $FTP_CHROOT owned by $USER_NAME" ftp_uploads
+  check "another password is refused" ftp_refused "not-$FTP_PASSWORD"
+
+  say "--- suspend and resume"
+  check "keel ctl keel.account.suspend suspends $account" call keel.account.suspend "id=$account"
+  check "$FTP_LOGIN is refused while its account is suspended" eventually ftp_refused "$FTP_PASSWORD"
+  check "keel ctl keel.account.resume resumes $account" call keel.account.resume "id=$account"
+  check "$FTP_LOGIN logs in again" eventually ftp_logs_in
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "$FTP_LOGIN is gone from $FTP_PASSWD and $FTP_USERS" eventually ftp_gone
+  check "$FTP_LOGIN is refused" ftp_refused "$FTP_PASSWORD"
+  check "the agent journal carries the files of vsftpd" agent_logged "$since" "keel-panel-passwd"
+  check "the agent journal carries no FTP password" no_ftp_password_in_journal "$since"
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's FTP is proven on this machine: a virtual user of vsftpd chrooted to a directory of its site as the site's user, a directory outside the site refused, the login refused while suspended and the removal with the account"
+}
+
+no_ftp_password_in_journal() {
+  ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$FTP_PASSWORD"
+}
+
 no_mail_password_in_journal() {
   ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$MAIL_PASSWORD"
 }
@@ -663,5 +825,6 @@ case ${1:-} in
   ssl) shift; ssl_proof "$@" ;;
   db) shift; db_proof "$@" ;;
   mail) shift; mail_proof "$@" ;;
+  ftp) shift; ftp_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

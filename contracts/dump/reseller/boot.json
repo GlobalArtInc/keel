@@ -58,7 +58,8 @@
     "panel.users",
     "panel.web",
     "panel.databases",
-    "panel.mail"
+    "panel.mail",
+    "panel.ftp"
   ],
   "license": {
     "state": "none",
@@ -184,6 +185,13 @@
           "func": "hosting.mail.mailbox.list",
           "kind": "list",
           "icon": "inbox"
+        },
+        {
+          "path": "panel/ftp",
+          "label": "hosting.ftp.list.title",
+          "func": "hosting.ftp.list",
+          "kind": "list",
+          "icon": "upload"
         }
       ]
     },

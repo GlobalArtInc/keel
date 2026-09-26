@@ -20,6 +20,7 @@ keel-dns-zones = { path = "products/dns/crates/dns-zones" }
 keel-host = { path = "crates/host" }
 keel-host-agent = { path = "crates/host-agent" }
 keel-hosting-db = { path = "products/panel/crates/hosting-db" }
+keel-hosting-ftp = { path = "products/panel/crates/hosting-ftp" }
 keel-hosting-mail = { path = "products/panel/crates/hosting-mail" }
 keel-hosting-ssl = { path = "products/panel/crates/hosting-ssl" }
 keel-hosting-users = { path = "products/panel/crates/hosting-users" }
@@ -74,6 +75,7 @@ semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10"
+sha-crypt = { version = "0.6", default-features = false, features = ["alloc", "password-hash"] }
 sha1 = "0.11"
 sha2 = "0.11"
 similar = "2"

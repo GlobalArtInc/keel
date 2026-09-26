@@ -323,6 +323,21 @@ dovecot fills as the user `vmail`; the backup carries it through the `mail.archi
 installer does not configure postfix and dovecot yet: `hack/panel-vm.sh install` shows the
 `main.cf` keys and the dovecot drop-in the maps and the passwd-file need.
 
+FTP accounts belong to a site and are virtual users of vsftpd, named `hp_<name>` and chrooted to
+a directory under the document root of the site, given relative to that root; a directory that
+leaves the site is refused. After each change the user file `keel-panel-passwd`, one `login:hash`
+line per account with a SHA-512 crypt hash, is rendered into `/etc/vsftpd/keel`, the root `ftp`,
+and each account gets a file named after its login in `/etc/vsftpd/keel-users`, the root
+`ftp-users`, which the policy lists under `account_roots` of `panel` so that its files carry the
+names of the product's accounts rather than the drop-in prefix: `guest_username` maps the session
+onto the hosting user of the site and `local_root` sets the chroot. Both belong to root with mode
+0600 and are checked with `vsftpd.check`, which parses `/etc/vsftpd.conf`; vsftpd reads them at
+each login, so nothing is reloaded. The logins of a suspended account leave the user file, and
+deleting a site or its account removes its FTP accounts. The installer does not configure vsftpd
+yet: `hack/panel-vm.sh install` writes the `vsftpd.conf` keys and the PAM service
+`keel-panel-ftp` on `pam_pwdfile` that the files need, and `hack/panel-vm.sh ftp` proves the
+chroot, an upload as the hosting user, the suspension and the removal on a machine.
+
 ## Updates
 
 The screen "Updates" of the system group shows the running version and the head of the channel

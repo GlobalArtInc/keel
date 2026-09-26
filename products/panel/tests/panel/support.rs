@@ -35,8 +35,19 @@ impl Site {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for sub in [
-            "www", "bin", "vhosts", "zones", "named", "certs", "acme", "dumps", "mail", "dovecot",
+            "www",
+            "bin",
+            "vhosts",
+            "zones",
+            "named",
+            "certs",
+            "acme",
+            "dumps",
+            "mail",
+            "dovecot",
             "maildirs",
+            "ftp",
+            "ftp-users",
         ] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
@@ -70,6 +81,7 @@ impl Site {
             "postfix".to_owned(),
             "doveconf".to_owned(),
             "postmap".to_owned(),
+            "vsftpd".to_owned(),
         ] {
             let body = CHECK
                 .replace("FLAG", &site.flag(&tool).display().to_string())
@@ -95,12 +107,12 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs} }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs}, ftp: {ftp}, ftp-users: {ftp_users} }}
   services: [nginx, php*-fpm, named, postfix, dovecot]
-  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"], postfix.check: [\"{bin}/postfix\", check], dovecot.check: [\"{bin}/doveconf\", -n] }}
+  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"], postfix.check: [\"{bin}/postfix\", check], dovecot.check: [\"{bin}/doveconf\", -n], vsftpd.check: [\"{bin}/vsftpd\", /etc/vsftpd.conf, -v] }}
   exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}, {{ postmap: [\"{bin}/postmap\", \"hash:{mail}/keel-panel-domains\", \"hash:{mail}/keel-panel-mailboxes\", \"hash:{mail}/keel-panel-aliases\"] }}, {{ mail.archive: [\"{bin}/tar\", --create, --file=-, \"--directory={maildirs}\", .] }}]
   products:
-    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}
+    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [ftp-users] }}
     dns: {{ drop_in_prefix: keel-dns- }}
   tools:
     getent: {bin}/getent
@@ -124,6 +136,8 @@ impl Site {
             mail = self.path("mail").display(),
             dovecot = self.path("dovecot").display(),
             maildirs = self.path("maildirs").display(),
+            ftp = self.path("ftp").display(),
+            ftp_users = self.path("ftp-users").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )

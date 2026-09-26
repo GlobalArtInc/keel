@@ -44,6 +44,10 @@ pub enum PolicyError {
     EmptyPrefix { product: String, prefix: String },
     #[error("the user_prefix {prefix} of the product {product} is not a prefix of an account name")]
     UserPrefix { product: String, prefix: String },
+    #[error(
+        "the account root {root} of the product {product} is not a file root, or the product has no user_prefix to name its files"
+    )]
+    AccountRoot { product: String, root: String },
     #[error("uid_range {from}..{to} is not a range above 0 that stays below {max}", max = u32::MAX)]
     UidRange { from: u32, to: u32 },
     #[error("the tool {tool} has an empty path")]
@@ -95,6 +99,8 @@ pub(crate) struct Product {
     pub(crate) user_prefix: Option<String>,
     #[serde(default)]
     pub(crate) drop_in_prefix: Option<String>,
+    #[serde(default)]
+    pub(crate) account_roots: Vec<String>,
     #[serde(default)]
     pub(crate) classes: BTreeMap<String, Value>,
 }
@@ -304,6 +310,14 @@ impl Policy {
                     prefix: prefix.clone(),
                 });
             }
+            if let Some(root) = section.account_roots.iter().find(|root| {
+                section.user_prefix.is_none() || !policy.file_roots.contains_key(root.as_str())
+            }) {
+                return Err(PolicyError::AccountRoot {
+                    product: product.clone(),
+                    root: root.clone(),
+                });
+            }
         }
         for (tool, path) in [
             ("systemctl", &policy.tools.systemctl),
@@ -441,6 +455,7 @@ policy:
             Some(&Product {
                 user_prefix: Some("hp_".to_owned()),
                 drop_in_prefix: Some("keel-panel-".to_owned()),
+                account_roots: Vec::new(),
                 classes: BTreeMap::new(),
             })
         );
@@ -515,6 +530,26 @@ policy:
                 .and_then(<[String]>::first)
                 .map(String::as_str),
             Some("mariadb-dump")
+        );
+        assert_eq!(policy.root("ftp"), Some(Path::new("/etc/vsftpd/keel")));
+        assert_eq!(
+            policy.root("ftp-users"),
+            Some(Path::new("/etc/vsftpd/keel-users"))
+        );
+        assert_eq!(
+            policy.product("panel").unwrap().account_roots,
+            ["ftp-users"]
+        );
+        assert_eq!(
+            policy.check("vsftpd.check"),
+            Some(
+                [
+                    "vsftpd".to_owned(),
+                    "/etc/vsftpd.conf".to_owned(),
+                    "-v".to_owned()
+                ]
+                .as_slice()
+            )
         );
         for product in ["bill", "dns", "panel"] {
             assert_eq!(
@@ -651,6 +686,22 @@ policy:
             Policy::parse("policy:\n  products: { demo: { user_prefix: \"Hp-\" } }\n").unwrap_err(),
             PolicyError::UserPrefix { product, prefix } if product == "demo" && prefix == "Hp-"
         ));
+        assert!(matches!(
+            Policy::parse("policy:\n  file_roots: { ftp: /etc/ftp }\n  products: { panel: { user_prefix: hp_, account_roots: [users] } }\n").unwrap_err(),
+            PolicyError::AccountRoot { product, root } if product == "panel" && root == "users"
+        ));
+        assert!(matches!(
+            Policy::parse("policy:\n  file_roots: { ftp: /etc/ftp }\n  products: { dns: { drop_in_prefix: keel-dns-, account_roots: [ftp] } }\n").unwrap_err(),
+            PolicyError::AccountRoot { product, root } if product == "dns" && root == "ftp"
+        ));
+        assert_eq!(
+            Policy::parse("policy:\n  file_roots: { ftp: /etc/ftp }\n  products: { panel: { user_prefix: hp_, account_roots: [ftp] } }\n")
+                .unwrap()
+                .product("panel")
+                .unwrap()
+                .account_roots,
+            ["ftp"]
+        );
         assert!(matches!(
             Policy::parse("policy:\n  sudoers: [alice]\n").unwrap_err(),
             PolicyError::Parse(_)

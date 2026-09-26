@@ -84,7 +84,7 @@ impl Site {
         capture_journal();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let root = dir.path();
-        for sub in ["zones", "www", "bin", "templates/bind"] {
+        for sub in ["zones", "www", "accounts", "bin", "templates/bind"] {
             fs::create_dir_all(root.join(sub)).expect("the tree");
         }
         fs::write(root.join("templates/bind/zone.j2"), ZONE_TEMPLATE).expect("the template");
@@ -105,7 +105,7 @@ impl Site {
         fs::write(root.join("shells"), "# login shells\n/bin/sh\n/bin/bash\n").expect("shells");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n",
+            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www, accounts: {root}/accounts }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [accounts] }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -1053,6 +1053,59 @@ fn files_are_written_through_a_temporary_and_listed_under_the_product_prefix() {
     assert_eq!(removed["data"], json!({ "removed": false }));
     assert!(site.root().join("www/other.txt").exists());
     assert!(site.calls().is_empty());
+}
+
+#[test]
+fn an_account_root_names_its_files_by_the_accounts_of_the_product() {
+    let mut site = Site::start("accounts");
+    let account = json!({ "root": "accounts", "name": "hp_upload" });
+    let written = site.call(
+        "host.fs.write",
+        "panel",
+        json!({ "dest": account, "content": "local_root=/srv\n" }),
+    );
+    assert_eq!(written["data"], json!({ "changed": true }));
+    let path = site.root().join("accounts/hp_upload");
+    assert_eq!(fs::read_to_string(&path).unwrap(), "local_root=/srv\n");
+    for (product, dest) in [
+        (
+            "panel",
+            json!({ "root": "accounts", "name": "keel-panel-upload" }),
+        ),
+        (
+            "panel",
+            json!({ "root": "accounts", "name": "hp_../upload" }),
+        ),
+        ("panel", json!({ "root": "www", "name": "hp_upload" })),
+        ("dns", json!({ "root": "accounts", "name": "hp_upload" })),
+    ] {
+        refused(
+            &site.call(
+                "host.fs.write",
+                product,
+                json!({ "dest": dest, "content": "x\n" }),
+            ),
+            "host.error.policy",
+        );
+    }
+    assert!(!site.root().join("accounts/keel-panel-upload").exists());
+    assert!(!site.root().join("www/hp_upload").exists());
+    fs::write(site.root().join("accounts/operator"), "kept\n").unwrap();
+    let listed = site.call("host.fs.list", "panel", json!({ "root": "accounts" }));
+    let names: Vec<&str> = listed["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["name"].as_str())
+        .collect();
+    assert_eq!(names, ["hp_upload"]);
+    let removed = site.call("host.fs.remove", "panel", json!({ "dest": account }));
+    assert!(removed["ok"].as_bool().unwrap(), "{removed}");
+    assert!(!path.exists());
+    assert_eq!(
+        fs::read_to_string(site.root().join("accounts/operator")).unwrap(),
+        "kept\n"
+    );
 }
 
 #[test]

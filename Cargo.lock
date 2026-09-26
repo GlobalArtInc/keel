@@ -2434,6 +2434,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-hosting-ftp"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-host",
+ "keel-hosting-web",
+ "rand 0.10.2",
+ "sha-crypt",
+]
+
+[[package]]
 name = "keel-hosting-mail"
 version = "0.2.0"
 dependencies = [
@@ -2528,6 +2539,7 @@ dependencies = [
  "keel-dns-peer",
  "keel-host",
  "keel-hosting-db",
+ "keel-hosting-ftp",
  "keel-hosting-mail",
  "keel-hosting-ssl",
  "keel-hosting-users",
@@ -2778,6 +2790,15 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "mcf"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2044bdbade272ded4a1529324f4f30ca7b0c5b496541f2a9095bbd1c9d03cb06"
+dependencies = [
+ "base64ct",
+]
 
 [[package]]
 name = "md-5"
@@ -4227,6 +4248,19 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "sha-crypt"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32ee31e0190f9dc366d26b032ac36a99328532f40a237a79385a20d2d7f29810"
+dependencies = [
+ "base64ct",
+ "ctutils",
+ "mcf",
+ "password-hash",
+ "sha2 0.11.0",
 ]
 
 [[package]]

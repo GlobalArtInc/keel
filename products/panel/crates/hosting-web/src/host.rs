@@ -8,7 +8,7 @@ use keel::sdk::tokio::sync::Mutex;
 use keel_host::api::{Dest, Host, HostExecutor, Origin};
 use keel_hosting_users::api::HostingUsers;
 
-use crate::api::{SiteCertificates, SiteTls, Sites};
+use crate::api::{DocumentRoot, SiteCertificates, SiteTls, Sites};
 use crate::{PRODUCT, names, site};
 
 pub(crate) const SERVER_TEMPLATE: &str = "panel/nginx-site.conf.j2";
@@ -109,7 +109,7 @@ impl Effects {
         first.map_or(Ok(()), Err)
     }
 
-    async fn render(&self, host: &Host<'_>, db: &Db, row: &site::Model) -> Result<()> {
+    async fn owner(&self, db: &Db, row: &site::Model) -> Result<(String, String)> {
         let user_id: Id = row
             .user_id
             .parse()
@@ -122,9 +122,15 @@ impl Effects {
             .home
             .as_deref()
             .ok_or_else(|| KeelError::internal(USER_GONE).param("user", user.name.as_str()))?;
+        let home = names::home(home)?.to_owned();
+        Ok((user.name, home))
+    }
+
+    async fn render(&self, host: &Host<'_>, db: &Db, row: &site::Model) -> Result<()> {
+        let (user, home) = self.owner(db, row).await?;
         let domain = names::host_name(&row.domain, "domain")?;
         let aliases = names::aliases(&domain, &row.aliases.0)?;
-        let root = format!("{}/{}", names::home(home)?, names::root(&row.root)?);
+        let root = document_path(&home, &row.root)?;
         let php = names::php(row.php.as_deref())?;
         let applied = names::php(row.php_applied.as_deref())?;
         let file = file_of(&domain);
@@ -134,7 +140,7 @@ impl Effects {
             host.template(POOL_TEMPLATE)
                 .vars(&json!({
                     "pool": pool_of(&domain),
-                    "user": user.name,
+                    "user": user,
                     "socket": socket,
                     "home": home,
                 }))
@@ -264,6 +270,25 @@ impl Sites for Renderer {
             .ok_or_else(|| KeelError::internal(DETACHED))?;
         effects.apply_on(db, origin, &[site.to_string()]).await
     }
+
+    async fn document_root(&self, db: &Db, site: &Id) -> Result<Option<DocumentRoot>> {
+        let effects = self
+            .effects
+            .get()
+            .ok_or_else(|| KeelError::internal(DETACHED))?;
+        let Some(row) = site::Entity::find_by_id(site.to_string()).one(db).await? else {
+            return Ok(None);
+        };
+        let (user, home) = effects.owner(db, &row).await?;
+        Ok(Some(DocumentRoot {
+            user,
+            path: document_path(&home, &row.root)?,
+        }))
+    }
+}
+
+fn document_path(home: &str, root: &str) -> Result<String> {
+    Ok(format!("{home}/{}", names::root(root)?))
 }
 
 async fn remove_pool(host: &Host<'_>, file: &str, version: &str) -> Result<()> {

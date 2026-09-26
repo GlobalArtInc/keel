@@ -109,6 +109,9 @@ check "deploy/agent.yaml carries the passwd-file and maildir roots of the panel"
 check "deploy/agent.yaml names the checks of postfix and dovecot" grep -qF 'postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"]' deploy/agent.yaml
 check "deploy/agent.yaml lets postmap build the three virtual maps" grep -qF '{ postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }' deploy/agent.yaml
 check "deploy/agent.yaml lets the maildirs be archived to standard output" grep -qF '{ mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }' deploy/agent.yaml
+check "deploy/agent.yaml carries the user file and the per-account files of vsftpd" grep -qF 'ftp: /etc/vsftpd/keel, ftp-users: /etc/vsftpd/keel-users' deploy/agent.yaml
+check "deploy/agent.yaml names the check of vsftpd" grep -qF 'vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"]' deploy/agent.yaml
+check "deploy/agent.yaml names the per-account files of vsftpd after the accounts of the panel" grep -qF 'panel: { user_prefix: hp_, account_roots: [ftp-users], drop_in_prefix: keel-panel- }' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do
   check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
   check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml
@@ -186,6 +189,7 @@ check "panel-vm.sh proves the lock of a suspended account" grep -qF 'check "the 
 check "panel-vm.sh proves the removal with the account" grep -qF 'check "$USER_NAME and its home are gone"' hack/panel-vm.sh
 check "panel-vm.sh proves nginx serving an issued certificate" grep -qF 'check "nginx serves the issued certificate"' hack/panel-vm.sh
 check "panel-vm.sh proves a database user reaching its database" grep -qF 'check "$DATABASE_USER creates a table in $DATABASE with its password"' hack/panel-vm.sh
+check "panel-vm.sh proves an FTP session chrooted to its site" grep -qF 'check "/ of the session is $FTP_CHROOT with nothing of the host above it"' hack/panel-vm.sh
 check "install-vm.sh runs the installer through curl and bash from the served channel" grep -qF 'curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/"' hack/install-vm.sh
 check "install-vm.sh checks that root runs keel privileged alone" grep -qF 'check "root runs keel privileged and nothing else of keel"' hack/install-vm.sh
 check "install-vm.sh follows the setup link" grep -qF 'check "keel.setup.admin with the key creates the first administrator"' hack/install-vm.sh
