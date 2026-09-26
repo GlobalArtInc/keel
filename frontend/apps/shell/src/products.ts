@@ -9,4 +9,8 @@ export const SHELL_PRODUCTS: readonly KeelProduct[] = [
     id: 'dns',
     load: () => import('./chunks/dns').then((chunk) => chunk.provideKeelDns()),
   },
+  {
+    id: 'panel',
+    load: () => import('./chunks/panel').then((chunk) => chunk.provideKeelPanel()),
+  },
 ];

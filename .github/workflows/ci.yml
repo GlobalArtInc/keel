@@ -159,6 +159,9 @@ jobs:
       - name: The binary with the dns bundle alone
         run: cargo build -p keel-bin --no-default-features --features dns
 
+      - name: The binary with the panel bundle alone
+        run: cargo build -p keel-bin --no-default-features --features panel
+
       - name: Build the binary with the demo bundle
         run: cargo build -p keel-bin
 

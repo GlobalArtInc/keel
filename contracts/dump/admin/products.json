@@ -24,5 +24,17 @@
       "dns_record",
       "dns_template"
     ]
+  },
+  {
+    "id": "panel",
+    "name": "product.panel.brand",
+    "version": "0.2.0",
+    "state": "enabled",
+    "enabledAt": "2026-01-01T00:00:00Z",
+    "enabledBy": "install",
+    "modules": [
+      "host",
+      "hosting"
+    ]
   }
 ]

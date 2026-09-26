@@ -90,6 +90,22 @@ impl<'a> Users<'a> {
         let answer: UserList = self.host.call("host.user.list", json!({})).await?;
         Ok(answer.users)
     }
+
+    pub async fn lock(&self, name: &str) -> Result<User> {
+        self.modify(json!({ "name": name, "locked": true })).await
+    }
+
+    pub async fn unlock(&self, name: &str) -> Result<User> {
+        self.modify(json!({ "name": name, "locked": false })).await
+    }
+
+    pub async fn set_shell(&self, name: &str, shell: &str) -> Result<User> {
+        self.modify(json!({ "name": name, "shell": shell })).await
+    }
+
+    async fn modify(&self, args: Value) -> Result<User> {
+        self.host.call("host.user.modify", args).await
+    }
 }
 
 pub struct Groups<'a> {
@@ -150,6 +166,9 @@ mod tests {
             json!({ "removed": false }),
             json!({ "name": "hp_web", "gid": 100003, "members": ["hp_a"] }),
             json!({ "groups": [] }),
+            json!({ "name": "hp_site", "uid": 100000, "gid": 100000, "home": "/nonexistent", "shell": "/usr/sbin/nologin", "locked": true }),
+            json!({ "name": "hp_site", "uid": 100000, "gid": 100000, "home": "/nonexistent", "shell": "/usr/sbin/nologin", "locked": false }),
+            user("hp_site", 100000),
         ]);
         let executor: &dyn HostExecutor = &recorder;
         let host = executor.on(origin());
@@ -181,6 +200,12 @@ mod tests {
         assert!(!groups.delete("hp_web").await.unwrap());
         assert_eq!(groups.get("hp_web").await.unwrap().members, ["hp_a"]);
         assert!(groups.list().await.unwrap().is_empty());
+        assert_eq!(users.lock("hp_site").await.unwrap().uid, 100000);
+        assert_eq!(users.unlock("hp_site").await.unwrap().name, "hp_site");
+        assert_eq!(
+            users.set_shell("hp_site", "/bin/bash").await.unwrap().uid,
+            100000
+        );
         assert_eq!(
             recorder.calls(),
             [
@@ -198,6 +223,18 @@ mod tests {
                 ("host.group.delete".to_owned(), json!({ "name": "hp_web" })),
                 ("host.group.get".to_owned(), json!({ "name": "hp_web" })),
                 ("host.group.list".to_owned(), json!({})),
+                (
+                    "host.user.modify".to_owned(),
+                    json!({ "name": "hp_site", "locked": true })
+                ),
+                (
+                    "host.user.modify".to_owned(),
+                    json!({ "name": "hp_site", "locked": false })
+                ),
+                (
+                    "host.user.modify".to_owned(),
+                    json!({ "name": "hp_site", "shell": "/bin/bash" })
+                ),
             ]
         );
     }

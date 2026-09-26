@@ -229,6 +229,7 @@ echo "site $site, binary $keel, developer CLI $dev"
 
 keel_ok "$site/enable.out" product enable demo
 keel_ok "$site/enable-dns.out" product enable dns
+keel_ok "$site/enable-panel.out" product enable panel
 start_serve
 
 root_account=00000000000000000000000000

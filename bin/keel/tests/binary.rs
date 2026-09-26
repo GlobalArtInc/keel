@@ -380,7 +380,7 @@ mod privileged {
     }
 }
 
-#[cfg(not(any(feature = "demo", feature = "dns")))]
+#[cfg(not(any(feature = "demo", feature = "dns", feature = "panel")))]
 #[test]
 fn the_binary_without_the_demo_feature_carries_no_product_bundle() {
     let output = std::process::Command::new(KEEL)
@@ -650,15 +650,19 @@ mod demo {
     #[tokio::test]
     async fn the_binary_enables_demo_serves_and_answers_ctl_and_http_with_the_envelope() {
         let site = site().await;
-        let unknown = site.failed(&["product", "enable", "panel"]);
-        let carried = if cfg!(feature = "dns") {
-            "demo, dns"
-        } else {
-            "demo"
-        };
+        let unknown = site.failed(&["product", "enable", "bill"]);
+        let carried = [
+            Some("demo"),
+            cfg!(feature = "dns").then_some("dns"),
+            cfg!(feature = "panel").then_some("panel"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ");
         assert!(
             unknown.contains(&format!(
-                "the product panel is not carried by this binary; it carries {carried}"
+                "the product bill is not carried by this binary; it carries {carried}"
             )),
             "{unknown}"
         );
@@ -669,6 +673,9 @@ mod demo {
         let mut listed = format!("demo\tenabled\t{}", env!("CARGO_PKG_VERSION"));
         if cfg!(feature = "dns") {
             listed.push_str(&format!("\ndns\tdisabled\t{}", env!("CARGO_PKG_VERSION")));
+        }
+        if cfg!(feature = "panel") {
+            listed.push_str(&format!("\npanel\tdisabled\t{}", env!("CARGO_PKG_VERSION")));
         }
         assert_eq!(site.ok(&["product", "list"]).trim(), listed);
         assert_eq!(site.ok(&["product", "features"]), "");

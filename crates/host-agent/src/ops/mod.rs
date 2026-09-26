@@ -29,6 +29,7 @@ const OP_USER_CREATE: &str = "host.user.create";
 const OP_USER_DELETE: &str = "host.user.delete";
 const OP_USER_GET: &str = "host.user.get";
 const OP_USER_LIST: &str = "host.user.list";
+const OP_USER_MODIFY: &str = "host.user.modify";
 const OP_GROUP_CREATE: &str = "host.group.create";
 const OP_GROUP_DELETE: &str = "host.group.delete";
 const OP_GROUP_GET: &str = "host.group.get";
@@ -158,6 +159,7 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
         OP_USER_DELETE => user::delete(&call, parse(args)?),
         OP_USER_GET => user::get(&call, parse(args)?),
         OP_USER_LIST => user::list(&call, parse::<Empty>(args).map(drop)?),
+        OP_USER_MODIFY => user::modify(&call, parse(args)?),
         OP_GROUP_CREATE => group::create(&call, parse(args)?),
         OP_GROUP_DELETE => group::delete(&call, parse(args)?),
         OP_GROUP_GET => group::get(&call, parse(args)?),

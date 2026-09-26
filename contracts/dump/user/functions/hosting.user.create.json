@@ -1,0 +1,118 @@
+{
+  "keel": 1,
+  "name": "hosting.user.create",
+  "module": "hosting",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.user.manage",
+    "feature": "panel.users"
+  },
+  "key": "id",
+  "params": {
+    "title": "UserCreate",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 29,
+        "pattern": "^[a-z][a-z0-9_-]{0,28}$"
+      },
+      "shell": {
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingUser",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "uid": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "int64"
+      },
+      "home": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "shell": {
+        "type": "boolean"
+      },
+      "state": {
+        "type": "string"
+      },
+      "error": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "name",
+      "shell",
+      "state",
+      "createdAt",
+      "updatedAt"
+    ]
+  },
+  "ui": {
+    "title": "hosting.user.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "name",
+          "shell"
+        ]
+      },
+      {
+        "id": "owner",
+        "show_if": {
+          "ne": [
+            "$principal.level",
+            "user"
+          ]
+        }
+      }
+    ]
+  }
+}

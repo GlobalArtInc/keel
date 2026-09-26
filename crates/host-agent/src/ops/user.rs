@@ -13,6 +13,8 @@ use crate::protocol::{ERROR_EXEC_FAILED, ERROR_NOT_FOUND, Failure};
 
 const DEFAULT_SHELL: &str = "/usr/sbin/nologin";
 const NO_HOME: &str = "/nonexistent";
+const EXPIRED_SINCE_EPOCH_DAY: &str = "1";
+const NEVER_EXPIRES: &str = "";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,6 +32,16 @@ pub(super) struct Delete {
     name: String,
     #[serde(default)]
     remove_home: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Modify {
+    name: String,
+    #[serde(default)]
+    shell: Option<String>,
+    #[serde(default)]
+    locked: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -159,15 +171,58 @@ pub(super) fn delete(call: &Call<'_>, args: Delete) -> Result<Value, Failure> {
     Ok(json!({ "removed": true }))
 }
 
+pub(super) fn modify(call: &Call<'_>, args: Modify) -> Result<Value, Failure> {
+    call.account_name(&args.name)?;
+    let range = call.uid_range()?;
+    if args.shell.is_none() && args.locked.is_none() {
+        return Err(Failure::args(format!(
+            "a change of {} names a shell, a lock or both",
+            args.name
+        )));
+    }
+    if let Some(shell) = &args.shell {
+        allowed_shell(call, shell)?;
+    }
+    let accounts = call.accounts();
+    let user = accounts
+        .user(&args.name)?
+        .ok_or_else(|| absent(&args.name))?;
+    inside(range, user.uid, &args.name)?;
+    let mut argv: Vec<&str> = Vec::new();
+    if let Some(shell) = &args.shell {
+        argv.extend(["--shell", shell.as_str()]);
+    }
+    match args.locked {
+        Some(true) => argv.extend(["--lock", "--expiredate", EXPIRED_SINCE_EPOCH_DAY]),
+        Some(false) => argv.extend(["--unlock", "--expiredate", NEVER_EXPIRES]),
+        None => {}
+    }
+    argv.push(&args.name);
+    process::succeed(&call.policy.tools().usermod, &argv)?;
+    let user = accounts
+        .user(&args.name)?
+        .ok_or_else(|| absent(&args.name))?;
+    let mut value = describe_fields(&user);
+    if let Some(locked) = args.locked {
+        value["locked"] = json!(locked);
+    }
+    Ok(value)
+}
+
+fn absent(name: &str) -> Failure {
+    Failure::new(
+        ERROR_NOT_FOUND,
+        format!("{name} is not an account of this host"),
+    )
+}
+
 pub(super) fn get(call: &Call<'_>, args: Get) -> Result<Value, Failure> {
     call.account_name(&args.name)?;
     let range = call.uid_range()?;
-    let user = call.accounts().user(&args.name)?.ok_or_else(|| {
-        Failure::new(
-            ERROR_NOT_FOUND,
-            format!("{} is not an account of this host", args.name),
-        )
-    })?;
+    let user = call
+        .accounts()
+        .user(&args.name)?
+        .ok_or_else(|| absent(&args.name))?;
     inside(range, user.uid, &args.name)?;
     Ok(describe_fields(&user))
 }

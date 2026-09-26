@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 keel=${1:-}
 problems=0
-scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh hack/host-vm.sh hack/dns-vm.sh)
+scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh hack/host-vm.sh hack/dns-vm.sh hack/panel-vm.sh)
 units=(keel.service keel-privileged.service keel-update.path keel-update.service)
 enabled_units=(keel.service keel-privileged.service keel-update.path)
 
@@ -168,6 +168,10 @@ check "dns-vm.sh --help prints the usage and exits 0" prints_usage hack/dns-vm.s
 check "dns-vm.sh installs through install.sh with dns from a local archive" grep -qF 'bash deploy/install.sh --product dns --binary "$archive" --yes' hack/dns-vm.sh
 check "dns-vm.sh asks named for the zones with dig" grep -qF 'check "named answers $CLI_ZONE authoritatively" served "$CLI_ZONE"' hack/dns-vm.sh
 check "dns-vm.sh proves the rollback of a broken template without downtime" grep -qF 'check "named answered every poll during the broken apply"' hack/dns-vm.sh
+check "panel-vm.sh --help prints the usage and exits 0" prints_usage hack/panel-vm.sh
+check "panel-vm.sh installs through install.sh with panel from a local archive" grep -qF 'bash deploy/install.sh --product panel --binary "$archive" --yes' hack/panel-vm.sh
+check "panel-vm.sh proves the lock of a suspended account" grep -qF 'check "the operating-system account is locked and expired while its account is suspended"' hack/panel-vm.sh
+check "panel-vm.sh proves the removal with the account" grep -qF 'check "$USER_NAME and its home are gone"' hack/panel-vm.sh
 check "install-vm.sh runs the installer through curl and bash from the served channel" grep -qF 'curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/"' hack/install-vm.sh
 check "install-vm.sh checks that root runs keel privileged alone" grep -qF 'check "root runs keel privileged and nothing else of keel"' hack/install-vm.sh
 check "install-vm.sh follows the setup link" grep -qF 'check "keel.setup.admin with the key creates the first administrator"' hack/install-vm.sh

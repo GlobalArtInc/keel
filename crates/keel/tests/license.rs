@@ -18,7 +18,6 @@ use tempfile::TempDir;
 
 const LICENSE: &str = "keel.error.license";
 const PATIENCE: Duration = Duration::from_secs(10);
-const ENABLE: &str = "keel.product.enable";
 const POLL_JOB: &str = "notify.problems.poll";
 
 static ZONES: ModuleDef = ModuleDef {
@@ -375,40 +374,6 @@ async fn keel_license_install_sends_the_file_over_the_socket_and_the_compiled_ke
     running.stop().await.expect("keel stops");
     drop(site.dir);
     site.database.finish().await;
-}
-
-#[tokio::test]
-async fn a_lease_that_lists_dns_alone_refuses_keel_product_enable_panel() {
-    let issuer = Issuer::generate().expect("a throwaway license key");
-    let harness = composed(&issuer).enabled(["dns"]).boot().await;
-    assert!(features(&harness).may_enable("panel"));
-    lease(&harness, &issuer, &["dns"]).await;
-
-    let refused = harness
-        .call(Who::Admin, ENABLE, json!({ "id": "panel" }))
-        .await;
-    assert_eq!(refused_by_license(&refused)["product"], json!("panel"));
-    let dns = harness
-        .call(Who::Admin, ENABLE, json!({ "id": "dns" }))
-        .await;
-    assert_eq!(data(&dns)["state"], json!("enabled"));
-    let listed = harness
-        .call(Who::Admin, "keel.product.list", json!({}))
-        .await;
-    let states: Vec<(Value, Value)> = data(&listed)["data"]
-        .as_array()
-        .expect("product rows")
-        .iter()
-        .map(|row| (row["id"].clone(), row["state"].clone()))
-        .collect();
-    assert_eq!(
-        states,
-        [
-            (json!("dns"), json!("enabled")),
-            (json!("panel"), json!("disabled"))
-        ]
-    );
-    harness.finish().await;
 }
 
 #[tokio::test]

@@ -1,9 +1,14 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use std::path::Path;
+
 use super::Call;
+use crate::policy::{is_pattern, service_matches};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_RELOAD_FAILED, ERROR_VALIDATE_FAILED, Failure};
+
+const SERVICE_SUFFIX: &str = ".service";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,34 +37,71 @@ fn act(call: &Call<'_>, verb: &str, args: Action) -> Result<Value, Failure> {
 }
 
 pub(super) fn list(call: &Call<'_>, (): ()) -> Result<Value, Failure> {
-    let services = call.policy.services();
-    if services.is_empty() {
+    let systemctl = &call.policy.tools().systemctl;
+    let mut units: Vec<String> = Vec::new();
+    for entry in call.policy.services() {
+        if is_pattern(entry) {
+            for unit in installed(systemctl, entry)? {
+                if !units.contains(&unit) {
+                    units.push(unit);
+                }
+            }
+        } else if !units.contains(entry) {
+            units.push(entry.clone());
+        }
+    }
+    if units.is_empty() {
         return Ok(json!({ "services": [] }));
     }
-    let systemctl = &call.policy.tools().systemctl;
     let mut argv: Vec<&str> = vec!["is-active"];
-    argv.extend(services.iter().map(String::as_str));
+    argv.extend(units.iter().map(String::as_str));
     let output = process::run(systemctl, &argv)?;
     let text = process::stdout(&output);
     let states: Vec<&str> = text.lines().collect();
-    if states.len() != services.len() {
+    if states.len() != units.len() {
         return Err(Failure::new(
             ERROR_EXEC_FAILED,
             format!(
                 "{} is-active answered {} line(s) for {} unit(s): {}",
                 systemctl.display(),
                 states.len(),
-                services.len(),
+                units.len(),
                 process::detail(systemctl, &output)
             ),
         ));
     }
-    let listed: Vec<Value> = services
+    let listed: Vec<Value> = units
         .iter()
         .zip(states)
         .map(|(name, state)| json!({ "name": name, "state": state.trim() }))
         .collect();
     Ok(json!({ "services": listed }))
+}
+
+fn installed(systemctl: &Path, entry: &str) -> Result<Vec<String>, Failure> {
+    let pattern = format!("{entry}{SERVICE_SUFFIX}");
+    let output = process::run(
+        systemctl,
+        [
+            "list-unit-files",
+            "--no-legend",
+            "--type=service",
+            pattern.as_str(),
+        ],
+    )?;
+    if !output.status.success() {
+        return Err(Failure::new(
+            ERROR_EXEC_FAILED,
+            process::detail(systemctl, &output),
+        ));
+    }
+    Ok(process::stdout(&output)
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter_map(|unit| unit.strip_suffix(SERVICE_SUFFIX))
+        .filter(|unit| service_matches(entry, unit))
+        .map(str::to_owned)
+        .collect())
 }
 
 pub(super) fn check_passes(argv: &[String]) -> Result<(), String> {

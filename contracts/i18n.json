@@ -37,6 +37,14 @@
         "products/dns/crates/dns-records/i18n": ["dns.record"],
         "products/dns/crates/dns-templates/i18n": ["dns.template"]
       }
+    },
+    {
+      "name": "keel-panel",
+      "id_env": "KEEL_OWNLATE_PROJECT_PANEL",
+      "directories": {
+        "products/panel/i18n": ["product.panel", "menu.panel"],
+        "products/panel/crates/hosting-users/i18n": ["hosting"]
+      }
     }
   ]
 }

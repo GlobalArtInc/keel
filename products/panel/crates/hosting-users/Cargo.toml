@@ -1,0 +1,13 @@
+[package]
+name = "keel-hosting-users"
+description = "The hosting-users module of KeelPanel: an operating-system user per hosting user, created, locked and removed through the host agent"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-host = { workspace = true }

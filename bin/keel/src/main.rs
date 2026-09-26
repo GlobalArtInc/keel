@@ -16,5 +16,7 @@ fn main() -> keel::ExitCode {
     let runtime = runtime.product(&keel_demo::MANIFEST);
     #[cfg(feature = "dns")]
     let runtime = runtime.product(&keel_dns::MANIFEST);
+    #[cfg(feature = "panel")]
+    let runtime = runtime.product(&keel_panel::MANIFEST);
     runtime.run()
 }

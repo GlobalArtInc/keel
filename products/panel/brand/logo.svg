@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 32" width="128" height="32" role="img" aria-label="KeelPanel">
+  <rect x="2" y="4" width="24" height="24" rx="5" fill="#315fcf"/>
+  <path d="M8 11h12M8 16h12M8 21h7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M36 26V6h7a5 5 0 0 1 0 10h-7" stroke="#315fcf" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+  <path d="M52 26l7-20 7 20M55 19h8" stroke="#315fcf" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+  <path d="M72 26V6l12 20V6" stroke="#315fcf" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+  <path d="M102 6H91v20h11M91 16h9" stroke="#315fcf" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+  <path d="M108 6v20h10" stroke="#315fcf" stroke-width="3.5" stroke-linejoin="round" fill="none"/>
+</svg>

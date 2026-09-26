@@ -12,6 +12,7 @@ const DEFAULT_USERADD: &str = "useradd";
 const DEFAULT_USERDEL: &str = "userdel";
 const DEFAULT_GROUPADD: &str = "groupadd";
 const DEFAULT_GROUPDEL: &str = "groupdel";
+const DEFAULT_USERMOD: &str = "usermod";
 const DEFAULT_SHELLS: &str = "/etc/shells";
 const DEFAULT_APT_GET: &str = "apt-get";
 const DEFAULT_DPKG_QUERY: &str = "dpkg-query";
@@ -19,6 +20,7 @@ const DEFAULT_APT_CACHE: &str = "apt-cache";
 const DEFAULT_SETQUOTA: &str = "setquota";
 const DEFAULT_REPQUOTA: &str = "repquota";
 const DEFAULT_CRON_DIR: &str = "/etc/cron.d";
+const VERSION_WILDCARD: char = '*';
 
 #[derive(Debug, thiserror::Error)]
 pub enum PolicyError {
@@ -140,6 +142,8 @@ pub(crate) struct Tools {
     pub(crate) groupadd: PathBuf,
     #[serde(default = "default_groupdel")]
     pub(crate) groupdel: PathBuf,
+    #[serde(default = "default_usermod")]
+    pub(crate) usermod: PathBuf,
     #[serde(default = "default_shells")]
     pub(crate) shells: PathBuf,
     #[serde(default = "default_apt_get")]
@@ -180,6 +184,10 @@ fn default_groupdel() -> PathBuf {
     PathBuf::from(DEFAULT_GROUPDEL)
 }
 
+fn default_usermod() -> PathBuf {
+    PathBuf::from(DEFAULT_USERMOD)
+}
+
 fn default_shells() -> PathBuf {
     PathBuf::from(DEFAULT_SHELLS)
 }
@@ -217,6 +225,7 @@ impl Default for Tools {
             userdel: default_userdel(),
             groupadd: default_groupadd(),
             groupdel: default_groupdel(),
+            usermod: default_usermod(),
             shells: default_shells(),
             apt_get: default_apt_get(),
             dpkg_query: default_dpkg_query(),
@@ -257,7 +266,7 @@ impl Policy {
             }
         }
         for service in &policy.services {
-            if !valid_unit_name(service) {
+            if !valid_service_entry(service) {
                 return Err(PolicyError::ServiceName(service.clone()));
             }
         }
@@ -303,6 +312,7 @@ impl Policy {
             ("userdel", &policy.tools.userdel),
             ("groupadd", &policy.tools.groupadd),
             ("groupdel", &policy.tools.groupdel),
+            ("usermod", &policy.tools.usermod),
             ("shells", &policy.tools.shells),
             ("apt_get", &policy.tools.apt_get),
             ("dpkg_query", &policy.tools.dpkg_query),
@@ -343,7 +353,9 @@ impl Policy {
     }
 
     pub(crate) fn allows_service(&self, name: &str) -> bool {
-        self.services.iter().any(|service| service == name)
+        self.services
+            .iter()
+            .any(|service| service_matches(service, name))
     }
 
     pub(crate) fn tools(&self) -> &Tools {
@@ -358,6 +370,33 @@ fn valid_unit_name(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '@' | ':' | '\\'))
+}
+
+fn valid_service_entry(entry: &str) -> bool {
+    match entry.split_once(VERSION_WILDCARD) {
+        None => valid_unit_name(entry),
+        Some((head, tail)) => {
+            !head.is_empty()
+                && !tail.contains(VERSION_WILDCARD)
+                && valid_unit_name(&format!("{head}0{tail}"))
+        }
+    }
+}
+
+pub(crate) fn is_pattern(entry: &str) -> bool {
+    entry.contains(VERSION_WILDCARD)
+}
+
+pub(crate) fn service_matches(entry: &str, name: &str) -> bool {
+    match entry.split_once(VERSION_WILDCARD) {
+        None => entry == name,
+        Some((head, tail)) => name
+            .strip_prefix(head)
+            .and_then(|rest| rest.strip_suffix(tail))
+            .is_some_and(|version| {
+                !version.is_empty() && version.chars().all(|c| c.is_ascii_digit() || c == '.')
+            }),
+    }
 }
 
 fn valid_user_prefix(prefix: &str) -> bool {
@@ -430,7 +469,21 @@ policy:
         assert!(!range.contains(165_536));
         assert_eq!(policy.root("zones"), Some(Path::new("/etc/bind/zones")));
         assert_eq!(policy.root("named"), Some(Path::new("/etc/bind/keel")));
-        assert!(policy.allows_service("named"));
+        for root in ["www", "vhosts", "pools", "mail", "certs"] {
+            assert!(policy.root(root).is_some_and(Path::is_absolute), "{root}");
+        }
+        for service in [
+            "named",
+            "nginx",
+            "php8.4-fpm",
+            "postfix",
+            "dovecot",
+            "mariadb",
+            "vsftpd",
+        ] {
+            assert!(policy.allows_service(service), "{service}");
+        }
+        assert_eq!(policy.tools().usermod, Path::new("usermod"));
         for product in ["bill", "dns", "panel"] {
             assert_eq!(
                 policy.product(product).unwrap().drop_in_prefix.as_deref(),
@@ -613,5 +666,30 @@ policy:
         let policy =
             Policy::parse("policy:\n  services: [nginx, php8.3-fpm, getty@tty1]\n").unwrap();
         assert!(policy.allows_service("getty@tty1"));
+    }
+
+    #[test]
+    fn a_service_pattern_admits_the_versions_of_one_unit_and_nothing_else() {
+        let policy = Policy::parse("policy:\n  services: [nginx, php*-fpm]\n").unwrap();
+        for name in ["php8.3-fpm", "php8.4-fpm", "php7-fpm", "nginx"] {
+            assert!(policy.allows_service(name), "{name}");
+        }
+        for name in [
+            "php-fpm",
+            "phpx-fpm",
+            "php8.3-fpm-evil",
+            "php8.3;-fpm",
+            "php*-fpm",
+            "nginx2",
+        ] {
+            assert!(!policy.allows_service(name), "{name}");
+        }
+        for entry in ["*", "*-fpm", "php**-fpm", "php*-fpm*", "php*;-fpm"] {
+            let text = format!("policy:\n  services: [\"{entry}\"]\n");
+            assert!(
+                matches!(Policy::parse(&text).unwrap_err(), PolicyError::ServiceName(refused) if refused == entry),
+                "{entry}"
+            );
+        }
     }
 }

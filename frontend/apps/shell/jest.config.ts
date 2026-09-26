@@ -9,6 +9,7 @@ const config: Config = {
     '^@globalart/keel/(.*)$': '<rootDir>/../../libs/keel/$1/src/public-api.ts',
     '^@globalart/keel-demo$': '<rootDir>/../../products/demo/src/public-api.ts',
     '^@globalart/keel-dns$': '<rootDir>/../../products/dns/src/public-api.ts',
+    '^@globalart/keel-panel$': '<rootDir>/../../products/panel/src/public-api.ts',
   },
 };
 

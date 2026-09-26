@@ -105,7 +105,7 @@ impl Site {
         fs::write(root.join("shells"), "# login shells\n/bin/sh\n/bin/bash\n").expect("shells");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www }}\n  services: [named]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n",
+            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -282,6 +282,11 @@ fn write_stubs(root: &Path) {
     );
     stub(
         root,
+        "usermod",
+        "echo \"usermod $*\" >> LOG\nshell=\nwhile [ $# -gt 1 ]; do\n  case $1 in\n    --shell) shell=$2; shift 2;;\n    --expiredate) shift 2;;\n    --lock|--unlock) shift;;\n    *) echo \"usermod: unexpected $1\" >&2; exit 3;;\n  esac\ndone\nif [ -n \"$shell\" ]; then awk -F: -v OFS=: -v k=\"$1\" -v s=\"$shell\" '$1 == k { $7 = s } { print }' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd; fi\n",
+    );
+    stub(
+        root,
         "groupadd",
         "echo \"groupadd $*\" >> LOG\nif [ -e ROOT/fail-groupadd ]; then rm -f ROOT/fail-groupadd; echo 'groupadd: cannot lock /etc/group; try again later.' >&2; exit 10; fi\nprintf '%s:x:%s:\\n' \"$3\" \"$2\" >> ROOT/group\n",
     );
@@ -294,7 +299,7 @@ fn write_stubs(root: &Path) {
         root,
         "systemctl",
         &format!(
-            "echo \"systemctl $*\" >> LOG\nif [ \"$1\" = is-active ]; then shift; for unit; do if [ -e ROOT/inactive-$unit ]; then echo inactive; else echo active; fi; done; exit 0; fi\nif [ -e ROOT/fail-systemctl ]; then rm -f ROOT/fail-systemctl; echo '{SYSTEMCTL_MESSAGE}' >&2; exit 1; fi\n"
+            "echo \"systemctl $*\" >> LOG\nif [ \"$1\" = list-unit-files ]; then if [ -f ROOT/unit-files ]; then cat ROOT/unit-files; fi; exit 0; fi\nif [ \"$1\" = is-active ]; then shift; for unit; do if [ -e ROOT/inactive-$unit ]; then echo inactive; else echo active; fi; done; exit 0; fi\nif [ -e ROOT/fail-systemctl ]; then rm -f ROOT/fail-systemctl; echo '{SYSTEMCTL_MESSAGE}' >&2; exit 1; fi\n"
         ),
     );
     stub(
@@ -364,7 +369,13 @@ fn a_peer_that_is_not_the_configured_uid_is_refused() {
         answer["data"],
         json!({ "services": [{ "name": "named", "state": "active" }] })
     );
-    assert_eq!(own.calls(), ["systemctl is-active named"]);
+    assert_eq!(
+        own.calls(),
+        [
+            "systemctl list-unit-files --no-legend --type=service php*-fpm.service",
+            "systemctl is-active named"
+        ]
+    );
     let line = own.audit_line(1);
     assert!(line.contains("op=host.service.list"), "{line}");
     assert!(line.contains("actor=alice"), "{line}");
@@ -1356,4 +1367,128 @@ fn collect(dir: &Path, files: &mut Vec<PathBuf>) {
         }
     }
     files.sort();
+}
+
+#[test]
+fn a_service_pattern_lists_and_reloads_the_installed_versions_alone() {
+    let mut site = Site::start("pattern");
+    fs::write(
+        site.root().join("unit-files"),
+        "php8.2-fpm.service enabled enabled\nphp8.4-fpm.service disabled enabled\nphp-fpm-evil.service enabled enabled\nnginx.service enabled enabled\n",
+    )
+    .unwrap();
+    fs::write(site.root().join("inactive-php8.4-fpm"), "").unwrap();
+    let listed = site.call("host.service.list", "panel", json!({}));
+    assert_eq!(
+        listed["data"],
+        json!({ "services": [
+            { "name": "named", "state": "active" },
+            { "name": "php8.2-fpm", "state": "active" },
+            { "name": "php8.4-fpm", "state": "inactive" }
+        ] }),
+        "{listed}"
+    );
+    assert_eq!(
+        site.call(
+            "host.service.reload",
+            "panel",
+            json!({ "name": "php8.4-fpm" })
+        )["ok"],
+        true
+    );
+    for name in ["php-fpm-evil", "php*-fpm", "nginx"] {
+        refused(
+            &site.call("host.service.reload", "panel", json!({ "name": name })),
+            "host.error.policy",
+        );
+    }
+    assert_eq!(
+        site.calls(),
+        [
+            "systemctl list-unit-files --no-legend --type=service php*-fpm.service",
+            "systemctl is-active named php8.2-fpm php8.4-fpm",
+            "systemctl reload php8.4-fpm"
+        ]
+    );
+}
+
+#[test]
+fn a_user_inside_the_range_is_locked_unlocked_and_given_a_shell() {
+    let mut site = Site::start("modify");
+    assert_eq!(
+        site.call("host.user.create", "panel", json!({ "name": "hp_site" }))["data"]["created"],
+        true
+    );
+    let locked = site.call(
+        "host.user.modify",
+        "panel",
+        json!({ "name": "hp_site", "locked": true }),
+    );
+    assert_eq!(locked["data"]["locked"], true, "{locked}");
+    assert_eq!(locked["data"]["uid"], 100000);
+    let shell = site.call(
+        "host.user.modify",
+        "panel",
+        json!({ "name": "hp_site", "shell": "/bin/bash" }),
+    );
+    assert_eq!(shell["data"]["shell"], "/bin/bash", "{shell}");
+    assert!(shell["data"].get("locked").is_none(), "{shell}");
+    let unlocked = site.call(
+        "host.user.modify",
+        "panel",
+        json!({ "name": "hp_site", "locked": false, "shell": "/usr/sbin/nologin" }),
+    );
+    assert_eq!(unlocked["data"]["locked"], false, "{unlocked}");
+    assert_eq!(unlocked["data"]["shell"], "/usr/sbin/nologin");
+    assert_eq!(
+        site.calls()[2..],
+        [
+            "usermod --lock --expiredate 1 hp_site",
+            "usermod --shell /bin/bash hp_site",
+            "usermod --shell /usr/sbin/nologin --unlock --expiredate  hp_site"
+        ]
+    );
+
+    refused(
+        &site.call("host.user.modify", "panel", json!({ "name": "hp_site" })),
+        "host.error.args",
+    );
+    refused(
+        &site.call(
+            "host.user.modify",
+            "panel",
+            json!({ "name": "hp_site", "shell": "/bin/zsh" }),
+        ),
+        "host.error.policy",
+    );
+    refused(
+        &site.call(
+            "host.user.modify",
+            "panel",
+            json!({ "name": "tester", "locked": true }),
+        ),
+        "host.error.policy",
+    );
+    refused(
+        &site.call(
+            "host.user.modify",
+            "panel",
+            json!({ "name": "hp_absent", "locked": true }),
+        ),
+        "host.error.not_found",
+    );
+    fs::write(
+        site.root().join("passwd"),
+        format!("{}hp_old:x:999:999::/nonexistent:/bin/sh\n", site.passwd()),
+    )
+    .unwrap();
+    refused(
+        &site.call(
+            "host.user.modify",
+            "panel",
+            json!({ "name": "hp_old", "locked": true }),
+        ),
+        "host.error.policy",
+    );
+    assert_eq!(site.calls().len(), 5);
 }

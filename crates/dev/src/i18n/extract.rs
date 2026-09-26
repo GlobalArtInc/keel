@@ -241,7 +241,7 @@ pub(super) mod tests {
             .iter()
             .map(|(name, _)| name.as_str())
             .collect();
-        assert_eq!(names, ["keel-core", "keel-demo", "keel-dns"]);
+        assert_eq!(names, ["keel-core", "keel-demo", "keel-dns", "keel-panel"]);
         let core = read(&out.join("keel-core.en.json"));
         let demo = read(&out.join("keel-demo.en.json"));
         assert_eq!(extracted.files[0].1, core.len());

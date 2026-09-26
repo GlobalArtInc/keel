@@ -25,6 +25,17 @@
         "hue": 264,
         "chroma": 0.18
       }
+    },
+    {
+      "id": "panel",
+      "name": "product.panel.brand",
+      "edition": "lite",
+      "brand": {
+        "name": "product.panel.brand",
+        "logo": "/brand/panel/logo.svg",
+        "hue": 264,
+        "chroma": 0.18
+      }
     }
   ],
   "brand": {
@@ -34,7 +45,8 @@
   },
   "principal": null,
   "features": [
-    "dns.zones"
+    "dns.zones",
+    "panel.users"
   ],
   "license": {
     "state": "none",

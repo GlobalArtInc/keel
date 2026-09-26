@@ -192,7 +192,10 @@ overwrite.
 `journalctl -u keel-privileged` with the actor, the request id and the outcome, and a request
 outside the policy is refused with `host.error.policy` and appears there too:
 
-- `host.user.*` and `host.group.*` inside `uid_range`, under the product's `user_prefix`; an
+- `host.user.*` and `host.group.*` inside `uid_range`, under the product's `user_prefix`;
+  `host.user.modify` sets the login shell, `/usr/sbin/nologin` or one listed in `/etc/shells`,
+  and locks or unlocks the account through `usermod`, a lock also expiring the account so that
+  no key opens it either; an
   account whose primary group lies outside the range is refused, and a program run as one of
   these accounts (`keel agent-exec`, a re-exec of the binary) starts with a cleared environment,
   the fixed `PATH`, `LC_ALL=C`, the account's `HOME`, `USER` and `LOGNAME`, in `/`;
@@ -200,7 +203,9 @@ outside the policy is refused with `host.error.policy` and appears there too:
   with the product's `drop_in_prefix`, written through a temporary file and a rename, never
   following a symbolic link, never setuid, never writable by every account, and read up to
   8 MiB;
-- `host.service.*` for the units listed in `services`, through `systemctl` as a process;
+- `host.service.*` for the units listed in `services`, through `systemctl` as a process; an
+  entry may carry one `*` standing for a version of digits and dots, so `php*-fpm` admits
+  `php8.4-fpm` and nothing else, and the list shows the installed units such an entry matches;
 - `host.pkg.*` over `apt-get`, `apt-cache` and `dpkg-query`, with each name taken as that package
   and never as a pattern or a trailing `+` or `-` action;
 - `host.cron.*` writing the product's drop-ins under `/etc/cron.d`, whose jobs run an entry of
@@ -266,6 +271,25 @@ dig @127.0.0.1 example.test SOA
 
 A zone whose check fails turns to `error` with the tool's output, raises the problem
 `dns.zone.failed`, and leaves the previous file and the running bind as they were.
+
+## Running KeelPanel
+
+`--product panel` installs the bundle. A hosting user is an operating-system account named
+`hp_<name>` inside `uid_range`, with its home `/var/www/keel-panel-<name>` under the `www` root
+of `file_roots` and no login shell unless shell access is granted. It is created after the
+transaction commits; suspending its account locks it, resuming unlocks it, and deleting the
+user or its account removes the account and its home:
+
+```
+runuser -u keel -- keel ctl hosting.user.create --as <login> name=alice
+runuser -u keel -- keel ctl hosting.user.list --as <login> --out table
+getent passwd hp_alice
+```
+
+The shipped policy also names the roots and the units the later modules of the bundle use: the
+server blocks under `vhosts`, the php-fpm pools under `pools`, the mail maps under `mail`, the
+certificates under `certs`, and `nginx`, `php*-fpm`, `postfix`, `dovecot`, `mariadb` and
+`vsftpd`.
 
 ## Updates
 
@@ -492,6 +516,7 @@ records.
 | `hack/product-vm.sh <id> [<function>]` | `keel product disable` and `enable` on the running service: the exit 75, the restart, the dump, the orphaned tables and the function answering again |
 | `hack/host-vm.sh [--cleanup]` | the agent: an account inside the range running a program, a zone rendered, checked, reloaded and served, a broken template rolled back without a restart of `named`, and an operation outside `file_roots` refused and found in the journal |
 | `hack/dns-vm.sh install <archive>`, then `run [--browser-zone <name>]` | KeelDNS on bind: zones created over the control socket and with a token answered by `dig`, and a broken zone template rolled back while `named` keeps answering |
+| `hack/panel-vm.sh install <archive>`, then `run` | KeelPanel's hosting users: an account `hp_<name>` inside the range with its home, the shell granted and taken back, locked by the suspension of its account and unlocked by the resumption, and removed with its home when the account is deleted |
 
 ## Left to later milestones
 

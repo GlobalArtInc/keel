@@ -120,7 +120,7 @@ describe('KeelMockClient', () => {
     const boot = TestBed.inject(KeelBoot);
     expect(await boot.load()).toEqual(expected);
     expect(boot.principal()).toEqual(KEEL_PRINCIPALS.admin);
-    expect(boot.products().map((product) => product.id)).toEqual(['demo', 'dns']);
+    expect(boot.products().map((product) => product.id)).toEqual(['demo', 'dns', 'panel']);
 
     const names = readdirSync(join(DUMP, 'admin', 'functions'))
       .map((file) => file.slice(0, -'.json'.length))

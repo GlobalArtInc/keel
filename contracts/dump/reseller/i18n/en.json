@@ -557,7 +557,8 @@
     "menu": {
       "system": "System",
       "demo": "Demo",
-      "dns": "DNS"
+      "dns": "DNS",
+      "panel": "Hosting"
     },
     "phx": {
       "add": "Add",
@@ -992,6 +993,50 @@
         "unknown_op": "The host agent does not know this operation: {detail}",
         "unreachable": "The host agent cannot be reached: {detail}",
         "validate_failed": "The configuration check failed and the previous file was restored: {detail}"
+      }
+    },
+    "hosting": {
+      "user": {
+        "account": "Account",
+        "action": {
+          "create": "New user",
+          "delete": "Delete",
+          "edit": "Edit"
+        },
+        "column": {
+          "accountId": "Account",
+          "error": "Error",
+          "home": "Home directory",
+          "name": "Name",
+          "shell": "Shell access",
+          "state": "State",
+          "uid": "UID"
+        },
+        "create": {
+          "title": "New hosting user"
+        },
+        "edit": {
+          "title": "Hosting user"
+        },
+        "empty": "No hosting users yet",
+        "error": {
+          "exists": "The user {name} already exists"
+        },
+        "list": {
+          "title": "Users"
+        },
+        "name": "Name, without the hp_ prefix",
+        "page": {
+          "main": "User",
+          "owner": "Owner"
+        },
+        "shell": "Shell access",
+        "state": {
+          "active": "Active",
+          "error": "Error",
+          "pending": "Pending",
+          "suspended": "Suspended"
+        }
       }
     },
     "notify": {
@@ -1758,6 +1803,9 @@
       },
       "dns": {
         "brand": "KeelDNS"
+      },
+      "panel": {
+        "brand": "KeelPanel"
       }
     }
   }

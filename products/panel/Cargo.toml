@@ -1,0 +1,19 @@
+[package]
+name = "keel-panel"
+description = "The KeelPanel product bundle: the manifest, the brand and the dictionaries of the panel product and its module crates"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-host = { workspace = true }
+keel-hosting-users = { workspace = true }
+
+[dev-dependencies]
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "license"] }
+keel-testkit = { workspace = true }
+tempfile = { workspace = true }

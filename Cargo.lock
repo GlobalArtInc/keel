@@ -2244,6 +2244,7 @@ dependencies = [
  "keel",
  "keel-demo",
  "keel-dns",
+ "keel-panel",
  "keel-system",
  "keel-testkit",
  "reqwest",
@@ -2380,6 +2381,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-hosting-users"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-host",
+]
+
+[[package]]
 name = "keel-kernel"
 version = "0.2.0"
 dependencies = [
@@ -2420,6 +2429,18 @@ dependencies = [
  "tracing-subscriber",
  "ulid",
  "zstd",
+]
+
+[[package]]
+name = "keel-panel"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-host",
+ "keel-hosting-users",
+ "keel-system",
+ "keel-testkit",
+ "tempfile",
 ]
 
 [[package]]

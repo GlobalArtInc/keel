@@ -25,6 +25,17 @@
         "hue": 264,
         "chroma": 0.18
       }
+    },
+    {
+      "id": "panel",
+      "name": "product.panel.brand",
+      "edition": "lite",
+      "brand": {
+        "name": "product.panel.brand",
+        "logo": "/brand/panel/logo.svg",
+        "hue": 264,
+        "chroma": 0.18
+      }
     }
   ],
   "brand": {
@@ -43,7 +54,8 @@
     "totp": false
   },
   "features": [
-    "dns.zones"
+    "dns.zones",
+    "panel.users"
   ],
   "license": {
     "state": "none",
@@ -109,6 +121,21 @@
           "func": "dns.report.zones",
           "kind": "report",
           "icon": "chart-line"
+        }
+      ]
+    },
+    {
+      "id": "panel",
+      "product": "panel",
+      "label": "menu.panel",
+      "icon": "server",
+      "items": [
+        {
+          "path": "panel/users",
+          "label": "hosting.user.list.title",
+          "func": "hosting.user.list",
+          "kind": "list",
+          "icon": "users"
         }
       ]
     },

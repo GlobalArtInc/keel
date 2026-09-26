@@ -1,7 +1,7 @@
 policy:
   uid_range: { from: 100000, to: 165535 }
-  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www }
-  services: [named, nginx, php8.3-fpm]
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools: /etc/php/keel, mail: /etc/postfix/keel, certs: /etc/ssl/keel }
+  services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"] }
   exec_allow: [certbot, quotatool]
   products:
