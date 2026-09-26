@@ -1,0 +1,103 @@
+{
+  "keel": 1,
+  "name": "hosting.file.upload",
+  "module": "hosting",
+  "kind": "upload",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.file.manage",
+    "feature": "panel.users"
+  },
+  "key": "user",
+  "params": {
+    "title": "Upload",
+    "type": "object",
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "hosting.user.options"
+        }
+      },
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "content": {
+        "type": "string",
+        "contentEncoding": "base64",
+        "x-keel": {
+          "secret": true,
+          "file": {
+            "maxBytes": 33554432,
+            "types": [
+              "application/octet-stream"
+            ]
+          }
+        },
+        "x-ui": {
+          "control": "file"
+        }
+      }
+    },
+    "required": [
+      "user",
+      "path",
+      "content"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "TaskRef",
+    "type": "object",
+    "properties": {
+      "task": {
+        "$ref": "#/$defs/TaskLink"
+      }
+    },
+    "required": [
+      "task"
+    ],
+    "$defs": {
+      "TaskLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "hosting.file.upload.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "user",
+          "path",
+          "content"
+        ]
+      }
+    ]
+  }
+}

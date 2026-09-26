@@ -110,6 +110,7 @@ check "deploy/agent.yaml names the checks of postfix and dovecot" grep -qF 'post
 check "deploy/agent.yaml lets postmap build the three virtual maps" grep -qF '{ postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }' deploy/agent.yaml
 check "deploy/agent.yaml lets the maildirs be archived to standard output" grep -qF '{ mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }' deploy/agent.yaml
 check "deploy/agent.yaml carries the user file and the per-account files of vsftpd" grep -qF 'ftp: /etc/vsftpd/keel, ftp-users: /etc/vsftpd/keel-users' deploy/agent.yaml
+check "deploy/agent.yaml carries the transfer root the file manager stages uploads and downloads in" grep -qF 'transfer: /var/lib/keel-panel-transfer' deploy/agent.yaml
 check "deploy/agent.yaml names the check of vsftpd" grep -qF 'vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"]' deploy/agent.yaml
 check "deploy/agent.yaml names the per-account files of vsftpd after the accounts of the panel" grep -qF 'panel: { user_prefix: hp_, account_roots: [ftp-users], drop_in_prefix: keel-panel- }' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do

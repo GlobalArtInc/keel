@@ -24,6 +24,9 @@ user_login=alice
 polled_tag=@polled
 setup_tag=@setup
 mail_tag=@mail
+panel_tag=@panel
+hosting_user=files
+hosting_range="{ from: 100000, to: 100009 }"
 reset_login=bob
 reset_address=bob@example.org
 guest_per_minute=120
@@ -221,6 +224,28 @@ deliveries_sent() {
   return 1
 }
 
+hosting_user_active() {
+  local id=$1 waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if keel_ok "$site/hosting-user-state.json" ctl hosting.user.get "id=$id" --out json \
+      && json_is "$site/hosting-user-state.json" "doc['ok'] is True and doc['data']['state'] == 'active'" 2>/dev/null; then
+      test -d "$site/agent/www/keel-panel-$hosting_user"
+      return
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  cat "$site/hosting-user-state.json" >&2
+  return 1
+}
+
+files_ran_as() {
+  local uid=$1 calls="$site/agent/keel.calls"
+  [ -n "$uid" ] && [ -s "$calls" ] || return 1
+  grep -q " agent-home --home .* write " "$calls" && grep -q " agent-home --home .* read " "$calls" \
+    && ! grep -qv "^agent-exec --uid $uid " "$calls"
+}
+
 run_keel() {
   "$keel" --config "$site/config.yaml" "$@"
 }
@@ -394,9 +419,10 @@ database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
 host: { socket: $site/agent/agent.sock }
 dns: { zones_dir: $site/agent/zones, include_dir: $site/agent/named }
+hosting: { transfer_dir: $site/agent/transfer }
 EOF
 echo "site $site, binary $keel"
-start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
+start_agent "$keel" "$site/agent" "$hosting_range" || fail "keel privileged did not start beside the kernel"
 
 if [ -n "$runtime" ]; then
   start_catcher
@@ -457,7 +483,7 @@ e2e_env+=("KEEL_E2E_DNS_ZONE=$dns_zone")
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag|$mail_tag" "$@"
+  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag|$mail_tag|$panel_tag" "$@"
 )
 
 echo "--- the zones of the browser, the CLI and the token"
@@ -493,5 +519,19 @@ check "auth.address.set answers the confirmed address" json_is "$site/reset-addr
     pnpm e2e --grep "$mail_tag"
 )
 check "the reset left one used reset token of $reset_login" test "$(sql "SELECT count(*) FROM keel.auth_mail_token WHERE purpose = 'reset' AND used_at IS NOT NULL AND principal_id = '$reset_id'")" = "1"
+
+echo "--- pnpm e2e $panel_tag"
+stop_serve || fail "keel serve did not stop cleanly before panel was enabled"
+keel_ok "$site/enable-panel.out" product enable panel
+start_serve
+check "ctl hosting.user.create --as alice creates the hosting user $hosting_user" keel_ok "$site/hosting-user.json" ctl hosting.user.create --as "$user_login" "name=$hosting_user"
+hosting_user_id=$(json_get "$site/hosting-user.json" 'doc["data"]["id"]')
+check "the hosting user $hosting_user turns active with its home" hosting_user_active "$hosting_user_id"
+(
+  cd "$frontend"
+  env "${e2e_env[@]}" "KEEL_E2E_HOSTING_USER=hp_$hosting_user" pnpm e2e --grep "$panel_tag"
+)
+check "every file operation ran the worker through agent-exec under the uid of hp_$hosting_user" files_ran_as "$(awk -F: -v k="hp_$hosting_user" '$1 == k {print $3}' "$site/agent/passwd")"
+check "no staged upload or download is left in the transfer root" test -z "$(ls -A "$site/agent/transfer")"
 
 stop_serve || fail "keel serve did not stop cleanly"

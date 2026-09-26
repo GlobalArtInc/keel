@@ -275,7 +275,7 @@ export const BOOT_ONE: Boot = {
     { kind: 'list', func: 'notify.problem.list', limit: 5 },
     { kind: 'stat', func: 'dns.widget.zones' },
   ],
-  views: [],
+  views: ['hosting.file-manager'],
   meta: 'm-0000000000000000',
   problems: { open: 0, critical: 0 },
 };

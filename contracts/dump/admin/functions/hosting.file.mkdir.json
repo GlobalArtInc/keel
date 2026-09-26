@@ -1,0 +1,70 @@
+{
+  "keel": 1,
+  "name": "hosting.file.mkdir",
+  "module": "hosting",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "hosting.file.manage",
+    "feature": "panel.users"
+  },
+  "key": "user",
+  "params": {
+    "title": "Entry",
+    "type": "object",
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/Id"
+      },
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      }
+    },
+    "required": [
+      "user",
+      "path"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "TaskRef",
+    "type": "object",
+    "properties": {
+      "task": {
+        "$ref": "#/$defs/TaskLink"
+      }
+    },
+    "required": [
+      "task"
+    ],
+    "$defs": {
+      "TaskLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/Id"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

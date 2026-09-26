@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::unix::fs::{OpenOptionsExt, fchown};
 use std::path::Path;
@@ -43,6 +43,16 @@ pub(super) fn capture(
     program: &Path,
     args: &[String],
 ) -> Result<u64, Failure> {
+    capture_with(call, dest, |file| {
+        process::into_file(program, args, file).map(drop)
+    })
+}
+
+pub(super) fn capture_with(
+    call: &Call<'_>,
+    dest: &Dest,
+    run: impl FnOnce(File) -> Result<(), Failure>,
+) -> Result<u64, Failure> {
     let target = call.resolve(dest)?;
     let temporary = target.with_file_name(format!(".{}.tmp", dest.name));
     if let Err(error) = fs::remove_file(&temporary)
@@ -59,8 +69,8 @@ pub(super) fn capture(
         .map_err(|error| Failure::io(temporary.display(), &error))?;
     let written = fchown(&file, Some(call.admitted), None)
         .map_err(|error| Failure::io(temporary.display(), &error))
-        .and_then(|()| process::into_file(program, args, file))
-        .and_then(|_| {
+        .and_then(|()| run(file))
+        .and_then(|()| {
             fs::rename(&temporary, &target).map_err(|error| Failure::io(target.display(), &error))
         });
     if let Err(failure) = written {

@@ -1,0 +1,55 @@
+{
+  "keel": 1,
+  "name": "hosting.file.download",
+  "module": "hosting",
+  "kind": "download",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.file.read",
+    "feature": "panel.users"
+  },
+  "key": "user",
+  "params": {
+    "title": "Entry",
+    "type": "object",
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/Id"
+      },
+      "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      }
+    },
+    "required": [
+      "user",
+      "path"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "DownloadFile",
+    "type": "object",
+    "properties": {
+      "filename": {
+        "type": "string"
+      },
+      "contentType": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "filename",
+      "contentType"
+    ]
+  }
+}

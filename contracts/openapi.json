@@ -7000,6 +7000,686 @@
         }
       }
     },
+    "/api/v1/call/hosting.file.chmod": {
+      "post": {
+        "operationId": "hosting.file.chmod",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.manage",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Permissions",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "mode": {
+                    "type": "string",
+                    "pattern": "^0?[0-7]{3}$"
+                  }
+                },
+                "required": [
+                  "user",
+                  "path",
+                  "mode"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TaskRef",
+                      "type": "object",
+                      "properties": {
+                        "task": {
+                          "$ref": "#/components/schemas/TaskLink"
+                        }
+                      },
+                      "required": [
+                        "task"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.file.delete": {
+      "post": {
+        "operationId": "hosting.file.delete",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.manage",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Entry",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "user",
+                  "path"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TaskRef",
+                      "type": "object",
+                      "properties": {
+                        "task": {
+                          "$ref": "#/components/schemas/TaskLink"
+                        }
+                      },
+                      "required": [
+                        "task"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/x/hosting/file.download": {
+      "get": {
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "download",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.read",
+            "feature": "panel.users"
+          },
+          "result": {
+            "title": "DownloadFile",
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "filename",
+              "contentType"
+            ]
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file is streamed under Content-Type and Content-Disposition; the metadata of the result schema names it.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "hosting.file.download.get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "The parameters as one JSON object; bare pairs of the query are accepted instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Entry",
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  },
+                  "required": [
+                    "user",
+                    "path"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "download",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.read",
+            "feature": "panel.users"
+          },
+          "result": {
+            "title": "DownloadFile",
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "filename",
+              "contentType"
+            ]
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file is streamed under Content-Type and Content-Disposition; the metadata of the result schema names it.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "hosting.file.download",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Entry",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "user",
+                  "path"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.file.list": {
+      "post": {
+        "operationId": "hosting.file.list",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.read",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Folder",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "path": {
+                    "type": "string",
+                    "maxLength": 4096,
+                    "default": ""
+                  }
+                },
+                "required": [
+                  "user"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "HostingFileListing",
+                      "type": "object",
+                      "properties": {
+                        "entries": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HostingFileEntry"
+                          }
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "entries",
+                        "truncated"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.file.mkdir": {
+      "post": {
+        "operationId": "hosting.file.mkdir",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.manage",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Entry",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "user",
+                  "path"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TaskRef",
+                      "type": "object",
+                      "properties": {
+                        "task": {
+                          "$ref": "#/components/schemas/TaskLink"
+                        }
+                      },
+                      "required": [
+                        "task"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.file.rename": {
+      "post": {
+        "operationId": "hosting.file.rename",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.manage",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Move",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "from": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "user",
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TaskRef",
+                      "type": "object",
+                      "properties": {
+                        "task": {
+                          "$ref": "#/components/schemas/TaskLink"
+                        }
+                      },
+                      "required": [
+                        "task"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.file.upload": {
+      "post": {
+        "operationId": "hosting.file.upload",
+        "tags": [
+          "hosting"
+        ],
+        "x-keel": {
+          "kind": "upload",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "hosting.file.manage",
+            "feature": "panel.users"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Upload",
+                "type": "object",
+                "properties": {
+                  "user": {
+                    "$ref": "#/components/schemas/Id",
+                    "x-keel": {
+                      "options": "hosting.user.options"
+                    }
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "content": {
+                    "type": "string",
+                    "contentEncoding": "base64",
+                    "x-keel": {
+                      "secret": true,
+                      "file": {
+                        "maxBytes": 33554432,
+                        "types": [
+                          "application/octet-stream"
+                        ]
+                      }
+                    },
+                    "x-ui": {
+                      "control": "file"
+                    }
+                  }
+                },
+                "required": [
+                  "user",
+                  "path",
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "TaskRef",
+                      "type": "object",
+                      "properties": {
+                        "task": {
+                          "$ref": "#/components/schemas/TaskLink"
+                        }
+                      },
+                      "required": [
+                        "task"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/hosting.ftp.create": {
       "post": {
         "operationId": "hosting.ftp.create",
@@ -18239,6 +18919,47 @@
           "state",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "HostingFileEntry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HostingFileKind"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "mode": {
+            "type": "string"
+          },
+          "modified": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "size",
+          "mode"
+        ]
+      },
+      "HostingFileKind": {
+        "type": "string",
+        "enum": [
+          "dir",
+          "file",
+          "symlink",
+          "other"
         ]
       },
       "HostingFtpUser": {

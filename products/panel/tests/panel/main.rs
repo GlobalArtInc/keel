@@ -1,5 +1,6 @@
 mod bridge;
 mod db;
+mod files;
 mod ftp;
 mod license;
 mod mail;

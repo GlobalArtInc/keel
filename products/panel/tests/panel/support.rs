@@ -25,6 +25,36 @@ const SYSTEMCTL: &str = "echo \"systemctl $*\" >> LOG\nexit 0\n";
 const MARIADB: &str = "input=$(cat)\n{ echo \"mariadb $*\"; printf '%s\\n' \"$input\"; } >> LOG\n";
 const MARIADB_DUMP: &str = "echo \"mariadb-dump $*\" >> LOG\nfor last; do :; done\nprintf -- '-- dump of %s\\n' \"$last\"\n";
 const TAR: &str = "echo \"tar $*\" >> LOG\nprintf 'the maildirs of the test\\n'\n";
+const KEEL: &str = r#"echo "keel $*" >> LOG
+[ "$1" = agent-exec ] && [ "$2" = --uid ] || exit 126
+shift 3
+[ "$1" = --policy ] && shift 2
+shift
+[ "$1" = agent-home ] && [ "$2" = --home ] || exit 2
+shift 3
+op=$1
+shift
+case $op in
+  list)
+    printf '{"entries":['
+    sep=
+    for entry in "$1"/*; do
+      [ -e "$entry" ] || continue
+      if [ -d "$entry" ]; then kind=dir; size=0; else kind=file; size=$(wc -c < "$entry" | tr -d ' '); fi
+      printf '%s{"name":"%s","kind":"%s","size":%s,"mode":"0644","modified":0}' "$sep" "${entry##*/}" "$kind" "$size"
+      sep=,
+    done
+    printf '],"truncated":false}'
+    ;;
+  mkdir) mkdir "$1" ;;
+  rename) if [ -e "$2" ]; then echo "$2 already exists" >&2; exit 4; fi; mv "$1" "$2" ;;
+  remove) rm -rf "$1" ;;
+  chmod) chmod "$2" "$1" ;;
+  read) cat "$1" ;;
+  write) cat > "$1" ;;
+  *) exit 2 ;;
+esac
+"#;
 const USERMOD: &str = "echo \"usermod $*\" >> LOG\nshell=; lock=\nwhile [ $# -gt 1 ]; do\n  case $1 in\n    --shell) shell=$2; shift 2;;\n    --expiredate) shift 2;;\n    --lock) lock=yes; shift;;\n    --unlock) lock=no; shift;;\n    *) echo \"usermod: unexpected $1\" >&2; exit 3;;\n  esac\ndone\nif [ \"$lock\" = yes ]; then : > ROOT/locked-$1; fi\nif [ \"$lock\" = no ]; then rm -f ROOT/locked-$1; fi\nif [ -n \"$shell\" ]; then awk -F: -v OFS=: -v k=\"$1\" -v s=\"$shell\" '$1 == k { $7 = s } { print }' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd; fi\nexit 0\n";
 
 pub(crate) struct Site {
@@ -48,6 +78,7 @@ impl Site {
             "maildirs",
             "ftp",
             "ftp-users",
+            "transfer",
         ] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
@@ -70,6 +101,7 @@ impl Site {
             ("mariadb", MARIADB),
             ("mariadb-dump", MARIADB_DUMP),
             ("tar", TAR),
+            ("keel", KEEL),
         ] {
             site.stub(name, body);
         }
@@ -107,7 +139,7 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs}, ftp: {ftp}, ftp-users: {ftp_users} }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named}, certs: {certs}, acme: {acme}, dumps: {dumps}, mail: {mail}, dovecot: {dovecot}, maildirs: {maildirs}, ftp: {ftp}, ftp-users: {ftp_users}, transfer: {transfer} }}
   services: [nginx, php*-fpm, named, postfix, dovecot]
   checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"], postfix.check: [\"{bin}/postfix\", check], dovecot.check: [\"{bin}/doveconf\", -n], vsftpd.check: [\"{bin}/vsftpd\", /etc/vsftpd.conf, -v] }}
   exec_allow: [{{ mariadb: [\"{bin}/mariadb\", --batch, --skip-column-names] }}, {{ mariadb-dump: [\"{bin}/mariadb-dump\", --single-transaction] }}, {{ postmap: [\"{bin}/postmap\", \"hash:{mail}/keel-panel-domains\", \"hash:{mail}/keel-panel-mailboxes\", \"hash:{mail}/keel-panel-aliases\"] }}, {{ mail.archive: [\"{bin}/tar\", --create, --file=-, \"--directory={maildirs}\", .] }}]
@@ -123,6 +155,7 @@ impl Site {
     usermod: {bin}/usermod
     systemctl: {bin}/systemctl
     shells: {shells}
+    keel: {bin}/keel
 ",
             www = self.path("www").display(),
             vhosts = self.path("vhosts").display(),
@@ -138,6 +171,7 @@ impl Site {
             maildirs = self.path("maildirs").display(),
             ftp = self.path("ftp").display(),
             ftp_users = self.path("ftp-users").display(),
+            transfer = self.path("transfer").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )
@@ -223,6 +257,10 @@ pub(crate) fn composed(site: &Site) -> Builder {
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
         .module(&keel_system::settings::MODULE)
+        .section(
+            "hosting",
+            json!({ "transfer_dir": site.path("transfer").display().to_string() }),
+        )
         .agent(&site.policy())
 }
 

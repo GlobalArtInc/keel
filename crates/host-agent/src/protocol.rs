@@ -15,6 +15,7 @@ pub(crate) const ERROR_RELOAD_FAILED: &str = "host.error.reload_failed";
 pub(crate) const ERROR_EXEC_FAILED: &str = "host.error.exec_failed";
 pub(crate) const ERROR_IO: &str = "host.error.io";
 pub(crate) const ERROR_UNAVAILABLE: &str = "host.error.unavailable";
+pub(crate) const ERROR_EXISTS: &str = "host.error.exists";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

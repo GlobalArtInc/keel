@@ -142,6 +142,12 @@
           "icon": "users"
         },
         {
+          "path": "panel/files",
+          "label": "hosting.file-manager.title",
+          "func": "hosting.file-manager",
+          "icon": "folder"
+        },
+        {
           "path": "panel/sites",
           "label": "hosting.site.list.title",
           "func": "hosting.site.list",
@@ -266,7 +272,9 @@
       "func": "dns.widget.zones"
     }
   ],
-  "views": [],
+  "views": [
+    "hosting.file-manager"
+  ],
   "meta": "m-0000000000000000",
   "problems": {
     "open": 0,

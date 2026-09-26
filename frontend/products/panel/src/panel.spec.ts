@@ -20,13 +20,15 @@ const LOGO = `/brand/${PANEL_ID}/logo.svg`;
 describe('@globalart/keel-panel', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('carries the panel id and registers no custom view, as views.json says', () => {
+  it('carries the panel id and registers the file manager, the view the server registers, and no replacement of a screen', () => {
     const listed = JSON.parse(readFileSync(VIEWS, 'utf8')) as string[];
     expect(listed).toEqual([]);
-    expect(PANEL_VIEWS.map((view) => view.func)).toEqual(listed);
+    const registered = readDump(DUMP, 'user').boot.views;
+    expect(registered).toEqual(['hosting.file-manager']);
+    expect(PANEL_VIEWS.map((view) => view.func)).toEqual([...registered, ...listed]);
     TestBed.configureTestingModule({ providers: [provideKeelPanel()] });
     const views = TestBed.runInInjectionContext(injectKeelViews);
-    expect(views).toEqual([]);
+    expect(views.map((view) => view.func)).toEqual(['hosting.file-manager']);
     expect(PANEL_ID).toBe('panel');
   });
 

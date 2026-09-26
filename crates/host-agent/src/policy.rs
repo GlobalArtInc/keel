@@ -20,6 +20,7 @@ const DEFAULT_APT_CACHE: &str = "apt-cache";
 const DEFAULT_SETQUOTA: &str = "setquota";
 const DEFAULT_REPQUOTA: &str = "repquota";
 const DEFAULT_CRON_DIR: &str = "/etc/cron.d";
+const DEFAULT_KEEL: &str = "/proc/self/exe";
 const VERSION_WILDCARD: char = '*';
 
 #[derive(Debug, thiserror::Error)]
@@ -77,6 +78,8 @@ pub struct Policy {
     products: BTreeMap<String, Product>,
     #[serde(default)]
     tools: Tools,
+    #[serde(skip)]
+    source: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -164,6 +167,8 @@ pub(crate) struct Tools {
     pub(crate) repquota: PathBuf,
     #[serde(default = "default_cron_dir")]
     pub(crate) cron_dir: PathBuf,
+    #[serde(default = "default_keel")]
+    pub(crate) keel: PathBuf,
 }
 
 fn default_systemctl() -> PathBuf {
@@ -222,6 +227,10 @@ fn default_cron_dir() -> PathBuf {
     PathBuf::from(DEFAULT_CRON_DIR)
 }
 
+fn default_keel() -> PathBuf {
+    PathBuf::from(DEFAULT_KEEL)
+}
+
 impl Default for Tools {
     fn default() -> Self {
         Self {
@@ -239,6 +248,7 @@ impl Default for Tools {
             setquota: default_setquota(),
             repquota: default_repquota(),
             cron_dir: default_cron_dir(),
+            keel: default_keel(),
         }
     }
 }
@@ -249,7 +259,9 @@ impl Policy {
             path: path.to_owned(),
             source,
         })?;
-        Self::parse(&text)
+        let mut policy = Self::parse(&text)?;
+        policy.source = Some(path.to_owned());
+        Ok(policy)
     }
 
     pub(crate) fn parse(text: &str) -> Result<Self, PolicyError> {
@@ -334,6 +346,7 @@ impl Policy {
             ("setquota", &policy.tools.setquota),
             ("repquota", &policy.tools.repquota),
             ("cron_dir", &policy.tools.cron_dir),
+            ("keel", &policy.tools.keel),
         ] {
             if path.as_os_str().is_empty() {
                 return Err(PolicyError::EmptyTool { tool });
@@ -370,6 +383,10 @@ impl Policy {
         self.services
             .iter()
             .any(|service| service_matches(service, name))
+    }
+
+    pub(crate) fn source(&self) -> Option<&Path> {
+        self.source.as_deref()
     }
 
     pub(crate) fn tools(&self) -> &Tools {
@@ -518,6 +535,11 @@ policy:
             Some(Path::new("/var/lib/keel-panel-dumps"))
         );
         assert_eq!(
+            policy.root("transfer"),
+            Some(Path::new("/var/lib/keel-panel-transfer"))
+        );
+        assert_eq!(policy.tools().keel, Path::new("/proc/self/exe"));
+        assert_eq!(
             policy
                 .exec("mariadb")
                 .and_then(<[String]>::first)
@@ -579,6 +601,8 @@ policy:
         assert_eq!(policy.tools().setquota, Path::new("setquota"));
         assert_eq!(policy.tools().repquota, Path::new("repquota"));
         assert_eq!(policy.tools().cron_dir, Path::new("/etc/cron.d"));
+        assert_eq!(policy.tools().keel, Path::new("/proc/self/exe"));
+        assert_eq!(policy.source(), None);
         assert!(matches!(
             Policy::parse("policy:\n  tools: { useradd: \"\" }\n").unwrap_err(),
             PolicyError::EmptyTool { tool: "useradd" }

@@ -1,5 +1,72 @@
 {
   "hosting": {
+    "file": {
+      "content": "File",
+      "error": {
+        "exists": "{path} already exists",
+        "failed": "The operation on {path} failed: {detail}",
+        "homeless": "The hosting user {user} has no home directory yet",
+        "missing": "{path} does not exist",
+        "outside": "{path} leads outside the home directory of the hosting user",
+        "transfer": "The file could not be handed between the panel and the host",
+        "unreadable": "The uploaded file could not be read"
+      },
+      "page": {
+        "main": "File"
+      },
+      "path": "Path",
+      "upload": {
+        "title": "Upload a file"
+      },
+      "user": "Hosting user"
+    },
+    "file-manager": {
+      "action": {
+        "cancel": "Cancel",
+        "chmod": "Permissions",
+        "delete": "Delete",
+        "download": "Download",
+        "mkdir": "New folder",
+        "open": "Open",
+        "rename": "Rename",
+        "save": "Save",
+        "upload": "Upload"
+      },
+      "chmod": {
+        "mode": "Mode in octal, such as 644",
+        "title": "Permissions of {name}"
+      },
+      "column": {
+        "mode": "Permissions",
+        "modified": "Modified",
+        "name": "Name",
+        "size": "Size"
+      },
+      "delete": {
+        "text": "{name} and everything inside it is removed from the home directory for good.",
+        "title": "Delete {name}?"
+      },
+      "empty": "This folder is empty",
+      "home": "Home",
+      "invalid": {
+        "mode": "Three octal digits, such as 644",
+        "name": "A name is not empty, is not . or .. and holds no slash"
+      },
+      "mkdir": {
+        "name": "Folder name",
+        "title": "New folder"
+      },
+      "none": "There are no hosting users with a home directory yet",
+      "pick": "Choose a hosting user to browse the home directory",
+      "rename": {
+        "name": "New name",
+        "title": "Rename {name}"
+      },
+      "title": "Files",
+      "truncated": "Only the first {count} entries are shown",
+      "uploaded": "{name} is uploaded",
+      "user": "Hosting user"
+    },
     "user": {
       "account": "Account",
       "action": {

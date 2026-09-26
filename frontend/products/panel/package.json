@@ -2,7 +2,7 @@
   "name": "@globalart/keel-panel",
   "version": "0.2.0",
   "private": true,
-  "description": "The KeelPanel product package: the panel product id, its brand and its menu group icon for the shell, with no custom views yet",
+  "description": "The KeelPanel product package: the panel product id, its brand, its menu group icon and the file manager view for the shell",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GlobalArtInc/keel.git",
@@ -10,8 +10,12 @@
   },
   "sideEffects": false,
   "peerDependencies": {
+    "@angular/common": "^19.1.0",
     "@angular/core": "^19.1.0",
-    "@globalart/keel": "workspace:^"
+    "@angular/forms": "^19.1.0",
+    "@globalart/keel": "workspace:^",
+    "@globalart/phoenix-ui": "0.4.0",
+    "rxjs": "^7.8.0"
   },
   "dependencies": {
     "tslib": "^2.8.0"

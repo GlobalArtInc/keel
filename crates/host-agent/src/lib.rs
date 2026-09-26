@@ -3,6 +3,7 @@ mod agent;
 pub mod exec;
 #[cfg(test)]
 mod fuzz;
+pub mod home;
 pub mod journal;
 mod ops;
 mod peer;

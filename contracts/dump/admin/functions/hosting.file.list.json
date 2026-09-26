@@ -1,0 +1,100 @@
+{
+  "keel": 1,
+  "name": "hosting.file.list",
+  "module": "hosting",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.file.read",
+    "feature": "panel.users"
+  },
+  "key": "user",
+  "params": {
+    "title": "Folder",
+    "type": "object",
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/Id"
+      },
+      "path": {
+        "type": "string",
+        "maxLength": 4096,
+        "default": ""
+      }
+    },
+    "required": [
+      "user"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "HostingFileListing",
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/HostingFileEntry"
+        }
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "entries",
+      "truncated"
+    ],
+    "$defs": {
+      "HostingFileEntry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/HostingFileKind"
+          },
+          "size": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "mode": {
+            "type": "string"
+          },
+          "modified": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "size",
+          "mode"
+        ]
+      },
+      "HostingFileKind": {
+        "type": "string",
+        "enum": [
+          "dir",
+          "file",
+          "symlink",
+          "other"
+        ]
+      }
+    }
+  }
+}

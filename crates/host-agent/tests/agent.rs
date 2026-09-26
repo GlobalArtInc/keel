@@ -84,7 +84,14 @@ impl Site {
         capture_journal();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let root = dir.path();
-        for sub in ["zones", "www", "accounts", "bin", "templates/bind"] {
+        for sub in [
+            "zones",
+            "www",
+            "accounts",
+            "transfer",
+            "bin",
+            "templates/bind",
+        ] {
             fs::create_dir_all(root.join(sub)).expect("the tree");
         }
         fs::write(root.join("templates/bind/zone.j2"), ZONE_TEMPLATE).expect("the template");
@@ -105,7 +112,7 @@ impl Site {
         fs::write(root.join("shells"), "# login shells\n/bin/sh\n/bin/bash\n").expect("shells");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www, accounts: {root}/accounts }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [accounts] }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n",
+            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www, accounts: {root}/accounts, transfer: {root}/transfer }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [accounts] }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n    keel: {root}/bin/keel\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -301,6 +308,11 @@ fn write_stubs(root: &Path) {
         &format!(
             "echo \"systemctl $*\" >> LOG\nif [ \"$1\" = list-unit-files ]; then if [ -f ROOT/unit-files ]; then cat ROOT/unit-files; fi; exit 0; fi\nif [ \"$1\" = is-active ]; then shift; for unit; do if [ -e ROOT/inactive-$unit ]; then echo inactive; else echo active; fi; done; exit 0; fi\nif [ -e ROOT/fail-systemctl ]; then rm -f ROOT/fail-systemctl; echo '{SYSTEMCTL_MESSAGE}' >&2; exit 1; fi\n"
         ),
+    );
+    stub(
+        root,
+        "keel",
+        "echo \"keel $*\" >> LOG\n[ \"$1\" = agent-exec ] && [ \"$2\" = --uid ] || exit 126\nshift 3\n[ \"$1\" = --policy ] && shift 2\nshift\n[ \"$1\" = agent-home ] && [ \"$2\" = --home ] || exit 2\nshift 3\nop=$1; shift\ncase $op in\n  list) printf '{\"entries\":[],\"truncated\":false}';;\n  write) cat > \"$1\";;\n  read) cat \"$1\";;\n  rename) if [ -e \"$2\" ]; then echo \"$2 already exists\" >&2; exit 4; fi; mv \"$1\" \"$2\";;\n  *) exit 2;;\nesac\n",
     );
     stub(
         root,
@@ -1293,6 +1305,13 @@ fn every_catalogue_operation_refuses_an_argument_it_does_not_know() {
         "host.quota.set",
         "host.quota.list",
         "host.exec",
+        "host.home.list",
+        "host.home.mkdir",
+        "host.home.rename",
+        "host.home.remove",
+        "host.home.chmod",
+        "host.home.read",
+        "host.home.write",
     ] {
         let answer = site.call(op, "panel", json!({ "argv": ["/bin/sh", "-c", "id"] }));
         let detail = refused(&answer, "host.error.args");
@@ -1544,4 +1563,117 @@ fn a_user_inside_the_range_is_locked_unlocked_and_given_a_shell() {
         "host.error.policy",
     );
     assert_eq!(site.calls().len(), 5);
+}
+
+#[test]
+fn a_home_operation_runs_the_worker_as_the_account_and_never_leaves_its_home() {
+    let mut site = Site::start("home");
+    let root = site.root().to_owned();
+    let home = root.join("www/keel-panel-files");
+    fs::create_dir_all(home.join("site")).expect("the home");
+    fs::create_dir(root.join("outside")).expect("a directory beside the home");
+    std::os::unix::fs::symlink(root.join("outside"), home.join("escape")).expect("the link");
+    let mut passwd = site.passwd();
+    passwd.push_str(&format!(
+        "hp_files:x:100001:100001::{}:/usr/sbin/nologin\n",
+        home.display()
+    ));
+    fs::write(root.join("passwd"), passwd).expect("passwd");
+    let home = home.canonicalize().expect("the canonical home");
+    let listed = site.call(
+        "host.home.list",
+        "panel",
+        json!({ "user": "hp_files", "path": "site" }),
+    );
+    assert_eq!(
+        listed["data"],
+        json!({ "entries": [], "truncated": false }),
+        "{listed}"
+    );
+    assert_eq!(
+        site.calls().last().map(String::as_str),
+        Some(
+            format!(
+                "keel agent-exec --uid 100001 --policy {policy} {keel} agent-home --home {home} list {home}/site",
+                policy = root.join("agent.yaml").display(),
+                keel = root.join("bin/keel").display(),
+                home = home.display(),
+            )
+            .as_str()
+        )
+    );
+    fs::write(root.join("transfer/keel-panel-upload"), "hello").expect("the staged upload");
+    let written = site.call(
+        "host.home.write",
+        "panel",
+        json!({ "user": "hp_files", "path": "site/index.html", "source": { "root": "transfer", "name": "keel-panel-upload" } }),
+    );
+    assert_eq!(written["data"]["bytes"], 5, "{written}");
+    assert_eq!(
+        fs::read_to_string(home.join("site/index.html")).expect("the written file"),
+        "hello"
+    );
+    let read = site.call(
+        "host.home.read",
+        "panel",
+        json!({ "user": "hp_files", "path": "site/index.html", "dest": { "root": "transfer", "name": "keel-panel-download" } }),
+    );
+    assert_eq!(read["data"]["bytes"], 5, "{read}");
+    let staged = root.join("transfer/keel-panel-download");
+    assert_eq!(fs::read_to_string(&staged).expect("the download"), "hello");
+    let meta = fs::metadata(&staged).expect("the download");
+    assert_eq!((meta.uid(), meta.mode() & 0o777), (own_uid(), 0o600));
+    let taken = site.call(
+        "host.home.rename",
+        "panel",
+        json!({ "user": "hp_files", "from": "site/index.html", "to": "site/index.html" }),
+    );
+    assert!(refused(&taken, "host.error.exists").contains("already exists"));
+    let before = site.calls().len();
+    for (op, args) in [
+        (
+            "host.home.list",
+            json!({ "user": "hp_files", "path": "escape" }),
+        ),
+        (
+            "host.home.mkdir",
+            json!({ "user": "hp_files", "path": "../outside/made" }),
+        ),
+        (
+            "host.home.write",
+            json!({ "user": "hp_files", "path": "escape/planted", "source": { "root": "transfer", "name": "keel-panel-download" } }),
+        ),
+        (
+            "host.home.remove",
+            json!({ "user": "hp_files", "path": "/etc/passwd" }),
+        ),
+        ("host.home.list", json!({ "user": "root", "path": "" })),
+    ] {
+        let answer = site.call(op, "panel", args);
+        refused(&answer, "host.error.policy");
+    }
+    let ghost = site.call(
+        "host.home.list",
+        "panel",
+        json!({ "user": "hp_ghost", "path": "" }),
+    );
+    refused(&ghost, "host.error.not_found");
+    for mode in ["4755", "-x", "+644"] {
+        let answer = site.call(
+            "host.home.chmod",
+            "panel",
+            json!({ "user": "hp_files", "path": "site/index.html", "mode": mode }),
+        );
+        assert!(
+            refused(&answer, "host.error.args").contains(mode),
+            "{answer}"
+        );
+    }
+    assert_eq!(site.calls().len(), before, "{:?}", site.calls());
+    assert!(
+        fs::read_dir(root.join("outside"))
+            .expect("outside")
+            .next()
+            .is_none()
+    );
 }

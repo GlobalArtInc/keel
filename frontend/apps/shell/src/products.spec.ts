@@ -8,13 +8,20 @@ import { SHELL_PRODUCTS } from './products';
 const DEMO_VIEWS = resolve(__dirname, '../../../products/demo/views.json');
 
 describe('the products of the shell application', () => {
-  it('lists demo, dns and panel, and the dns and panel chunks resolve no custom view', async () => {
+  it('lists demo, dns and panel, the dns chunk resolving no custom view and the panel chunk the file manager', async () => {
     expect(SHELL_PRODUCTS.map((product) => product.id)).toEqual(['demo', 'dns', 'panel']);
+    const resolved: string[][] = [];
     for (const product of SHELL_PRODUCTS.slice(1)) {
       const providers = await product.load();
       const injector = createEnvironmentInjector([providers], TestBed.inject(EnvironmentInjector));
-      expect(injector.get(KEEL_VIEWS).flat()).toEqual([]);
+      resolved.push(
+        injector
+          .get(KEEL_VIEWS)
+          .flat()
+          .map((view) => view.func),
+      );
     }
+    expect(resolved).toEqual([[], ['hosting.file-manager']]);
   });
 
   it('lists demo, whose chunk resolves the views its views.json names', async () => {

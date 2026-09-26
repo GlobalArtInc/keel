@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use keel_host_agent::exec::{self, Target};
+use keel_host_agent::home;
 use keel_host_agent::{DEFAULT_TEMPLATES, DEFAULT_USER, Policy};
 use keel_kernel::ctl::{self, Out};
 use keel_kernel::doctor::{self, Layout};
@@ -81,6 +82,21 @@ pub(crate) enum Command {
         about = "Run a program under a uid of the installation's range; the agent re-executes itself through this subcommand instead of changing its own credentials"
     )]
     AgentExec(AgentExecArgs),
+    #[command(
+        hide = true,
+        about = "Run one file operation inside a home as the account agent-exec became; the agent's operations on a home re-execute the binary through this subcommand"
+    )]
+    AgentHome(AgentHomeArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AgentHomeArgs {
+    #[arg(
+        value_name = "ARG",
+        trailing_var_arg = true,
+        allow_hyphen_values = true
+    )]
+    pub(crate) args: Vec<OsString>,
 }
 
 #[derive(Debug, Args)]
@@ -441,6 +457,7 @@ impl Runtime {
     fn execute(&self, cli: Cli) -> Result<ExitCode, Error> {
         let command = match cli.command {
             Command::AgentExec(args) => return Ok(agent_exec(args)),
+            Command::AgentHome(args) => return Ok(ExitCode::from(home::serve(&args.args))),
             command => command,
         };
         let executor = tokio::runtime::Builder::new_multi_thread()
@@ -525,6 +542,7 @@ impl Runtime {
                     Some(PrivilegedAction::Update(update)) => Ok(privileged_update(update).await),
                 },
                 Command::AgentExec(args) => Ok(agent_exec(args)),
+                Command::AgentHome(args) => Ok(ExitCode::from(home::serve(&args.args))),
                 Command::Ctl(args) => {
                     let socket = match args.socket {
                         Some(socket) => socket,
@@ -1287,6 +1305,33 @@ mod tests {
         assert!(Cli::try_parse_from(["keel", "agent-exec", "/bin/true"]).is_err());
         assert!(Cli::try_parse_from(["keel", "agent-exec", "--uid", "7"]).is_err());
         assert!(Cli::try_parse_from(["keel", "agent-exec", "--uid", "-1", "/bin/true"]).is_err());
+    }
+
+    #[test]
+    fn agent_home_takes_every_argument_after_it_as_the_operation_of_the_worker() {
+        let cli = Cli::try_parse_from([
+            "keel",
+            "agent-home",
+            "--home",
+            "/var/www/keel-panel-a",
+            "rename",
+            "/var/www/keel-panel-a/-x",
+            "/var/www/keel-panel-a/y",
+        ])
+        .unwrap();
+        let Command::AgentHome(args) = cli.command else {
+            panic!("expected agent-home");
+        };
+        assert_eq!(
+            args.args,
+            [
+                "--home",
+                "/var/www/keel-panel-a",
+                "rename",
+                "/var/www/keel-panel-a/-x",
+                "/var/www/keel-panel-a/y"
+            ]
+        );
     }
 
     #[test]

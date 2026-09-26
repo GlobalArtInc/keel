@@ -47,6 +47,11 @@ FTP_NAME=${NAME}up
 FTP_LOGIN=hp_$FTP_NAME
 FTP_PASSWORD=ftp-$STAMP-secret
 FTP_CHROOT=$DOC_ROOT/uploads
+LIB=/var/lib/keel
+CERT=$LIB/tls/cert.pem
+TRANSFER=/var/lib/keel-panel-transfer
+FILES_LOGIN=panelvm$STAMP
+FILES_CONTENT="keel-panel-files $STAMP"
 
 usage() {
   cat <<EOF
@@ -56,6 +61,7 @@ usage: hack/panel-vm.sh install <keel binary or tar.zst>
        hack/panel-vm.sh db
        hack/panel-vm.sh mail
        hack/panel-vm.sh ftp
+       hack/panel-vm.sh files
 
 Proves the hosting users and the sites of the panel bundle on a virtual
 machine, run as root from a checkout of the repository.
@@ -128,6 +134,17 @@ it, uploads a file that lands there owned by $USER_NAME and finds another
 password refused. It suspends the account and finds the login refused,
 resumes it and finds it accepted again, then deletes the account and finds
 $FTP_LOGIN gone from the user file and its file under $FTP_USERS removed.
+
+"files" proves the file manager on the running installation. It creates an
+account with the hosting user $NAME and, through the file functions over the
+control socket, the folder docs in $HOME_DIR and an upload into it, both owned
+by $USER_NAME, with nothing left in the transfer root $TRANSFER. It renames the
+upload, sets its mode to 0600 and lists the folder, downloads the file over
+HTTPS with a kat_ token of the principal $FILES_LOGIN and gets its content
+back. It finds a link $USER_NAME plants towards /etc refused as a path leaving
+the home, and a mode change of a file root placed in the home refused because
+the worker runs as $USER_NAME, then deletes the folder and the account, with
+the operations of host.home in the journal of $AGENT_UNIT.
 EOF
 }
 
@@ -179,6 +196,7 @@ install_keel() {
   check "$UNIT is active" systemctl is-active --quiet "$UNIT"
   check "$AGENT_UNIT is active" systemctl is-active --quiet "$AGENT_UNIT"
   check "the installer printed the setup link" grep -qF "setup link:   https://" "$log"
+  install -d -m 0700 -o keel -g keel "$TRANSFER"
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
   say "keel is installed with panel; run: hack/panel-vm.sh run"
 }
@@ -818,6 +836,126 @@ no_mail_password_in_journal() {
   ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$MAIL_PASSWORD"
 }
 
+listen_of() {
+  local listen
+  listen=$(sed -nE 's/^listen:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/p' "$CONFIG" | head -n 1)
+  printf '%s\n' "${listen:-127.0.0.1:1500}"
+}
+
+api_base() {
+  local listen host port
+  listen=$(listen_of)
+  host=${listen%:*}
+  port=${listen##*:}
+  case "$host" in 0.0.0.0 | "[::]" | "") host=127.0.0.1 ;; esac
+  printf 'https://%s:%s\n' "$host" "$port"
+}
+
+file_task() {
+  local task
+  task=$(call "$@" | field data.task.id) || return 1
+  eventually task_done "$task"
+}
+
+file_task_fails() {
+  local task
+  task=$(call "$@" | field data.task.id) || return 1
+  eventually task_failed "$task"
+}
+
+task_failed() {
+  [ "$(call task.get "id=$1" 2>/dev/null | field data.state 2>/dev/null)" = "failed" ]
+}
+
+owned_by_user() {
+  [ -e "$1" ] && [ "$(stat -c %U "$1")" = "$USER_NAME" ]
+}
+
+mode_is() {
+  [ "$(stat -c %a "$1")" = "$2" ]
+}
+
+listed() {
+  call hosting.file.list "user=$1" "path=$2" | python3 -c '
+import json, sys
+doc = json.load(sys.stdin)
+sys.exit(0 if sys.argv[1] in [entry["name"] for entry in doc["data"]["entries"]] else 1)
+' "$3"
+}
+
+refused_outside() {
+  local out
+  out=$(as_keel ctl hosting.file.list "user=$1" "path=$2" --out json 2>&1) && return 1
+  grep -qF hosting.file.error.outside <<<"$out"
+}
+
+downloaded() {
+  local id=$1 account=$2 token header body
+  call keel.principal.create "login=$FILES_LOGIN" level=user "account=$account" >/dev/null || return 1
+  token=$(call auth.token.create --as "$FILES_LOGIN" name=panel-vm | field data.token) || return 1
+  [[ $token == kat_* ]] || return 1
+  header=$(mktemp)
+  body=$(mktemp)
+  chmod 0600 "$header"
+  printf 'authorization: Bearer %s\n' "$token" >"$header"
+  if ! curl -sS --fail --cacert "$CERT" -H @"$header" -H 'content-type: application/json' \
+    -d "{\"user\":\"$id\",\"path\":\"docs/main.html\"}" "$(api_base)/api/v1/x/hosting/file.download" >"$body"; then
+    rm -f "$header" "$body"
+    return 1
+  fi
+  rm -f "$header"
+  [ "$(cat "$body")" = "$FILES_CONTENT" ] || { say "  the download answered: $(head -c 200 "$body")" >&2; rm -f "$body"; return 1; }
+  rm -f "$body"
+}
+
+files_proof() {
+  need_root
+  [ -x "$KEEL" ] || fail "$KEEL is not the installed binary; run install first"
+  systemctl is-active --quiet "$UNIT" || fail "$UNIT is not running"
+  [ -d "$TRANSFER" ] || fail "$TRANSFER is missing; run install first"
+  local since account id task content
+  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+
+  say "--- a hosting user with a home"
+  account=$(call keel.account.create kind=user | field data.id) || fail "keel ctl keel.account.create failed"
+  id=$(call hosting.user.create "name=$NAME" "account=$account" | field data.id) || fail "keel ctl hosting.user.create failed"
+  check "the hosting user $NAME turns active" eventually state_is "$id" active
+
+  say "--- files written as $USER_NAME"
+  check "hosting.file.mkdir makes docs" file_task hosting.file.mkdir "user=$id" path=docs
+  check "docs belongs to $USER_NAME" owned_by_user "$HOME_DIR/docs"
+  content=$(printf '%s' "$FILES_CONTENT" | base64 -w0)
+  check "hosting.file.upload writes docs/index.html" file_task hosting.file.upload "user=$id" path=docs/index.html "content=$content"
+  check "the upload belongs to $USER_NAME with mode 644" eval 'owned_by_user "$HOME_DIR/docs/index.html" && mode_is "$HOME_DIR/docs/index.html" 644'
+  check "the upload carries the content" test "$(cat "$HOME_DIR/docs/index.html")" = "$FILES_CONTENT"
+  check "no staged file is left in $TRANSFER" test -z "$(ls -A "$TRANSFER")"
+  check "hosting.file.rename moves it to docs/main.html" file_task hosting.file.rename "user=$id" from=docs/index.html to=docs/main.html
+  check "hosting.file.chmod sets 600" file_task hosting.file.chmod "user=$id" path=docs/main.html mode=600
+  check "docs/main.html has mode 600 and still belongs to $USER_NAME" eval 'mode_is "$HOME_DIR/docs/main.html" 600 && owned_by_user "$HOME_DIR/docs/main.html"'
+  check "hosting.file.list shows main.html in docs" listed "$id" docs main.html
+  check "hosting.file.download answers the content over HTTPS to a kat_ token" downloaded "$id" "$account"
+  check "no staged download is left in $TRANSFER" test -z "$(ls -A "$TRANSFER")"
+
+  say "--- the home is the boundary"
+  runuser -u "$USER_NAME" -- ln -s /etc "$HOME_DIR/escape"
+  check "a link towards /etc is refused as leaving the home" refused_outside "$id" escape
+  check "a parent path is refused as leaving the home" refused_outside "$id" ..
+  install -m 0600 -o root -g root /dev/null "$HOME_DIR/docs/root-only"
+  check "a mode change of a file root owns fails, the worker being $USER_NAME" file_task_fails hosting.file.chmod "user=$id" path=docs/root-only mode=644
+  check "the file of root keeps mode 600" mode_is "$HOME_DIR/docs/root-only" 600
+  check "hosting.file.delete removes docs" file_task hosting.file.delete "user=$id" path=docs
+  check "docs is gone" test ! -e "$HOME_DIR/docs"
+  check "the agent journal carries host.home.write" agent_logged "$since" "host.home.write"
+
+  say "--- the account deleted"
+  task=$(call keel.account.delete "id=$account" | field data.task.id) || task=""
+  check "the deletion task is done" eventually task_done "$task"
+  check "$USER_NAME and its home are gone" eventually gone
+
+  [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
+  say "panel's file manager is proven on this machine: every operation ran as the hosting user inside its home, uploads and downloads passed through $TRANSFER without leaving anything behind, and paths leaving the home were refused"
+}
+
 case ${1:-} in
   -h | --help) usage ;;
   install) shift; install_keel "$@" ;;
@@ -826,5 +964,6 @@ case ${1:-} in
   db) shift; db_proof "$@" ;;
   mail) shift; mail_proof "$@" ;;
   ftp) shift; ftp_proof "$@" ;;
+  files) shift; files_proof "$@" ;;
   *) usage >&2; exit 2 ;;
 esac

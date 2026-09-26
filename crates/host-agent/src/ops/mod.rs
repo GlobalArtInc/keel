@@ -4,6 +4,7 @@ mod extension;
 mod files;
 mod fs;
 mod group;
+mod home;
 mod mariadb;
 mod pkg;
 mod quota;
@@ -40,6 +41,13 @@ const OP_FS_READ: &str = "host.fs.read";
 const OP_FS_REMOVE: &str = "host.fs.remove";
 const OP_FS_MKDIR: &str = "host.fs.mkdir";
 const OP_FS_LIST: &str = "host.fs.list";
+const OP_HOME_LIST: &str = "host.home.list";
+const OP_HOME_MKDIR: &str = "host.home.mkdir";
+const OP_HOME_RENAME: &str = "host.home.rename";
+const OP_HOME_REMOVE: &str = "host.home.remove";
+const OP_HOME_CHMOD: &str = "host.home.chmod";
+const OP_HOME_READ: &str = "host.home.read";
+const OP_HOME_WRITE: &str = "host.home.write";
 const OP_SERVICE_RELOAD: &str = "host.service.reload";
 const OP_SERVICE_RESTART: &str = "host.service.restart";
 const OP_SERVICE_LIST: &str = "host.service.list";
@@ -171,6 +179,13 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
         OP_FS_REMOVE => fs::remove(&call, parse(args)?),
         OP_FS_MKDIR => fs::mkdir(&call, parse(args)?),
         OP_FS_LIST => fs::list(&call, parse(args)?),
+        OP_HOME_LIST => home::list(&call, parse(args)?),
+        OP_HOME_MKDIR => home::mkdir(&call, parse(args)?),
+        OP_HOME_RENAME => home::rename(&call, parse(args)?),
+        OP_HOME_REMOVE => home::remove(&call, parse(args)?),
+        OP_HOME_CHMOD => home::chmod(&call, parse(args)?),
+        OP_HOME_READ => home::read(&call, parse(args)?),
+        OP_HOME_WRITE => home::write(&call, parse(args)?),
         OP_SERVICE_RELOAD => service::reload(&call, parse(args)?),
         OP_SERVICE_RESTART => service::restart(&call, parse(args)?),
         OP_SERVICE_LIST => service::list(&call, parse::<Empty>(args).map(drop)?),

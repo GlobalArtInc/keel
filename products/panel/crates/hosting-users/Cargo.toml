@@ -9,5 +9,6 @@ repository.workspace = true
 [lib]
 
 [dependencies]
+base64 = { workspace = true }
 keel = { workspace = true }
 keel-host = { workspace = true }

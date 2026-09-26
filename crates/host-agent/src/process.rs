@@ -55,13 +55,21 @@ pub(crate) fn feed(program: &Path, args: &[String], input: &[u8]) -> Result<Outp
 }
 
 pub(crate) fn into_file(program: &Path, args: &[String], out: File) -> Result<Output, Failure> {
-    let output = command(program, args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(out))
+    checked(program, redirected(program, args, Stdio::null(), out)?)
+}
+
+pub(crate) fn redirected(
+    program: &Path,
+    args: &[String],
+    input: impl Into<Stdio>,
+    out: impl Into<Stdio>,
+) -> Result<Output, Failure> {
+    command(program, args)
+        .stdin(input)
+        .stdout(out)
         .stderr(Stdio::piped())
         .output()
-        .map_err(|error| unavailable(program, &error))?;
-    checked(program, output)
+        .map_err(|error| unavailable(program, &error))
 }
 
 fn command<I, S>(program: &Path, args: I) -> Command
