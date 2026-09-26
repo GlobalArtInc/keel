@@ -57,7 +57,7 @@ later a route a module registers with a mandatory guard and an audit event
 | `POST /api/v1/call/{func}` | the call; `GET` is accepted for `kind: list \| get` |
 | `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
 | `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
-| `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; later the WebSocket terminal, VNC and the peers pull feed `/api/v1/x/peers/feed?after=seq` |
+| `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; `GET` for a `stream` function, answering `text/event-stream`; later the WebSocket terminal, VNC and the peers pull feed `/api/v1/x/peers/feed?after=seq` |
 | `GET /api/v1/events` | the server-sent event stream, `text/event-stream` with `Cache-Control: no-store`, resumed by `Last-Event-ID` or the query member `after` |
 | `GET /brand/logo.svg`, `GET /brand/<id>/logo.svg` | the effective brand's logo and each compiled-in bundle's, served from the bundle's `assets` or the kernel's own mark, `no-store` ([08-frontend.md](08-frontend.md)) |
 | `/login?key=…` | the page that redeems a one-time login key same-origin ([07-ecosystem.md](07-ecosystem.md)) |
@@ -407,6 +407,25 @@ carries `DownloadRef { download: { function: "task.download", params: { id } } }
 the shell fetches the file ([02-functions.md](02-functions.md)). The `export` action in a list
 descriptor names the offered `formats`.
 
+### Reports, stat widgets, trees and streams
+
+The screen kinds and layouts M5 rendered in full take these shapes on the wire:
+
+| Shape | Request | Response |
+|-------|---------|----------|
+| `kind: report` | the report's `params` schema, rendered by the forms library as the parameters form above the bands; Apply refetches with the form's body, which the route does not keep | `{ bands: { <band id>: [rows] }, charts: { <chart id>: { params } } }`. `ui.bands[]` are tables: `id`, columns in the column vocabulary of lists with a `total` per column, whose footer the renderer computes from the rows since a report is not paged, and the export `formats`; `ui.charts[]` are `{ id, type: line \| bar \| pie, series, params }`. A chart is fetched through its `series` function, a registered `get`, with the descriptor's `params` merged with the ones the answer gives under `charts.<id>`, so the report resolves defaults such as the period and the series function keeps its own guards. The projection cuts band columns above the caller and a chart whose series the caller may not call; labels are `<entity>.band.<id>` and `<entity>.chart.<id>` |
+| series function | its own parameters | `{ points: [{ at \| label, value }] }`, which `stats.series` answers; a point at a UTC midnight is labelled as that day in UTC, any other instant in the principal's zone |
+| `keel.export` of a band | `{ func, band, params, format }` naming a report | the band's rows in the projected band columns, from one call of the report and never a task; a missing band answers `keel.error.export_band` on `band`, an answer without its rows `keel.error.export_report` |
+| stat widget | the widget's `get` function without parameters | `StatValue { value, unit, series?, subject? }`: `series` is the stats key of the sparkline, drawn from `stats.series` at hour resolution over the last seven days, and `subject` its account for a per-account key; the freeze refuses a `stat` widget over anything but a `get` and a second widget over one function, so the function name is the widget's id in `dashboard.layout`, which `settings.pref.set` stores and refuses unless it holds `order` and `hidden` lists of at most 64 names each (`settings.error.pref_dashboard`) |
+| `ui.layout: "tree"` | the list function with `scope.<parent>: null` for the top of the caller's reach and `scope.<parent>: <id>` for the children of a node, 200 rows per level; `ui.parent` names the column that holds the parent id | the list page; a node is expandable until a load answers no children. `keel.account.list` takes it over `parentId` and refuses any other value of `scope.parentId` with `keel.account.error.parent_scope` |
+| `ui.layout: "master-detail"` | `ui.detail` links the `get` or `list` function shown for the selected row, `$id` standing for the row's key | the selection lives in the query parameter `selected`, left out of the parameters the descriptor is resolved with; `dns.zone.list` takes it with `dns.record.list` over `zone_id` |
+| `kind: stream` | `GET` on the raw route with the function's parameters | `text/event-stream`: an event `line` per `LogLine { at?, level, text }`, keep-alive comments, and a final event `end` whose data names the reason: `done`, `expired`, `superseded` or `draining`. A credential holds its own `SSE_MAX_CLIENTS` function streams beside the event stream, so a log tab never evicts the shell's; at every keep-alive the credential is resolved again and the stream ends when it no longer authenticates or answers another principal or level. `keel.logs.stream` sends the last 200 entries of the log ring and follows it |
+
+The freeze refuses a layout on a function that is not a list, a `parent` that is not one of its
+columns and a `detail` that is unregistered or neither `get` nor `list`, and the projection drops
+the layout with its `parent` or `detail` when the caller does not see the column or may not call
+the detail, so a user gets the plain list.
+
 ## Form dynamics
 
 The shapes behind interactive forms. Which fields trigger which mechanism is declared in the `ui`
@@ -659,23 +678,27 @@ descriptors are cached under.
   "brand": { "name": "keel.brand", "hue": 264, "chroma": 0.18 },
   "principal": { "id": "01J8…", "login": "res1", "level": "reseller", "account": "01J8A…",
                  "lang": "ru", "tz": "Europe/Belgrade", "actor": null, "totp": true },
-  "features": ["dns.zones", "dns.dnssec", "dns.secondary", "hosting.web"],
-  "license": { "state": "active", "expires": "2026-10-12T00:00:00Z" },
+  "features": ["dns.zones", "dns.dnssec", "panel.users", "panel.web"],
+  "license": { "state": "valid", "expiresAt": "2026-10-12T00:00:00Z",
+               "graceEndsAt": "2026-10-26T00:00:00Z" },
   "menu": [
     { "id": "dns", "product": "dns", "label": "menu.dns", "icon": "globe",
       "items": [ { "path": "dns/zones", "label": "dns.zone.list.title", "func": "dns.zone.list",
                    "kind": "list", "icon": "globe", "badge": { "problem": "dns.zone_stale" } } ] },
-    { "id": "hosting", "product": "panel", "label": "menu.hosting", "icon": "server",
-      "items": [ { "path": "hosting/sites", "label": "hosting.site.list.title",
-                   "func": "hosting.site.list", "kind": "list" } ] },
+    { "id": "panel", "product": "panel", "label": "menu.panel", "icon": "server",
+      "items": [ { "path": "panel/sites", "label": "hosting.site.list.title",
+                   "func": "hosting.site.list", "kind": "list" },
+                 { "path": "panel/files", "label": "hosting.file-manager.title",
+                   "func": "hosting.file-manager" } ] },
     { "id": "system", "product": null, "label": "menu.system", "icon": "settings",
       "items": [ { "path": "system/accounts", "label": "keel.account.list.title", "func": "keel.account.list", "kind": "list", "icon": "users" },
                  { "path": "system/principals", "label": "keel.principal.list.title", "func": "keel.principal.list", "kind": "list", "icon": "user" },
                  { "path": "system/tasks", "label": "task.list.title", "func": "task.list", "kind": "list" },
                  { "path": "system/products", "label": "keel.product.list.title", "func": "keel.product.list", "kind": "list", "icon": "package" } ] } ],
   "dashboard": [ { "kind": "stat", "func": "dns.widget.zones" },
-                 { "kind": "list", "func": "notify.problem.list", "limit": 5 } ],
-  "views": ["hosting.file-manager"], "meta": "m-7f3a2c1b9d4e0a62", "problems": { "open": 1, "critical": 0 } }
+                 { "kind": "list", "func": "notify.problem.list", "limit": 5 },
+                 { "kind": "stat", "func": "keel.widget.accounts", "hidden": true } ],
+  "views": ["hosting.file-manager", "hosting.site.config-editor"], "meta": "m-7f3a2c1b9d4e0a62", "problems": { "open": 1, "critical": 0 } }
 ```
 
 | Field | Meaning |
@@ -685,9 +708,9 @@ descriptors are cached under.
 | `brand` | the effective brand: the single enabled product's brand with its logo at `/brand/logo.svg`, otherwise the platform brand `keel.brand` with hue 264, chroma 0.18 and no `logo` member; brand name key, logo path and the theme hue and chroma the shell feeds to `PhxThemeService`; patched per hostname for white-label with the `ManifestPatch` the `ManifestSource` answers for the request's `Host` (`settings_brand`, [05-modules.md](05-modules.md)), every member optional, a patched `name` being literal text rather than a key; the socket boot carries no host and is never patched |
 | `principal` | the effective principal with language and time zone from `settings_pref`, the `actor` when delegated (`su`, on-behalf) and whether TOTP is enrolled; `null` for a guest. `tz` is `null` while the principal has no `tz` preference and on the socket; `totp` is `false` for the owner and while no module provides a `SecondFactorSource`; a non-guest principal whose `actor` arrived without delegation is answered with `500 internal` and `keel.error.actor_not_delegated`, as a call would be |
 | `features` | licence features of the enabled products' editions, as one list — the union of the default editions while no lease exists; a function whose `access.feature` is absent is hidden from the menu and answers `402` |
-| `license` | state and expiry of the lease; a product the lease does not list is reported as a problem ([05-modules.md](05-modules.md), `license`); `null` until the `license` module exists |
+| `license` | `BootLicense { state, expiresAt, graceEndsAt }`: `state` is `none`, `valid`, `grace` or `read_only`, the two instants are `null` without a lease; a product the lease does not list is reported as the problem `license.product_unlisted` ([05-modules.md](05-modules.md), `license`); `null` in a composition without the `license` module |
 | `menu` | groups of the enabled bundles and the platform group in that order, each with `product` (`null` for the platform), `label` and `icon`, and items projected under the principal's level and permissions as `{ path, label, func, kind?, icon?, badge? }`: `path` is the shell route, `label` the node's own key or the screen title of `func`, `func` the function it opens, `kind` its screen kind, absent on the item of a view registered through `r.view`, which has no descriptor, `badge.problem` a problem key whose open count is shown on the item; a group without a visible item is omitted |
-| `dashboard` | widgets, `BootWidget { kind, func, limit? }`, one per `DashboardWidget` contribution whose level the principal meets and whose function it may call, in registry order; `list` widgets are rendered, `stat` waits for the dashboard renderer of M5; empty without a contribution, so `/` redirects to the first menu item |
+| `dashboard` | widgets, `BootWidget { kind, func, limit?, hidden? }`, one per `DashboardWidget` contribution whose level the principal meets and whose function it may call: the ones the principal's preference `dashboard.layout { order, hidden }` names first in its order, the rest in registry order, `hidden` set on those the layout hides so the shell can offer them back; names the layout carries that no longer exist are ignored. A `stat` widget's function is a `get` answering `StatValue` (below); empty without a contribution, so `/` redirects to the first menu item. The layout is not part of the metadata version |
 | `views` | the bespoke views registered with `r.view(...)` whose level and permission the principal meets, in registry order; the shell shows `phx-not-found` for one without a registered component; filled from M2 |
 | `meta` | the metadata version, equal to `X-Keel-Meta-Version`, also served as the response's `ETag` with `private, no-store` and `304` on a matching `If-None-Match`; `principal.totp` and `principal.actor` are not part of the version, so the shell refetches `/boot` without `If-None-Match` after a call that changes the principal's own state, such as a second-factor enrolment |
 | `problems` | `BootProblems { open, critical }`, the open problems within the principal's account scope, counted through the hidden `ProblemCounter`; `null` without a module providing it |

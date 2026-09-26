@@ -93,7 +93,42 @@ M4_NAMES = {
     "keel-host-agent": 'name = "keel-host-agent"',
 }
 
-CODE_ROOTS = {"crates": ["crates"], "crates/ or frontend/libs/keel": ["crates", "frontend/libs/keel"]}
+M5_NAMES = {
+    "exempt_from_read_only": "pub fn exempt_from_read_only",
+    "license_clock": '"license_clock"',
+    "license.product_unlisted": '"license.product_unlisted"',
+    "license.error.older": '"license.error.older"',
+    "BootLicense": "pub struct BootLicense",
+    "StatCollector": "pub struct StatCollector",
+    "per_subject": "pub fn per_subject",
+    "StatValue": "pub struct StatValue",
+    "LogLine": "pub struct LogLine",
+    "keel.error.stream_route": '"keel.error.stream_route"',
+    "Bridge": "pub struct Bridge",
+    "DnsProvider": "pub trait DnsProvider",
+    "SiteZone": "pub struct SiteZone",
+    "dns_peer.error.unpaired": '"dns_peer.error.unpaired"',
+    "keel.product.error.bridged": '"keel.product.error.bridged"',
+    "switchRemote": "switchRemote",
+    "dns.zone.claim": '"dns.zone.claim"',
+    "mariadb.exec": '"mariadb.exec"',
+    "account_roots": "account_roots",
+    "caller_uid": "caller_uid",
+    "hosting.file-manager": '"hosting.file-manager"',
+    "hosting.site.config-editor": '"hosting.site.config-editor"',
+    "auth.shell_url": '"auth.shell_url"',
+    "notify.send_to": '"notify.send_to"',
+    "notify_direct": "notify_direct",
+    "dashboard.layout": '"dashboard.layout"',
+    "stats.series": '"stats.series"',
+    "instant-acme": "instant-acme = { workspace = true }",
+}
+
+CODE_ROOTS = {
+    "crates": ["crates"],
+    "crates/ or frontend/libs/keel": ["crates", "frontend/libs/keel"],
+    "crates/ or products/": ["crates", "products"],
+}
 
 
 def found(pattern, roots):
@@ -121,6 +156,7 @@ check_names("M1", M1_NAMES, "crates")
 check_names("M2", M2_NAMES, "crates/ or frontend/libs/keel")
 check_names("M3", M3_NAMES, "crates/ or frontend/libs/keel")
 check_names("M4", M4_NAMES, "crates")
+check_names("M5", M5_NAMES, "crates/ or products/")
 
 
 def section(text, heading):
@@ -214,6 +250,7 @@ check_checklist("M1", ["crates", "products"])
 check_checklist("M2", ["crates", "products", "bin"])
 check_checklist("M3", ["crates", "products", "bin"])
 check_checklist("M4", ["crates", "products", "bin"])
+check_checklist("M5", ["crates", "products", "bin"])
 
 with open("README.md") as handle:
     readme = handle.read()

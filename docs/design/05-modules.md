@@ -48,7 +48,7 @@ product's lib crate as `pub static MANIFEST`:
 | `brand`         | `Brand { logo, hue, chroma }` for the shell: the logo is the id of an entry of `assets`, served as `/brand/<id>/logo.svg`; the brand of a single enabled product is the brand of the installation. |
 | `assets`        | `&[Asset { id, content_type, bytes }]`: the files the bundle ships, embedded at compile time, the logo `Brand.logo` names among them; `ProductManifest::asset(id)` and `logo()` read them, the kernel serves the logo at `/brand/<id>/logo.svg` for every compiled-in bundle, enabled or not, since the products screen lists disabled bundles with their logo, and the freeze refuses an id shipped twice. A single enabled product without the asset its brand names answers `404` on `/brand/logo.svg`; the kernel's own mark stands for the platform brand alone. |
 | `modules`       | `&[&ModuleDef]`: the definitions of the modules the product enables, `host` included when its modules need the agent; the composition learns a bundle's modules from here and lists only the platform modules itself. |
-| `bridges`       | `Bridge { to, local, remote }`: the pair of modules through which this product reaches product `to`; `local` is loaded when `to` is enabled on the same installation, `remote` otherwise. The field arrives with the first bridge, the `panel` bundle's bridge to `dns` at M5; the M0 manifest has none. |
+| `bridges`       | `Bridge { to, local, remote }`: the pair of modules through which this product reaches product `to`; `local` is loaded when `to` is enabled on the same installation, `remote` otherwise. The sides are `&ModuleDef`s rather than ids, so a side cannot name a module the binary lacks, and they stay out of `modules`; the loader attributes the chosen side to the bridging bundle. The first bridge is the `panel` bundle's bridge to `dns`, since M5. |
 | `menu`          | Menu groups (`id`, `label`, `icon`, `order`) under which the modules' `MenuNode`s are placed; group ids are unique across enabled bundles. |
 | `levels`        | `LevelLabels { labels, disabled }`: level labels and disabled levels ([03-access.md](03-access.md)). |
 | `editions`      | Edition ids with their feature sets; the first is the default edition used while no lease is present, and the lease names the edition of each product. |
@@ -143,14 +143,21 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   (in the prelude as `function`) and
   registered with `r.function(...)`. Descriptors, the pipeline and the guards that run them are
   in [02-functions.md](02-functions.md).
-- SSE streams, `r.stream("dns.zone.log", handler)`.
+- Streams, `r.stream(function::<P, LogLine>("dns.zone.log")…, handler)`: the builder carries the
+  access, ownership and screen of any function, and the handler answers `Lines`, a stream of
+  `LogLine { at?, level, text }`. The dispatcher runs the whole pipeline and audits the open
+  whatever the mode; the lines are served as server-sent events on the raw route
+  `GET /api/v1/x/<module>/<name>` ([10-contracts.md](10-contracts.md)), and a call of a stream
+  over the call route, the socket or a nested `invoke` answers `keel.error.stream_route`.
 - Raw routes under `/api/v1/x/<module>/…`, only with a mandatory `Guard` and an audit event.
   They exist for upload, download, the WebSocket terminal and VNC, not as a second way to expose
   functions. The raw routes built so far are the kernel's own projection: a function of kind
   `download` or `upload` registered with `r.function` is served at `/api/v1/x/<module>/<name>`,
   `<name>` being the function name without its module prefix, behind authentication and through
   the full pipeline with its audit event; a free-form raw route a module registers itself,
-  `r.raw`, waits for the terminal and VNC of `panel` in M5.
+  `r.raw`, waits for the terminal and VNC of `panel`, which M5 left out: the two custom views of
+  `panel`, the file manager and the configuration editor, are served by the `upload` and
+  `download` kinds and ordinary functions.
 - Custom views, `r.view("hosting.file-manager", ViewSpec { access, menu, needs })`: a screen
   without a descriptor but with access rules for the menu and features; the registrar checks the
   module prefix of the name and refuses a second view or function under it, and `menu`, an
@@ -205,7 +212,7 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `CronJob` | A periodic job: id, schedule, handler | `cron` |
 | `DashboardWidget` | A widget for the `dashboard` block of `GET /api/v1/boot` | the shell ([08-frontend.md](08-frontend.md)) |
 | `ProblemSource` | A source of problems for the problem registry | `notify` |
-| `MailTemplate` | A minijinja template for outgoing mail | `notify` |
+| `MailTemplate` | A minijinja template for outgoing mail; the type lives in `keel-sdk` since M5 and `notify::api` re-exports it, so `auth` contributes the templates of the password reset without depending on `notify` | `notify` |
 | `ConfigTemplate` | A configuration file template with its validate command, overridable in `/etc/keel/templates/`; ids are unique across the loaded set | `keel-host` ([06-host.md](06-host.md)) |
 | `AgentOp` | A typed host-agent operation: argument and result schemas, handler, policy class | `keel-host` ([06-host.md](06-host.md)) |
 | `BackupSource` | The module's own data in a backup archive | `backup` |
@@ -215,11 +222,11 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `ServiceKind` | A service type for billing: `Params`, `State` and `Account` schemas with `schema_version` | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
 | `LimitDef` | An account limit: key, unit, default, level, whether `unlimited` is allowed | `keel_limit` and `call.check_limit` ([03-access.md](03-access.md)) |
 | `AccountLifecycle` | `on_suspend`, `on_resume`, `on_delete`, `on_rename` handlers | `keel.account.*` ([03-access.md](03-access.md)) |
-| `StatCollector` | A metric: key, unit, collection interval | `stats` |
+| `StatCollector` | A metric: key, unit (`count`, `bytes` or `seconds`), an interval of whole minutes and the collector; `new` samples one installation-wide value, `per_account` a value per account id and `per_subject` a value per named subject of an installation-wide key, such as a service | `stats` |
 | `InstanceInfoSource` | Extra fields of `GET /api/v1/instance`, for example `serviceKinds` | the instance endpoint ([07-ecosystem.md](07-ecosystem.md)) |
 
-`LimitDef`, `AccountLifecycle`, `SettingDef` and `ConfigSection` are part of what the SDK gives
-every module: a product module contributes a setting or claims a section of `config.yaml` without
+`LimitDef`, `AccountLifecycle`, `SettingDef`, `ConfigSection`, `StatCollector` and `MailTemplate`
+are part of what the SDK gives every module: a product module contributes a setting or claims a section of `config.yaml` without
 naming `settings` in `requires`, as the `dns` example at the end of this document does, and the
 resolution of a setting is the public trait `SettingsSource` behind `call.setting::<T>(key)`. The
 other points are declared by modules in their `pub mod api`. The last column names where each
@@ -499,9 +506,29 @@ function attribute ([06-host.md](06-host.md)).
   `auth.rate.guest_per_minute` tokens a minute, `429` beyond. IP rules, `auth.ip_rule.*`, are
   `allow | deny` rows per CIDR applying to callers at or above their level, enforced by a module
   guard that never checks a call without a client address — the socket — which is how an
-  operator undoes a rule that locked the browser out. Password reset through `notify` arrives
-  with `panel` in M5, together with an address per principal that no table of this design
-  carries yet and a delivery to one recipient the channels of M3 do not make.
+  operator undoes a rule that locked the browser out.
+- Password reset, since M5. An address per principal lives in `auth_principal_address`
+  (principal, kind `email`, value, `verified_at`), behind the hidden `AddressSource` seam, and the
+  tokens in `auth_mail_token` (the SHA-256 of a `kpr_` reset or `kav_` confirmation token, its
+  purpose, principal, the address being confirmed, expiry and use). `auth.address.get`,
+  `auth.address.set { principal?, value, current? }` and the guest `auth.address.verify { token }`:
+  a principal setting its own address gives its current password, since the address can mail a
+  reset link, and gets it unconfirmed with a `kav_` link valid for 24 hours; an admin setting
+  another principal's address confirms it at once. Both reuse `auth.password.manage`. The guest
+  `auth.password.reset.request { login }` answers `{}` whatever the login and does the lookup,
+  the token and the mail in an after-commit hook, so neither the answer nor its timing depends on
+  the login; it is limited in memory to 3 requests per login and 10 per client address an hour,
+  unknown logins counted too, `429 auth.error.reset_limited` beyond. The link goes only to a
+  confirmed address and is valid for `auth.password.reset_minutes` (60). The guest
+  `auth.password.reset.confirm { token, password }` applies the password policy, uses up every
+  open reset token of the principal and revokes every session it holds or acts in; API tokens
+  stay. `auth.password.set` and `auth.address.set` also use up the open reset links. A principal
+  at or above `owner` is never mailed a link and `confirm` refuses one, so a mailbox is never
+  enough to take over the root principal. The links name the address the shell is served at from
+  the admin setting `auth.shell_url`, never from `Host` or `Origin`; while it is empty a request
+  answers the same and logs that no link was mailed, and `auth.address.set` refuses with
+  `auth.error.shell_url`. `auth` does not require `notify`: it reaches `notify.send_to` through
+  the hidden `Caller` by name, and without `notify` the mail is not sent and the failure logged.
 - Rate limits, lockouts and second-factor attempts are counted in the process's memory, not in
   a table: a failed `auth.login` is a failed call whose transaction rolls back, so a counter the
   handler wrote would vanish with it, and no background writer has been worth a table yet. The
@@ -663,6 +690,14 @@ function attribute ([06-host.md](06-host.md)).
   retries on the ladder 1m, 5m, 30m, 2h, 12h and raises `notify.delivery_failed` for the channel
   after the last rung. `notify.channel.test` sends a test message to the caller on that channel
   alone.
+- A delivery to one recipient, since M5: the internal `notify.send_to { principal, template,
+  params, unverified? }` resolves the principal's address through `AddressSource`, read at call
+  time and not declared, so `notify` boots without `auth`, refuses an unconfirmed address unless
+  `unverified` is set and sends over the oldest enabled `email` channel with the channel's own
+  recipient replaced by that address. Its rows live in `notify_direct`, since `notify_delivery`
+  requires a message and relaxing that column would not be additive; the sender retries them on
+  the same ladder, and the params are sealed through `SecretCipher`, marked secret and dropped
+  once the mail is sent or given up.
 - Templates are minijinja, taken from `MailTemplate` contributions, a template's id being the
   message key it renders; the module ships `notify.problem.raised`, `notify.problem.cleared` and
   `notify.test` in `en` and `ru`, compiled at start.
@@ -695,25 +730,60 @@ function attribute ([06-host.md](06-host.md)).
 
 ### license
 
-- The guard on `access.feature`: a function whose feature is not in the edition the lease grants
-  the product that owns the feature is hidden from the menu and answers 402.
-- The lease is an Ed25519-signed JSON document bound to `instance_id`, with a grace period and
-  degradation to read-only (mutating functions answer 402; reads and login keep working).
-- The lease lists the products of the installation and the edition of each; the features of an
-  edition are the ones the bundle declares for it, and `/boot.features` is their union.
-- `keel.product.enable` refuses a product the lease does not list; with `license: None` every
-  compiled-in bundle may be enabled. An enabled product that a later lease no longer lists is
-  treated like an expired lease for its modules — reads keep working, writes answer `402` — and
-  a problem is raised; the rest of the installation is unaffected.
-- Monotonic time in `keel_kv` protects against clock changes.
-- `license: None` switches the mechanism off, which is how internal builds run without a key.
-  Until M5 the feature guard runs without a lease, over every feature of every edition of the
-  enabled products ([03-access.md](03-access.md)).
-- The edition ceiling for account limits is per product and comes from here
-  ([03-access.md](03-access.md)).
-- The first releases are expected to run on long offline leases issued by hand; when the license
-  server is written as a product on Keel and where its signing key is kept are open questions in
-  [11-decisions.md](11-decisions.md).
+- The lease is an Ed25519-signed JSON document, `{ instance_id, issued_at, expires_at,
+  grace_days, products: [{ id, edition }] }`, sealed in the envelope `keel-release` signs
+  releases with and verified against the license key compiled into the binary
+  (`crates/release/keys/license.pub`, a second pair beside the release key). `license.install`
+  (admin, and `keel license install <file>` over the socket) verifies it, binds it to the
+  installation's `instance_id` and stores the signed text in `keel_kv` under `license_lease`; a
+  refused lease is a field error on `lease`: `license.error.signature` for any envelope or
+  signature failure, `license.error.lease` for a payload that is not a lease,
+  `license.error.instance` for another installation and `license.error.older` for a lease issued
+  before the installed one, so an older signed lease never brings back an edition or an expiry
+  the vendor replaced. Unknown payload fields are ignored so a later issuer may add some. The
+  in-memory lease is reloaded from `keel_kv` after the commit of an install; a stored lease that
+  stops verifying, as after a key rotation, is logged and ignored. `license.get` answers the
+  state, `instanceId`, the listed products with their editions, the issue and expiry times and
+  the end of the grace.
+- The states are `none`, `valid`, `grace` and `read_only`: a lease is valid until `expires_at`,
+  in grace for `grace_days` after it, raising the problem `license.expiring`, and read-only
+  after the grace, raising `license.expired` (critical) instead. The time is the later of the
+  wall clock and the largest instant the installation has seen, kept in `keel_kv` under
+  `license_clock`, advanced at every start, by the cron job `license.clock` every ten minutes
+  (an upsert that only moves forward) and on every reading, so a clock moved backwards never
+  revives an expired lease; a clock set forward by mistake keeps its instant, and installing a
+  new lease is the remedy. An offline lease cannot tell a clock set back before the first start.
+- The features of the installation are those of the editions the lease lists; the features of an
+  edition are the ones the bundle declares for it, `/boot.features` is their union and
+  `/boot.products[].edition` the licensed edition. A listed edition the bundle does not declare,
+  and a product the lease does not list, grant nothing. The guard on `access.feature`: a function
+  whose feature the installation lacks is hidden from the menu and answers `402`.
+- Read-only is a dispatcher guard beside the feature guard: an entered call of a function whose
+  mode is not read answers `keel.error.license` (`402`) with the function and the state, and the
+  descriptor projection asks the same guard, so an action it refuses keeps its place with
+  `disabled: keel.error.license` and an inline edit is dropped. Reads keep working, and so do the
+  functions marked `exempt_from_read_only` on the builder: the steps of a login (`auth.login`,
+  `auth.totp.verify`, `auth.key.redeem`), `auth.logout`, `auth.su`, `auth.su.exit` and
+  `license.install`. The guard runs for the entered call only and not for internal principals,
+  so cron jobs and other housekeeping keep running.
+- `keel.product.enable` refuses a product the lease does not list with `license` before it writes
+  anything. An enabled product that a later lease no longer lists degrades like an expired lease
+  for its modules, whatever the marks of its functions, and raises
+  `license.product_unlisted` with the product as the subject; a module turns read-only as
+  unlisted when every enabled product that carries it is unlisted, and the rest of the
+  installation is unaffected. The offline `keel product enable` on a stopped service has no gate;
+  a product enabled that way is degraded as unlisted at the next start.
+- Without a lease nothing degrades and every compiled-in product may be enabled at its default
+  edition, the first the bundle declares, which keeps the installer and the scripts working
+  without the production key; the gate applies once a lease is installed. `license: None`, a
+  composition without the module, switches the mechanism off and keeps every feature of every
+  edition of the enabled products, which is how the test fixtures and internal builds run.
+- The module requires `cron` and `notify` for its clock job and its problem source.
+- Leases are issued by hand with `keel-dev license issue` ([09-operations.md](09-operations.md));
+  when the license server is written as a product on Keel and where its signing key is kept are
+  open questions in [11-decisions.md](11-decisions.md). The edition ceiling for account limits
+  is per product and would come from here ([03-access.md](03-access.md)); no edition carries one
+  yet.
 
 ### update and backup
 
@@ -726,9 +796,10 @@ function attribute ([06-host.md](06-host.md)).
   hooks receive the source's directory in the archive, a pool `Db` and the data directory; the
   freeze refuses a name without its module's prefix and one claimed by two modules. The kernel
   provides `dyn Backups` as a platform service, so the module reaches the archive writer without
-  depending on the kernel. The archive has one target in M4, the local directory
-  `<data_dir>/backups/`; the S3 target and the crate `keel-storage` move to M5 with
-  `hosting-backup`, the first module that needs a remote target.
+  depending on the kernel. The archive has one target, the local directory
+  `<data_dir>/backups/`. The S3 target and the crate `keel-storage` were moved to M5 with
+  `hosting-backup`, which M5 built with local archives only; remote targets wait for a later
+  milestone, for this module and for `hosting-backup` alike.
 - The module carries `backup.create` (a task whose archive `task.download` serves),
   `backup.list` (the screen "Backups", the archives with their manifests) and `backup.restore`
   (a task that checks the archive and writes the restore request the next start consumes).
@@ -774,10 +845,63 @@ function attribute ([06-host.md](06-host.md)).
 
 ### stats
 
-- `StatCollector` contributions: key, unit, interval.
-- `stats_sample` and `stats_agg` with rollover; aggregation runs as a cron job.
-- `stats.series` functions serve dashboard widgets and `report` screens
-  ([08-frontend.md](08-frontend.md)).
+- `StatCollector` contributions from any module, the kernel's `keel.accounts` and
+  `keel.principals` among them. One cron job, `stats.collect`, runs every minute and samples each
+  collector whose interval divides the minute since the epoch, at the run's scheduled minute,
+  since a module's cron jobs are fixed at registration while the collectors of other modules are
+  known only at start; an interval is a whole number of minutes and two collectors never share a
+  key, checked at start. A second run of the same minute overwrites its samples, and a failing
+  collector fails the run after the others were sampled.
+- `stats_sample (key, subject, at, value)` and `stats_agg (key, subject, bucket, resolution, min,
+  max, sum, count)`, an installation-wide sample having the empty subject. `stats.aggregate` at
+  minute 5 of every hour folds the complete hours into hour buckets and the complete days into day
+  buckets, from the last bucket of each key and subject; `stats.prune` at 00:20 aggregates first,
+  then deletes samples older than `stats.raw_days` (7) and hour buckets older than
+  `stats.hour_days` (90); day buckets are kept.
+- `stats.keys` lists the keys with their unit, interval and scope (`installation` or `account`),
+  an installation-wide key to a principal whose scope is every account. `stats.series { key,
+  subject?, from, to, resolution }` answers `points: [{ at, value, min, max, sum, count }]` for
+  `raw`, `hour` or `day` over `[from, to)`, `value` being the mean of the bucket and the bucket in
+  progress never synthesised. The subject of a per-account key defaults to the caller's account
+  and must lie in its scope; an installation-wide key takes a subject only when its collector is
+  per subject. A refused key or subject answers not found (`stats.error.key`,
+  `stats.error.subject`), a period that does not end after it starts or more than 10000 points a
+  validation error. The series serve the stat widgets of the dashboard and the charts of `report`
+  screens ([08-frontend.md](08-frontend.md)); host metrics are sampled by the product modules
+  that read them through the executor, as `hosting-services` does.
+
+## The panel bundle
+
+KeelPanel, the product `panel`, arrived with M5 as `products/panel` and its module crates under
+`products/panel/crates/`. A module id is chosen so that its functions, tables, permission keys,
+limits and i18n keys all carry its prefix, an underscore of the id reading as a dot in function
+names; the crate names stay those of the plan. Every function that owns rows is owned by
+account, every change to the host runs after commit or in a task through `keel-host`
+([06-host.md](06-host.md)), and a row carries `state` (`pending`, `active`, `error`) with the
+tool's output when the host refused it.
+
+| Crate | Module | Feature | What it keeps |
+|-------|--------|---------|---------------|
+| `hosting-users` | `hosting` | `panel.users` | `hosting_user`: a hosting user is the operating-system account `hp_<name>` inside the uid range with its home; the edit form switches its shell between `nologin` and `bash`; the limit `hosting.users`; the file manager's `hosting.file.*` |
+| `hosting-web` | `hosting_site` | `panel.web` | `hosting_site`: a site of a hosting user with its domain, aliases, document root inside the home and PHP version, rendered as an nginx server block and a php-fpm pool; the limit `hosting.site.max`; `DnsProvider`, `Sites` and `SiteCertificates` in its `api`; the configuration editor's `hosting.site.config.get` and `.set` |
+| `hosting-ssl` | `hosting_certificate` | `panel.web` | one certificate per site, issued over ACME HTTP-01 or uploaded, renewed thirty days before expiry, the problem `hosting.certificate.expiring` fourteen days before |
+| `hosting-db` | `hosting_database` | `panel.databases` | MariaDB databases, users and grants per account, named `<hosting user>_<suffix>`; the limits `hosting.database.max` and `hosting.database.user.max`; the backup source `hosting_database.dumps` |
+| `hosting-mail` | `hosting_mail` | `panel.mail` | mail domains and mailboxes of one system user `vmail`, rendered into the postfix maps and the dovecot passwd-file; MX and SPF through `DnsProvider::add_records`; the backup source `hosting_mail.maildirs` |
+| `hosting-ftp` | `hosting_ftp` | `panel.ftp` | FTP accounts per site, chrooted under the site's document root through vsftpd and PAM; the limit `hosting.ftp.max` |
+| `hosting-backup` | `hosting_backup` | `panel.backup` | per-site archives of the document root, the databases of the site's user and the mailboxes of the site's mail domain, with a schedule per site and retention |
+| `hosting-services` | `hosting_service` | none | the services of the agent's policy with their state, memory and start; start, stop, restart and reload; the problem `hosting.service.down` |
+| `dns-local`, `dns-peer` | `dns_local`, `dns_peer` | none | the two sides of the bridge to `dns` ([07-ecosystem.md](07-ecosystem.md)) |
+
+The editions `lite` and `pro` grant every feature of the bundle alike; `pro` has none of its own
+yet. The functions of `hosting-services` and the configuration editor are for the operator,
+`Level::Admin` without permission keys, since a service action or an nginx directive reaches
+beyond one account; the others carry `<entity>.read` and `<entity>.manage` permission keys held
+by users and resellers. Suspending an account locks its hosting users, database users and FTP
+logins, answers `403` on its sites and marks its mailboxes `nologin` while they keep receiving;
+resuming undoes it; deleting it removes, through the `AccountLifecycle` of each module, its FTP
+accounts, certificates, sites, databases, mail and backups before its hosting users. The two
+custom views, the file manager and the configuration editor, are in
+[08-frontend.md](08-frontend.md).
 
 ## Example: module, bundle and composition
 
@@ -791,7 +915,7 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> keel::Result<()> {
     r.function(zone::list()).function(zone::get()).function(zone::edit()).function(zone::delete());
-    r.stream("dns.zone.log", logs::tail);
+    r.stream(logs::log(), logs::tail);
     r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10));
     r.i18n("en", include_str!("../i18n/en.json")).i18n("ru", include_str!("../i18n/ru.json"));
     r.permission("dns.zone.read", &[Level::User, Level::Reseller]).permission("dns.zone.manage", &[Level::User, Level::Reseller]);
@@ -819,7 +943,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
     levels: LevelLabels { labels: &[], disabled: &[] },
     editions: &[
         Edition { id: "lite", features: &["dns.zones"] },
-        Edition { id: "pro", features: &["dns.zones", "dns.dnssec", "dns.secondary"] },
+        Edition { id: "pro", features: &["dns.zones", "dns.dnssec"] },
     ],
     account_kinds: &["user"],
     i18n: &[("en", include_str!("../i18n/en.json")), ("ru", include_str!("../i18n/ru.json"))],
@@ -841,10 +965,10 @@ fn main() -> keel::ExitCode {
 }
 ```
 
-The panel bundle differs in its bridge, `bridges: &[Bridge { to: "dns", local: "dns_local",
-remote: "dns_peer" }]`, which is how `DnsProvider` is served in-process when `dns` is enabled on
-the same installation and through a peer otherwise ([07-ecosystem.md](07-ecosystem.md)); the
-field joins `ProductManifest` with that bundle. The ids of the `dns-records` and `dns-templates`
+The panel bundle differs in its bridge, `bridges: &[Bridge { to: "dns", local:
+&keel_dns_local::MODULE, remote: &keel_dns_peer::MODULE }]`, which is how `DnsProvider` is served
+in-process when `dns` is enabled on the same installation and through a peer otherwise
+([07-ecosystem.md](07-ecosystem.md)); the field joined `ProductManifest` with that bundle in M5. The ids of the `dns-records` and `dns-templates`
 modules above are illustrative. The composition lists the system modules, which no bundle
 names, and every first-party bundle; each bundle names its own module crates, `keel-host`
 included where a product manages the host, so `.module()` never repeats what a manifest says.

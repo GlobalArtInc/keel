@@ -166,11 +166,15 @@ whose feature is not in the feature set, and the projection asks the same questi
 and the permission, so such a function leaves the descriptor listing, answers 402 for its own
 descriptor and disappears as an action, a row action, a column's inline edit, a dashboard widget
 and a menu item wherever it is referenced; a custom view that needs such a feature is cut too.
-The feature set of M4 has no lease behind it: it is every feature of every edition the enabled
-products declare, which is what `/boot.features` carries, so the list and the menu agree. It is a
-function of the enabled products, which the metadata version already hashes. M5 replaces it with
-the set the lease grants ([05-modules.md](05-modules.md)), and the lease joins the metadata
-version then.
+Since M5 the feature set is the one the `license` module provides as `dyn Features`: the
+features of the editions the lease lists, or of the default edition of each enabled product
+while no lease is installed ([05-modules.md](05-modules.md)); `/boot.features` carries it, so the
+list and the menu agree. A composition without the `license` module keeps the set of M4, every
+feature of every edition the enabled products declare. The metadata version hashes the features,
+the editions and the license state only when the feature service reports a license, so the
+versions of a composition without one did not change. Beside the feature guard the `license`
+module adds the read-only guard of an expired or unlisted lease, which refuses an entered call
+of a function that writes with the same `license` code and `keel.error.license`.
 
 ## Delegation
 
@@ -499,8 +503,9 @@ r.contribute(LimitDef::new("dns.zones", Unit::Count).default(50).unlimited(true)
 ```
 
 Values are stored per account in `keel_limit(account_id, key, value)` and inherited along
-`path`: a reseller cannot grant a customer more than it has itself. The edition ceiling comes from
-the `license` module. A handler checks before creating:
+`path`: a reseller cannot grant a customer more than it has itself. An edition ceiling from the
+`license` module is foreseen and not built: no edition of M5 carries a limit. A handler checks
+before creating:
 
 ```rust
 call.check_limit(key, current)
@@ -513,8 +518,12 @@ belong in `within` hooks or the handler, inside the transaction
 account's `path`; a stored `null` means unlimited where the definition allows it, and the default
 applies otherwise. Account limits shipped with the first product, dns, at M4: `dns.zones` (50 per
 account) and `dns.record.max` (500 per zone, checked against the zone's account under the zone's
-row lock), both admitting unlimited. A function that edits the stored values is not built yet,
-and the edition ceiling waits for the `license` module of M5.
+row lock), both admitting unlimited. The `panel` bundle of M5 adds `hosting.users`,
+`hosting.site.max`, `hosting.database.max`, `hosting.database.user.max` and `hosting.ftp.max`,
+10 per account each and unlimited allowed, each checked under an advisory lock per account
+before the insert; `hosting.users` is the one key named after the module `hosting`, the others
+after their modules (`hosting_site`, `hosting_database`, `hosting_ftp`), as `dns.record.max` is.
+A function that edits the stored values is not built yet.
 
 The limit table is `keel_limit(account_id, key, value)`, one of the kernel tables
 ([04-storage.md](04-storage.md)); the keys stored in it come from `LimitDef` contributions.

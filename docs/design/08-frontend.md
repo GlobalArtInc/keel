@@ -165,7 +165,9 @@ components, with the schema deciding what the descriptor leaves open:
 | `time` | `phx-time-field` | |
 | `file` | `phx-file-field` | |
 | `list` | `phx-list-field` | the columns from the properties of `items` |
-| `code` | `phx-code-field` | |
+| `code` | `phx-code-editor` of `@globalart/phoenix-ui/code`, inside a `@defer (on immediate)` block so CodeMirror stays in its own lazy chunk | the language stays plain: the vocabulary has no attribute for it, and the configuration editor of `panel` is a custom view that sets its own |
+| `key_value` | `phx-key-value-field` | an object; the key pattern from `propertyNames.pattern`, the field keeping the control invalid while a key is empty, refused or repeated; an untouched map is submitted as `{}` |
+| `transfer` | `phx-transfer-list` | an array of ids, its items from the choices a recompute served, else from the options function of `x-keel.options` (the first page of 20, loaded once and searched locally), else from the `enum` of the items |
 | `tags` | `phx-tags-field` | |
 | none | inferred | a `boolean` is a toggle; an `enum` or `x-keel.options` a select; an `integer` or `number` a `phx-number-field` with the bounds, `unlimited` for a nullable field; a `string` with `format: date` a date; an array of strings the tags field; anything else an input |
 
@@ -262,9 +264,24 @@ JSON. A row is labelled by `<module>.<entity>.<path>` and, when that key has no 
 column key `<module>.<entity>.column.<path>`, since a `get`'s result mirrors the row of its list
 and the dictionaries already carry the column headers.
 
-The report renderer maps `bands` to `phx-list-table` and diagrams to `phx-chart`; the dashboard
-renderer lays widgets out on `phx-widget-grid` with the order kept in user preferences; the stream
-renderer shows a log arriving over SSE.
+The report renderer draws the report's parameters form above the bands, maps each band to
+`phx-list-table` with footer totals computed from its rows and each chart to `phx-chart` fed by
+its series function; Apply refetches the report and the charts follow the new answer, and the
+applied parameters are not written to the route. The home screen lays widgets out on
+`phx-widget-grid`: a `stat` widget shows its number with the unit (`keel.shell.home.unit.<unit>`)
+and a sparkline the shell draws as a small SVG of its own from `stats.series`, since `phx-chart`
+has axes and grid lines and no sparkline form, and a missing series leaves the number alone; a
+drag reorders the widgets and the page's menu hides or restores them, both written to the
+preference `dashboard.layout` through `settings.pref.set`, after which the shell refetches `/boot`
+without `If-None-Match`. `keel-tree` loads one level at a time through the list function and
+draws `phx-tree` with the primary column as the node label, the list's toolbar actions above it
+and the row actions of the chosen node in a selection bar; `keel-master-detail` shows the list in
+a picking mode, where a row click selects instead of running the default action, beside the
+detail through `keel-screen`, the selection kept in the query parameter `selected` when the
+screen is routed. The stream renderer opens the raw route through `KeelClient.stream`
+(`EventSource`), shows the lines in `phx-log-view` with pause and a level filter, and closes on
+the `end` event or an error instead of letting the browser reconnect and replay the backlog,
+offering a reconnect button. The wire shapes are in [10-contracts.md](10-contracts.md).
 
 Function results are handled uniformly: a `TaskRef` answered by an action, a form or a wizard
 opens the progress modal, `keel-progress` over `phx-progress-modal`, driven by the `task.progress`
@@ -495,8 +512,9 @@ r.view("hosting.file-manager", ViewSpec { access, menu, needs })
 
 `menu` is an optional `MenuNode` pointing at the view, which goes through the same ownership,
 group and label checks as any node and must carry a label of its own, since a view has no screen
-title; its item in `/boot.menu` carries no `kind`. `needs` and `access.feature` are stored and
-reported; the feature guard arrives with the `license` module.
+title; its item in `/boot.menu` carries no `kind`. `access.feature` and `needs` go through the feature
+guard like a function's, so a view whose feature the lease does not grant leaves `/boot.views`
+and the menu.
 
 `/boot.views` lists the registered views. On the client the product registers a component for the
 name through `provideKeelViews([{ func, component }])`, and the component receives:
@@ -536,7 +554,29 @@ Measures:
 
 Milestone targets: at M5 `panel` has exactly two custom views (the file manager and the
 configuration editor) and the share of custom views is at most 10 % of the functions of `panel`
-(see [../plan.md](../plan.md)).
+(see [../plan.md](../plan.md)); `hack/descriptors.sh` fails unless `keel-dev views share` reports
+exactly those two for `panel` within that share. M5 closed with two views over 66 functions of
+`panel`, 3.0 %, and 5 over 194 functions, 2.6 %, for the composition. The two views, written in
+`frontend/products/panel` with phoenix-ui components alone:
+
+- `hosting.file-manager` (module `hosting`, menu node `panel/files`, feature `panel.users`) lists,
+  uploads, renames, downloads, changes the mode of and deletes files in the home of a hosting
+  user through `hosting.file.list`, `mkdir`, `rename`, `delete`, `chmod`, `upload` and
+  `download`. Listing and download are read functions; the changes answer a `TaskRef` of the
+  internal read-mode task `hosting.file.apply`, since the transaction never waits for the agent,
+  and the view follows it through `task.get`. An upload is one part of at most 32 MiB, marked
+  secret; a mode is three octal digits; a listing stops at 5000 entries and says so.
+- `hosting.site.config-editor` (module `hosting_site`, menu node `panel/config`, `Level::Admin`,
+  feature `panel.web`) edits the overrides of a site's server block and php-fpm pool in
+  `phx-code-editor` beside the installed files, read-only, through `hosting.site.config.get` and
+  `hosting.site.config.set`. The plan's names `hosting.config.set` and `hosting.config-editor`
+  would not carry the prefix of `hosting_site`, the module of `hosting-web`, and a second module
+  in the crate for two functions was not worth its ledger and dictionary. An override is a list of
+  directives placed into the compiled template, not a template of its own, checked by a grammar on
+  save and at every render ([06-host.md](06-host.md)); a save renders, checks and reloads in a
+  `before` hook of its own module, the one stage outside the transaction that can still refuse
+  with a field error, and a refused check answers `host.error.validate_failed` with the check's
+  output on `server` or `pool`, keeping the edited text.
 
 ## Internationalisation
 
@@ -640,7 +680,7 @@ The full plan is in [../plan.md](../plan.md); the frontend-relevant parts are:
 |-----------|-------------------------------------------------------------------------------------|
 | M2        | entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action, wizard, tabs, the object renderer), `/shell` with the one shell application (`/boot.products`, the brand rule, product headings, the settings value form and the security page as its own views), `/testing` with the `/boot` fixtures, the dump loader, the Storybook decorator and the Playwright harness; `rust-embed` in `bin/keel`; Storybook with fixtures; phoenix-ui batch 1; the OwnLate to `PHX_LABELS` bridge; publication of `@globalart/keel` to Nexus |
 | M3        | the real event stream in `/client` with `data.invalidate` through the lists; the progress modal, the task drawer, the notification centre, the about drawer and the home screen in `/shell`; the export dropdown, column order, the cell editor and the multi-row form in `/renderer`; the file control, the upload submit and the scoped labels in `/forms`; download and upload in `/client`; phoenix-ui batch 2 pinned at `0.3.1`; the OwnLate projects with `keel-dev i18n pull`, `missing` and `extract` |
-| M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3; the file manager and configuration editor of `panel` as custom views in `frontend/products/panel` |
+| M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3 pinned at `0.4.0` with the `code`, `key_value` and `transfer` controls in `/forms`; `KeelClient.stream`; the forgotten-password flow at `/reset` and the address confirmation at `/verify` in `/shell`; one named chunk per product under `frontend/products`, checked by `tools/product-chunks.mjs`; the file manager and configuration editor of `panel` as custom views in `frontend/products/panel` |
 
 M2 is done when the `demo` bundle, enabled on the `keel` binary, is driven entirely from the
 browser without any product TypeScript: a list with search, sorting, filters and bulk delete with

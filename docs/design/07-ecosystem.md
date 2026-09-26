@@ -404,21 +404,44 @@ anything else needs a new `schemaVersion`.
 
 The hosting product needs DNS for the sites it creates, and it must work whether DNS is enabled
 on the same installation or runs on another host. The `hosting-web` module therefore declares
-the trait it needs, `DnsProvider`, and requires an implementation; the panel bundle's bridge
-`Bridge { to: "dns", local: "dns_local", remote: "dns_peer" }` chooses which one at start
-([05-modules.md](05-modules.md)):
+the trait it needs, `DnsProvider`, in its `api` and requires an implementation at freeze; the
+panel bundle's bridge `Bridge { to: "dns", local: &keel_dns_local::MODULE, remote:
+&keel_dns_peer::MODULE }` chooses which one at start ([05-modules.md](05-modules.md)):
+
+```rust
+#[async_trait]
+pub trait DnsProvider: Send + Sync {
+    async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()>;
+    async fn foreign(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<bool>;
+    async fn add_records(&self, invoke: &Invoke<'_>, zone: &SiteZone, records: &[ZoneRecord]) -> Result<bool>;
+}
+```
+
+`SiteZone { name, account, own_account }` names the zone and the account of the site; `Invoke`
+is the closure through which a local provider runs `dns.zone.*` inside the call's transaction.
+`add_zone` creates the zone of a site the create wizard asks for; `foreign` answers whether a
+zone enclosing the name belongs to another account of this installation, and a site, an alias or
+a mail domain inside such a zone is refused (`hosting.site.error.foreign_zone`,
+`hosting.mail.domain.error.foreign_zone`), since the name would otherwise pass the site's ACME
+challenge and receive the mail this host sends there; `add_records` places the MX and SPF records
+of a mail domain into the zone of that exact name within the account and answers `false`,
+without an error, when there is none.
 
 | Implementation | Where DNS lives | How it reaches it |
 |---|---|---|
-| `dns-local` | the `dns` product enabled on the same installation | `call.invoke` of `dns.zone.*` inside the hosting call's transaction, under the same principal and account, so the site and its zone commit together and a DNS validation error is a field error of the nested call |
+| `dns-local` | the `dns` product enabled on the same installation | `call.invoke` of `dns.zone.create`, `dns.zone.list`, `dns.record.create` and the read `dns.zone.claim { name, account? } → { foreign }` inside the hosting call's transaction, under the same principal, so the site and its zone commit together and the zone's after-commit apply runs after the outer commit; the account is passed only when the site belongs to another account than the caller's own (`own_account`), since that parameter of `dns.zone.create` is reserved to resellers and admins; a field error of the zone lands on the hosting form, the zone name on `domain` and any other zone field on `dnsZone` |
 | `dns-peer` | a paired installation with `dns` on another host | `keel-client` calls to the neighbour with `X-Keel-On-Behalf-Of`, after commit, so the zone is owned by the same customer on both sides |
 
 A hosting installation always has one of the two, because the bridge falls to `remote` when
-`dns` is not enabled; an installation whose `dns-peer` side has no paired neighbour answers the
-hosting functions that need DNS with `unavailable` until one is paired. `keel product disable
-dns` on an installation whose `panel` bridges to it locally is refused unless the operator passes
-`--switch-remote`, which accepts that hosting DNS operations answer `unavailable` until a peer is
-paired.
+`dns` is not enabled. Until M6 pairs a neighbour, `dns-peer` answers every zone with the code
+`unavailable` and its own key `dns_peer.error.unpaired` naming the zone, which says why where the
+generic `keel.error.unavailable` could not; `add_records` answers that it knows no zone and
+`foreign` answers `false`. `keel product disable dns` on an installation whose `panel` bridges to
+it locally is refused unless the operator passes `--switch-remote`, which accepts that hosting
+DNS operations answer `unavailable` until a peer is paired: over the control socket
+`keel.product.disable` takes `switchRemote` and otherwise answers `conflict` with
+`keel.product.error.bridged`, and on a stopped service the facade refuses with
+`ProductsError::Bridged` inside `Error::Products`.
 
 Inside dns the same abstraction fronts the name server: the `dns-zones` module provides a
 `DnsProvider` that applies zones to bind ([10-contracts.md](10-contracts.md)), and `dns.zone.edit`

@@ -29,7 +29,8 @@ code path for any of them: a plugin's `call` frame, a peer's `POST /api/v1/call/
 descriptors are the raw routes `/api/v1/x/<module>/…` for upload, download, a WebSocket terminal
 or VNC; they are allowed only behind authentication and with an audit event. The ones built so
 far are the kernel's projection of the `download` and `upload` kinds, served through the whole
-pipeline; a free-form raw route a module registers itself waits for `panel` in M5
+pipeline, and since M5 the `GET` of a `stream` function answering server-sent events; a free-form
+raw route a module registers itself waits for the terminal and VNC of `panel`, which M5 left out
 ([05-modules.md](05-modules.md)).
 
 A module registers its functions in `init` through the registrar (`r.function(zone::edit())`);
@@ -141,9 +142,9 @@ What each kind means for the pipeline and the renderer:
 | `form`      | A write with a screen: pages, conditions, recompute, group editing.                                                |
 | `action`    | A write invoked from an action of a list or object screen, usually with `confirm`; in `mode: read` also the kind of a `recompute` or `pages[].validate` helper, which has no screen. |
 | `wizard`    | A write split into server-validated steps with a `result` after the last one.                                      |
-| `report`    | Bands and diagrams for the report renderer (M5).                                                                   |
+| `report`    | Bands and charts for the report renderer: `{ bands, charts }` with the parameters form above them.                 |
 | `options`   | `OptionsQuery { search, scope, limit, cursor }` → `Choices { data: [Choice { value, label, hint?, icon?, group? }], more }` from `keel-types`, `limit` 20 by default and `value` a string; the source for remote selects and filters. |
-| `stream`    | Server-sent frames, for example a log tail.                                                                        |
+| `stream`    | `LogLine` frames over server-sent events on the raw route, for example a log tail; registered with `r.stream`.     |
 | `download`  | Returns `{ filename, content_type }` and streams a body; always behind a guard and an audit event.                  |
 | `upload`    | Multipart parameters; always behind a guard and an audit event.                                                    |
 
@@ -337,9 +338,14 @@ connection from the pool without a transaction.
 | HTTP verb      | `GET` allowed for `kind: list` and `kind: get` | `POST`                                               |
 
 The license module adds one more distinction: in the read-only degradation of an expired lease,
-write functions answer `402` while reads and login keep working. The lease is one document per
-installation listing the enabled products and an edition for each; a product the lease no longer
-lists degrades the same way on its own, product by product (see [05-modules.md](05-modules.md)).
+an entered call of a function whose mode is not read answers `402` while reads and login keep
+working, together with the functions whose builder says `exempt_from_read_only()` (the steps of a
+login, logout, `su` and its exit, and `license.install`); internal principals are not refused, so
+housekeeping keeps running. A task spawned in read mode is therefore the way a module keeps a
+host operation running in read-only, as the site backups of `panel` do. The lease is one
+document per installation listing the enabled products and an edition for each; a product the
+lease no longer lists degrades the same way on its own, product by product, whatever the marks
+of its functions (see [05-modules.md](05-modules.md)).
 
 ### Guards
 
@@ -352,8 +358,8 @@ The guard stage runs the checks a function's `access` and its registrations impl
   level supplied by the module that registers it and stored by the `auth` module through
   `PermissionSource` (see [03-access.md](03-access.md)).
 - **Feature.** `access.feature` must be enabled for the installation. The enabled set is the
-  union, over the enabled products, of the features of the edition the lease grants that product
-  (until M5, of the edition the bundle names as its default). A function whose feature is off is
+  union, over the enabled products, of the features of the edition the lease grants that product,
+  or of the edition the bundle names as its default while no lease is installed. A function whose feature is off is
   absent from the menu and answers `402`. A function of a disabled product is never registered,
   so its name is unknown to the resolve stage and answers `not_found`, not `402`.
 - **Token scope.** An API token or a peer token may be limited to a mask of functions, a level
@@ -546,7 +552,8 @@ Per function, declared on the definition:
 Globally: the body limit on a request, a platform constant of 1 MiB rather than a configuration
 key, whose one exception is the multipart body of an `upload`, bounded by the sum of its file
 fields' `maxBytes` plus 64 KiB for the `params` part; and `SSE_MAX_CLIENTS`, a platform constant
-of 4 concurrent event streams per credential ([10-contracts.md](10-contracts.md)). A global limit
+of 4 concurrent event streams per credential, and as many function streams beside them, so a log
+tab never evicts the shell's event stream ([10-contracts.md](10-contracts.md)). A global limit
 on the streams of the whole installation is not built; the per-credential cap bounds what one
 login can hold.
 

@@ -1,3 +1,3 @@
 export { DNS_BRAND, DNS_ICON, DNS_ID, DNS_VIEWS, provideKeelDns } from './dns';
 
-export const KEEL_DNS_VERSION = '0.2.0';
+export const KEEL_DNS_VERSION = '0.3.0';

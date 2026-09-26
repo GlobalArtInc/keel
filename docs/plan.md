@@ -6391,7 +6391,7 @@ channel and the demo host updated from the button, the OwnLate project `keel-pan
   the container the testkit starts, `cargo run -p keel-dev -- types --out contracts/schema --check`,
   `cargo test -p keel-bin --no-default-features`, `cargo build -p keel-bin --no-default-features
   --features demo`, `cargo build -p keel-bin --no-default-features --features dns`, `cargo build
-  -p keel-bin`, `hack/prove-binary.sh target/debug/keel`, `hack/check-install.sh
+  -p keel-bin --no-default-features --features panel`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`, `hack/check-install.sh
   target/debug/keel`, `hack/check-release.sh target/debug/keel`, `hack/conformance.sh
   target/debug/keel`, `hack/descriptors.sh target/debug/keel`, `cargo run -p keel-dev -- i18n
   missing --dump contracts/dump`, `pnpm exec playwright install chromium` once and `hack/e2e.sh
@@ -6403,8 +6403,8 @@ channel and the demo host updated from the button, the OwnLate project `keel-pan
   storybook-static --port 6006 --silent &`, `pnpm exec wait-on http://127.0.0.1:6006/index.json` and
   `pnpm test-storybook`, `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish
   --dry-run --no-git-checks`. The job `system` runs the `keel-system` matrix, `cargo clippy` and
-  `cargo test -p keel-system --no-default-features --features <set>` over eighteen sets — each of
-  the nine modules alone, `tasks,cron,notify,update` and `tasks,backup`, the seven modules of M3
+  `cargo test -p keel-system --no-default-features --features <set>` over twenty sets — each of
+  the eleven modules alone, `tasks,cron,notify,update` and `tasks,backup`, the seven modules of M3
   without each of the M1 modules and without `tasks` in turn, and the three nested prefixes
   `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against Postgres and the mail
   catcher. The job `rehearsal` builds the shell with `pnpm install --frozen-lockfile` and `pnpm
@@ -7246,3 +7246,226 @@ the security review left without a fix are listed last, unticked.
       unpacker has no bound on the number of entries, a finding that needs the signing key; the
       arguments of a product operation are the product's types, which the SDK does not hold to
       `deny_unknown_fields`, the subject of the M7 review.
+
+## M5 exit checklist
+
+Every ticked item below is checked by CI on `main` — the tests of the workspace with the bounded
+properties of the lease verifier, the template inputs and the MariaDB statement builder, pebble as
+a service container for the ACME tests, the twenty-set `keel-system` matrix against Postgres and
+the mail catcher, the builds of `keel-bin` with each bundle alone, `hack/prove-binary.sh`,
+`hack/check-install.sh`, `hack/check-release.sh`, `hack/conformance.sh`, `hack/descriptors.sh`,
+`keel-dev i18n missing` and `hack/e2e.sh` against the built binary over https with the `@panel`
+and `@mail` passes, the job `rehearsal`, the job `frontend`, and `hack/check-docs.sh` over this
+checklist. What needs root, the real daemons, a public domain, the production key or the
+published channel is proven by the operator on virtual machines and on `keel-demo` with the
+scripts under `hack/` that `deploy/README.md` lists under "Proving on a machine"; those items are
+left unticked and named, and each is ticked once it holds, with the date-free note "confirmed by
+hand" and the machine. A "Done when" item that has a CI half and a machine half is split into a
+ticked item and an operator-run one. What M5 planned and left undone, and the findings of the
+security review left without a fix, are listed last, unticked.
+
+- [x] `install.sh --product panel` on a clean host installs Keel with `panel` alone:
+      `hack/check-install.sh target/debug/keel` asserts the ten packages of `panel` and none for
+      `dns`, the order policy, products, units, that every root the preparation creates is a root
+      of `deploy/agent.yaml`, and runs `prepare_products` sourced from `install.sh` against
+      recording stubs with the roots under a temporary directory: one `apt_install`, the checks
+      of dovecot, postfix and vsftpd before the restart, the enable and restart of `nginx`,
+      `mariadb`, `postfix`, `dovecot`, `vsftpd` and the `php*-fpm` unit, the transfer root for
+      `keel` alone and `vmail` without a login; `cargo build -p keel-bin --no-default-features
+      --features panel` builds the binary with the bundle alone.
+- [ ] On a clean Debian 13 virtual machine, `install.sh --product panel` installs Keel with the
+      daemons of `panel` running and every root in place — operator-run: `hack/panel-vm.sh
+      install <archive>` and `hack/panel-vm.sh run`, then the proofs of each module against the
+      real daemons: `hack/panel-vm.sh db`, `hack/panel-vm.sh mail`, `hack/panel-vm.sh ftp`,
+      `hack/panel-vm.sh files`, `hack/panel-vm.sh backup`, `hack/panel-vm.sh config` and
+      `hack/panel-vm.sh services`.
+- [x] `keel product enable panel` on a host running `dns` yields one login that sees both
+      products, with the platform brand and a group per product in the menu:
+      `frontend/e2e/panel.spec.ts` ("one login sees both products under the platform brand, each
+      with its own group") through `hack/e2e.sh target/debug/keel`, on the installation that
+      enabled `panel` beside `dns` and `demo`.
+- [x] A site with a certificate from an ACME directory is set up by the wizard and served over
+      TLS: `a_site_gets_a_certificate_over_http01_and_serves_tls` in
+      `products/panel/tests/panel/ssl.rs` runs the wizard's `letsEncrypt` path against pebble
+      2.10.1 and completes a TLS handshake with the installed pair against pebble's issuing root;
+      `renewal_runs_thirty_days_before_expiry` beside it.
+- [ ] A site on a real domain with a Let's Encrypt certificate is served over TLS — operator-run:
+      `hack/panel-vm.sh ssl <domain> --production` on the VM, whose transcript with the subject,
+      issuer, expiry and fingerprint of the certificate nginx served is recorded here.
+- [x] A site created in `panel` gets its zone through `dns-local` in the same installation, under
+      the same account and in the same transaction, and a DNS error reaches the hosting form as a
+      key on a field: `a_site_with_a_zone_commits_both_in_one_transaction_under_the_same_account`
+      and `a_dns_validation_error_reaches_the_hosting_form_as_a_field_key` in
+      `products/panel/tests/panel/bridge.rs`, with
+      `without_dns_the_bridge_falls_to_dns_peer_which_answers_unavailable` and
+      `disabling_dns_under_a_local_bridge_needs_switch_remote`; in the browser
+      `frontend/e2e/panel.spec.ts` ("the wizard creates a site whose zone dns-local creates in the
+      same account", "a zone dns refuses stops the wizard with the key on the domain field"),
+      after which `hack/e2e.sh` finds the site and the zone active in alice's account with the
+      server block, the zone file and its include.
+- [ ] The bridge on a machine with bind, nginx and php-fpm: a site with its zone served by named
+      under one account, a taken zone refused on the domain field, the disable refusal, the switch
+      to `dns-peer` across a restart and back — operator-run: `hack/bridge-vm.sh install
+      <archive>` and `hack/bridge-vm.sh run`.
+- [x] There are exactly two custom views, and their share is at most 10 % of the functions of
+      `panel`: `hack/descriptors.sh target/debug/keel` fails unless `keel-dev views share`
+      reports exactly the two views of `panel` within that share, and reports 2 of 66, 3.0 %;
+      the views are driven end to end by `frontend/e2e/file-manager.spec.ts` ("alice uploads,
+      renames, downloads and deletes a file in the home of her hosting user") and
+      `frontend/e2e/config-editor.spec.ts` ("the operator edits the server block of a site, is
+      refused by the check and sees the rendered block after a save"), and their functions by
+      `files_are_written_as_the_hosting_user` and `a_path_escaping_the_home_is_refused` in
+      `products/panel/tests/panel/files.rs` and
+      `an_override_that_fails_nginx_t_is_refused_with_the_output_on_the_field` in
+      `products/panel/tests/panel/config.rs`.
+- [x] With the license server unreachable the installation works until `expires`, then in grace,
+      then read-only, verified on a shifted clock: the lease is offline by construction, and
+      `the_installation_works_until_expires_then_in_grace_then_read_only`,
+      `a_clock_moved_backwards_does_not_revive_an_expired_lease` and
+      `read_only_keeps_reads_login_and_license_install` in
+      `crates/system/tests/system/license_time.rs` shift the clock of the harness;
+      `the_state_only_moves_forward_and_grace_never_ends_before_expiry` in
+      `crates/system/src/license/fuzz.rs` holds it for any instants.
+- [x] A lease that lists `dns` alone refuses `keel product enable panel` with `license`:
+      `a_lease_that_lists_dns_alone_refuses_keel_product_enable_panel` in
+      `products/panel/tests/panel/license.rs`, against the real bundle beside a `dns` fixture;
+      `an_enabled_product_the_new_lease_drops_turns_read_only_with_a_problem` in
+      `crates/keel/tests/license.rs`.
+- [x] A function with `feature: dns.dnssec` is hidden from the menu of a lease that licenses `dns`
+      as `lite` and answers `402`:
+      `a_lite_lease_hides_dns_zone_dnssec_get_from_the_menu_and_it_answers_license` in
+      `products/dns/tests/dns/editions.rs`; `the_feature_set_is_the_union_of_the_listed_editions`
+      and `license_none_keeps_every_feature_of_every_enabled_product` in
+      `crates/system/tests/system/license.rs`.
+- [x] `support-bundle` contains no secrets: `the_support_bundle_carries_no_secret_value` in
+      `crates/keel/tests/doctor.rs` and in `products/panel/tests/panel/ssl.rs`, the second on an
+      installation with `panel`, a site with a certificate from pebble, a mailbox, a database user
+      whose password was changed and an FTP account, through the real `keel support-bundle` with
+      the log ring served over the control socket: no password and no part of the ACME account key
+      appears in any entry.
+- [x] The lease is an Ed25519-signed document bound to the instance, issued by hand:
+      `a_lease_signed_with_the_license_key_installs_and_a_changed_byte_does_not`,
+      `a_lease_for_another_instance_id_is_refused` and
+      `a_lease_issued_before_the_installed_one_is_refused` in
+      `crates/system/tests/system/license.rs`;
+      `a_changed_byte_of_a_signed_lease_never_opens_as_another_lease`,
+      `any_text_that_the_issuer_did_not_sign_is_refused_by_its_signature` and
+      `of_two_leases_only_the_older_is_ever_refused_as_a_replacement` in
+      `crates/system/src/license/fuzz.rs`;
+      `an_issued_lease_verifies_with_the_matching_key_and_installs` in
+      `crates/dev/tests/license.rs` runs the built `keel-dev license keygen` and `issue`.
+- [ ] The production license key pair is generated offline with `keel-dev license keygen`, its
+      public half is the `crates/release/keys/license.pub` the release compiles in, and a lease
+      issued with `keel-dev license issue` for the instance of `keel-demo` is installed there with
+      `keel license install` — operator-run.
+- [x] The cap of the release binary is set at the start of M5: the cap file hack/size-cap holds
+      42000000 bytes, and `hack/check-size-test.sh` proves that `hack/check-size.sh` passes a file of
+      exactly the cap and refuses one byte more and a cap file without a number.
+- [ ] The Build workflow measures the stripped musl binary with `dns` and `panel` under the cap —
+      operator-run: the Build runs of M5 stopped at the dictionary step before the measurement,
+      so the size is recorded here once the keys below are in OwnLate and Build passes.
+- [x] `stats` samples, rolls over and serves series:
+      `a_collector_is_sampled_on_its_interval_and_aggregated_into_hours_and_days`,
+      `old_samples_roll_over_into_buckets_and_are_pruned` and
+      `a_per_account_series_is_scoped_to_the_callers_account` in
+      `crates/system/tests/system/stats.rs`, and the matrix set `stats`.
+- [x] The renderers `report`, `dashboard`, `tree`, `master-detail` and `stream`: under Jest
+      `frontend/libs/keel/renderer/src/report.spec.ts` ("a_report_renders_its_bands_with_totals_and_its_charts",
+      "the_parameters_form_refetches_the_report"), `frontend/libs/keel/shell/src/home.spec.ts`
+      ("a_stat_widget_shows_its_value_and_sparkline",
+      "the_widget_order_follows_the_preference_and_a_drag_writes_it"),
+      `frontend/libs/keel/renderer/src/tree.spec.ts` ("a_tree_loads_children_on_expand"),
+      `frontend/libs/keel/renderer/src/master-detail.spec.ts`
+      ("master_detail_keeps_the_selection_in_the_route") and
+      `frontend/libs/keel/renderer/src/stream.spec.ts` ("the_stream_renderer_follows_and_pauses");
+      the stream on the server by `a_stream_serves_lines_as_sse_behind_auth_and_audits_the_open`
+      and `a_stream_of_another_account_is_refused` in `crates/kernel/tests/kernel/streams.rs`; in
+      the browser `frontend/e2e/report.spec.ts`, `frontend/e2e/dashboard.spec.ts`,
+      `frontend/e2e/layouts.spec.ts` and `frontend/e2e/stream.spec.ts`.
+- [x] phoenix-ui batch 3 is published and pinned at `0.4.0`: `pnpm install --frozen-lockfile`
+      resolves it from Nexus in CI, and `frontend/libs/keel/forms/src/field.component.spec.ts`
+      ("a_code_widget_renders_the_code_editor", "a_key_value_widget_edits_a_map",
+      "a_transfer_widget_edits_a_list_of_ids") maps the controls onto it; `pnpm build` checks
+      with `tools/product-chunks.mjs` that every product is one chunk reached only through a
+      dynamic import, so CodeMirror stays out of the initial bundle.
+- [x] Password reset through `notify`:
+      `a_reset_mails_a_single_use_link_that_sets_the_password_and_revokes_sessions`,
+      `an_unknown_login_answers_the_same_and_sends_nothing`, `the_reset_request_is_rate_limited`,
+      `an_owner_is_never_mailed_a_reset_link`,
+      `a_reset_link_is_void_once_the_password_is_set_another_way`,
+      `a_reset_link_is_void_once_the_address_it_was_mailed_to_is_replaced` and
+      `a_reset_link_of_a_principal_raised_to_owner_is_refused` in
+      `crates/system/tests/system/password_reset.rs`; in the browser
+      `frontend/e2e/reset.spec.ts`, which reads the link from the mail catcher.
+- [x] The modules of `panel` against the in-process agent with stub tools:
+      `a_hosting_user_is_an_os_user_inside_the_uid_range_under_hp`,
+      `suspending_the_account_locks_its_users_and_deleting_removes_them` and
+      `the_users_limit_is_enforced` in `products/panel/tests/panel/users.rs`;
+      `a_site_renders_its_server_block_and_pool_after_commit_and_reloads`,
+      `a_failing_nginx_check_leaves_the_previous_config_and_marks_the_site` and
+      `deleting_a_site_removes_its_files_and_reloads` in `products/panel/tests/panel/sites.rs`;
+      `a_database_and_user_are_created_with_quoted_identifiers`,
+      `a_name_outside_the_account_prefix_is_refused` and
+      `deleting_the_account_drops_its_databases` in `products/panel/tests/panel/db.rs`;
+      `a_mailbox_lands_in_the_virtual_maps_and_the_passwd_file`,
+      `a_failing_postfix_check_rolls_back` and
+      `a_domain_with_a_zone_gets_mx_and_spf_through_the_bridge` in
+      `products/panel/tests/panel/mail.rs`; `an_ftp_account_is_chrooted_under_its_site` and
+      `a_directory_outside_the_site_is_refused` in `products/panel/tests/panel/ftp.rs`;
+      `a_site_backup_contains_files_databases_and_mail_and_restores` and
+      `retention_keeps_the_newest_archives` in `products/panel/tests/panel/backup.rs`;
+      `a_listed_service_restarts_and_an_unlisted_one_is_refused` and
+      `a_stopped_service_raises_a_problem_the_next_poll_clears` in
+      `products/panel/tests/panel/services.rs`; the agent's side in
+      `mariadb_exec_runs_a_fixed_statement_with_quoted_names_and_dumps_into_a_root`,
+      `mariadb_exec_imports_only_a_dump_the_agent_sealed_into_one_database`,
+      `mariadb_exec_runs_the_client_sandboxed_so_a_shell_escape_in_a_dump_runs_nothing` and
+      `exec_with_a_dest_writes_the_output_into_a_root_as_a_file_of_the_kernel` in
+      `crates/host-agent/tests/catalogue.rs` and
+      `start_and_stop_reach_listed_units_and_status_reads_their_memory_and_start` in
+      `crates/host-agent/tests/agent.rs`.
+- [x] The security review of `panel`, the license and the reset links fixed every finding it
+      could, each with a named test: `an_override_naming_a_file_or_opening_a_pool_section_is_refused_before_any_check_runs`
+      in `products/panel/tests/panel/config.rs`,
+      `a_server_override_naming_a_file_a_socket_a_name_or_a_new_block_is_refused_on_its_line`,
+      `a_pool_override_takes_process_settings_and_ini_values_but_no_section_file_or_identity` and
+      the properties `an_accepted_server_override_stays_inside_the_server_block_and_names_only_allowed_directives`
+      and `an_accepted_domain_and_its_aliases_carry_no_byte_nginx_reads_as_syntax` in
+      `products/panel/crates/hosting-web/src/`;
+      `a_site_an_alias_or_a_mail_domain_in_a_zone_of_another_account_is_refused` in
+      `products/panel/tests/panel/bridge.rs`;
+      `the_client_reads_every_statement_as_utf8mb4_and_a_dump_carries_no_comment` and the
+      properties `an_accepted_password_reads_back_as_one_literal_that_ends_the_statement` and
+      `an_accepted_name_needs_no_quoting_and_its_grant_scope_matches_only_itself` in
+      `crates/host-agent/`; the reset links and the older lease above.
+- [x] `hack/check-deps.sh` is green: a module crate of a product may use a pinned third-party
+      crate of the workspace beside `keel-sdk`, `keel-dev` reaches `keel-release` and
+      `keel-types` and its tests the testkit and the system modules, never the facade, and a
+      bundle takes another bundle as a dev-dependency only for its tests, next to the rules of
+      M0 to M4.
+- [x] `hack/check-docs.sh` is green: every M5 name it carries is found under `docs/design/` and
+      under `crates/` or `products/`, every Rust test and spec this checklist cites is defined or
+      exists, every command it cites exists, and the README's check lists, the "How we work"
+      section and `ci.yml` agree, the twenty-set matrix included.
+- [ ] `keel-v0.3.0` is tagged, published to the channel, and `keel-demo` is updated to it from the
+      button of the update screen — operator-run.
+- [ ] The OwnLate project `keel-panel` exists with the dictionaries of the modules of `panel`, its
+      id set as the repository variable `KEEL_OWNLATE_PROJECT_PANEL`, and the keys M5 added to
+      `keel-core`, `keel-dns` and `keel-panel` are imported, after which the Build workflow's
+      dictionary step leaves the committed dictionaries unchanged — operator-run.
+- [ ] Planned in M5 and left undone, for the milestone that needs each: the `doctor` check of the
+      license still reports that no lease is required; `keel product features` prints every
+      feature of every edition without reading the lease, and the backup manifest records the
+      default edition; the renderer does not honour `disabled` on an action that the read-only
+      guard refuses, so the call answers `402` instead; remote backup targets with
+      `keel-storage`; a sweep of the transfer files a crash leaves behind; reports mailed on a
+      schedule, a reseller's sparkline over its subtree and schedules in the account's time zone.
+- [ ] Left without a fix by the security review, for the milestone that needs each: an FTP
+      directory is confined by name, and the hosting user can turn it into a link that vsftpd
+      follows at login, with no more than that user's rights; a name with no zone on this
+      installation needs no proof of control, so a mail domain for a foreign name receives the
+      mail this host sends there; `dns.zone.create` admits a zone inside a zone of another
+      account; the agent renders a template with the variables the kernel sends, so a
+      compromised kernel reaches the override lines unchecked, a variable schema in the agent
+      being the subject of the M7 review; an offline lease cannot tell a clock set back before the
+      first start.

@@ -1,7 +1,7 @@
 import type { Boot } from '@globalart/keel/meta';
 
 export const BOOT_NONE: Boot = {
-  keel: { version: '0.2.0', api: 1 },
+  keel: { version: '0.3.0', api: 1 },
   products: [],
   brand: { name: 'keel.brand', hue: 264, chroma: 0.18 },
   principal: {
@@ -63,12 +63,12 @@ export const BOOT_NONE: Boot = {
   ],
   dashboard: [{ kind: 'stat', func: 'keel.widget.accounts' }],
   views: [],
-  meta: 'm-6ee2e631ea205be4',
+  meta: 'm-a90b98a462a8d72b',
   problems: null,
 };
 
 export const BOOT_ONE: Boot = {
-  keel: { version: '0.2.0', api: 1 },
+  keel: { version: '0.3.0', api: 1 },
   products: [
     {
       id: 'demo',

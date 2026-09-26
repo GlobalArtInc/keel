@@ -21,7 +21,7 @@ built; the milestones after them are designed, not yet built.
 | M2 | Frontend runtime `@globalart/keel` and the host agent spike | done: the binary embeds the shell and serves it beside the API; `@globalart/keel` with its six entry points and the nested `testing/playwright` renders the `demo` bundle's list, form, wizard and custom view from descriptors alone and switches `en` and `ru`; `publish-npm.yml` publishes it to Nexus from the closing commit; the host spike `bin/spike` created an OS user and a vhost through its root agent and rolled an invalid template back on `keel-demo`; the musl binary with the frontend is 19.8 MB against the 40 MB cap; every CI-run item of the M2 exit checklist in `docs/plan.md` is green, and the three operator-run items are ticked by hand on `keel-demo` after the push |
 | M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | done: the binary composes `tasks`, `cron`, `notify` and `webhooks`; `note.export` runs as a task with progress, log, cancellation and a checkpoint that survives a restart, watched in the browser through the progress modal and the task drawer; a cron job raises a problem that reaches the dashboard, the notification centre and the mail catcher; the event stream at `/api/v1/events` carries `data.invalidate` scoped to the principal's account; `keel.export`, group editing through `ui.multi`, the `upload` kind with the brand logo as its first upload, TLS with a generated certificate and `trusted_proxies` are served; `@globalart/keel` pins phoenix-ui 0.3.1 and `keel-dev i18n missing` holds `en` and `ru` complete; every CI-run item of the M3 exit checklist in `docs/plan.md` is green, and the operator-run items are ticked by hand on `keel-demo` after the push; `keel.account.delete` as a task and the per-session cap of the stream were left undone and are named in the checklist |
 | M4 | Operator plane, `keel-host`, KeelDNS alpha | done: `deploy/install.sh --product <id>` installs from the signed channel with the uid range, the four units and the setup link, and only `keel privileged` runs as root; `update` checks the channel, applies from a button as a task after the drain and the pre-update dump and rolls back, the root side installing signed versions alone; `backup` and `restore` with `--with-secret-key`, `doctor`, `support-bundle` and `keel product enable\|disable` on a running installation with the restart exit 75; `keel-host-agent` serves the typed catalogue under `agent.yaml` with every operation in the journal, and `keel-host` reaches it from modules; the feature guard runs over the features of the enabled products; the `dns` bundle (`dns-zones`, `dns-records`, `dns-templates`) renders bind zones after commit and is driven from the browser, the CLI and a token; `release.yml` publishes `keel-v*` tags, the rehearsal builds the `dns` crates from a git revision, the privileged path passed its security review, and `keel.account.delete` as a task and the stream cap closed the two M3 leftovers; every CI-run item of the M4 exit checklist in `docs/plan.md` is green, and the operator-run items (the tag `keel-v0.2.0` on the channel, the update and rollback of `keel-demo` from the button, a fresh VM with `--product dns`, a backup restored on a second VM) and the review findings without a fix are named there, unticked |
-| M5 | KeelPanel, `license`, `stats`, report and dashboard renderers | |
+| M5 | KeelPanel, `license`, `stats`, report and dashboard renderers | done: the `license` module verifies an Ed25519 lease bound to the instance, grants the features of the listed editions, refuses to enable an unlisted product and degrades to grace and read-only on a clock that only moves forward, and `keel-dev license issue` issues leases by hand; `stats` samples, rolls over and serves series; the renderers `report`, `dashboard` with stat widgets and a per-principal layout, `tree`, `master-detail` and `stream` over SSE run on phoenix-ui 0.4.0; a forgotten password is reset through a link `notify` mails to a confirmed address; the `panel` bundle keeps hosting users, sites on nginx and php-fpm, ACME certificates, MariaDB databases, mail, FTP, per-site backups and services through the host agent, reaches `dns` through `dns-local` in the same transaction or `dns-peer`, has exactly two custom views (the file manager and the configuration editor, 3.0 % of its functions), and `install.sh --product panel` installs its daemons; the release binary is capped at 42,000,000 bytes and the security review of `panel` fixed its findings; every CI-run item of the M5 exit checklist in `docs/plan.md` is green, and the operator-run items (the production license key pair and a lease for `keel-demo`, the Let's Encrypt site and the module proofs on a VM, the tag `keel-v0.3.0` with `keel-demo` updated from the button, the OwnLate project `keel-panel`) and what was left undone or without a fix are named there, unticked |
 | M6 | Products working together: `peers`, events, services, `keel-client` | |
 | M7 | External plugins, SDK 1.0, product module crates may move to their own repositories | |
 | M8 | Cluster of nodes | |
@@ -79,6 +79,7 @@ cargo run -p keel-dev -- types --out contracts/schema --check
 cargo test -p keel-bin --no-default-features
 cargo build -p keel-bin --no-default-features --features demo
 cargo build -p keel-bin --no-default-features --features dns
+cargo build -p keel-bin --no-default-features --features panel
 cargo build -p keel-bin
 hack/prove-binary.sh target/debug/keel
 hack/check-install.sh target/debug/keel
@@ -142,17 +143,18 @@ workspace, and the sample config parsing. `hack/check-release.sh` runs the relea
 `hack/release.py --dry-run` into a directory, verifies the manifests it signed with `keel-release
 verify`, checks the archive, its digest and the unpacked binary's version, feeds the beta channel
 of the dry run to `keel privileged update --from-request` in a temporary tree with a stub
-`systemctl`, and exercises the refusals. The two builds with `--no-default-features` hold the
-binary with the `demo` bundle alone and with the `dns` bundle alone to compiling. The frame parser
+`systemctl`, and exercises the refusals. The three builds with `--no-default-features` hold the
+binary with the `demo`, the `dns` and the `panel` bundle alone to compiling. The frame parser
 of the host agent and the manifest verifier are fuzzed by bounded property tests inside `cargo
-test`. `hack/check-docs.sh` holds the documents to the code: the names M1, M2, M3 and M4 introduced
-are found under `docs/design/` and under `crates/` or `frontend/libs/keel`, every Rust test, Jest
-and Playwright spec and command the M1, M2, M3 and M4 exit checklists of `docs/plan.md` cite
+test`, and so are the lease verifier, the template inputs of `panel` and the MariaDB statement
+builder. `hack/check-docs.sh` holds the documents to the code: the names M1 to M5 introduced are
+found under `docs/design/` and under `crates/`, `products/` or `frontend/libs/keel`, every Rust
+test, Jest and Playwright spec and command the M1 to M5 exit checklists of `docs/plan.md` cite
 exists, and the lists above, the "How we work" section of the plan and `ci.yml` name the same
 commands. CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job runs
 the `keel-system` matrix, `cargo clippy` and `cargo test -p keel-system --no-default-features
---features <set>` over eighteen sets: each of the nine modules alone (`auth`, `settings`, `audit`,
-`tasks`, `cron`, `notify`, `webhooks`, `update`, `backup`), `tasks,cron,notify,update` and
+--features <set>` over twenty sets: each of the eleven modules alone (`auth`, `settings`, `audit`,
+`tasks`, `cron`, `notify`, `webhooks`, `license`, `update`, `backup`, `stats`), `tasks,cron,notify,update` and
 `tasks,backup`, the seven modules of M3 without each of `auth`, `settings`, `audit` and `tasks` in
 turn, and the nested prefixes `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify`, against
 Postgres and the mail catcher;
@@ -161,7 +163,8 @@ with `#[cfg(feature = ...)]` on the modules it needs, so a test is skipped when 
 job `rehearsal` proves that the `dns` module crates build and pass their tests when `bin/keel` takes
 them from a git revision instead of the workspace, and that a module crate reaching another
 workspace path is refused. The Build workflow builds the musl release of the binary with the
-frontend, fails when it reaches 40 MB and uploads it as an artifact, after `keel-dev i18n pull` has
+frontend, measures it with `hack/check-size.sh` against the cap of 42,000,000 bytes in
+`hack/size-cap` after `hack/check-size-test.sh` has proven the check, and uploads it as an artifact, after `keel-dev i18n pull` has
 refreshed the dictionaries when the translation token is present; `release.yml` publishes an
 annotated `keel-v*` tag to the release channel behind `https://dl.globalart.hu/keel/`, and
 `publish-npm.yml` publishes `@globalart/keel` to Nexus on a `keel-v*` tag or by hand, stamped with

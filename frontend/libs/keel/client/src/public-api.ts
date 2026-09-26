@@ -100,4 +100,4 @@ export { KeelProblems, PROBLEM_LIST, countsByKey, openProblems } from './problem
 export type { Problem, Severity } from './problems';
 export { provideKeelClient } from './provide';
 
-export const KEEL_CLIENT_VERSION = '0.2.0';
+export const KEEL_CLIENT_VERSION = '0.3.0';

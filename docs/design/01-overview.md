@@ -230,7 +230,7 @@ lists them with the product they belong to, not as a fixed path.
 | `crates/host` | `keel-host`: `HostExecutor` client and the `host` module |
 | `crates/host-agent` | `keel-host-agent`: the agent side, run as the `privileged` subcommand |
 | `crates/release` | `keel-release`: the release manifest, its Ed25519 signature and the verifier the root side and the facade share, the bin `keel-release` (`keygen`, `sign`, `verify`), the public release keys under `keys/` and `channel.json` with the `contract` and `min_upgrade_from` of the next release; from M4 |
-| `crates/storage` | `keel-storage`: the S3 backup target and the encryption of remote archives, from M5; M4 writes backups to the local directory without it |
+| `crates/storage` | `keel-storage`: the S3 backup target and the encryption of remote archives, not built yet; the installation backup and the site archives of `panel` are written to local directories without it |
 | `crates/client` | `keel-client`: Rust client for a peer installation |
 | `crates/testkit` | `keel-testkit` |
 | `crates/conformance` | `keel-conformance` (bin) |
@@ -239,7 +239,7 @@ lists them with the product they belong to, not as a fixed path.
 | `bin/keel` | `keel-bin`: the binary `keel`; the explicit composition of every module and every bundle; the only crate that depends on product crates; cargo feature `demo` |
 | `products/demo` | dogfood bundle without host access, a lib crate: `MANIFEST` and the `note` module; compiled in only with the `demo` feature |
 | `products/dns` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`, the product's section of `agent.yaml`; owns the module crates `dns-zones`, `dns-records`, `dns-templates` |
-| `products/panel` | bundle crate (lib): `MANIFEST`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
+| `products/panel` | bundle crate (lib): `MANIFEST` with the editions `lite` and `pro` and the bridge to `dns`, `brand/`, `i18n/`; custom views in `frontend/products/panel`; owns the module crates `hosting-users`, `hosting-web`, `hosting-mail`, `hosting-db`, `hosting-ftp`, `hosting-ssl`, `hosting-backup`, `hosting-services`, `dns-local`, `dns-peer` |
 | `frontend/` | pnpm workspace, Angular 19: `libs/keel` (entry points `meta`, `client`, `forms`, `renderer`, `shell`, `testing` and the nested `testing/playwright`), `apps/shell` (the one shell application), `products/<id>` (an Angular library per product with custom views; `demo` at M2), `.storybook/`, `e2e/` (the Playwright suite) and `tools/` (the generators, the theme boot script, the brotli twins, the version stamp) |
 | `contracts/` | `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots); from M2 `schema/` (the JSON Schema of `keel-types`), `dump/` (the projected contract of the binary per level), `icons.json` (the phoenix icon set the kernel embeds) and the generated `openapi.json`, all committed for diffs; from M3 `i18n.json`, the translation projects with their dictionary directories and key prefixes; later `protocol.md`, the prose of the contract |
 | `plugins/` | Python plugin SDK and example plugins |

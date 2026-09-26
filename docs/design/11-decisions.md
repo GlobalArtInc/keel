@@ -105,8 +105,9 @@ defined in [../plan.md](../plan.md).
 
 ### Metadata ceiling
 
-The file manager, the configuration editor, the terminal and monitoring will go into custom views
-rather than metadata-driven screens. If custom views exceed 20 % of functions, the economics of the
+The file manager, the configuration editor, the terminal and monitoring go into custom views
+rather than metadata-driven screens; M5 built the first two for `panel`, two views over 66
+functions, 3.0 %, and left the terminal out. If custom views exceed 20 % of functions, the economics of the
 platform do not hold: the point of Keel is that most screens are rendered from descriptors.
 
 Mitigation: a metric in CI from M2 (`keel-dev views share`: the views of `r.view`, the
@@ -226,10 +227,15 @@ open questions. See [03-access.md](03-access.md).
 ### License gating of enabled products
 
 A lease that stops listing a product decides the fate of its data, and before M5 the only gate on
-`keel product enable` is convention.
+`keel product enable` was convention.
 
-Mitigation: never delete on a lease change — the product's modules degrade to read-only and a
-problem is raised; orphaned semantics on disable. See [05-modules.md](05-modules.md).
+Mitigation, as built in M5: never delete on a lease change — the product's modules degrade to
+read-only, whatever the marks of their functions, and `license.product_unlisted` is raised with
+the product as its subject; `keel.product.enable` refuses a product the installed lease does not
+list; orphaned semantics on disable. Without a lease nothing degrades and every compiled-in
+product may be enabled at its default edition, so the installer works before the operator has a
+lease; the offline switch on a stopped service has no gate and is caught as unlisted at the next
+start. See [05-modules.md](05-modules.md).
 
 ### One policy file for every product
 
@@ -248,8 +254,14 @@ binary — the kernel, `auth`, `settings`, `audit`, the `demo` bundle and the em
 19.8 MB (19,822,864 bytes) as a stripped `x86_64-unknown-linux-musl` release build with thin LTO
 at the close of M2, which the Build workflow measures on every push against the cap.
 
-Mitigation: lazily loaded frontend chunks per product; a cap for the release binary set at the
-start of M5; `cargo` incremental builds in CI. See [08-frontend.md](08-frontend.md).
+Mitigation: lazily loaded frontend chunks per product, one named chunk per product that the
+initial scripts reach only through a dynamic import, which `tools/product-chunks.mjs` checks at
+every `pnpm build`; the cap for the release binary, set at the start of M5 at 42,000,000 bytes in
+`hack/size-cap` and measured by `hack/check-size.sh` in the Build and release workflows, against
+33,777,536 bytes measured then, leaving 8.2 MB for `panel`, its ACME client and the code editor;
+`cargo` incremental builds in CI. The binary still embeds every chunk of the shell, since leaving
+a product's chunk out of a composition without it would change `embed_frontend!` and the facade.
+See [08-frontend.md](08-frontend.md) and [09-operations.md](09-operations.md).
 
 ### Kernel-cleanliness proof rests on CI
 
@@ -282,10 +294,6 @@ marked "proposed", it is the one the design currently assumes; it is not decided
 - License server. The first releases run on long offline leases issued by hand. When is the server
   written as a product on Keel? The release signing key starts as a CI secret and moves offline
   before the product is sold ([09-operations.md](09-operations.md), the release channel).
-- A lease that no longer lists an enabled product. Read-only degradation of that product's
-  modules with a problem raised (proposed), or refusing to start the product. Grace and
-  degradation of the whole installation apply to an expired lease as before. See
-  [05-modules.md](05-modules.md).
 - Per-account product entitlement. Whether a customer account must be entitled to products
   individually (a KeelDNS-only customer on a host that also runs KeelPanel), or a shared
   installation is always every product for every account, restricted by permission keys only.
@@ -294,9 +302,6 @@ marked "proposed", it is the one the design currently assumes; it is not decided
 - Level labels inside a product's own screens when several products are enabled: platform labels
   everywhere (proposed) or a bundle's labels inside its own screens. See
   [03-access.md](03-access.md).
-- The size cap of the release binary carrying `dns` and `panel` with their views; the 40 MB cap
-  is for the M2 binary with `demo` alone. Set at the start of M5. See
-  [08-frontend.md](08-frontend.md).
 - CLI parameters. `a.b=v`, repeated keys and `@file.json`, or JSON only.
 - REST facade. `GET /api/v1/dns/zones/{id}` on top of the dispatcher for external integrators, or
   is `/call/{func}` plus OpenAPI enough. See [10-contracts.md](10-contracts.md).

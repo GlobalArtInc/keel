@@ -189,15 +189,17 @@ and a policy that constrains it. There is no "run this command" operation with f
 
 | Family | What it does | Constraint |
 |--------|--------------|------------|
-| `host.user.*` | operating-system users | names under `user_prefix`; uid from the range allotted to the installation at install, named under the calling product's `user_prefix` |
+| `host.user.*` | operating-system users: create, delete, and since M5 `modify`, which runs `usermod` with a fixed vector to set one of the shells the policy admits, to lock (`--lock --expiredate 1`, so no key opens the account either) or to unlock | names under `user_prefix`; uid from the range allotted to the installation at install, named under the calling product's `user_prefix` |
 | `host.group.*` | groups | as for users |
 | `host.fs.*` | files and directories | path policy from `file_roots`; writes go through a temporary file and rename |
 | `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → swap → validate → reload → rollback, the check running with the file in place; see "Configuration templates" |
-| `host.service.*` | reload, restart, list | only units named in `services`; `systemctl` is executed as a process, without D-Bus, so the binary stays a musl static build |
+| `host.service.*` | reload, restart, list, and since M5 start, stop and status | only units named in `services`, an entry carrying at most one `*` that stands for a version of digits and dots (`php*-fpm`), expanded over `systemctl list-unit-files`; `systemctl` is executed as a process, without D-Bus, so the binary stays a musl static build; start and reload take an optional check; status runs one `systemctl show --timestamp=unix` for `LoadState`, `ActiveState`, `MemoryCurrent` and `ActiveEnterTimestamp` and answers `name`, `state`, `installed`, `memory` in bytes (`null` without accounting) and `since`, the start in unix seconds (`null` unless active) |
 | `host.pkg.*` | packages: install, remove, get, refresh | `apt-get` with a fixed argument vector and `APT::Cmd::Pattern-Only=true`, each name taken as that package and never as a pattern or a trailing `+` or `-` action; `changes` lists every requested package whose installed version moved, read from `dpkg-query` before and after; no allowlist in M4 |
 | `host.cron.*` | scheduled jobs on the host | drop-ins in `/etc/cron.d` under the product's `drop_in_prefix`, mode `0644`, written through a temporary file and a rename; a job runs an entry of `exec_allow`, never a command, as `keel` or as one of the product's own users, never as root; five fields or a nickname |
 | `host.quota.*` | disk quotas | `setquota` and `repquota`; `host.error.unavailable` on a host without them |
-| `host.exec` | run an external binary | only entries of `exec_allow`: a name runs without arguments, `name: [binary, arguments…]` with exactly that vector |
+| `host.exec` | run an external binary | only entries of `exec_allow`: a name runs without arguments, `name: [binary, arguments…]` with exactly that vector; with a `dest` the output goes into a fresh file of a root, created with `O_EXCL` and `O_NOFOLLOW`, owned by the calling uid with mode `0600` |
+| `host.home.*` | list, mkdir, rename, remove, chmod, read and write in the home of a product's account | the account under `user_prefix` with its uid and gid inside `uid_range`; the path joined under the home and canonicalised, a parent, an absolute path or a link leaving the home answering `host.error.policy` before anything runs; the work runs as that uid through `agent-exec --uid`, which starts the hidden worker `keel agent-home` from the policy's tool `keel` (`/proc/self/exe`), and the worker checks every path again, never follows a link at the last component and writes through a temporary; a transfer is staged in the root `transfer`, an upload only from a file the kernel's uid owns and a download owned by that uid with mode `0600`; a mode is three octal digits |
+| `mariadb.exec` | MariaDB statements from a fixed set: `database.create`, `database.drop`, `user.create`, `user.password`, `user.drop`, `user.lock`, `user.unlock`, `grant`, `revoke`, `dump` and `import` | the statement rendered by the agent, never taken from a request; names under the product's `user_prefix`, at most 64 bytes of `[a-z0-9_-]`, quoted as identifiers and as `'name'@'localhost'`; underscores escaped in grants, where `_` and `%` are patterns; passwords escaped as literals after the script drops `NO_BACKSLASH_ESCAPES`, sent on stdin and redacted from a failure; the client always runs with `--sandbox` and `--default-character-set=utf8mb4`, the dump with `--skip-comments`; a dump is sealed with its digest, and `import` loads only a dump of the root `dumps` the agent itself wrote and sealed |
 
 ### Resource identifiers instead of paths
 
@@ -253,14 +255,14 @@ never edits `/etc/keel`; the operator edits one file.
 ```yaml
 policy:
   uid_range: { from: 100000, to: 165535 }
-  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www }
-  services: [named, nginx, php8.3-fpm]
-  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"] }
-  exec_allow: [certbot, quotatool]
+  file_roots: { zones: /etc/bind/zones, named: /etc/bind/keel, vhosts: /etc/nginx/conf.d, www: /var/www, pools-8.2: /etc/php/8.2/fpm/pool.d, pools-8.3: /etc/php/8.3/fpm/pool.d, pools-8.4: /etc/php/8.4/fpm/pool.d, mail: /etc/postfix/keel, dovecot: /etc/dovecot/keel, maildirs: /var/lib/keel-panel-mail, certs: /etc/ssl/keel, acme: /var/lib/keel-panel-acme, dumps: /var/lib/keel-panel-dumps, ftp: /etc/vsftpd/keel, ftp-users: /etc/vsftpd/keel-users, transfer: /var/lib/keel-panel-transfer, backups: /var/lib/keel-panel-backups }
+  services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
+  checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"], postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"], vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"] }
+  exec_allow: [certbot, quotatool, { mariadb: [mariadb, --batch, --sandbox, --skip-column-names] }, { mariadb-dump: [mariadb-dump, --single-transaction, --quick, --routines, --triggers, --events] }, { postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }, { mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }]
   products:
-    bill:  { drop_in_prefix: keel-bill- }
-    dns:   { drop_in_prefix: keel-dns- }
-    panel: { user_prefix: hp_, drop_in_prefix: keel-panel- }
+    bill: { drop_in_prefix: keel-bill- }
+    dns: { drop_in_prefix: keel-dns- }
+    panel: { user_prefix: hp_, account_roots: [ftp-users], classes: { backup: { archives: backups, homes: www, maildirs: maildirs, dumps: dumps } }, drop_in_prefix: keel-panel- }
 ```
 
 This is `deploy/agent.yaml` as the release ships it; the installer writes the range it allotted
@@ -270,10 +272,11 @@ over `uid_range`.
 |-----|---------|
 | `uid_range` | `{ from, to }`, the uids and gids the agent may create and impersonate; a range reaching 4294967295, the id that means "unchanged" to `setresuid` and `fchown`, is refused |
 | `file_roots` | named directories the file and template operations may write to; `dest.root` in a request refers to a key of this map |
-| `services` | units the service operations may reload, restart or list |
+| `services` | units the service operations may act on, an entry carrying at most one `*` for a version |
 | `checks` | named validation commands with a fixed argument vector; `validate` in a request refers to a check by name |
 | `exec_allow` | entries `host.exec` and cron jobs may run: a binary name, or `name: [binary, arguments…]`; a name appearing twice fails the policy |
-| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section. |
+| `tools` | the paths of the tools the agent runs, each with a default: `systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`, the `shells` file, `apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `cron_dir` and `keel`, the binary `host.home.*` re-executes, `/proc/self/exe` by default; the tests point them at stubs |
+| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `account_roots`, the file roots whose file names are account names under `user_prefix` instead of names under `drop_in_prefix` (the per-login files of vsftpd), each of them a file root of a product with a `user_prefix`; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section. |
 
 The placement rules hold for every file the agent writes. The root of `file_roots` is
 canonicalised; a symbolic link at the target is refused, and no path is followed or changed
@@ -291,6 +294,44 @@ reaches `systemctl`.
 Everything outside the policy is refused. The agent does not hold a copy of the kernel's principal
 or account model: the policy is about the host, and who may call a function is decided by the
 kernel's guards before the request reaches the agent ([03-access.md](03-access.md)).
+
+### What `panel` places on the host
+
+The `panel` bundle of M5 is the first product whose modules render into many roots; its section of
+the shipped policy above grants what it needs, and `install.sh --product panel` creates the roots
+and configures the daemons ([09-operations.md](09-operations.md)). Every per-tenant path is keyed
+by a row id or an account name the agent checks, never by a domain or an address a customer
+typed:
+
+| Module | Roots | Templates, checks and services |
+|--------|-------|--------------------------------|
+| `hosting-users` | homes under `www` | `host.user.create` and `modify`; the file manager through `host.home.*` and `transfer` |
+| `hosting-web` | `vhosts`, `pools-8.2`, `pools-8.3`, `pools-8.4` | `panel/nginx-site.conf.j2` checked by `nginx.test`, `panel/php-fpm-pool.conf.j2` by `php<version>-fpm.test`, reloading `nginx` and `php<version>-fpm`; the pool's socket is named after the site id, since a unix socket path holds 107 bytes and php-fpm cuts a longer one; the server block carries `disable_symlinks if_not_owner from=$document_root`, so a tenant never serves another tenant's files through a link, and a suspended site answers `403` inside `location /`, after the challenge location; the row keeps `php_applied`, so the pool of the previous version is removed only after the server block points at the new one |
+| `hosting-ssl` | `certs` (`keel-panel-<id>.crt` `0644` and `.key` `0600`, a fresh id per installation so the previous pair stays valid until `nginx -t` accepts the new block), `acme` (`keel-panel-<token>`, served by a regex location through `alias` and removed when the order ends) | the server block again with `listen 443 ssl` |
+| `hosting-db` | `dumps` | `mariadb.exec`; the `exec_allow` entries `mariadb` and `mariadb-dump` |
+| `hosting-mail` | `mail` (the maps `keel-panel-domains`, `keel-panel-mailboxes`, `keel-panel-aliases`), `dovecot` (`keel-panel-passwd`, owned by `dovecot`, `0640`), `maildirs` (`keel-panel-<mailbox id>`, owned by `vmail`) | `panel/postfix-map.j2` checked by `postfix.check`, then the `exec_allow` entry `postmap` and a reload of `postfix` while a rebuild is pending; `panel/dovecot-passwd.j2` checked by `dovecot.check`; passwords as `{ARGON2ID}` hashes with `m=19456,t=2,p=1`, which the libsodium build of dovecot verifies; the backup of the maildirs through the `exec_allow` entry `mail.archive` with a `dest` |
+| `hosting-ftp` | `ftp` (`keel-panel-passwd`, one `login:hash` line per active account, SHA-512 crypt with 5000 rounds, as `pam_pwdfile` reads through crypt(3)), `ftp-users` (an account root: one file per login, whose `guest_username` maps the session onto the site's hosting user and `local_root` sets the chroot) | `panel/vsftpd-passwd.j2` and `panel/vsftpd-user.conf.j2`, both root's with mode `0600` and checked by `vsftpd.check`, which parses the configuration and exits at the version flag before binding; vsftpd reads both at each login, so nothing is reloaded |
+| `hosting-backup` | `backups` (`keel-panel-<backup id>.tar.zst` with `manifest.json`, `files/`, `databases/<name>.sql` and `mail/<address>/`), `dumps` | the contributed operations `hosting.backup.pack` and `hosting.backup.unpack` of the class `backup`, which the section grants with the roots it may reach (`archives`, `homes`, `maildirs`, `dumps`) |
+| `hosting-services` | none | `host.service.*` over the policy's one `services` list, shared by every product |
+
+The rules the review of M5 settled for these files: the archive walk goes by descriptor, `openat`
+with `O_NOFOLLOW` one directory at a time, so a link swapped in during a backup is archived as a
+link and never followed, and it takes a regular file only when the owner of the walked tree owns
+it, whatever its link count, so a hard link to another owner's file never reaches an archive
+without relying on `fs.protected_hardlinks`. A restore writes files as the owner of the home and
+mail as the owner of the maildirs with the mode masked to `0775`. The agent records the SHA-256
+of every file it produces for a restore in a sibling `.<name>.sha256`, owned by the agent with
+mode `0600` in the root-only directory of the file, which no operation can name; `pack` refuses a
+dump whose bytes differ from its digest, `unpack` refuses an archive without its digest or with
+other bytes before anything of the home changes and extracts from a root-only copy made while
+hashing, so keel cannot rewrite the archive between the check and the extraction. The archive
+belongs to the calling uid with mode `0600` inside a root that stays root's with `0711`, for
+which `AgentScope` carries `caller_uid`. A server block override is a list of lines of a grammar
+checked on save and again at every render: listed directives that name no file, socket or host
+name, `location` and `if` blocks two deep, comments, quotes only at the start of a word, no escape
+nginx would read as a terminator and no `..`; a pool override takes process-manager settings and
+`php_value`, `php_flag`, `php_admin_value` and `php_admin_flag` without extension loading.
+Refused lines answer `hosting.site.config.error.directive`, `.setting` or `.block` with the line.
 
 ## Audit
 
@@ -423,6 +464,22 @@ of entries, a finding that needs the signing key; and the arguments of a product
 product's types, which the SDK does not hold to `deny_unknown_fields`, the subject of the M7
 review.
 
+The review of M5 went over the modules of `panel`, the license and the reset links. It fixed, each
+with a named test: overrides that could make nginx open or write any file, claim other names or
+close the server block, and a pool override opening a section of its own; a site, an alias or a
+mail domain claiming a name inside a zone of another account (`DnsProvider::foreign`); a client
+charset from the host's option files undoing the escaping of MariaDB literals, and a name reaching
+a comment line of a dump; reset links outliving a password set another way, a replaced address or
+a principal raised to owner; and an older signed lease replacing a newer one. The lease verifier,
+the template inputs and the MariaDB statement builder are covered by bounded property tests. Left
+without a fix, and recorded in the M5 exit checklist: an FTP directory is confined by name, and the
+hosting user can turn it into a link that vsftpd follows at login, with no more than that user's
+rights; a name with no zone on the installation needs no proof of control, so a mail domain for a
+foreign name receives the mail this host sends there; `dns.zone.create` admits a zone inside a zone
+of another account; the agent renders a template with the variables the kernel sends, so a
+compromised kernel reaches the override lines unchecked, a variable schema in the agent belonging
+to the M7 review; and an offline lease cannot tell a clock set back before the first start.
+
 Self-update under root has its own risk: a compromise of the release signing key is a compromise
 of every installation. The measures are the offline key, `previous_keys` in the binary, and a
 root unit that knows one operation and does not read commands from the request.
@@ -440,6 +497,7 @@ rather than by changing credentials in place. The full record is in
 |-----------|----------------------|
 | M2 | a thin agent spike in a separate bin crate, `keel-spike`, removed at the close of M4: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx under a policy in the shape of `agent.yaml`, every operation written to the journal with actor and request id; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back — shown by the spike's own script on `keel-demo`; the spike depended on no workspace crate and was replaced by `keel-host-agent` in M4 |
 | M4 | `keel-host` in full — users, files, services, template, pkg, `AgentOp`, the `host` module; `privileged` with the `update` policy (check, apply, rollback, pre-update dump, anti-rollback); `dns` on bind; done when no process except `privileged` runs as root, a broken template rolls back without downtime, and an operation outside `file_roots` is refused and audited |
+| M5 | `host.user.modify`, `host.service.start`, `stop` and `status`, `host.exec` with a `dest`, `host.home.*` with the worker `keel agent-home`, `mariadb.exec`, `account_roots`, the `panel` section of the policy and its roots; done when `install.sh --product panel` installs the daemons of `panel` on a clean host and a site with a Let's Encrypt certificate set up by the wizard is served |
 | M8 | `Remote` executor, node PKI and enrolment, `keel-system::cluster`, `Invoker` |
 
 The order and the full done-when conditions are in [../plan.md](../plan.md).

@@ -379,6 +379,70 @@ archive root is `hosting_backup.archives_dir` of `config.yaml`; `hack/panel-vm.s
 backup, a restore and the retention on a machine. The archives stay on this host: a remote target
 comes later.
 
+Every site has at most one certificate, requested from an ACME directory over HTTP-01 or uploaded
+as a PEM chain and key. The directory is the setting `hosting.certificate.directory`, Let's
+Encrypt's production directory unless it names staging or a private directory by URL, with
+`hosting.certificate.email` as the optional contact; a private directory's trust anchor is
+`hosting_certificate.directory_ca` of `config.yaml`. The ACME account is created once per
+directory and sealed in the database. An order runs as the task `hosting.certificate.issue`
+after `hosting.certificate.request` or the site wizard's Let's Encrypt box: the challenge file is
+placed under `/var/lib/keel-panel-acme`, the root `acme`, and served by the site's server block,
+the pair lands under `/etc/ssl/keel`, the root `certs`, as `keel-panel-<id>.crt` and `.key`, and
+the server block is rendered again with `listen 443 ssl`. The cron job
+`hosting.certificate.renew` renews every ACME certificate thirty days before its expiry, and the
+problem `hosting.certificate.expiring` is raised fourteen days before, critical once expired. The
+site must resolve to this host from the internet for the challenge to pass:
+
+```
+runuser -u keel -- keel ctl settings.set key=hosting.certificate.directory 'value="https://acme-staging-v02.api.letsencrypt.org/directory"'
+runuser -u keel -- keel ctl hosting.certificate.request --as <login> site=<site id>
+runuser -u keel -- keel ctl hosting.certificate.list --as <login> --out table
+```
+
+`hack/panel-vm.sh ssl <domain>` proves a certificate from the staging directory on a machine whose
+domain points at it, and `--production` from Let's Encrypt itself.
+
+Databases are MariaDB databases and users per account, named after a hosting user of the
+account, an underscore and up to sixteen lowercase letters or digits (`hp_alice_wp`), created,
+granted, locked and dropped through the agent operation `mariadb.exec` with a fixed statement set;
+a password is never stored by keel. The limits `hosting.database.max` and
+`hosting.database.user.max` are 10 per account. Suspending an account locks its database users,
+and deleting it drops them with its databases. `hack/panel-vm.sh db` proves it against a real
+MariaDB.
+
+The file manager, under "Files" of the panel group, works in the home of a hosting user as that
+user: every operation runs through `keel agent-home` under the user's uid, and uploads and
+downloads pass through `/var/lib/keel-panel-transfer`, the root `transfer`, which only `keel`
+may enter. The configuration editor, under "Site configuration" and for administrators only, adds
+lines to a site's server block and pool: listed nginx directives without files, sockets or names,
+`location` and `if` blocks two deep, and process-manager and `php_value` lines; a save is
+checked with `nginx -t` or `php-fpm -t` before it is stored, and a refused check shows its
+output on the field. The screen "Services" of the panel group lists the units of the policy's
+`services` with their state, memory and start and lets an administrator start, stop, restart and
+reload them; a failed unit raises `hosting.service.down`. `hack/panel-vm.sh files`,
+`hack/panel-vm.sh config` and `hack/panel-vm.sh services` prove the three on a machine.
+
+## Licenses
+
+The installation runs without a lease: every bundle the binary carries may be enabled at its
+default edition, and nothing degrades. A lease is issued by the vendor for the installation's
+instance id, which `keel ctl license.get` shows, and installed over the control socket; it
+lists the products and the edition of each:
+
+```
+runuser -u keel -- keel ctl license.get
+runuser -u keel -- keel license install /root/keel.lease
+```
+
+Once a lease is installed, `keel product enable` refuses a product it does not list, and the
+functions of an edition it does not grant are hidden and answer `402`. After `expires_at` the
+installation keeps working for the lease's grace days and raises `license.expiring`; after the
+grace it turns read-only, raising `license.expired`: reads, logins, `su` and `license.install`
+keep working, writes answer `402` until a new lease is installed. A product a new lease no longer
+lists turns read-only on its own and raises `license.product_unlisted`; its data is never
+deleted. The clock of the lease only moves forward, so setting the system clock back does not
+revive an expired lease.
+
 ## Updates
 
 The screen "Updates" of the system group shows the running version and the head of the channel
@@ -567,8 +631,13 @@ runuser -u keel -- keel product enable <id>
 systemctl start keel
 ```
 
-The lease check the design places before `enable` arrives with the license module of M5; until
-then every bundle the binary carries may be enabled.
+Once a lease is installed, `enable` over the socket refuses a product the lease does not list;
+the direct write on a stopped service has no gate, and a product enabled that way turns read-only
+at the next start. `keel product disable dns` on an installation where `panel` uses `dns` for its
+sites is refused unless `--switch-remote` is given, after which the DNS operations of the sites
+answer `unavailable` until a peer is paired. Enabling `panel` this way installs none of its
+daemons: install the packages and prepare the roots and configuration as "Running KeelPanel"
+describes, or install on a fresh machine with `--product panel`.
 
 ## Uninstalling
 
@@ -605,16 +674,25 @@ records.
 | `hack/product-vm.sh <id> [<function>]` | `keel product disable` and `enable` on the running service: the exit 75, the restart, the dump, the orphaned tables and the function answering again |
 | `hack/host-vm.sh [--cleanup]` | the agent: an account inside the range running a program, a zone rendered, checked, reloaded and served, a broken template rolled back without a restart of `named`, and an operation outside `file_roots` refused and found in the journal |
 | `hack/dns-vm.sh install <archive>`, then `run [--browser-zone <name>]` | KeelDNS on bind: zones created over the control socket and with a token answered by `dig`, and a broken zone template rolled back while `named` keeps answering |
-| `hack/panel-vm.sh install <archive>`, then `run` | KeelPanel's hosting users: an account `hp_<name>` inside the range with its home, the shell granted and taken back, locked by the suspension of its account and unlocked by the resumption, and removed with its home when the account is deleted |
+| `hack/panel-vm.sh install <archive>`, then `run` | `install.sh --product panel` on a clean Debian 13 machine with every package, unit and root checked; KeelPanel's hosting users: an account `hp_<name>` inside the range with its home, the shell granted and taken back, locked by the suspension of its account and unlocked by the resumption, and removed with its home when the account is deleted; a site served through its pool, `403` while suspended |
+| `hack/panel-vm.sh ssl <domain> [--production]` | a site on a real domain with a certificate from Let's Encrypt staging, or production with the flag, served over TLS, printing the subject, issuer, expiry and fingerprint nginx served |
+| `hack/panel-vm.sh db`, `mail`, `ftp`, `files`, `backup`, `config`, `services` | each module against the real daemon: MariaDB grants that leave a sibling closed, mail delivery and logins, the FTP chroot, the file manager as the user, a backup restored and refused after a changed byte, a refused and an accepted override, and the units started and stopped |
+| `hack/bridge-vm.sh install <archive>`, then `run` | `panel` beside `dns` on bind, nginx and php-fpm: a site with its zone served by named under one account, a taken zone refused on the domain field, the disable refusal and the switch to `dns-peer` across a restart and back |
 
 ## Left to later milestones
 
 - ACME for the listener's certificate, the certificate button of the settings and the problem of
   a certificate about to expire; until then the pair is the generated one or the operator's.
-- The license: the lease check before `keel product enable` and the edition ceiling of account
-  limits arrive with M5; until then every bundle the binary carries may be enabled.
-- Backup targets other than the local directory: the S3 target and the crate `keel-storage` move
-  to M5.
+- The edition ceiling of account limits, the license check of `keel doctor`, which still reports
+  that no lease is required, and `keel product features`, which lists every feature of every
+  edition without reading the lease.
+- Backup targets other than the local directory, for the installation backup and the site
+  archives alike: the S3 target and the crate `keel-storage`.
+- The findings of the M5 security review recorded without a fix: an FTP directory the hosting
+  user turns into a link is followed at login with that user's rights; a mail domain for a name
+  with no zone on this host needs no proof of control; a zone inside another account's zone; the
+  template variables the agent takes from the kernel unchecked.
+- The terminal and VNC of the panel, and a sweep of the transfer files a crash leaves behind.
 - A timeout per tool in the agent, an allowlist of packages for `host.pkg.*`, a bound on the
   owner of a placement, an expiry of the channel head, and a bound on the number of entries of an
   archive: the findings of the M4 security review recorded without a fix.

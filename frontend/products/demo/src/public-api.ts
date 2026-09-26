@@ -15,4 +15,4 @@ export {
 } from './tag-cloud/cloud';
 export type { SizedTag, TagCount } from './tag-cloud/cloud';
 
-export const KEEL_DEMO_VERSION = '0.2.0';
+export const KEEL_DEMO_VERSION = '0.3.0';

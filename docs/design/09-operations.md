@@ -60,7 +60,12 @@ every first-party product, with the one shell build embedded:
   ([../plan.md](../plan.md)); the Build workflow prints the size of the musl release build with
   the `demo` bundle and fails at 40,000,000 bytes. The M2 closing build measures 19.8 MB,
   19,822,864 bytes, as a stripped `x86_64-unknown-linux-musl` release with thin LTO
-  ([11-decisions.md](11-decisions.md)).
+  ([11-decisions.md](11-decisions.md)). M5 set the cap for the release binary carrying `dns` and
+  `panel` at its start: `hack/size-cap` holds 42,000,000 bytes, and `hack/check-size.sh` measures
+  the stripped musl binary against it with `wc -c`, in the Build workflow after
+  `hack/check-size-test.sh` has fed it a file of exactly the cap, one byte more, a cap given as an
+  argument and a cap file without a number, and in the release workflow in place of its 40 MB
+  limit. The last size measured before the cap, at the start of M5, was 33,777,536 bytes.
 
 The binary exposes the following subcommands:
 
@@ -81,7 +86,16 @@ The binary exposes the following subcommands:
 call checks the lease and requests a restart), and a direct write of `keel_kv.products` under the
 `keelinst` lock while it is stopped; the enabled set is read once at boot. The direct path came
 first, in M0; the socket path and the restart came with the operator plane of M4, and the lease
-check waits for the `license` module of M5 ([05-modules.md](05-modules.md)). The restart is a
+check with the `license` module of M5 ([05-modules.md](05-modules.md)): `keel.product.enable`
+refuses a product an installed lease does not list, while the direct write has no gate and a
+product enabled that way is degraded as unlisted at the next start. `keel license install
+<file>` sends a lease over the socket to `license.install`, which stores it in `keel_kv`; no
+lease file lives under `/etc/keel`. Leases are issued by hand with `keel-dev license issue --key
+<file> --instance <id> --product <id>:<edition> … --days <n> --grace <n> --out <file>`, whose
+`expires_at` is the moment of issuing truncated to the second plus `--days` calendar days, from a
+pair `keel-dev license keygen --out <dir>` writes as `license.key` (mode `0600`, never
+overwritten) and `license.pub`; the production pair is the operator's and its private half stays
+out of the repository. The restart is a
 distinguished exit status: the switch queues the internal task `keel.restart`, which drains the
 task queue, takes the pre-change dump into `backups/pre-restart-<version>-<instant>/` and then
 makes the kernel exit with status `75`; `keel.service` carries `RestartForceExitStatus=75` and
@@ -127,7 +141,6 @@ One installation per host; nothing is namespaced by product:
 | `/opt/keel/bin/current`     | symlink to the active version; switched by the update             |
 | `/etc/keel/config.yaml`     | startup configuration; may be absent                              |
 | `/etc/keel/agent.yaml`      | host agent policy, one file with a section per product            |
-| `/etc/keel/license.lease`   | signed license lease listing the products and their editions      |
 | `/etc/keel/templates/`      | operator overrides of `ConfigTemplate` contributions              |
 | `/var/lib/keel/secret.key`  | AES-GCM key for `Secret` values, mode 0600, generated at first start |
 | `/var/lib/keel/instance.id` | instance identity                                                 |
@@ -295,9 +308,27 @@ under a session lock, and only then opens the port ([04-storage.md](04-storage.m
 administrator. The binary starts without `config.yaml` against the default database; that is an
 M0 acceptance criterion.
 
+A product that drives daemons of its own is prepared by the installer between the policy and the
+units: for `panel` the step `prepare_products` answers the mailer question of postfix, installs
+`nginx`, `php-fpm`, `mariadb-server`, `mariadb-client`, `postfix`, `dovecot-core`,
+`dovecot-imapd`, `dovecot-lmtpd`, `vsftpd` and `libpam-pwdfile` in one `apt-get install`,
+creates the roots of the policy's `panel` section (`/var/www` and `/var/lib/keel-panel-acme`
+root's with `0755`, `/var/lib/keel-panel-dumps` and `/var/lib/keel-panel-backups` root's with
+`0711`, `/etc/ssl/keel` root's with `0700`, `/var/lib/keel-panel-transfer` keel's with `0700`, the
+postfix maps, the dovecot passwd-file, the maildirs of the system user `vmail` and the vsftpd
+user file and per-login directory), writes the `main.cf` keys, the dovecot drop-in in the 2.4
+syntax of Debian 13, the PAM service `keel-panel-ftp` and a `vsftpd.conf` for guest users (the
+previous one kept as `.orig`), checks each with the check the policy names, and enables and
+restarts `nginx`, `mariadb`, `postfix`, `dovecot`, `vsftpd` and every `php*-fpm` unit, stopping
+when one of them does not run. The preparation is idempotent and lives in the installer rather
+than in a hook of the release, since only `panel` needs one; `dns` installs no package.
+
 Installing a second product later is `keel product enable <id>` followed by the restart it
 requests; the restart runs the same drain and pre-change logical dump as an update, and the new
-product's modules migrate before the port opens.
+product's modules migrate before the port opens. Enabling `panel` this way prepares none of its
+daemons; the operator runs the installer's preparation or installs them by hand
+([deploy/README.md](../../deploy/README.md)). `uninstall.sh` leaves the packages of a product
+and their configuration in place.
 
 `uninstall.sh --purge` removes the installation together with its data.
 
@@ -340,7 +371,11 @@ operator accepting the certificate in a browser knows it is the right one. The o
 certificate and key; requesting one through ACME with a button in the settings, and the problem a
 certificate about to expire raises ([05-modules.md](05-modules.md)), are left to a later
 milestone the plan names when it schedules them. Until then a non-empty `tls.acme` fails the
-start with `keel.error.acme_unsupported`.
+start with `keel.error.acme_unsupported`. The ACME client of M5, `instant-acme` in `hosting-ssl`,
+issues the certificates of the sites `panel` serves over HTTP-01, from the directory the setting
+`hosting.certificate.directory` names (Let's Encrypt production by default, staging or a private
+directory by URL, with `directory_ca` of the config section `hosting_certificate` as the trust
+anchor of a private one); the installation's own listener does not use it yet.
 
 `trusted_proxies` makes the installation usable behind a reverse proxy: a list of CIDRs (a bare
 address standing for its `/32` or `/128`, a bad entry failing the start naming it). When the
@@ -513,9 +548,22 @@ with their editions and the schema versions of the modules. It contains:
 `keel backup [--out <path>] [--with-secret-key]` writes the archive, by default
 `<data_dir>/backups/keel-<version>-<instant>.tar.zst`, never over an existing one; `keel backup
 inspect <archive>` prints its manifest; the screen "Backups" runs `backup.create` as a task whose
-archive is offered for download. M4 writes to this local target alone. The S3 target, and the
-crate `keel-storage` that is to hold the targets, move to M5 with `hosting-backup`, the first
-module that needs a remote target. API tokens and sessions are stored as
+archive is offered for download. This local target is the only one: the S3 target, and the crate
+`keel-storage` that is to hold the targets, were moved to M5 with `hosting-backup`, which M5 built
+with local archives only, so remote targets wait for a later milestone. The per-site backups of
+`panel` are archives of their own in the agent's root `backups`, taken and restored by
+`hosting-backup` as tasks of that module ([06-host.md](06-host.md)); the installation backup
+carries the module's two tables like every other table and none of the site archives, and its
+sources `hosting_database.dumps` and `hosting_mail.maildirs` answer `unavailable` in the CLI
+backup, which never starts the modules, so `backup.create` in the running service is the one that
+carries them. A site backup is taken by `hosting.backup.create` and by the cron job
+`hosting.backup.scheduled` as read-mode tasks, a restore by the write-mode task
+`hosting.backup.restore`: a write-mode task commits or rolls back with its outcome, which would
+hide the pending row while the host packs, erase the error row of a failed run and leave the
+archive of a rolled-back run without its row. A site backup is therefore not recorded in
+`audit_call`, while the task row and the agent's journal record it, and it keeps running under
+the read-only degradation of an expired lease, so a site owner can still secure a site; a
+restore is audited, answers `402` in read-only and takes an idempotency key. API tokens and sessions are stored as
 SHA-256 hashes, so an archive contains no usable keys. `secret.key` is included only with
 `--with-secret-key`, protected by a passphrase; values of type `Secret` in the dump are readable on
 another host only with that key. The M4 acceptance test is a backup taken on one VM and restored on
@@ -565,7 +613,8 @@ the accounts left in `deleting`, if any. It prints one line per check with `ok`,
 group, since the registrar admits a function only under its module's prefix; every
 operating-system parameter of a check is a flag of the CLI (`--opt`, `--unit-dir`,
 `--systemctl`, `--agent-socket`) with the defaults of this document, and the function never
-lets a caller name a binary. Until M5 the license check reports that no lease is required.
+lets a caller name a binary. The license check still reports that no lease is required, as in M4:
+reading the state of the `license` module into `doctor` was left out of M5.
 
 `support-bundle` collects the configuration with secrets redacted, logs, the migration ledger, the
 tail of the audit log, open problems and metrics, into
