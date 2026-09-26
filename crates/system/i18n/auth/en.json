@@ -1,11 +1,17 @@
 {
   "auth": {
-    "address.current": "Current password",
-    "address.principal": "Principal",
-    "address.set.title": "Set the email address",
-    "address.token": "Confirmation link",
-    "address.value": "Email address",
-    "address.verify.title": "Confirm the email address",
+    "address": {
+      "current": "Current password",
+      "principal": "Principal",
+      "set": {
+        "title": "Set the email address"
+      },
+      "token": "Confirmation link",
+      "value": "Email address",
+      "verify": {
+        "title": "Confirm the email address"
+      }
+    },
     "error": {
       "challenge": "The sign-in challenge is no longer valid; sign in again",
       "code": "The code is wrong",

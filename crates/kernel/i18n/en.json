@@ -453,16 +453,18 @@
         "notifications": "Notifications",
         "tasks": "Tasks"
       },
-      "reset.done": "The password is changed and every session of the login is closed. Sign in with the new password.",
-      "reset.failed": "The request failed; try again",
-      "reset.intro": "Enter your login. If it has a confirmed email address, a link to choose a new password is mailed to it.",
-      "reset.login": "Login",
-      "reset.password": "New password",
-      "reset.save": "Set the password",
-      "reset.sent": "If the login has a confirmed email address, a link to reset the password is on its way. Open it before it expires.",
-      "reset.submit": "Send the link",
-      "reset.title": "Reset the password",
-      "reset.to_login": "Back to sign in",
+      "reset": {
+        "done": "The password is changed and every session of the login is closed. Sign in with the new password.",
+        "failed": "The request failed; try again",
+        "intro": "Enter your login. If it has a confirmed email address, a link to choose a new password is mailed to it.",
+        "login": "Login",
+        "password": "New password",
+        "save": "Set the password",
+        "sent": "If the login has a confirmed email address, a link to reset the password is on its way. Open it before it expires.",
+        "submit": "Send the link",
+        "title": "Reset the password",
+        "to_login": "Back to sign in"
+      },
       "security": {
         "address": "Email address",
         "address_none": "No address is set, so the password cannot be reset by mail",
@@ -518,11 +520,13 @@
         "theme": "Theme",
         "tokens": "API tokens"
       },
-      "verify.continue": "Continue",
-      "verify.done": "The address {value} is confirmed",
-      "verify.failed": "The confirmation link is not valid",
-      "verify.pending": "Confirming the address",
-      "verify.title": "Confirm the email address"
+      "verify": {
+        "continue": "Continue",
+        "done": "The address {value} is confirmed",
+        "failed": "The confirmation link is not valid",
+        "pending": "Confirming the address",
+        "title": "Confirm the email address"
+      }
     },
     "state": "State",
     "stream": {
