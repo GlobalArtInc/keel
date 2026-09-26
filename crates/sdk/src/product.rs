@@ -11,12 +11,36 @@ pub struct ProductManifest {
     pub api: u32,
     pub brand: Brand,
     pub modules: &'static [&'static ModuleDef],
+    pub bridges: &'static [Bridge],
     pub menu: &'static [MenuGroup],
     pub levels: LevelLabels,
     pub account_kinds: &'static [&'static str],
     pub editions: &'static [Edition],
     pub i18n: &'static [(&'static str, &'static str)],
     pub assets: &'static [Asset],
+}
+
+#[derive(Clone, Copy)]
+pub struct Bridge {
+    pub to: &'static str,
+    pub local: &'static ModuleDef,
+    pub remote: &'static ModuleDef,
+}
+
+impl Bridge {
+    pub fn side(&self, to_enabled: bool) -> &'static ModuleDef {
+        if to_enabled { self.local } else { self.remote }
+    }
+}
+
+impl fmt::Debug for Bridge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bridge")
+            .field("to", &self.to)
+            .field("local", &self.local.id)
+            .field("remote", &self.remote.id)
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,6 +114,7 @@ impl fmt::Debug for ProductManifest {
             .field("api", &self.api)
             .field("brand", &self.brand)
             .field("modules", &self.module_ids().collect::<Vec<_>>())
+            .field("bridges", &self.bridges)
             .field("menu", &self.menu)
             .field("levels", &self.levels)
             .field("account_kinds", &self.account_kinds)
@@ -124,6 +149,24 @@ mod tests {
         init,
     };
 
+    static LOCAL: ModuleDef = ModuleDef {
+        id: "dns_local",
+        version: "0.1.0",
+        sdk: crate::VERSION,
+        requires: &[],
+        migrations: None,
+        init,
+    };
+
+    static REMOTE: ModuleDef = ModuleDef {
+        id: "dns_peer",
+        version: "0.1.0",
+        sdk: crate::VERSION,
+        requires: &[],
+        migrations: None,
+        init,
+    };
+
     static DEMO: ProductManifest = ProductManifest {
         id: "demo",
         name: "product.demo.brand",
@@ -135,6 +178,11 @@ mod tests {
             chroma: 0.1,
         },
         modules: &[&NOTE],
+        bridges: &[Bridge {
+            to: "dns",
+            local: &LOCAL,
+            remote: &REMOTE,
+        }],
         menu: &[MenuGroup {
             id: "demo",
             label: "menu.demo",
@@ -184,6 +232,14 @@ mod tests {
         let debug = format!("{DEMO:?}");
         assert!(debug.contains("id: \"demo\""), "{debug}");
         assert!(debug.contains("modules: [\"note\"]"), "{debug}");
+        assert!(
+            debug.contains(
+                "bridges: [Bridge { to: \"dns\", local: \"dns_local\", remote: \"dns_peer\" }]"
+            ),
+            "{debug}"
+        );
+        assert!(std::ptr::eq(DEMO.bridges[0].side(true), &LOCAL));
+        assert!(std::ptr::eq(DEMO.bridges[0].side(false), &REMOTE));
         assert!(debug.contains("hue: 150"), "{debug}");
         assert!(debug.contains("i18n: [\"en\"]"), "{debug}");
         assert!(debug.contains("assets: [\"product.demo.logo\"]"), "{debug}");

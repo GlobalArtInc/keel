@@ -22,7 +22,6 @@ const PHP: &str = "hosting.site.php";
 const EXISTS: &str = "hosting.site.error.exists";
 const USER: &str = "hosting.site.error.user";
 const USER_PENDING: &str = "hosting.site.error.user_pending";
-const DNS_UNAVAILABLE: &str = "hosting.site.error.dns_unavailable";
 const VERSIONS: [&str; 3] = ["8.2", "8.3", "8.4"];
 const SERIALISE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('hosting_site:names', 0))";
 const TAKEN: &str = "SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n WHERE EXISTS (SELECT 1 FROM hosting_site s WHERE s.id <> $1 AND (s.domain = n OR s.aliases @> to_jsonb(n))) LIMIT 1";
@@ -189,15 +188,14 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 .insert(tx)
                 .await?;
                 if params.dns_zone {
-                    let Ok(dns) = call.require::<dyn DnsProvider>() else {
-                        return Err(KeelError::unavailable(DNS_UNAVAILABLE).field("dnsZone"));
-                    };
+                    let dns = call.require::<dyn DnsProvider>()?;
                     let invoke = |func: &str, params: Value| call.invoke(func, params);
                     dns.add_zone(
                         &invoke,
                         &SiteZone {
                             name: domain,
                             account,
+                            own_account: account == call.principal().account_id,
                         },
                     )
                     .await?;

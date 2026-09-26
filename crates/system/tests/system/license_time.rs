@@ -40,6 +40,7 @@ static ORBIT: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[&PROBE],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],

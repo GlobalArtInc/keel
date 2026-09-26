@@ -148,10 +148,15 @@ impl Runtime {
         config: &Config,
         id: &str,
         wanted: Wanted,
+        switch_remote: bool,
     ) -> Result<Switched, Error> {
+        let mut params = json!({ "id": id });
+        if switch_remote {
+            params["switchRemote"] = json!(true);
+        }
         let request = ctl::Request {
             func: wanted.function().to_owned(),
-            params: json!({ "id": id }),
+            params,
             out: Out::Json,
             lang: "en".to_owned(),
             run_as: None,
@@ -161,7 +166,7 @@ impl Runtime {
             Err(ctl::CtlError::Client(ClientError::Connect { .. })) => {
                 let change = match wanted {
                     Wanted::Enabled => self.enable_product(config, id).await?,
-                    Wanted::Disabled => self.disable_product(config, id).await?,
+                    Wanted::Disabled => self.disable_bridged(config, id, switch_remote).await?,
                 };
                 return Ok(Switched::Stopped(change));
             }
@@ -209,6 +214,15 @@ impl Runtime {
     }
 
     pub async fn disable_product(&self, config: &Config, id: &str) -> Result<Change, Error> {
+        self.disable_bridged(config, id, false).await
+    }
+
+    pub(crate) async fn disable_bridged(
+        &self,
+        config: &Config,
+        id: &str,
+        switch_remote: bool,
+    ) -> Result<Change, Error> {
         refuse_while_running(config).await?;
         let storage = Storage::connect(config).await?;
         let outcome = async {
@@ -218,7 +232,7 @@ impl Runtime {
                 .begin()
                 .await
                 .map_err(products::ProductsError::from)?;
-            let changed = products::disable(&txn, id).await?;
+            let changed = products::disable(&txn, id, &self.products, switch_remote).await?;
             txn.commit().await.map_err(products::ProductsError::from)?;
             if changed {
                 return Ok(Change::Disabled);

@@ -104,6 +104,7 @@ static PROBE: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[&PROBE_MODULE],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",

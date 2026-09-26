@@ -25,6 +25,7 @@ static DNS: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],

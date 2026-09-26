@@ -74,6 +74,7 @@ static ATLAS_BUNDLE: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[&ATLAS],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "atlas",
         label: "menu.atlas",

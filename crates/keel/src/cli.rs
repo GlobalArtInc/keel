@@ -347,7 +347,14 @@ pub(crate) enum ProductAction {
     #[command(
         about = "Disable a bundle the same way; its modules become orphaned and their tables stay in place"
     )]
-    Disable { id: String },
+    Disable {
+        id: String,
+        #[arg(
+            long,
+            help = "Disable a product another enabled bundle reaches through a local bridge; that bundle moves to its remote side, which answers unavailable until a neighbour is paired"
+        )]
+        switch_remote: bool,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -464,7 +471,7 @@ impl Runtime {
                 }
                 Command::Product { action } => {
                     let config = load(cli.config.as_deref())?;
-                    let (id, wanted) = match action {
+                    let (id, wanted, switch_remote) = match action {
                         ProductAction::List => {
                             for state in self.list_products(&config).await? {
                                 println!("{state}");
@@ -477,19 +484,26 @@ impl Runtime {
                             }
                             return Ok(ExitCode::SUCCESS);
                         }
-                        ProductAction::Enable { id } => (id, Wanted::Enabled),
-                        ProductAction::Disable { id } => (id, Wanted::Disabled),
+                        ProductAction::Enable { id } => (id, Wanted::Enabled, false),
+                        ProductAction::Disable { id, switch_remote } => {
+                            (id, Wanted::Disabled, switch_remote)
+                        }
                     };
-                    Ok(match self.switch_product(&config, &id, wanted).await? {
-                        Switched::Refused(text) => {
-                            eprintln!("{}", text.trim_end_matches('\n'));
-                            ExitCode::FAILURE
-                        }
-                        switched => {
-                            println!("{id}: {switched}");
-                            ExitCode::SUCCESS
-                        }
-                    })
+                    Ok(
+                        match self
+                            .switch_product(&config, &id, wanted, switch_remote)
+                            .await?
+                        {
+                            Switched::Refused(text) => {
+                                eprintln!("{}", text.trim_end_matches('\n'));
+                                ExitCode::FAILURE
+                            }
+                            switched => {
+                                println!("{id}: {switched}");
+                                ExitCode::SUCCESS
+                            }
+                        },
+                    )
                 }
                 Command::Privileged(args) => match args.action {
                     None => {
@@ -987,10 +1001,24 @@ mod tests {
         assert!(matches!(
             cli.command,
             Command::Product {
-                action: ProductAction::Disable { .. }
+                action: ProductAction::Disable {
+                    switch_remote: false,
+                    ..
+                }
             }
         ));
         assert_eq!(cli.config, Some(PathBuf::from("c.yaml")));
+        let cli =
+            Cli::try_parse_from(["keel", "product", "disable", "dns", "--switch-remote"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Product {
+                action: ProductAction::Disable {
+                    switch_remote: true,
+                    ..
+                }
+            }
+        ));
     }
 
     #[test]

@@ -8,11 +8,15 @@
     "level": "admin"
   },
   "params": {
-    "title": "ProductPick",
+    "title": "ProductDisable",
     "type": "object",
     "properties": {
       "id": {
         "type": "string"
+      },
+      "switchRemote": {
+        "type": "boolean",
+        "default": false
       }
     },
     "required": [

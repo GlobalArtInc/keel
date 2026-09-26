@@ -17,6 +17,11 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_hosting_users::MODULE,
         &keel_hosting_web::MODULE,
     ],
+    bridges: &[Bridge {
+        to: "dns",
+        local: &keel_dns_local::MODULE,
+        remote: &keel_dns_peer::MODULE,
+    }],
     menu: &[MenuGroup {
         id: "panel",
         label: "menu.panel",
@@ -58,12 +63,16 @@ mod tests {
     const PLATFORM_FILL: &str = "#315fcf";
 
     #[test]
-    fn the_bundle_names_host_the_hosting_users_and_sites_one_group_and_the_lite_and_pro_editions() {
+    fn the_bundle_names_its_modules_the_dns_bridge_one_group_and_the_lite_and_pro_editions() {
         assert_eq!(MANIFEST.id, "panel");
         assert_eq!(
             MANIFEST.module_ids().collect::<Vec<_>>(),
             ["host", "hosting", "hosting_site"]
         );
+        assert_eq!(MANIFEST.bridges.len(), 1);
+        assert_eq!(MANIFEST.bridges[0].to, "dns");
+        assert_eq!(MANIFEST.bridges[0].side(true).id, "dns_local");
+        assert_eq!(MANIFEST.bridges[0].side(false).id, "dns_peer");
         assert_eq!(MANIFEST.menu.len(), 1);
         assert_eq!(MANIFEST.menu[0].id, "panel");
         assert_eq!(MANIFEST.menu[0].label, "menu.panel");

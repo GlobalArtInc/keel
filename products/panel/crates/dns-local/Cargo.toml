@@ -1,0 +1,13 @@
+[package]
+name = "keel-dns-local"
+description = "The dns-local module of KeelPanel: the DNS zones of hosting sites created by the dns product of the same installation, inside the hosting call"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-hosting-web = { workspace = true }

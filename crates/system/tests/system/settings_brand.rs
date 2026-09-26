@@ -22,6 +22,7 @@ static DEMO_BUNDLE: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],

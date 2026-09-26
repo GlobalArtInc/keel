@@ -207,13 +207,15 @@ for package in meta["packages"]:
     for dependency in package["dependencies"]:
         name = dependency["name"]
         sibling = package["name"] in dirs and name in dirs and bundle_of(here) is not None and bundle_of(here) == bundle_of(dirs[name])
-        if name in dirs and not sibling and not (package["name"] in dirs and dirs[name].startswith(own)):
+        bundles = package["name"] in dirs and name in dirs and os.path.dirname(here) == root + "/products" and os.path.dirname(dirs[name]) == root + "/products"
+        bridged = bundles and dependency["kind"] == "dev"
+        if name in dirs and not sibling and not bridged and not (package["name"] in dirs and dirs[name].startswith(own)):
             kind = dependency["kind"] or "normal"
-            print(package["name"] + " depends on the product crate " + name + " (" + kind + "); only bin/*, the bundle that owns a module crate and the module crates of that bundle may", file=sys.stderr)
+            print(package["name"] + " depends on the product crate " + name + " (" + kind + "); only bin/*, the bundle that owns a module crate, the module crates of that bundle and the tests of another bundle may", file=sys.stderr)
             bad = 1
 sys.exit(bad)
 '; then
-  echo "no package outside bin/* depends on a product crate other than a module crate of its own bundle or, from a module crate, another module crate of that bundle"
+  echo "no package outside bin/* depends on a product crate other than a module crate of its own bundle, from a module crate another module crate of that bundle, or from a bundle's tests another bundle"
 else
   fail=1
 fi

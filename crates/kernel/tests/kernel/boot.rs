@@ -268,6 +268,7 @@ static PROBE_BUNDLE: ProductManifest = ProductManifest {
         chroma: 0.12,
     },
     modules: &[&PROBE],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",

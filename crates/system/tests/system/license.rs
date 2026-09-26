@@ -25,6 +25,7 @@ static ORBIT: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],
@@ -56,6 +57,7 @@ static COMET: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],
@@ -81,6 +83,7 @@ static NOVA: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],

@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use keel::prelude::*;
-use keel_testkit::{Harness, Reply, Who, tokio};
+use keel_testkit::{Builder, Harness, Reply, Who, tokio};
 
 pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 pub(crate) const FIRST_UID: u32 = 100_000;
@@ -31,7 +31,7 @@ pub(crate) struct Site {
 impl Site {
     pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        for sub in ["www", "bin", "vhosts"] {
+        for sub in ["www", "bin", "vhosts", "zones", "named"] {
             fs::create_dir(dir.path().join(sub)).expect("a directory of the site");
         }
         for version in [PHP, OLDER_PHP] {
@@ -54,6 +54,7 @@ impl Site {
             site.stub(name, body);
         }
         for tool in [
+            "named-checkconf".to_owned(),
             "nginx".to_owned(),
             format!("php-fpm{PHP}"),
             format!("php-fpm{OLDER_PHP}"),
@@ -82,11 +83,12 @@ impl Site {
         format!(
             "policy:
   uid_range: {{ from: {FIRST_UID}, to: {LAST_UID} }}
-  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older} }}
-  services: [nginx, php*-fpm]
-  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"] }}
+  file_roots: {{ www: {www}, vhosts: {vhosts}, pools-{PHP}: {pools}, pools-{OLDER_PHP}: {older}, zones: {zones}, named: {named} }}
+  services: [nginx, php*-fpm, named]
+  checks: {{ nginx.test: [\"{bin}/nginx\", \"-t\"], php{PHP}-fpm.test: [\"{bin}/php-fpm{PHP}\", \"-t\"], php{OLDER_PHP}-fpm.test: [\"{bin}/php-fpm{OLDER_PHP}\", \"-t\"], named.check: [\"{bin}/named-checkconf\", \"-z\"] }}
   products:
     panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel- }}
+    dns: {{ drop_in_prefix: keel-dns- }}
   tools:
     getent: {bin}/getent
     useradd: {bin}/useradd
@@ -101,6 +103,8 @@ impl Site {
             vhosts = self.path("vhosts").display(),
             pools = self.path(&format!("pools-{PHP}")).display(),
             older = self.path(&format!("pools-{OLDER_PHP}")).display(),
+            zones = self.path("zones").display(),
+            named = self.path("named").display(),
             bin = bin.display(),
             shells = self.path("shells").display(),
         )
@@ -176,21 +180,14 @@ fn write_tool(path: &Path, body: &str) {
 }
 
 pub(crate) async fn panel(site: &Site) -> Harness {
-    panel_with(site, &[]).await
+    composed(site).boot().await
 }
 
-pub(crate) async fn panel_with(site: &Site, modules: &[&'static ModuleDef]) -> Harness {
-    modules
-        .iter()
-        .fold(
-            Harness::new()
-                .product(&keel_panel::MANIFEST)
-                .module(&keel_system::tasks::MODULE),
-            |harness, module| harness.module(module),
-        )
+pub(crate) fn composed(site: &Site) -> Builder {
+    Harness::new()
+        .product(&keel_panel::MANIFEST)
+        .module(&keel_system::tasks::MODULE)
         .agent(&site.policy())
-        .boot()
-        .await
 }
 
 pub(crate) fn data(reply: &Reply) -> &Value {

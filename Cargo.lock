@@ -2322,6 +2322,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-dns-local"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-hosting-web",
+]
+
+[[package]]
+name = "keel-dns-peer"
+version = "0.2.0"
+dependencies = [
+ "keel",
+ "keel-hosting-web",
+]
+
+[[package]]
 name = "keel-dns-records"
 version = "0.2.0"
 dependencies = [
@@ -2445,6 +2461,9 @@ name = "keel-panel"
 version = "0.2.0"
 dependencies = [
  "keel",
+ "keel-dns",
+ "keel-dns-local",
+ "keel-dns-peer",
  "keel-host",
  "keel-hosting-users",
  "keel-hosting-web",

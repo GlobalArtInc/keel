@@ -7,6 +7,7 @@ pub type Invoke<'a> = dyn Fn(&str, Value) -> BoxFuture<'static, Result<Value>> +
 pub struct SiteZone {
     pub name: String,
     pub account: Id,
+    pub own_account: bool,
 }
 
 #[async_trait]

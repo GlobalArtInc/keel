@@ -15,6 +15,7 @@ static MANIFEST: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[&MODULE],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "probe",
         label: "menu.probe",

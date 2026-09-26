@@ -11,6 +11,14 @@ pub struct ProductPick {
     pub id: String,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ProductDisable {
+    id: String,
+    #[serde(default)]
+    switch_remote: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProductState {
@@ -87,19 +95,22 @@ pub fn enable() -> FunctionDef {
         .kind(Kind::Action)
         .level(Level::Admin)
         .unowned()
-        .handler(
-            |call: Call<ProductPick>| async move { change(&call, ProductState::Enabled).await },
-        )
+        .handler(|call: Call<ProductPick>| async move {
+            let id = call.params().id.clone();
+            change(&call, &id, ProductState::Enabled, false).await
+        })
 }
 
 pub fn disable() -> FunctionDef {
-    function::<ProductPick, ProductChange>("keel.product.disable")
+    function::<ProductDisable, ProductChange>("keel.product.disable")
         .kind(Kind::Action)
         .level(Level::Admin)
         .unowned()
-        .handler(
-            |call: Call<ProductPick>| async move { change(&call, ProductState::Disabled).await },
-        )
+        .handler(|call: Call<ProductDisable>| async move {
+            let params = call.params();
+            let (id, switch_remote) = (params.id.clone(), params.switch_remote);
+            change(&call, &id, ProductState::Disabled, switch_remote).await
+        })
 }
 
 fn row(manifest: &ProductManifest, enabled: &EnabledSet) -> ProductRow {
@@ -118,8 +129,12 @@ fn row(manifest: &ProductManifest, enabled: &EnabledSet) -> ProductRow {
     }
 }
 
-async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<ProductChange> {
-    let id = call.params().id.as_str();
+async fn change<P>(
+    call: &Call<P>,
+    id: &str,
+    wanted: ProductState,
+    switch_remote: bool,
+) -> Result<ProductChange> {
     let composed = call.require::<Composed>()?;
     if composed.manifest(id).is_none() {
         return Err(KeelError::validation("keel.product.error.unknown")
@@ -135,7 +150,9 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
             let now = call.require::<dyn Clock>()?.now();
             products::enable(tx, id, &call.principal().login, now).await
         }
-        ProductState::Disabled => products::disable(tx, id).await,
+        ProductState::Disabled => {
+            products::disable(tx, id, composed.manifests(), switch_remote).await
+        }
     }
     .map_err(stored)?;
     if changed {
@@ -155,7 +172,7 @@ async fn change(call: &Call<ProductPick>, wanted: ProductState) -> Result<Produc
     })
 }
 
-fn gate(call: &Call<ProductPick>, id: &str) -> Result<()> {
+fn gate<P>(call: &Call<P>, id: &str) -> Result<()> {
     match call.require::<dyn Features>() {
         Ok(features) if !features.may_enable(id) => {
             Err(KeelError::license(guards::LICENSE).param("product", id))
@@ -164,7 +181,7 @@ fn gate(call: &Call<ProductPick>, id: &str) -> Result<()> {
     }
 }
 
-fn request_restart(call: &Call<ProductPick>, wanted: ProductState, id: &str) -> Result<()> {
+fn request_restart<P>(call: &Call<P>, wanted: ProductState, id: &str) -> Result<()> {
     let Ok(runner) = call.require::<dyn TaskRunner>() else {
         tracing::warn!(
             product = id,
@@ -204,5 +221,8 @@ fn stored(error: ProductsError) -> KeelError {
         ProductsError::Stored { reason } => {
             KeelError::internal("keel.product.error.stored").param("reason", reason)
         }
+        ProductsError::Bridged { id, by } => KeelError::conflict("keel.product.error.bridged")
+            .param("id", id)
+            .param("by", by),
     }
 }

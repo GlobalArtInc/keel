@@ -125,6 +125,7 @@ static ORBIT: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[&ORBIT_MODULE],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "orbit",
         label: "menu.orbit",
@@ -161,6 +162,7 @@ static COMET: ProductManifest = ProductManifest {
         chroma: 0.1,
     },
     modules: &[],
+    bridges: &[],
     menu: &[],
     levels: LevelLabels {
         labels: &[],

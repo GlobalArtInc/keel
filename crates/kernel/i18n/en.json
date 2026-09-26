@@ -326,6 +326,7 @@
       },
       "empty": "No products are compiled into this installation",
       "error": {
+        "bridged": "{by} reaches {id} on this installation through a local bridge; disabling {id} moves {by} to its remote side, which answers unavailable until a neighbour is paired. Pass switchRemote to accept that",
         "stored": "The stored product set cannot be read: {reason}",
         "unknown": "The product {id} is not carried by this installation"
       },

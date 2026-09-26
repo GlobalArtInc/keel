@@ -18,6 +18,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         &keel_dns_records::MODULE,
         &keel_dns_templates::MODULE,
     ],
+    bridges: &[],
     menu: &[MenuGroup {
         id: "dns",
         label: "menu.dns",

@@ -1559,6 +1559,7 @@ mod tests {
             chroma: 0.1,
         },
         modules: &[&BASE],
+        bridges: &[],
         menu: &[MenuGroup {
             id: "base",
             label: "menu.base",
@@ -1704,6 +1705,7 @@ mod tests {
             chroma: 0.1,
         },
         modules: &[],
+        bridges: &[],
         menu: &[
             MenuGroup {
                 id: "late",
@@ -1757,6 +1759,7 @@ mod tests {
             chroma: 0.0,
         },
         modules: &[],
+        bridges: &[],
         menu: &[
             MenuGroup {
                 id: "system",
@@ -1881,6 +1884,7 @@ mod tests {
             chroma: 0.0,
         },
         modules: &[&SHOUTING],
+        bridges: &[],
         menu: &[],
         levels: LevelLabels {
             labels: &[],
@@ -2498,6 +2502,7 @@ mod tests {
             chroma: 0.1,
         },
         modules: &[&ICONIC],
+        bridges: &[],
         menu: &[MenuGroup {
             id: "iconic",
             label: "menu.iconic",

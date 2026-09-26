@@ -279,7 +279,11 @@ impl Composition {
         let mut modules = self.modules.clone();
         let mut origin: BTreeMap<&'static str, &'static str> = BTreeMap::new();
         for bundle in &products {
-            for module in bundle.modules {
+            let sides = bundle
+                .bridges
+                .iter()
+                .map(|bridge| bridge.side(products.iter().any(|product| product.id == bridge.to)));
+            for module in bundle.modules.iter().copied().chain(sides) {
                 if !modules.iter().any(|known| known.id == module.id) {
                     modules.push(module);
                     origin.insert(module.id, bundle.id);
@@ -788,6 +792,7 @@ mod tests {
                     chroma: 0.0,
                 },
                 modules: &[$($module),*],
+                bridges: &[],
                 menu: &[],
                 levels: keel_sdk::LevelLabels {
                     labels: &[],
@@ -800,6 +805,37 @@ mod tests {
             };
         };
     }
+
+    module!(HOSTING, "hosting", ["auth"]);
+    module!(DNS_LOCAL, "dns_local", ["hosting", "dns"]);
+    module!(DNS_PEER, "dns_peer", ["hosting"]);
+
+    static HOSTING_BUNDLE: ProductManifest = ProductManifest {
+        id: "panel",
+        name: "product.x.brand",
+        version: "0.1.0",
+        api: API,
+        brand: keel_sdk::Brand {
+            logo: "product.x.logo",
+            hue: 0,
+            chroma: 0.0,
+        },
+        modules: &[&HOSTING, &AUTH],
+        bridges: &[keel_sdk::Bridge {
+            to: "dns",
+            local: &DNS_LOCAL,
+            remote: &DNS_PEER,
+        }],
+        menu: &[],
+        levels: keel_sdk::LevelLabels {
+            labels: &[],
+            disabled: &[],
+        },
+        account_kinds: &["user"],
+        editions: &[],
+        i18n: &[],
+        assets: &[],
+    };
 
     bundle!(DNS_BUNDLE, "dns", API, [&DNS, &TASKS, &AUTH], ["user"]);
     bundle!(NOTIFY_BUNDLE, "notify", API, [&NOTIFY, &AUTH], []);
@@ -828,6 +864,29 @@ mod tests {
         let bare = Composition::new().resolve().unwrap();
         assert!(bare.products().is_empty());
         assert_eq!(bare.version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn a_bridge_loads_its_local_side_when_the_target_is_enabled_and_its_remote_side_otherwise() {
+        let both = Composition::new()
+            .product(&DNS_BUNDLE)
+            .product(&HOSTING_BUNDLE)
+            .resolve()
+            .unwrap();
+        assert!(both.ids().contains(&"dns_local"), "{:?}", both.ids());
+        assert!(!both.ids().contains(&"dns_peer"), "{:?}", both.ids());
+        for composition in [
+            Composition::new().product(&HOSTING_BUNDLE),
+            Composition::new()
+                .product(&DNS_BUNDLE)
+                .product(&HOSTING_BUNDLE)
+                .enabled(["panel"]),
+        ] {
+            let graph = composition.resolve().unwrap();
+            assert!(graph.ids().contains(&"dns_peer"), "{:?}", graph.ids());
+            assert!(!graph.ids().contains(&"dns_local"), "{:?}", graph.ids());
+            assert!(!graph.ids().contains(&"dns"), "{:?}", graph.ids());
+        }
     }
 
     #[test]

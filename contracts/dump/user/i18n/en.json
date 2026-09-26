@@ -328,6 +328,7 @@
         },
         "empty": "No products are compiled into this installation",
         "error": {
+          "bridged": "{by} reaches {id} on this installation through a local bridge; disabling {id} moves {by} to its remote side, which answers unavailable until a neighbour is paired. Pass switchRemote to accept that",
           "stored": "The stored product set cannot be read: {reason}",
           "unknown": "The product {id} is not carried by this installation"
         },
@@ -1066,7 +1067,6 @@
         "empty": "No sites yet",
         "error": {
           "alias_twice": "The alias {name} repeats the domain or another alias",
-          "dns_unavailable": "No DNS is available to this installation, so no zone can be created",
           "exists": "The name {name} is already served by a site",
           "home": "The home directory {home} is not a plain absolute path",
           "name": "{name} is not a host name",

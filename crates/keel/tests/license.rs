@@ -68,6 +68,7 @@ const fn fixture(
             chroma: 0.1,
         },
         modules,
+        bridges: &[],
         menu: &[],
         levels: LevelLabels {
             labels: &[],

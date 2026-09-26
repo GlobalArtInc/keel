@@ -1,0 +1,7 @@
+{
+  "dns_peer": {
+    "error": {
+      "unpaired": "No neighbouring installation with DNS is paired yet, so the zone {zone} cannot be created"
+    }
+  }
+}

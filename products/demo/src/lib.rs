@@ -20,6 +20,7 @@ pub static MANIFEST: ProductManifest = ProductManifest {
         chroma: 0.18,
     },
     modules: MODULES,
+    bridges: &[],
     menu: &[MenuGroup {
         id: "demo",
         label: "menu.demo",

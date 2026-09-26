@@ -48,6 +48,10 @@ impl Composed {
 pub enum ProductsError {
     #[error("keel_kv holds an unreadable {KEY} value: {reason}")]
     Stored { reason: String },
+    #[error(
+        "product {by} reaches {id} through its local bridge; disabling {id} moves {by} to its remote side, which answers unavailable until a neighbour is paired; pass --switch-remote to accept that"
+    )]
+    Bridged { id: String, by: String },
     #[error("the database refused a query: {0}")]
     Database(#[from] DbErr),
 }
@@ -80,13 +84,40 @@ pub async fn enable<C: ConnectionTrait>(
     Ok(true)
 }
 
-pub async fn disable<C: ConnectionTrait>(tx: &C, id: &str) -> Result<bool, ProductsError> {
+pub async fn disable<C: ConnectionTrait>(
+    tx: &C,
+    id: &str,
+    carried: &[&'static ProductManifest],
+    switch_remote: bool,
+) -> Result<bool, ProductsError> {
     let mut set = locked(tx).await?;
-    if set.remove(id).is_none() {
+    if !set.contains_key(id) {
         return Ok(false);
     }
+    if !switch_remote && let Some(by) = bridged_by(carried, &set, id) {
+        return Err(ProductsError::Bridged {
+            id: id.to_owned(),
+            by: by.to_owned(),
+        });
+    }
+    set.remove(id);
     write(tx, &set).await?;
     Ok(true)
+}
+
+fn bridged_by(
+    carried: &[&'static ProductManifest],
+    set: &EnabledSet,
+    id: &str,
+) -> Option<&'static str> {
+    carried
+        .iter()
+        .find(|manifest| {
+            manifest.id != id
+                && set.contains_key(manifest.id)
+                && manifest.bridges.iter().any(|bridge| bridge.to == id)
+        })
+        .map(|manifest| manifest.id)
 }
 
 async fn locked<C: ConnectionTrait>(tx: &C) -> Result<EnabledSet, ProductsError> {

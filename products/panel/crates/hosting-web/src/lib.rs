@@ -35,6 +35,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let turn = Arc::new(Mutex::new(()));
     r.require::<dyn HostExecutor>()
         .require::<dyn HostingUsers>()
+        .require::<dyn api::DnsProvider>()
         .function(functions::list())
         .function(functions::get())
         .function(functions::create(Arc::clone(&turn)))

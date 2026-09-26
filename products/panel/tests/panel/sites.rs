@@ -1,55 +1,17 @@
 use std::fs;
-use std::sync::Mutex;
 
 use keel::prelude::*;
 use keel::sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
 use keel::types::{ErrorCode, TaskState};
-use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone};
 use keel_system::tasks::api::Drain;
 use keel_testkit::{Harness, Who, tokio};
 
 use crate::support::{
-    OLDER_PHP, PATIENCE, PHP, Site, create, data, eventually, panel, panel_with, rows,
-    state_becomes,
+    OLDER_PHP, PATIENCE, PHP, Site, create, data, eventually, panel, rows, state_becomes,
 };
 
 const CREATE: &str = "hosting.site.create";
 const USER_TOOLS: [&str; 5] = ["useradd ", "userdel ", "usermod ", "groupadd ", "groupdel "];
-
-static ORDERS: Mutex<Vec<(String, String, u64)>> = Mutex::new(Vec::new());
-
-static FAKE_DNS: ModuleDef = ModuleDef {
-    id: "fake_dns",
-    version: "0.0.1",
-    sdk: VERSION,
-    requires: &["hosting_site"],
-    migrations: None,
-    init: fake_dns,
-};
-
-struct FakeDns;
-
-#[async_trait]
-impl DnsProvider for FakeDns {
-    async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()> {
-        if zone.name.starts_with("refused.") {
-            return Err(KeelError::validation("fake_dns.error.refused").field("domain"));
-        }
-        let seen = invoke("hosting.site.list", json!({ "search": zone.name })).await?;
-        let total = seen["total"].as_u64().unwrap_or_default();
-        ORDERS.lock().expect("the orders").push((
-            zone.name.clone(),
-            zone.account.to_string(),
-            total,
-        ));
-        Ok(())
-    }
-}
-
-fn fake_dns(r: &mut Registrar) -> Result<()> {
-    r.provide::<dyn DnsProvider>(Arc::new(FakeDns));
-    Ok(())
-}
 
 async fn user(harness: &Harness, who: Who, name: &str) -> String {
     let id = create(harness, who, name).await;
@@ -446,19 +408,6 @@ async fn a_name_that_is_not_a_host_name_never_reaches_a_template() {
         assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
         assert_eq!(error.fields[0].path, field, "{error:?}");
     }
-    let without_dns = harness
-        .call(
-            Who::A1,
-            CREATE,
-            json!({ "user": alice, "domain": "example.com", "dnsZone": true }),
-        )
-        .await;
-    let error = without_dns.error().expect("no DNS is provided");
-    assert_eq!(error.fields[0].path, "dnsZone", "{error:?}");
-    assert_eq!(
-        error.fields[0].key.as_deref(),
-        Some("hosting.site.error.dns_unavailable")
-    );
     assert!(
         rows(&harness, "SELECT id FROM hosting_site")
             .await
@@ -471,47 +420,6 @@ async fn a_name_that_is_not_a_host_name_never_reaches_a_template() {
             .count(),
         0
     );
-    harness.finish().await;
-}
-
-#[tokio::test]
-async fn a_site_with_a_zone_asks_the_dns_provider_inside_its_call() {
-    let site = Site::new();
-    let harness = panel_with(&site, &[&FAKE_DNS]).await;
-    let a1 = harness.fixtures().accounts.a1;
-    let alice = user(&harness, Who::A1, "alice").await;
-
-    let id = site_of(
-        &harness,
-        Who::A1,
-        json!({ "user": alice, "domain": "zone.example", "dnsZone": true }),
-    )
-    .await;
-    served(&harness, &id, "active").await;
-    assert!(ORDERS.lock().expect("the orders").contains(&(
-        "zone.example".to_owned(),
-        a1.to_string(),
-        1
-    )));
-
-    let refused = harness
-        .call(
-            Who::A1,
-            CREATE,
-            json!({ "user": alice, "domain": "refused.example", "dnsZone": true }),
-        )
-        .await;
-    let error = refused.error().expect("the provider refuses the zone");
-    assert_eq!(error.fields[0].path, "domain", "{error:?}");
-    assert_eq!(
-        error.fields[0].key.as_deref(),
-        Some("fake_dns.error.refused")
-    );
-    assert_eq!(
-        rows(&harness, "SELECT domain FROM hosting_site").await,
-        ["zone.example"]
-    );
-    assert!(!site.vhost("refused.example").exists());
     harness.finish().await;
 }
 

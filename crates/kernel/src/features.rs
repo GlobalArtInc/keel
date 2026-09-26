@@ -55,6 +55,7 @@ mod tests {
                 chroma: 0.0,
             },
             modules: &[],
+            bridges: &[],
             menu: &[],
             levels: LevelLabels {
                 labels: &[],

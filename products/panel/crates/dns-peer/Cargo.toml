@@ -1,0 +1,13 @@
+[package]
+name = "keel-dns-peer"
+description = "The dns-peer module of KeelPanel: the DNS zones of hosting sites on a paired neighbour, answering unavailable until one is paired"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+
+[dependencies]
+keel = { workspace = true }
+keel-hosting-web = { workspace = true }
