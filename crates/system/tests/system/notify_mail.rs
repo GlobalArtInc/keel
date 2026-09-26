@@ -25,10 +25,10 @@ const API_PORT: u16 = 8025;
 const PATIENCE: Duration = Duration::from_secs(30);
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 
-struct Catcher {
-    smtp_host: String,
-    smtp_port: u16,
-    api: String,
+pub(crate) struct Catcher {
+    pub(crate) smtp_host: String,
+    pub(crate) smtp_port: u16,
+    pub(crate) api: String,
     _container: Option<ContainerAsync<GenericImage>>,
 }
 
@@ -47,7 +47,7 @@ fn host_and_port(url: &str, scheme: &str, variable: &str) -> (String, u16) {
     )
 }
 
-async fn catcher() -> Catcher {
+pub(crate) async fn catcher() -> Catcher {
     if let (Ok(smtp), Ok(api)) = (std::env::var(SMTP_VARIABLE), std::env::var(API_VARIABLE)) {
         let (smtp_host, smtp_port) = host_and_port(&smtp, "smtp://", SMTP_VARIABLE);
         let catcher = Catcher {
@@ -93,7 +93,7 @@ async fn catcher() -> Catcher {
     catcher
 }
 
-async fn request(api: &str, method: &str, path: &str) -> Option<(u16, String)> {
+pub(crate) async fn request(api: &str, method: &str, path: &str) -> Option<(u16, String)> {
     let (host, port) = host_and_port(api, "http://", API_VARIABLE);
     let mut stream = TcpStream::connect((host.as_str(), port)).await.ok()?;
     stream
@@ -164,7 +164,7 @@ async fn messages(api: &str) -> Vec<Value> {
     listed["messages"].as_array().cloned().unwrap_or_default()
 }
 
-async fn wait_until<F, Fut>(what: &str, mut check: F)
+pub(crate) async fn wait_until<F, Fut>(what: &str, mut check: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,

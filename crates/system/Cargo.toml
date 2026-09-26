@@ -58,6 +58,7 @@ auth = [
   "dep:sha2",
   "dep:subtle",
   "dep:tokio",
+  "dep:tracing",
 ]
 
 [dependencies]

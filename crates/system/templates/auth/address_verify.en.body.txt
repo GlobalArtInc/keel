@@ -1,0 +1,7 @@
+{principal} set {params.address} as the email address for password resets.
+
+Open this link within {params.hours} hours to confirm it:
+
+{params.link}
+
+The link works once. If you did not set this address, ignore this mail.

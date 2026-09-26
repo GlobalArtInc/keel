@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use keel_sdk::serde_json::Value;
-use keel_sdk::{KeelError, Result};
+use keel_sdk::{KeelError, MailTemplate, Result};
 use minijinja::Environment;
 use minijinja::syntax::SyntaxConfig;
 
@@ -17,57 +17,6 @@ pub const BLOCK_DELIMITERS: (&str, &str) = ("{%", "%}");
 pub const COMMENT_DELIMITERS: (&str, &str) = ("{#", "#}");
 
 const FORBIDDEN: [&str; 3] = ["{{", "}}", "%s"];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Text {
-    pub subject: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MailTemplate {
-    id: String,
-    texts: BTreeMap<String, Text>,
-}
-
-impl MailTemplate {
-    pub fn new(id: &str, subject: &str, body: &str) -> Self {
-        Self {
-            id: id.to_owned(),
-            texts: BTreeMap::new(),
-        }
-        .lang(DEFAULT_LANGUAGE, subject, body)
-    }
-
-    pub fn lang(mut self, lang: &str, subject: &str, body: &str) -> Self {
-        self.texts.insert(
-            lang.to_owned(),
-            Text {
-                subject: subject.to_owned(),
-                body: body.to_owned(),
-            },
-        );
-        self
-    }
-
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn module(&self) -> &str {
-        self.id
-            .split_once('.')
-            .map_or(&self.id, |(module, _)| module)
-    }
-
-    pub fn languages(&self) -> impl Iterator<Item = &str> {
-        self.texts.keys().map(String::as_str)
-    }
-
-    pub fn text(&self, lang: &str) -> Option<&Text> {
-        self.texts.get(lang)
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rendered {
@@ -110,12 +59,12 @@ impl Templates {
                 return Err(KeelError::internal(ERROR_TWICE).param("id", template.id()));
             }
             let mut langs = Vec::new();
-            for (lang, text) in &template.texts {
+            for (lang, text) in template.texts() {
                 for (part, source) in [("subject", &text.subject), ("body", &text.body)] {
                     if let Some(found) = placeholder_fault(source) {
                         return Err(KeelError::internal(ERROR_PLACEHOLDER)
                             .param("id", template.id())
-                            .param("lang", lang.as_str())
+                            .param("lang", lang)
                             .param("part", part)
                             .param("found", found));
                     }
@@ -123,20 +72,19 @@ impl Templates {
                         .map_err(|error| {
                             KeelError::internal(ERROR_SYNTAX)
                                 .param("id", template.id())
-                                .param("lang", lang.as_str())
+                                .param("lang", lang)
                                 .param("part", part)
                                 .param("reason", error.to_string())
                                 .source(error)
                         })?;
                 }
-                langs.push(lang.clone());
+                langs.push(lang.to_owned());
             }
             languages.insert(template.id().to_owned(), langs);
         }
         Ok(Self { env, languages })
     }
 
-    #[cfg(test)]
     pub fn has(&self, id: &str) -> bool {
         self.languages.contains_key(id)
     }

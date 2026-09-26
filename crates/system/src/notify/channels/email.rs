@@ -13,6 +13,7 @@ pub const ERROR_TRANSPORT: &str = "notify.error.email_transport";
 pub const ERROR_SEND: &str = "notify.error.email_send";
 
 pub struct Mail<'a> {
+    pub to: &'a str,
     pub subject: &'a str,
     pub body: &'a str,
 }
@@ -56,7 +57,7 @@ pub fn message(email: &StoredEmail, mail: &Mail<'_>) -> Result<Message> {
     };
     Message::builder()
         .from(address("from", &email.from)?)
-        .to(address("to", &email.to)?)
+        .to(address("to", mail.to)?)
         .subject(mail.subject)
         .header(ContentType::TEXT_PLAIN)
         .body(mail.body.to_owned())
@@ -97,13 +98,16 @@ mod tests {
             transport(&email(security), Some(Secret::new("pw"))).expect("the transport builds");
         }
         let mail = Mail {
+            to: "ops@example.org",
             subject: "Hello",
             body: "World",
         };
         message(&email(Security::None), &mail).expect("the message builds");
-        let mut broken = email(Security::None);
-        broken.to = "not an address".into();
-        let error = message(&broken, &mail).expect_err("the address is refused");
+        let broken = Mail {
+            to: "not an address",
+            ..mail
+        };
+        let error = message(&email(Security::None), &broken).expect_err("the address is refused");
         assert_eq!(error.key(), ERROR_ADDRESS);
         assert_eq!(error.field_path(), Some("email.to"));
     }

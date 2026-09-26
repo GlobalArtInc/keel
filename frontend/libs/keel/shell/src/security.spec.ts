@@ -13,6 +13,8 @@ import {
 import type { Boot, Descriptor, Envelope, Messages } from '@globalart/keel/meta';
 import { KeelScreenComponent, injectKeelViews } from '@globalart/keel/renderer';
 import {
+  ADDRESS_GET,
+  ADDRESS_SET,
   KeelSecurityComponent,
   KeelSettingsValueComponent,
   PASSWORD_SET,
@@ -21,6 +23,7 @@ import {
   TOTP_DISABLE,
   TOTP_ENROLL,
   keelProviders,
+  ownAddressDescriptor,
   ownPasswordDescriptor,
   provideKeelShellViews,
   qrOf,
@@ -60,6 +63,9 @@ function snapshot(func: string, level: string): Descriptor {
 
 const ENROLL = snapshot(TOTP_ENROLL, 'user');
 const PASSWORD = snapshot(PASSWORD_SET, 'admin');
+const ADDRESS = snapshot(ADDRESS_SET, 'user');
+const PRINCIPAL_ID = '01J9Q3W6B1R8N5X2K4T7M0V9A1';
+const NO_ADDRESS = { principal: PRINCIPAL_ID, value: null, verified: false, verifiedAt: null };
 
 const MESSAGES: Messages = {
   menu: { system: 'System' },
@@ -68,6 +74,11 @@ const MESSAGES: Messages = {
       set: { title: 'Change password' },
       current: 'Current password',
       password: 'New password',
+    },
+    address: {
+      set: { title: 'Set the email address' },
+      value: 'Email address',
+      current: 'Current password',
     },
     totp: {
       code: 'Code',
@@ -114,6 +125,11 @@ const MESSAGES: Messages = {
         secret_hint: 'Scan the code or enter the secret, then confirm with a code',
         recovery: 'Recovery codes',
         recovery_hint: 'Store these codes now: they are shown only once',
+        address: 'Email address',
+        address_none: 'No address is set, so the password cannot be reset by mail',
+        address_verified: '{value} is confirmed and receives password reset links',
+        address_pending: '{value} waits for confirmation: open the link in the mail sent to it',
+        address_sent: 'A confirmation mail is on its way to {value}',
       },
     },
   },
@@ -155,7 +171,11 @@ class SecurityClient extends KeelMockClient {
     answers: Record<string, Envelope | Envelope[]>,
     private readonly after: Partial<Record<string, Boot>> = {},
   ) {
-    super({ boot, descriptors: [ENROLL, PASSWORD], answers });
+    super({
+      boot,
+      descriptors: [ENROLL, PASSWORD, ADDRESS],
+      answers: { [ADDRESS_GET]: ok(NO_ADDRESS), ...answers },
+    });
     this.current = boot;
   }
 
@@ -425,6 +445,61 @@ describe('the security page of the shell', () => {
     );
     const fresh = section?.querySelectorAll<HTMLInputElement>('phx-password input') ?? [];
     expect([...fresh].map((input) => input.value)).toEqual(['', '']);
+  });
+
+  it('the address panel shows the state of the address, posts auth.address.set { value, current } and says a confirmation mail is on its way', async () => {
+    const pending = { ...NO_ADDRESS, value: 'res1@example.org' };
+    const client = new SecurityClient(bootWith(false), {
+      [ADDRESS_GET]: [ok(NO_ADDRESS), ok(pending)],
+      [ADDRESS_SET]: [
+        refused('auth.error.current_required', 'current'),
+        ok(pending, 'req-address'),
+      ],
+    });
+    const fixture = await render(client);
+    const element: HTMLElement = fixture.nativeElement;
+    const toasts = TestBed.inject(PhxToastService);
+    const success = jest.spyOn(toasts, 'success');
+    const panel = element.querySelector('keel-security-address');
+    expect(panel?.getAttribute('data-address')).toBe('ready');
+    const section = (): Element | null => element.querySelector('[data-section="address"]');
+    expect(section()?.querySelector('.title')?.textContent).toBe('Email address');
+    expect(section()?.querySelector('.description')?.textContent).toBe(
+      'No address is set, so the password cannot be reset by mail',
+    );
+    const labels = [...(section()?.querySelectorAll('phx-form-row .label__text') ?? [])].map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['Email address', 'Current password']);
+    expect(ownAddressDescriptor(ADDRESS).ui?.pages).toEqual([
+      { id: 'main', fields: ['value', 'current'] },
+    ]);
+
+    type(section()?.querySelector('phx-input input') ?? null, 'res1@example.org');
+    click(section()?.querySelector('button.save') ?? null);
+    await settle(fixture);
+    await settle(fixture);
+    expect(client.callsOf(ADDRESS_SET).map((call) => call.params)).toEqual([
+      { value: 'res1@example.org', current: null },
+    ]);
+    expect(section()?.querySelector('phx-field-error')?.textContent?.trim()).toBe(
+      'The current password is required',
+    );
+    expect(success).not.toHaveBeenCalled();
+
+    type(section()?.querySelector('phx-password input') ?? null, 'old-password');
+    click(section()?.querySelector('button.save') ?? null);
+    await settle(fixture);
+    await settle(fixture);
+    expect(client.callsOf(ADDRESS_SET).map((call) => call.params)).toEqual([
+      { value: 'res1@example.org', current: null },
+      { value: 'res1@example.org', current: 'old-password' },
+    ]);
+    expect(success).toHaveBeenCalledWith('A confirmation mail is on its way to res1@example.org');
+    expect(section()?.querySelector('.description')?.textContent).toBe(
+      'res1@example.org waits for confirmation: open the link in the mail sent to it',
+    );
+    expect(panel?.getAttribute('data-verified')).toBe('false');
   });
 
   it('frontend/apps/shell/views.json names exactly the two views the shell registers', () => {

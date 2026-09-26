@@ -1,0 +1,105 @@
+{
+  "keel": 1,
+  "name": "auth.address.set",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "user",
+    "permission": "auth.password.manage"
+  },
+  "params": {
+    "title": "AddressSet",
+    "type": "object",
+    "properties": {
+      "current": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Secret"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "secret": true
+        },
+        "x-ui": {
+          "control": "password"
+        }
+      },
+      "value": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 254,
+        "x-keel": {
+          "check": "email"
+        }
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "AddressView",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "$ref": "#/$defs/Id"
+      },
+      "value": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": "boolean"
+      },
+      "verifiedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "principal",
+      "verified"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "ui": {
+    "title": "auth.address.set.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "value",
+          "current"
+        ]
+      }
+    ]
+  }
+}

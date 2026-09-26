@@ -9,8 +9,9 @@ use keel_sdk::system::Caller;
 
 use super::api::{Problems, Raise, Severity};
 use super::channels::email::{self, Mail};
-use super::channels::{ChannelKind, ERROR_KIND_UNAVAILABLE, email_of, kind_of};
+use super::channels::{ChannelKind, ERROR_KIND_UNAVAILABLE, StoredEmail, email_of, kind_of};
 use super::consumer::{STATE_FAILED, STATE_PENDING, STATE_SENT};
+use super::direct;
 use super::entity::{channel, delivery, message};
 use super::started::Started;
 
@@ -53,6 +54,9 @@ pub async fn run(started: Arc<Started>) {
         if let Err(error) = due(&started).await {
             tracing::error!(error = %error, "the sender could not read its deliveries");
         }
+        if let Err(error) = direct::due(&started).await {
+            tracing::error!(error = %error, "the sender could not read its direct deliveries");
+        }
         tokio::select! {
             () = started.woken() => {}
             () = tokio::time::sleep(POLL) => {}
@@ -91,12 +95,7 @@ async fn attempt(started: &Started, row: delivery::Model) -> Result<()> {
                 .col_expr(delivery::Column::Error, Expr::value(None::<String>))
                 .exec(&started.db)
                 .await?;
-            channel::Entity::update_many()
-                .filter(channel::Column::Id.eq(row.channel_id.clone()))
-                .col_expr(channel::Column::LastSentAt, Expr::value(Some(now)))
-                .col_expr(channel::Column::LastError, Expr::value(None::<String>))
-                .exec(&started.db)
-                .await?;
+            channel_sent(&started.db, &row.channel_id, now).await?;
             tracing::info!(
                 delivery = row.id,
                 channel = row.channel,
@@ -121,29 +120,91 @@ async fn attempt(started: &Started, row: delivery::Model) -> Result<()> {
                 .col_expr(delivery::Column::Error, Expr::value(Some(reason.clone())))
                 .exec(&started.db)
                 .await?;
-            channel::Entity::update_many()
-                .filter(channel::Column::Id.eq(row.channel_id.clone()))
-                .col_expr(
-                    channel::Column::LastError,
-                    Expr::value(Some(reason.clone())),
-                )
-                .exec(&started.db)
-                .await?;
+            channel_failed(&started.db, &row.channel_id, &reason).await?;
             if next.is_none() {
-                dead_letter(started.caller.as_ref(), &row, &reason).await;
+                dead_letter(
+                    started.caller.as_ref(),
+                    &Letter {
+                        channel_id: &row.channel_id,
+                        channel: &row.channel,
+                        delivery: &row.id,
+                        key: &row.message_key,
+                    },
+                    &reason,
+                )
+                .await;
             }
         }
     }
     Ok(())
 }
 
-async fn dead_letter(caller: &dyn Caller, row: &delivery::Model, reason: &str) {
-    let raise = Raise::new(PROBLEM_KEY, &row.channel_id, Severity::Warning)
+pub struct Letter<'a> {
+    pub channel_id: &'a str,
+    pub channel: &'a str,
+    pub delivery: &'a str,
+    pub key: &'a str,
+}
+
+pub async fn channel_sent(db: &Db, channel_id: &str, now: DateTime<Utc>) -> Result<()> {
+    channel::Entity::update_many()
+        .filter(channel::Column::Id.eq(channel_id))
+        .col_expr(channel::Column::LastSentAt, Expr::value(Some(now)))
+        .col_expr(channel::Column::LastError, Expr::value(None::<String>))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn channel_failed(db: &Db, channel_id: &str, reason: &str) -> Result<()> {
+    channel::Entity::update_many()
+        .filter(channel::Column::Id.eq(channel_id))
+        .col_expr(channel::Column::LastError, Expr::value(Some(reason)))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+pub async fn mail_channel(
+    started: &Started,
+    id: &str,
+) -> Result<(channel::Model, StoredEmail, Option<Secret>)> {
+    let channel = channel::Entity::find_by_id(id.to_owned())
+        .one(&started.db)
+        .await?
+        .ok_or_else(|| KeelError::not_found(ERROR_CHANNEL_GONE).param("id", id))?;
+    let kind = kind_of(&channel)?;
+    if kind != ChannelKind::Email {
+        return Err(KeelError::validation(ERROR_KIND_UNAVAILABLE).param("kind", kind.as_str()));
+    }
+    let email = email_of(&channel)?;
+    let password = email.open_password(started.cipher.as_ref())?;
+    Ok((channel, email, password))
+}
+
+pub async fn recipient(started: &Started, principal: &str) -> Result<(String, String)> {
+    let found = match principal.parse::<Id>() {
+        Ok(id) => started.principals.by_id(id, &started.db).await?,
+        Err(_) => None,
+    };
+    Ok(found.map_or_else(
+        || {
+            (
+                super::super::cron::api::OWNER_LOGIN.to_owned(),
+                "en".to_owned(),
+            )
+        },
+        |principal| (principal.login, principal.lang),
+    ))
+}
+
+pub async fn dead_letter(caller: &dyn Caller, letter: &Letter<'_>, reason: &str) {
+    let raise = Raise::new(PROBLEM_KEY, letter.channel_id, Severity::Warning)
         .params(json!({
-            "channel": row.channel,
-            "channelId": row.channel_id,
-            "delivery": row.id,
-            "key": row.message_key,
+            "channel": letter.channel,
+            "channelId": letter.channel_id,
+            "delivery": letter.delivery,
+            "key": letter.key,
             "error": reason,
         }))
         .map(|raise| raise.source(PROBLEM_SOURCE));
@@ -152,42 +213,19 @@ async fn dead_letter(caller: &dyn Caller, row: &delivery::Model, reason: &str) {
         Err(error) => Err(error),
     };
     if let Err(error) = raised {
-        tracing::error!(delivery = row.id, error = %error, "the dead letter could not be raised as a problem");
+        tracing::error!(delivery = letter.delivery, error = %error, "the dead letter could not be raised as a problem");
     }
 }
 
 async fn send(started: &Started, row: &delivery::Model) -> Result<()> {
-    let channel = channel::Entity::find_by_id(row.channel_id.clone())
-        .one(&started.db)
-        .await?
-        .ok_or_else(|| {
-            KeelError::not_found(ERROR_CHANNEL_GONE).param("id", row.channel_id.as_str())
-        })?;
-    let kind = kind_of(&channel)?;
-    if kind != ChannelKind::Email {
-        return Err(KeelError::validation(ERROR_KIND_UNAVAILABLE).param("kind", kind.as_str()));
-    }
-    let email = email_of(&channel)?;
-    let password = email.open_password(started.cipher.as_ref())?;
+    let (channel, email, password) = mail_channel(started, &row.channel_id).await?;
     let message = message::Entity::find_by_id(row.message_id.clone())
         .one(&started.db)
         .await?
         .ok_or_else(|| {
             KeelError::not_found(ERROR_MESSAGE_GONE).param("id", row.message_id.as_str())
         })?;
-    let recipient = match message.principal_id.parse::<Id>() {
-        Ok(id) => started.principals.by_id(id, &started.db).await?,
-        Err(_) => None,
-    };
-    let (login, lang) = recipient.map_or_else(
-        || {
-            (
-                super::super::cron::api::OWNER_LOGIN.to_owned(),
-                "en".to_owned(),
-            )
-        },
-        |principal| (principal.login, principal.lang),
-    );
+    let (login, lang) = recipient(started, &message.principal_id).await?;
     let context = json!({
         "key": message.key,
         "level": message.level,
@@ -202,6 +240,7 @@ async fn send(started: &Started, row: &delivery::Model) -> Result<()> {
         &email,
         password,
         &Mail {
+            to: &email.to,
             subject: &rendered.subject,
             body: &rendered.body,
         },

@@ -262,3 +262,48 @@ pub mod grant {
         }
     }
 }
+
+pub mod principal_address {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_principal_address")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub principal_id: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub kind: String,
+        pub value: String,
+        pub verified_at: Option<DateTimeUtc>,
+        pub updated_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod mail_token {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "auth_mail_token")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub token_hash: String,
+        pub purpose: String,
+        pub principal_id: String,
+        pub value: Option<String>,
+        pub expires_at: DateTimeUtc,
+        pub used_at: Option<DateTimeUtc>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

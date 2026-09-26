@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use keel_sdk::MailTemplate;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{Caller, OutboxSubscriber, PrincipalSource, SecretCipher};
 use tokio::sync::Notify;
 
-use super::templates::{MailTemplate, Templates};
+use super::templates::Templates;
 
 pub struct Seams {
     pub db: Db,

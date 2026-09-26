@@ -254,6 +254,309 @@
         }
       }
     },
+    "/api/v1/call/auth.address.get": {
+      "post": {
+        "operationId": "auth.address.get",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "auth.password.manage"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AddressQuery",
+                "type": "object",
+                "properties": {
+                  "principal": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "admin"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "AddressView",
+                      "type": "object",
+                      "properties": {
+                        "principal": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "value": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "verified": {
+                          "type": "boolean"
+                        },
+                        "verifiedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "principal",
+                        "verified"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/auth.address.set": {
+      "post": {
+        "operationId": "auth.address.set",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "user",
+            "permission": "auth.password.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AddressSet",
+                "type": "object",
+                "properties": {
+                  "principal": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "admin"
+                    }
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 254,
+                    "x-keel": {
+                      "check": "email"
+                    }
+                  },
+                  "current": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Secret"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "secret": true
+                    },
+                    "x-ui": {
+                      "control": "password"
+                    }
+                  }
+                },
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "AddressView",
+                      "type": "object",
+                      "properties": {
+                        "principal": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "value": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "verified": {
+                          "type": "boolean"
+                        },
+                        "verifiedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "principal",
+                        "verified"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/auth.address.verify": {
+      "post": {
+        "operationId": "auth.address.verify",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AddressVerify",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Verified",
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/v1/call/auth.grant.delete": {
       "post": {
         "operationId": "auth.grant.delete",
@@ -1138,6 +1441,163 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      }
+    },
+    "/api/v1/call/auth.password.reset.confirm": {
+      "post": {
+        "operationId": "auth.password.reset.confirm",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ResetConfirm",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "password": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    },
+                    "x-ui": {
+                      "control": "password"
+                    }
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ResetDone",
+                      "type": "object",
+                      "properties": {
+                        "login": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "login"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/call/auth.password.reset.request": {
+      "post": {
+        "operationId": "auth.password.reset.request",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ResetRequest",
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "login"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Nothing",
+                      "type": "object"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
       }
     },
     "/api/v1/call/auth.password.set": {

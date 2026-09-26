@@ -1,0 +1,60 @@
+---
+source: crates/testkit/src/snapshots.rs
+info:
+  function: auth.address.verify
+  level: guest
+---
+{
+  "keel": 1,
+  "name": "auth.address.verify",
+  "module": "auth",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "AddressVerify",
+    "type": "object",
+    "properties": {
+      "token": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      }
+    },
+    "required": [
+      "token"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Verified",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "value"
+    ]
+  },
+  "ui": {
+    "title": "auth.address.verify.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "token"
+        ]
+      }
+    ]
+  }
+}

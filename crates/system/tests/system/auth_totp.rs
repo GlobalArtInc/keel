@@ -877,7 +877,14 @@ async fn the_code_and_the_challenge_are_masked_in_the_audit_event_and_the_descri
     }
     assert_eq!(
         names[0],
-        ["auth.key.redeem", "auth.login", "auth.totp.verify"]
+        [
+            "auth.address.verify",
+            "auth.key.redeem",
+            "auth.login",
+            "auth.password.reset.confirm",
+            "auth.password.reset.request",
+            "auth.totp.verify"
+        ]
     );
     assert!(
         names[1].contains(&"auth.totp.enroll".to_owned()),

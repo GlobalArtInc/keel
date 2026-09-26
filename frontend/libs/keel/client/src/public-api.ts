@@ -19,9 +19,12 @@ export { KeelBoot } from './boot';
 export { KeelDescriptors } from './descriptors';
 export { KeelI18n } from './i18n';
 export {
+  AUTH_ADDRESS_VERIFY,
   AUTH_KEY_REDEEM,
   AUTH_LOGIN,
   AUTH_LOGOUT,
+  AUTH_RESET_CONFIRM,
+  AUTH_RESET_REQUEST,
   AUTH_SU,
   AUTH_SU_EXIT,
   AUTH_TOTP_VERIFY,
@@ -29,15 +32,20 @@ export {
   KeelAuth,
 } from './auth';
 export type {
+  AddressVerified,
   Delegation,
   LoggedIn,
   LoggedOut,
   LoginParams,
   Redeemed,
   RedeemKeyParams,
+  ResetConfirmParams,
+  ResetDone,
+  ResetRequestParams,
   SetupAdminParams,
   SetupCreated,
   SuParams,
+  VerifyAddressParams,
   VerifyTotpParams,
 } from './auth';
 export { listFetch, toListQuery } from './list';

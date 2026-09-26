@@ -1,5 +1,6 @@
 pub mod api;
 
+mod address;
 mod authenticator;
 mod entity;
 mod functions;
@@ -7,8 +8,10 @@ mod grant;
 mod ip_rule;
 mod key;
 mod limits;
+mod mail;
 mod password;
 mod policy;
+mod reset;
 mod session;
 mod su;
 mod token;
@@ -17,10 +20,10 @@ mod totp;
 use std::sync::{Arc, OnceLock};
 
 use keel_sdk::prelude::*;
-use keel_sdk::schemars::schema_for;
+use keel_sdk::schemars::{json_schema, schema_for};
 use keel_sdk::system::{
-    Authenticator, PasswordStore, PermissionCatalogue, PermissionSource, PrincipalSource,
-    SecondFactorSource, SecretCipher,
+    AddressSource, Authenticator, Caller, PasswordStore, PermissionCatalogue, PermissionSource,
+    PrincipalSource, SecondFactorSource, SecretCipher,
 };
 
 use api::{Lockout, LoginMethod, RateLimit};
@@ -29,12 +32,20 @@ use functions::Local;
 use grant::Grants;
 use ip_rule::IpRules;
 use password::Passwords;
+use reset::ResetLimit;
 use totp::challenge::Attempts;
 
+pub use address::functions::SET as ADDRESS_SET;
 pub use key::functions::PERMISSION_ISSUE as KEY_ISSUE;
 pub use key::{KEY_PREFIX as LOGIN_KEY_PREFIX, LOGIN_PATH, MAX_TTL_SECONDS as LOGIN_KEY_MAX_TTL};
 pub use limits::{GUEST_PER_MINUTE, LOCKOUT_MINUTES, LOCKOUT_THRESHOLD};
+pub use mail::{RESET_PREFIX, SETTING_SHELL_URL};
 pub use password::{HASH_PREFIX, MIN_LENGTH as PASSWORD_MIN_LENGTH};
+pub use reset::functions::{CONFIRM as RESET_CONFIRM, REQUEST as RESET_REQUEST};
+pub use reset::{
+    PER_CLIENT as RESET_PER_CLIENT, PER_LOGIN as RESET_PER_LOGIN, REASON_RESET,
+    SETTING_MINUTES as SETTING_RESET_MINUTES,
+};
 pub use session::{
     ABSOLUTE_HOURS, IDLE_MINUTES, KIND_SESSION, KIND_SU, REASON_LOGOUT, REASON_REPLACED,
     REASON_REVOKED, REASON_SU_EXIT, TOKEN_PREFIX,
@@ -82,7 +93,7 @@ impl State {
     }
 }
 
-fn settings() -> [SettingDef; 6] {
+fn settings() -> [SettingDef; 8] {
     [
         SettingDef::new(SETTING_PASSWORD_MIN_LENGTH, schema_for!(u32)).default(PASSWORD_MIN_LENGTH),
         SettingDef::new(SETTING_SESSION_IDLE_MINUTES, schema_for!(u32)).default(IDLE_MINUTES),
@@ -90,6 +101,16 @@ fn settings() -> [SettingDef; 6] {
         SettingDef::new(SETTING_LOCKOUT_THRESHOLD, schema_for!(u32)).default(LOCKOUT_THRESHOLD),
         SettingDef::new(SETTING_LOCKOUT_MINUTES, schema_for!(u32)).default(LOCKOUT_MINUTES),
         SettingDef::new(SETTING_RATE_GUEST_PER_MINUTE, schema_for!(u32)).default(GUEST_PER_MINUTE),
+        SettingDef::new(
+            reset::SETTING_MINUTES,
+            json_schema!({ "type": "integer", "minimum": 5, "maximum": 1440 }),
+        )
+        .default(reset::MINUTES),
+        SettingDef::new(
+            mail::SETTING_SHELL_URL,
+            json_schema!({ "type": "string", "maxLength": 512 }),
+        )
+        .default(""),
     ]
 }
 
@@ -105,10 +126,13 @@ fn init(r: &mut Registrar) -> Result<()> {
     let rate_limit = Arc::new(RateLimit::new());
     let lockout = Arc::new(Lockout::new());
     let ip_rules = Arc::new(IpRules::default());
+    let reset_limit = Arc::new(ResetLimit::default());
     r.require::<dyn SecretCipher>()
         .require::<dyn SettingsSource>()
         .require::<dyn PermissionCatalogue>()
+        .require::<dyn Caller>()
         .provide::<dyn SecondFactorSource>(Arc::new(totp::SecondFactor))
+        .provide::<dyn AddressSource>(Arc::new(address::Addresses))
         .provide::<dyn PasswordStore>(passwords.clone())
         .provide::<dyn PermissionSource>(Arc::new(Grants))
         .provide::<RateLimit>(rate_limit.clone())
@@ -138,6 +162,11 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(grant::functions::list())
         .function(grant::functions::set())
         .function(grant::functions::delete())
+        .function(reset::functions::request(reset_limit))
+        .function(reset::functions::confirm(passwords.clone()))
+        .function(address::functions::get())
+        .function(address::functions::set(passwords.clone()))
+        .function(address::functions::verify())
         .permission("auth.password.manage", &[Level::User, Level::Reseller])
         .permission(TOKEN_READ, &[Level::User, Level::Reseller])
         .permission(TOKEN_MANAGE, &[Level::User, Level::Reseller])
@@ -179,6 +208,9 @@ fn init(r: &mut Registrar) -> Result<()> {
     for setting in settings() {
         r.contribute(setting);
     }
+    for template in mail::templates() {
+        r.contribute(template);
+    }
     r.start(move |ctx| async move {
         let clock = ctx.require::<dyn Clock>()?;
         let principals = ctx.require::<dyn PrincipalSource>()?;
@@ -197,9 +229,11 @@ fn init(r: &mut Registrar) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use keel_sdk::MailTemplate;
+
     use super::*;
 
-    const FUNCTIONS: [&str; 23] = [
+    const FUNCTIONS: [&str; 28] = [
         "auth.password.set",
         "auth.login",
         "auth.logout",
@@ -223,6 +257,11 @@ mod tests {
         "auth.grant.list",
         "auth.grant.set",
         "auth.grant.delete",
+        RESET_REQUEST,
+        RESET_CONFIRM,
+        address::functions::GET,
+        ADDRESS_SET,
+        address::functions::VERIFY,
     ];
 
     #[test]
@@ -277,6 +316,16 @@ mod tests {
                     Kind::Action,
                     Mode::Write,
                     Level::Reseller
+                ),
+                (RESET_REQUEST, Kind::Form, Mode::Write, Level::Guest),
+                (RESET_CONFIRM, Kind::Form, Mode::Write, Level::Guest),
+                (address::functions::GET, Kind::Get, Mode::Read, Level::User),
+                (ADDRESS_SET, Kind::Form, Mode::Write, Level::User),
+                (
+                    address::functions::VERIFY,
+                    Kind::Form,
+                    Mode::Write,
+                    Level::Guest
                 ),
             ]
         );
@@ -382,8 +431,17 @@ mod tests {
                     Some(&json!(30)),
                     Level::Admin
                 ),
+                (SETTING_RESET_MINUTES, Some(&json!(60)), Level::Admin),
+                (SETTING_SHELL_URL, Some(&json!("")), Level::Admin),
             ]
         );
+        let templates: Vec<&str> = registrations
+            .contributions
+            .of::<MailTemplate>()
+            .map(MailTemplate::id)
+            .collect();
+        assert_eq!(templates, [mail::RESET_TEMPLATE, mail::VERIFY_TEMPLATE]);
+        assert!(registrations.provides.get::<dyn AddressSource>().is_some());
         assert!(
             registrations
                 .provides
@@ -403,7 +461,8 @@ mod tests {
             [
                 keel_sdk::runtime::ServiceKey::of::<dyn SecretCipher>(),
                 keel_sdk::runtime::ServiceKey::of::<dyn SettingsSource>(),
-                keel_sdk::runtime::ServiceKey::of::<dyn PermissionCatalogue>()
+                keel_sdk::runtime::ServiceKey::of::<dyn PermissionCatalogue>(),
+                keel_sdk::runtime::ServiceKey::of::<dyn Caller>()
             ]
         );
         assert_eq!(MODULE.sdk, VERSION);

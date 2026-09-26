@@ -419,14 +419,27 @@ async fn an_unknown_login_method_is_a_validation_error_on_the_method_field() {
 async fn the_login_and_logout_descriptors_match_their_snapshots_and_the_password_is_secret() {
     let harness = Harness::new().module(&MODULE).boot().await;
     let names = harness.snapshot_descriptors(Level::Guest, snapshots_dir());
-    assert_eq!(names, ["auth.key.redeem", "auth.login", "auth.totp.verify"]);
+    assert_eq!(
+        names,
+        [
+            "auth.address.verify",
+            "auth.key.redeem",
+            "auth.login",
+            "auth.password.reset.confirm",
+            "auth.password.reset.request",
+            "auth.totp.verify"
+        ]
+    );
     let names = harness.snapshot_descriptors(Level::Service, snapshots_dir());
     assert_eq!(
         names,
         [
+            "auth.address.verify",
             "auth.key.redeem",
             "auth.login",
             "auth.logout",
+            "auth.password.reset.confirm",
+            "auth.password.reset.request",
             "auth.su.exit",
             "auth.totp.verify"
         ]

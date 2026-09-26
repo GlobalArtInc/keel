@@ -34,6 +34,7 @@ import {
   PhxToastService,
 } from '@globalart/phoenix-ui';
 import { firstValueFrom } from 'rxjs';
+import { KeelSecurityAddressComponent } from './address.component';
 import { KeelTotpDisableComponent } from './disable.component';
 import { KeelTotpEnrollComponent } from './enroll.component';
 import {
@@ -69,6 +70,7 @@ export const MODAL_WIDTH = 400;
     PhxFormButtonsComponent,
     KeelFindingsComponent,
     KeelPageComponent,
+    KeelSecurityAddressComponent,
   ],
   template: `
     <phx-page-header [title]="title()" />
@@ -103,6 +105,7 @@ export const MODAL_WIDTH = 400;
         }
       }
     </phx-panel>
+    <keel-security-address />
     <phx-panel
       data-section="totp"
       [title]="totpLabel()"

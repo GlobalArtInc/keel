@@ -3,6 +3,7 @@ pub mod api;
 mod channels;
 mod consumer;
 mod counter;
+mod direct;
 mod entity;
 mod functions;
 mod lifecycle;
@@ -53,7 +54,12 @@ pub const FUNCTIONS: [&str; 11] = [
     CHANNEL_TEST,
     DELIVERY_LIST,
 ];
-pub const INTERNAL_FUNCTIONS: [&str; 3] = [PROBLEM_RAISE, PROBLEM_CLEAR, MESSAGE_CREATE];
+pub const INTERNAL_FUNCTIONS: [&str; 4] = [
+    PROBLEM_RAISE,
+    PROBLEM_CLEAR,
+    MESSAGE_CREATE,
+    functions::internal::SEND_TO,
+];
 pub const MENU_PATH: &str = "system/problems";
 pub const CHANNELS_MENU_PATH: &str = "system/channels";
 pub const WIDGET_LIMIT: u32 = 5;
@@ -73,6 +79,8 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let sources: poll::Sources = Arc::new(OnceLock::new());
     let started = sources.clone();
+    let mailer: direct::Mailer = Arc::new(OnceLock::new());
+    let running = mailer.clone();
     r.provide::<dyn ProblemCounter>(Arc::new(counter::Counter))
         .require::<dyn Caller>()
         .require::<dyn LiveEvents>()
@@ -84,6 +92,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::internal::problem_raise())
         .function(functions::internal::problem_clear())
         .function(functions::internal::message_create())
+        .function(functions::internal::send_to(mailer))
         .function(functions::message_list())
         .function(functions::message_mark())
         .function(functions::message_clear())
@@ -130,6 +139,9 @@ fn init(r: &mut Registrar) -> Result<()> {
                 },
                 templates,
             )?;
+            if running.set(mail.clone()).is_err() {
+                tracing::warn!("the notify module was started twice; the first mailer stands");
+            }
             ctx.spawn(consumer::run(mail.clone()));
             ctx.spawn(sender::run(mail));
             Ok(())
@@ -168,6 +180,13 @@ mod tests {
                 (PROBLEM_CLEAR, Kind::Action, Mode::Write, Level::Admin, true),
                 (
                     MESSAGE_CREATE,
+                    Kind::Action,
+                    Mode::Write,
+                    Level::Admin,
+                    true
+                ),
+                (
+                    functions::internal::SEND_TO,
                     Kind::Action,
                     Mode::Write,
                     Level::Admin,

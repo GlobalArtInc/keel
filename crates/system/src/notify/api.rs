@@ -15,7 +15,8 @@ use super::super::cron::api::owner;
 use super::functions::internal::{MESSAGE_CREATE, PROBLEM_CLEAR, PROBLEM_RAISE};
 
 pub use super::channels::{Channel, ChannelKind, EmailInput, EmailView, Security};
-pub use super::templates::{MailTemplate, Rendered, Text};
+pub use super::templates::Rendered;
+pub use keel_sdk::{MailTemplate, MailText};
 
 pub const SOURCE_PROBLEM: &str = "problem";
 pub const SOURCE_TEST: &str = "test";

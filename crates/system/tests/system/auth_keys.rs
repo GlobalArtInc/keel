@@ -415,7 +415,17 @@ async fn redeem_is_refused_cross_site_replaces_the_session_it_arrived_with_and_m
 async fn the_key_descriptors_match_their_snapshots_and_the_key_is_secret_and_shown_once() {
     let harness = Harness::new().module(&MODULE).boot().await;
     let names = harness.snapshot_descriptors(Level::Guest, snapshots_dir());
-    assert_eq!(names, ["auth.key.redeem", "auth.login", "auth.totp.verify"]);
+    assert_eq!(
+        names,
+        [
+            "auth.address.verify",
+            "auth.key.redeem",
+            "auth.login",
+            "auth.password.reset.confirm",
+            "auth.password.reset.request",
+            "auth.totp.verify"
+        ]
+    );
     let names = harness.snapshot_descriptors(Level::Reseller, snapshots_dir());
     assert!(names.contains(&"auth.key.issue".to_owned()), "{names:?}");
     let registry = harness.registry();

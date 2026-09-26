@@ -47,7 +47,7 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_auth")
         .await;
-    assert_eq!(applied, ["10"]);
+    assert_eq!(applied, ["12"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'auth\\_%' ORDER BY table_name")
@@ -59,7 +59,9 @@ async fn the_ledger_and_the_tables_exist_and_a_set_password_is_stored_as_argon2i
             "auth_ip_rule",
             "auth_login_challenge",
             "auth_login_key",
+            "auth_mail_token",
             "auth_password",
+            "auth_principal_address",
             "auth_recovery_code",
             "auth_session",
             "auth_token",
@@ -254,18 +256,33 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
     for level in Level::ALL {
         let names = harness.snapshot_descriptors(level, snapshots_dir());
         let expected: &[&str] = match level {
-            Level::Guest => &["auth.key.redeem", "auth.login", "auth.totp.verify"],
+            Level::Guest => &[
+                "auth.address.verify",
+                "auth.key.redeem",
+                "auth.login",
+                "auth.password.reset.confirm",
+                "auth.password.reset.request",
+                "auth.totp.verify",
+            ],
             Level::Service => &[
+                "auth.address.verify",
                 "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
+                "auth.password.reset.confirm",
+                "auth.password.reset.request",
                 "auth.su.exit",
                 "auth.totp.verify",
             ],
             Level::User => &[
+                "auth.address.get",
+                "auth.address.set",
+                "auth.address.verify",
                 "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
+                "auth.password.reset.confirm",
+                "auth.password.reset.request",
                 "auth.password.set",
                 "auth.session.list",
                 "auth.session.revoke",
@@ -279,6 +296,9 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             Level::Reseller => &[
+                "auth.address.get",
+                "auth.address.set",
+                "auth.address.verify",
                 "auth.grant.delete",
                 "auth.grant.list",
                 "auth.grant.set",
@@ -286,6 +306,8 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
+                "auth.password.reset.confirm",
+                "auth.password.reset.request",
                 "auth.password.set",
                 "auth.session.list",
                 "auth.session.revoke",
@@ -300,6 +322,9 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.totp.verify",
             ],
             _ => &[
+                "auth.address.get",
+                "auth.address.set",
+                "auth.address.verify",
                 "auth.grant.delete",
                 "auth.grant.list",
                 "auth.grant.set",
@@ -310,6 +335,8 @@ async fn the_password_descriptor_matches_its_snapshots_and_marks_both_passwords_
                 "auth.key.redeem",
                 "auth.login",
                 "auth.logout",
+                "auth.password.reset.confirm",
+                "auth.password.reset.request",
                 "auth.password.set",
                 "auth.session.list",
                 "auth.session.revoke",

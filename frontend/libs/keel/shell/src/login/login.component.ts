@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { KeelAuth, KeelBoot, KeelI18n, type LoggedIn } from '@globalart/keel/client';
 import type { CallError, Envelope } from '@globalart/keel/meta';
 import { BACK_KEY } from '@globalart/keel/renderer';
@@ -13,7 +13,7 @@ import {
   PhxPasswordComponent,
   PhxTextButtonComponent,
 } from '@globalart/phoenix-ui';
-import { RETURN_TO, returnTarget } from '../guard';
+import { RESET_PATH, RETURN_TO, returnTarget } from '../guard';
 
 export const KEY_PARAM = 'key';
 export const BRAND_KEY = 'keel.brand';
@@ -27,6 +27,7 @@ export const LOGIN_VERIFY_KEY = 'keel.shell.login.verify';
 export const LOGIN_KEY_KEY = 'keel.shell.login.key';
 export const LOGIN_KEY_FAILED_KEY = 'keel.shell.login.key_failed';
 export const LOGIN_FAILED_KEY = 'keel.shell.login.failed';
+export const LOGIN_FORGOT_KEY = 'keel.shell.login.forgot';
 
 export type LoginStep = { kind: 'password' } | { kind: 'code'; challenge: string };
 
@@ -45,6 +46,7 @@ function required(): FormControl<string> {
   selector: 'keel-login',
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     PhxFullscreenLayoutComponent,
     PhxLogonComponent,
     PhxInputComponent,
@@ -136,6 +138,10 @@ function required(): FormControl<string> {
           >
             {{ backLabel() }}
           </button>
+        } @else if (!redeeming()) {
+          <a phxLogonFooter phxTextButton="link" class="forgot" [routerLink]="resetPath">
+            {{ forgotLabel() }}
+          </a>
         }
       </phx-logon>
     </phx-fullscreen-layout>
@@ -184,6 +190,7 @@ export class KeelLoginComponent {
 
   readonly passwordForm = new FormGroup({ login: required(), password: required() });
   readonly codeForm = new FormGroup({ code: required() });
+  readonly resetPath = `/${RESET_PATH}`;
 
   readonly step = this.held.asReadonly();
   readonly busy = this.working.asReadonly();
@@ -200,6 +207,7 @@ export class KeelLoginComponent {
   protected readonly verifyLabel = computed(() => this.i18n.t(LOGIN_VERIFY_KEY));
   protected readonly redeemingText = computed(() => this.i18n.t(LOGIN_KEY_KEY));
   protected readonly backLabel = computed(() => this.i18n.t(BACK_KEY));
+  protected readonly forgotLabel = computed(() => this.i18n.t(LOGIN_FORGOT_KEY));
 
   constructor() {
     const key = this.route.snapshot.queryParamMap.get(KEY_PARAM);

@@ -12,6 +12,9 @@ export const AUTH_LOGOUT = 'auth.logout';
 export const AUTH_SU = 'auth.su';
 export const AUTH_SU_EXIT = 'auth.su.exit';
 export const KEEL_SETUP_ADMIN = 'keel.setup.admin';
+export const AUTH_RESET_REQUEST = 'auth.password.reset.request';
+export const AUTH_RESET_CONFIRM = 'auth.password.reset.confirm';
+export const AUTH_ADDRESS_VERIFY = 'auth.address.verify';
 
 export interface LoginParams {
   login: string;
@@ -41,6 +44,27 @@ export interface SetupAdminParams {
 export interface SetupCreated {
   id: Id;
   login: string;
+}
+
+export interface ResetRequestParams {
+  login: string;
+}
+
+export interface ResetConfirmParams {
+  token: string;
+  password: string;
+}
+
+export interface ResetDone {
+  login: string;
+}
+
+export interface VerifyAddressParams {
+  token: string;
+}
+
+export interface AddressVerified {
+  value: string;
 }
 
 export type LoggedIn =
@@ -92,6 +116,18 @@ export class KeelAuth {
 
   setupAdmin(params: SetupAdminParams): Promise<Envelope<SetupCreated>> {
     return firstValueFrom(this.client.call<SetupCreated>(KEEL_SETUP_ADMIN, params));
+  }
+
+  requestReset(params: ResetRequestParams): Promise<Envelope<Record<string, never>>> {
+    return firstValueFrom(this.client.call<Record<string, never>>(AUTH_RESET_REQUEST, params));
+  }
+
+  confirmReset(params: ResetConfirmParams): Promise<Envelope<ResetDone>> {
+    return firstValueFrom(this.client.call<ResetDone>(AUTH_RESET_CONFIRM, params));
+  }
+
+  verifyAddress(params: VerifyAddressParams): Promise<Envelope<AddressVerified>> {
+    return firstValueFrom(this.client.call<AddressVerified>(AUTH_ADDRESS_VERIFY, params));
   }
 
   private async run<T>(func: string, params: unknown): Promise<Envelope<T>> {

@@ -15,7 +15,7 @@ async fn notify_alone_boots_with_its_tables_its_poll_job_and_answers_its_lists_o
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_notify")
         .await;
-    assert_eq!(applied, ["5"]);
+    assert_eq!(applied, ["6"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'notify\\_%' ORDER BY table_name")
@@ -26,6 +26,7 @@ async fn notify_alone_boots_with_its_tables_its_poll_job_and_answers_its_lists_o
             "notify_channel",
             "notify_cursor",
             "notify_delivery",
+            "notify_direct",
             "notify_message",
             "notify_problem"
         ]

@@ -139,3 +139,32 @@ pub mod cursor {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod direct {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "notify_direct")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub principal_id: String,
+        pub channel_id: String,
+        pub channel: String,
+        pub template: String,
+        pub address: String,
+        pub params_sealed: Option<String>,
+        pub attempt: i32,
+        pub state: String,
+        pub next_at: DateTimeUtc,
+        pub error: Option<String>,
+        pub sent_at: Option<DateTimeUtc>,
+        pub created_at: DateTimeUtc,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

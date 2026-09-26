@@ -3,8 +3,8 @@ use std::sync::{Mutex, PoisonError};
 use keel_sdk::prelude::*;
 use keel_system::auth::{
     MODULE, PASSWORD_MIN_LENGTH, SETTING_LOCKOUT_MINUTES, SETTING_LOCKOUT_THRESHOLD,
-    SETTING_PASSWORD_MIN_LENGTH, SETTING_RATE_GUEST_PER_MINUTE, SETTING_SESSION_ABSOLUTE_HOURS,
-    SETTING_SESSION_IDLE_MINUTES,
+    SETTING_PASSWORD_MIN_LENGTH, SETTING_RATE_GUEST_PER_MINUTE, SETTING_RESET_MINUTES,
+    SETTING_SESSION_ABSOLUTE_HOURS, SETTING_SESSION_IDLE_MINUTES, SETTING_SHELL_URL,
 };
 use keel_testkit::{Harness, Reply, Who, tokio};
 
@@ -123,7 +123,7 @@ async fn the_policy_refuses_a_short_password_and_one_equal_to_the_login_wherever
 }
 
 #[tokio::test]
-async fn a_module_reads_the_six_setting_definitions_of_auth_with_their_defaults() {
+async fn a_module_reads_the_eight_setting_definitions_of_auth_with_their_defaults() {
     let harness = Harness::new().module(&MODULE).module(&PROBE).boot().await;
     let seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner).clone();
     let expected: Vec<(String, Option<Value>, Level)> = [
@@ -133,9 +133,11 @@ async fn a_module_reads_the_six_setting_definitions_of_auth_with_their_defaults(
         (SETTING_LOCKOUT_THRESHOLD, 5),
         (SETTING_LOCKOUT_MINUTES, 15),
         (SETTING_RATE_GUEST_PER_MINUTE, 30),
+        (SETTING_RESET_MINUTES, 60),
     ]
     .into_iter()
     .map(|(key, default)| (key.to_owned(), Some(json!(default)), Level::Admin))
+    .chain([(SETTING_SHELL_URL.to_owned(), Some(json!("")), Level::Admin)])
     .collect();
     assert_eq!(seen, expected);
     harness.finish().await;

@@ -4,8 +4,8 @@ use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
 use keel_system::auth::{
     PASSWORD_MIN_LENGTH, SETTING_LOCKOUT_MINUTES, SETTING_LOCKOUT_THRESHOLD,
-    SETTING_PASSWORD_MIN_LENGTH, SETTING_RATE_GUEST_PER_MINUTE, SETTING_SESSION_ABSOLUTE_HOURS,
-    SETTING_SESSION_IDLE_MINUTES,
+    SETTING_PASSWORD_MIN_LENGTH, SETTING_RATE_GUEST_PER_MINUTE, SETTING_RESET_MINUTES,
+    SETTING_SESSION_ABSOLUTE_HOURS, SETTING_SESSION_IDLE_MINUTES, SETTING_SHELL_URL,
 };
 use keel_system::{auth, settings};
 use keel_testkit::{Answer, ErrorCode, Harness, Reply, TestHttp, Who, tokio};
@@ -135,12 +135,14 @@ async fn the_admin_lists_the_six_auth_definitions_and_a_raised_minimum_makes_the
             SETTING_LOCKOUT_MINUTES,
             SETTING_LOCKOUT_THRESHOLD,
             SETTING_PASSWORD_MIN_LENGTH,
+            SETTING_RESET_MINUTES,
             SETTING_RATE_GUEST_PER_MINUTE,
             SETTING_SESSION_ABSOLUTE_HOURS,
             SETTING_SESSION_IDLE_MINUTES,
+            SETTING_SHELL_URL,
         ]
     );
-    assert_eq!(page["total"], json!(6));
+    assert_eq!(page["total"], json!(8));
     let min_length = &page["data"][2];
     assert_eq!(
         min_length,
@@ -347,10 +349,10 @@ async fn a_value_inherits_from_the_root_down_the_account_path_and_a_composition_
             json!({ "filters": [{ "key": "level", "value": ["admin"] }], "pageSize": 2, "page": 2 }),
         )
         .await;
-    assert_eq!(data(&filtered)["total"], json!(6));
+    assert_eq!(data(&filtered)["total"], json!(8));
     assert_eq!(
         keys(data(&filtered)),
-        [SETTING_PASSWORD_MIN_LENGTH, SETTING_RATE_GUEST_PER_MINUTE]
+        [SETTING_PASSWORD_MIN_LENGTH, SETTING_RESET_MINUTES]
     );
     let ranged = harness
         .call(

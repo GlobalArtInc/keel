@@ -1,0 +1,75 @@
+{
+  "keel": 1,
+  "name": "auth.address.get",
+  "module": "auth",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "auth.password.manage"
+  },
+  "params": {
+    "title": "AddressQuery",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "admin"
+        }
+      }
+    },
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "AddressView",
+    "type": "object",
+    "properties": {
+      "principal": {
+        "$ref": "#/$defs/Id"
+      },
+      "value": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "verified": {
+        "type": "boolean"
+      },
+      "verifiedAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "principal",
+      "verified"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

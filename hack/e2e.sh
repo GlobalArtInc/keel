@@ -23,6 +23,9 @@ reseller_login=res1
 user_login=alice
 polled_tag=@polled
 setup_tag=@setup
+mail_tag=@mail
+reset_login=bob
+reset_address=bob@example.org
 guest_per_minute=120
 setup_link=""
 dns_zone=cli.e2e.test
@@ -320,6 +323,10 @@ http_status_is() {
   fi
 }
 
+sql() {
+  psql "$(database_url "$admin_url" "$database")" -qAt -v ON_ERROR_STOP=1 -c "$1"
+}
+
 create_principal() {
   local out=$1 login=$2 level=$3 account=$4 password=$5
   keel_ok "$out" ctl keel.principal.create "login=$login" "level=$level" "account=$account"
@@ -405,10 +412,12 @@ keel_ok "$site/enable.out" product enable demo
 keel_ok "$site/enable-dns.out" product enable dns
 start_serve
 keel_ok "$site/rate.json" ctl settings.set key=auth.rate.guest_per_minute value=$guest_per_minute
+keel_ok "$site/shell-url.json" ctl settings.set key=auth.shell_url "value=$scheme://127.0.0.1:$port"
 
 admin_password=$(secret)
 reseller_password=$(secret)
 user_password=$(secret)
+reset_password=$(secret)
 e2e_env=(
   "KEEL_E2E_URL=$scheme://127.0.0.1:$port"
   "KEEL_E2E_ROOT_PASSWORD=$admin_password"
@@ -448,7 +457,7 @@ e2e_env+=("KEEL_E2E_DNS_ZONE=$dns_zone")
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag" "$@"
+  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag|$mail_tag" "$@"
 )
 
 echo "--- the zones of the browser, the CLI and the token"
@@ -471,5 +480,18 @@ echo "--- pnpm e2e $polled_tag"
   cd "$frontend"
   env "${e2e_env[@]}" pnpm e2e --grep "$polled_tag"
 )
+
+echo "--- pnpm e2e $mail_tag"
+create_principal "$site/reset-user.json" "$reset_login" user "$user_account" "$reset_password"
+reset_id=$(json_get "$site/reset-user.json" 'doc["data"]["id"]')
+check "ctl auth.address.set gives $reset_login the confirmed address $reset_address" keel_ok "$site/reset-address.json" ctl auth.address.set "principal=$reset_id" "value=$reset_address"
+check "auth.address.set answers the confirmed address" json_is "$site/reset-address.json" "doc['ok'] is True and doc['data']['value'] == '$reset_address' and doc['data']['verified'] is True"
+(
+  cd "$frontend"
+  env "${e2e_env[@]}" "KEEL_E2E_SMTP_API=$smtp_api" "KEEL_E2E_RESET_LOGIN=$reset_login" \
+    "KEEL_E2E_RESET_PASSWORD=$reset_password" "KEEL_E2E_RESET_ADDRESS=$reset_address" \
+    pnpm e2e --grep "$mail_tag"
+)
+check "the reset left one used reset token of $reset_login" test "$(sql "SELECT count(*) FROM keel.auth_mail_token WHERE purpose = 'reset' AND used_at IS NOT NULL AND principal_id = '$reset_id'")" = "1"
 
 stop_serve || fail "keel serve did not stop cleanly"

@@ -418,6 +418,7 @@
           "code": "Code",
           "code_hint": "Enter the code from your authenticator app, or a recovery code",
           "failed": "Sign-in failed",
+          "forgot": "Forgot the password?",
           "key": "Signing in with the login key",
           "key_failed": "The login key was not accepted",
           "login": "Login",
@@ -454,7 +455,22 @@
           "notifications": "Notifications",
           "tasks": "Tasks"
         },
+        "reset.done": "The password is changed and every session of the login is closed. Sign in with the new password.",
+        "reset.failed": "The request failed; try again",
+        "reset.intro": "Enter your login. If it has a confirmed email address, a link to choose a new password is mailed to it.",
+        "reset.login": "Login",
+        "reset.password": "New password",
+        "reset.save": "Set the password",
+        "reset.sent": "If the login has a confirmed email address, a link to reset the password is on its way. Open it before it expires.",
+        "reset.submit": "Send the link",
+        "reset.title": "Reset the password",
+        "reset.to_login": "Back to sign in",
         "security": {
+          "address": "Email address",
+          "address_none": "No address is set, so the password cannot be reset by mail",
+          "address_pending": "{value} waits for confirmation: open the link in the mail sent to it",
+          "address_sent": "A confirmation mail is on its way to {value}",
+          "address_verified": "{value} is confirmed and receives password reset links",
           "confirm": "Confirm",
           "disable": "Disable",
           "enroll": "Set up",
@@ -503,7 +519,12 @@
           "sessions": "Sessions",
           "theme": "Theme",
           "tokens": "API tokens"
-        }
+        },
+        "verify.continue": "Continue",
+        "verify.done": "The address {value} is confirmed",
+        "verify.failed": "The confirmation link is not valid",
+        "verify.pending": "Confirming the address",
+        "verify.title": "Confirm the email address"
       },
       "state": "State",
       "stream": {
@@ -671,6 +692,12 @@
       }
     },
     "auth": {
+      "address.current": "Current password",
+      "address.principal": "Principal",
+      "address.set.title": "Set the email address",
+      "address.token": "Confirmation link",
+      "address.value": "Email address",
+      "address.verify.title": "Confirm the email address",
       "error": {
         "challenge": "The sign-in challenge is no longer valid; sign in again",
         "code": "The code is wrong",
@@ -699,10 +726,13 @@
         "password_short": "The password must be at least {min} characters long",
         "rate_limited": "Too many requests from your address; wait a minute",
         "redirect": "The landing path must start with a single / and stay inside the installation",
+        "reset_limited": "Too many reset requests; try again later",
+        "reset_token": "The reset link is not valid any more; ask for a new one",
         "session_account": "The session names an account that cannot be read",
         "session_actor": "The session names an actor that cannot be read",
         "session_only": "This call needs a session",
         "session_principal": "The session names a principal that cannot be read",
+        "shell_url": "The shell address is not set, so no confirmation link can be mailed; ask the administrator to set auth.shell_url",
         "su_nested": "You are already acting as another principal; return first",
         "token_expires_past": "The expiry must lie in the future",
         "token_level": "The level ceiling {level} must lie between service and your level {caller}",
@@ -710,14 +740,15 @@
         "token_mask": "The mask {mask} is neither a function name nor a prefix ending in .*",
         "token_net": "The stored network {net} of a token cannot be read",
         "token_owner": "The owner has no tokens; create one as a stored principal",
-        "token_principal": "The token names a principal that cannot be read",
+        "token_principal": "The link names a principal that cannot be read",
         "token_scope": "A token cannot be wider than the scope it is created under",
         "totp_enrolled": "A second factor is already enrolled; disable it first",
         "totp_not_enrolled": "No second factor is being set up",
         "totp_owner": "The owner has no second factor; it signs in over the socket",
         "totp_principal": "The second factor names a principal that cannot be read",
         "totp_secret": "The stored second factor cannot be read",
-        "unknown_permission": "The permission {key} is not registered on this installation"
+        "unknown_permission": "The permission {key} is not registered on this installation",
+        "verify_token": "The confirmation link is not valid any more; set the address again"
       },
       "grant": {
         "action": {
@@ -791,6 +822,11 @@
       "password.current": "Current password",
       "password.password": "New password",
       "password.principal": "Principal",
+      "password.reset.confirm.title": "Choose a new password",
+      "password.reset.login": "Login",
+      "password.reset.password": "New password",
+      "password.reset.request.title": "Reset the password",
+      "password.reset.token": "Reset link",
       "password.set.title": "Change password",
       "session": {
         "action": {
@@ -1019,6 +1055,9 @@
         "id": "The stored id {id} is not an identifier",
         "level": "The stored level {level} of the notification {id} is unknown",
         "message_gone": "The notification {id} no longer exists",
+        "no_address": "The recipient has no email address to mail",
+        "no_channel": "No enabled email channel can carry the mail",
+        "principal_unknown": "The recipient is not a known principal",
         "severity": "The stored severity {severity} of the problem {id} is unknown",
         "template_missing": "No mail template renders {id}",
         "template_placeholder": "The {part} of the mail template {id} in {lang} carries the placeholder {found}; placeholders are written with single braces",

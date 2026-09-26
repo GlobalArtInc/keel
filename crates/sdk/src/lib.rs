@@ -24,6 +24,7 @@ pub mod task;
 pub mod ui;
 
 mod call;
+mod mail;
 mod services;
 mod stat;
 mod stream;
@@ -64,6 +65,7 @@ pub use keel_types::{
     Principal,
 };
 pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like, fetch_page};
+pub use mail::{MailTemplate, MailText};
 pub use module::ModuleDef;
 pub use product::{Asset, Brand, Edition, LevelLabels, MenuGroup, ProductManifest};
 pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};

@@ -42,6 +42,8 @@ mod notify_alone;
 mod notify_channels;
 #[cfg(feature = "notify")]
 mod notify_mail;
+#[cfg(all(feature = "auth", feature = "notify", feature = "settings"))]
+mod password_reset;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings;
 #[cfg(feature = "settings")]

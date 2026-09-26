@@ -181,6 +181,17 @@ pub trait PasswordStore: Send + Sync {
     async fn set(&self, principal: Id, login: &str, password: &Secret, db: &Db) -> Result<()>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Address {
+    pub value: String,
+    pub verified: bool,
+}
+
+#[async_trait]
+pub trait AddressSource: Send + Sync {
+    async fn email(&self, principal: Id, db: &Db) -> Result<Option<Address>>;
+}
+
 pub trait CallExt {
     fn client(&self) -> Option<&Client>;
     fn session(&self, change: SessionChange);

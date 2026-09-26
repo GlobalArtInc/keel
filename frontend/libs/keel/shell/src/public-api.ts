@@ -9,8 +9,10 @@ export {
   KeelStartup,
   LOGIN_PATH,
   LOGOUT_PATH,
+  RESET_PATH,
   RETURN_TO,
   SETUP_PATH,
+  VERIFY_PATH,
   authRoute,
   firstSegment,
   hasDashboard,
@@ -31,6 +33,7 @@ export {
   LOGIN_CODE_HINT_KEY,
   LOGIN_CODE_KEY,
   LOGIN_FAILED_KEY,
+  LOGIN_FORGOT_KEY,
   LOGIN_KEY_FAILED_KEY,
   LOGIN_KEY_KEY,
   LOGIN_LOGIN_KEY,
@@ -54,6 +57,29 @@ export {
   SETUP_TO_LOGIN_KEY,
 } from './login/setup.component';
 export type { SetupNotice, SetupStage } from './login/setup.component';
+export {
+  KeelResetComponent,
+  RESET_DONE_KEY,
+  RESET_FAILED_KEY,
+  RESET_INTRO_KEY,
+  RESET_LOGIN_KEY,
+  RESET_PASSWORD_KEY,
+  RESET_SAVE_KEY,
+  RESET_SENT_KEY,
+  RESET_SUBMIT_KEY,
+  RESET_TITLE_KEY,
+  RESET_TO_LOGIN_KEY,
+} from './login/reset.component';
+export type { ResetNotice, ResetStage } from './login/reset.component';
+export {
+  KeelVerifyComponent,
+  VERIFY_CONTINUE_KEY,
+  VERIFY_DONE_KEY,
+  VERIFY_FAILED_KEY,
+  VERIFY_PENDING_KEY,
+  VERIFY_TITLE_KEY,
+} from './login/verify.component';
+export type { VerifyState } from './login/verify.component';
 export {
   LABELS_PREFIX,
   LABEL_NAMES,
@@ -231,6 +257,19 @@ export {
 export type { Enrolled, QrImage } from './security/totp';
 export { CODE_FIELD, codeErrorOf, codeForm } from './security/code';
 export type { CodeForm } from './security/code';
+export {
+  ADDRESS_FIELDS,
+  ADDRESS_GET,
+  ADDRESS_SET,
+  KeelSecurityAddressComponent,
+  SECURITY_ADDRESS_KEY,
+  SECURITY_ADDRESS_NONE_KEY,
+  SECURITY_ADDRESS_PENDING_KEY,
+  SECURITY_ADDRESS_SENT_KEY,
+  SECURITY_ADDRESS_VERIFIED_KEY,
+  ownAddressDescriptor,
+} from './security/address.component';
+export type { AddressState, AddressView } from './security/address.component';
 export { KeelSecurityComponent, MODAL_WIDTH } from './security/security.component';
 export type { PasswordState } from './security/security.component';
 export { KeelTotpEnrollComponent } from './security/enroll.component';
