@@ -6377,6 +6377,308 @@ channel and the demo host updated from the button, the OwnLate project `keel-pan
 - `hack/check-docs.sh` green with the M5 names; every "Done when" item of M5 ticked or marked
   operator-run; `keel --version` answers `0.3.0`.
 
+## M6 work breakdown
+
+M6 is split into fifteen PR-sized steps in eight groups, ordered by dependency: the peer link
+itself — the instance identity, pairing with its tokens and scopes, and acting on behalf of a
+customer (1a to 1c); how events travel between linked installations and how customer identity
+follows them (2a, 2b); `Idempotency-Key` in the kernel (3), which the services need; the `svc`
+module and the first service kind (4a, 4b); `keel-client` (5), the Rust client both `dns-peer`
+and the conformance suite use; the real `dns-peer` and the login from one installation into
+another (6a, 6b); the conformance suite in full (7); and the two-host proof, the review and the
+closure (8a to 8c). The design of this milestone is [design/07-ecosystem.md](design/07-ecosystem.md);
+where it leaves a point open (the catalogue of kinds as a function or a raw route, how `dns-peer`
+reports a failure after the hosting row is committed, how the token mask combines with a
+customer's permissions) the step decides, records the choice in its commit message and step 8c
+amends the document. Two installations in tests are two kernels of the testkit on two databases
+in one process or two binaries on two ports, never a real network; the operator's two-VM run is
+`hack/peers-vm.sh`.
+
+### 1a. the instance identity and the handshake
+
+**Goal.** Every installation gets its Ed25519 instance key at first start, sealed in `keel_kv`
+beside the `instanceId`, and serves `GET /api/v1/instance` as [design/07-ecosystem.md](design/07-ecosystem.md)
+fixes it: `instanceId`, `keel`, `protocol` (`PROTOCOL` in `keel-types`, N and N-1 accepted),
+`products`, `publicKey`, and `features` and `serviceKinds` assembled from the new SDK
+contribution `InstanceInfoSource`, which the kernel collects without knowing what a feature or a
+service is. The system module `peers` (feature `peers`, in the matrix) starts here with the
+`peer_product` and `peer_pair_code` tables of the design and no functions yet besides
+`peer.list` and `peer.get`.
+
+**Touches.** `crates/kernel/src/instance.rs`, `crates/kernel/src/http/`, `crates/sdk/`
+(`InstanceInfoSource`), `crates/types/` (`PROTOCOL`), `crates/system/src/peers/` (new),
+`contracts/`.
+
+**Out of scope.** Pairing (1b).
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/instance.rs`: `the_handshake_answers_the_instance_key_products_and_contributed_features`,
+  `the_instance_key_survives_a_restart_and_is_sealed`.
+
+### 1b. pairing, peer tokens and scopes
+
+**Goal.** Pairing by one-time code end to end: `peer.pair_code { scopes, level, on_behalf, ttl }`
+on the receiving side (admin) answering `PAIR-XXXX-XXXX`; `peer.create { url, code, subscribe }`
+on the initiating side reading the handshake and posting `/api/v1/x/peers/pair` with its
+instance, the inbound `kpt_` token and its scopes; the receiver answering its `peerId`, the
+outbound token, the granted scopes and the webhook secret; both rows stored as the design
+sketches (the token that calls us as a sha256 hash, the token we call with and the secret as
+`Secret`). `kpt_` tokens join `auth` as the fourth prefix with a `service`-level principal in the
+root account per link; the dispatcher enforces the three scope facets (`functions` masks,
+`level` ceiling, `onBehalf`) in the token-scope guard M4 placed in the order; trust on first use
+pins the peer's instance key and a later contact presenting another key is refused;
+`peer.rotate` issues fresh tokens and retires the old; `peer.delete` revokes at once; the
+protocol of the other side is checked at pairing and by a daily cron job, a mismatch raising a
+problem.
+
+**Touches.** `crates/system/src/peers/`, `crates/system/src/auth/` (the `kpt_` prefix),
+`crates/kernel/src/dispatcher/guards.rs`, `contracts/`.
+
+**Out of scope.** On-behalf calls (1c); deliveries (2a).
+
+**Acceptance.**
+
+- `crates/system/tests/system/peers.rs` with two kernels: `two_installations_pair_by_code_and_call_each_other_within_scope`,
+  `a_call_outside_the_token_functions_answers_forbidden`, `a_used_or_expired_code_is_refused`,
+  `a_peer_presenting_another_instance_key_is_refused`, `rotate_retires_the_old_token_and_delete_answers_401`.
+
+### 1c. acting on behalf of a customer
+
+**Goal.** `X-Keel-On-Behalf-Of: origin=<peer>:<instance>; external_id=<id>` resolved by `peers`
+to the principal with that `(origin, external_id)` — only principals and accounts whose `origin`
+is the calling peer, and only when the token was granted `onBehalf` — so the call runs as the
+customer with `actor = { kind: peer, id, via: peer }` in the envelope and the audit, the
+customer's level, permissions, ownership and account scoping applying, and the token's
+`functions` mask applying on top (the step records the rule). `auth.key.issue` gains
+`externalId` for a peer with an origin and the public-URL setting that makes its `url` absolute.
+
+**Touches.** `crates/system/src/peers/`, `crates/system/src/auth/`, `crates/kernel/src/dispatcher/`, `contracts/`.
+
+**Out of scope.** The login across installations as a product feature (6b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/peers_on_behalf.rs`: `an_on_behalf_call_runs_as_the_customer_with_the_peer_as_actor`,
+  `a_principal_created_by_hand_is_out_of_reach`, `a_token_without_on_behalf_is_refused`.
+
+### 2a. peer delivery: the subscription at pairing, the pull feed and the inbox
+
+**Goal.** The webhook subscription the initiator asked for is created at pairing in the
+`webhooks` module of M3 with `X-Keel-Peer` joining its headers; the pull feed
+`GET /api/v1/x/peers/feed?after=&types=&limit=` behind a `kpt_` token and its scope, reading the
+outbox by `seq`; a pull consumer on the initiating side for a peer marked `pull` (behind NAT)
+storing its cursor; and the inbox `peer_inbox(event_id, peer_id, received_at, processed_at)` on
+the receiving side — `POST /api/v1/x/peers/hook` verifying the HMAC signature in the ±300 s
+window with constant-time comparison, inserting by event id, answering `200` at once — processed
+asynchronously onto the local bus so module subscribers see a peer's events like local ones.
+
+**Touches.** `crates/system/src/peers/`, `crates/system/src/webhooks/`, `crates/kernel/src/` (the
+bus entry for remote events), `contracts/`.
+
+**Out of scope.** Applying identity events (2b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/peers_delivery.rs`: `an_event_arrives_signed_and_a_repeat_creates_no_duplicate`,
+  `a_bad_or_stale_signature_is_refused`, `the_pull_feed_resumes_after_its_cursor_behind_nat`.
+
+### 2b. shared customer identity
+
+**Goal.** `keel.account.upsert` and `keel.principal.upsert` idempotent by `(origin, external_id)`;
+the events `keel.account.*` and `keel.principal.*` with the verbs `created`, `suspended`,
+`resumed`, `deleted`, `renamed` emitted through the outbox; a link with the role `identity`
+whose events `peers` applies on the receiving side — an account suspended on the identity peer is
+suspended here with every product's `AccountLifecycle` running as for a local change, a delete
+running as the task of M4.
+
+**Touches.** `crates/kernel/src/keel/accounts.rs`, `crates/kernel/src/keel/principals.rs`,
+`crates/system/src/peers/`, `contracts/`.
+
+**Out of scope.** Membership of one person in several accounts (open question).
+
+**Acceptance.**
+
+- `crates/system/tests/system/peers_identity.rs`: `upsert_by_origin_and_external_id_twice_yields_one_account`,
+  `an_account_suspended_on_the_identity_peer_is_suspended_here_with_its_lifecycle`.
+
+### 3. Idempotency-Key end to end
+
+**Goal.** The kernel's idempotency of [design/10-contracts.md](design/10-contracts.md):
+`keel_idempotency` keyed by principal and key with the request hash, the stored response and an
+expiry (a setting, 24 h by default, pruned by cron); a repeat with the same key and body replays
+the stored response with `X-Keel-Idempotent-Replay`, the same key with another body answers `409
+idempotency_mismatch`, a concurrent repeat waits for the first or answers `409` while it runs
+(the step decides and records); the socket frame's `idempotencyKey`; a function may declare the
+key required, which the `svc` open and close do.
+
+**Touches.** `crates/kernel/src/dispatcher/`, `crates/kernel/src/http/`, `crates/kernel/src/socket/`,
+`crates/sdk/src/function.rs` (`.idempotent(Required)`), `contracts/`.
+
+**Out of scope.** Idempotency of raw routes.
+
+**Acceptance.**
+
+- `crates/kernel/tests/kernel/idempotency.rs`: `a_repeat_with_the_same_key_and_body_replays_the_response`,
+  `the_same_key_with_another_body_answers_mismatch`, `a_required_key_missing_answers_validation`,
+  `keys_expire_and_are_pruned`.
+
+### 4a. the svc module
+
+**Goal.** The system module `svc` of [design/07-ecosystem.md](design/07-ecosystem.md): the SDK
+trait `ServiceKind` with `Params`, `State`, `Account` and `SCHEMA_VERSION`; the table
+`svc_service` with `UNIQUE(kind, external_id)`; for each contributed kind the functions
+`svc.<kind>.open|suspend|resume|close|set_params|stat|login` with the semantics table of the
+design (`open` upserting the account by `(origin, external_id)`, `close` suspending with a
+retention period and deleting nothing, `Idempotency-Key` required on `open` and `close`); the
+catalogue of kinds with their schemas as the function `svc.kinds` (the step records the choice
+over a raw route); `serviceKinds` in the handshake through `InstanceInfoSource`.
+
+**Touches.** `crates/system/src/svc/` (new, feature `svc`, in the matrix), `crates/sdk/src/svc.rs` (new), `contracts/`.
+
+**Out of scope.** A kind of a product (4b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/svc.rs` with a fixture kind: `open_twice_with_one_key_yields_one_service`,
+  `two_kinds_for_one_customer_land_in_one_account`, `close_suspends_and_deletes_nothing`.
+
+### 4b. the dns.zones service kind
+
+**Goal.** `dns-zones` contributes the kind `dns.zones`: `Params { zoneLimit, template }`, `State
+{ zonesUsed }`; `open` sets the account's `dns.zones` limit and default template, `suspend` and
+`resume` switch the account's zones through the lifecycle of M4, `set_params` changes the limit,
+`stat` answers the zone count for the period from `stats`, `login` answers a `kok_` target on the
+zone list; and `panel` contributes `hosting.sites` the same way.
+
+**Touches.** `products/dns/crates/dns-zones/src/svc.rs` (new), `products/panel/crates/hosting-web/src/svc.rs` (new), `contracts/`.
+
+**Out of scope.** Billing itself.
+
+**Acceptance.**
+
+- `products/dns/tests/dns/svc.rs`: `svc_dns_zones_open_twice_with_one_key_produces_one_service`,
+  `set_params_changes_the_zone_limit`, `stat_answers_zones_used`.
+
+### 5. keel-client
+
+**Goal.** The crate `crates/client` (`keel-client`): a typed Rust client of the wire contract —
+`call(func, params)` answering the envelope, typed errors with `key`, `params` and `field`, the
+`kpt_`, `kat_` and session credentials, `X-Keel-On-Behalf-Of`, `Idempotency-Key` with retries on
+connection failure and `5xx` only when a key is present, `instance()` for the handshake, the pull
+feed as a stream, TLS with the peer's certificate pinned or the system roots. `keel-conformance`
+moves onto it.
+
+**Touches.** `crates/client/` (new), `crates/conformance/`, `Cargo.toml`.
+
+**Out of scope.** A TypeScript client beyond `@globalart/keel/client`.
+
+**Acceptance.**
+
+- `crates/client/tests/client.rs` against a testkit kernel: `a_call_answers_the_typed_envelope_and_field_errors`,
+  `a_call_with_a_key_is_retried_and_one_without_is_not`, `on_behalf_reaches_the_customer`.
+
+### 6a. dns-peer for real
+
+**Goal.** `dns-peer` of `panel` calls the paired neighbour through `keel-client` with the link's
+token and `X-Keel-On-Behalf-Of` of the site's customer, after commit as [design/07-ecosystem.md](design/07-ecosystem.md)
+requires: the zone of a new site is created on the other host as a task started from
+`after_commit`, a validation error of the neighbour is mapped onto the hosting form's field when
+the create wizard pre-checks through `dns.zone.check` on the neighbour before commit (the step
+decides how a failure after commit is reported — the task's error on the site row and a
+problem — and records it), a transport failure answers `peer` (502); the bridge picks `dns-peer`
+when `dns` is not enabled locally and a link to an installation offering `dns` exists.
+
+**Touches.** `products/panel/crates/dns-peer/`, `products/dns/crates/dns-zones/` (`dns.zone.check`), `contracts/`.
+
+**Out of scope.** Several DNS neighbours for one panel.
+
+**Acceptance.**
+
+- `products/panel/tests/panel/dns_peer.rs` with two kernels: `a_site_on_one_installation_creates_its_zone_on_the_other_on_behalf_of_the_customer`,
+  `a_dns_error_reaches_the_hosting_form_as_a_field_key`, `an_unreachable_neighbour_answers_peer`.
+
+### 6b. opening one installation from another
+
+**Goal.** A row action "Open in KeelDNS" on a site whose zone lives on a neighbour: `panel` calls
+`auth.key.issue` on the neighbour on behalf of the customer, receives the absolute URL and opens
+it; the neighbour's audit records the issuing peer as the actor of the key and the session.
+
+**Touches.** `products/panel/crates/dns-peer/`, `frontend/products/panel/`, `contracts/`.
+
+**Out of scope.** Single sign-on through `oidc`.
+
+**Acceptance.**
+
+- `products/panel/tests/panel/open_neighbour.rs`: `the_neighbour_opens_by_a_one_time_key_with_the_peer_as_actor_in_the_audit`;
+  e2e `frontend/e2e/peers.spec.ts` follows the link between two kernels.
+
+### 7. keel-conformance in full
+
+**Goal.** The suite of [design/05-modules.md](design/05-modules.md) completed on `keel-client`:
+the groups `peers` (pairing, scopes, revocation), `idempotency`, `svc` (every kind the binary
+offers, generically from the catalogue), `webhooks` (signature, retries), `events`, and every
+earlier group; `hack/conformance.sh` runs it against three compositions — `dns` alone, `panel`
+alone, both — and CI runs the three.
+
+**Touches.** `crates/conformance/src/suite/`, `hack/conformance.sh`, `.github/workflows/ci.yml`.
+
+**Out of scope.** Conformance of plugins (M7).
+
+**Acceptance.**
+
+- `hack/conformance.sh` green for the three compositions in CI.
+
+### 8a. two installations end to end
+
+**Goal.** The "Done when" of M6 on two binaries: `hack/peers-e2e.sh` starts two kernels on two
+databases and ports, pairs them by code over the CLI, creates a site on the `panel` side whose
+zone lands on the `dns` side on behalf of the customer, shows a DNS error on the hosting form,
+opens the `dns` side by a one-time key, calls `svc.dns.zones.open` twice with one key, sees a
+signed event delivered once, and revokes a token to get `401`; `hack/peers-vm.sh` is the same on
+two VMs for the operator.
+
+**Touches.** `hack/peers-e2e.sh` (new), `hack/peers-vm.sh` (new), `frontend/e2e/peers.spec.ts`, `.github/workflows/ci.yml`.
+
+**Out of scope.** More than two installations.
+
+**Acceptance.**
+
+- `hack/peers-e2e.sh` green in CI; operator-run: the two-VM transcript.
+
+### 8b. the security review of peers and services
+
+**Goal.** An adversarial pass over `peers`, `svc`, idempotency and `keel-client`: token scopes and
+their combination with on-behalf, origin binding, TOFU and key change, the replay window and
+constant-time checks, the pull feed's scope, the inbox under floods, idempotency keys across
+principals, `svc` params reaching templates; every finding fixed with a test, the rest recorded
+for 8c.
+
+**Touches.** the modules named.
+
+**Out of scope.** The M7 review.
+
+**Acceptance.**
+
+- Every finding is a named test in the crate it concerns.
+
+### 8c. M6 closure
+
+**Goal.** The document pass (the choices recorded by the steps into [design/07-ecosystem.md](design/07-ecosystem.md)
+and [design/10-contracts.md](design/10-contracts.md)), the `## M6 exit checklist` with the "Done
+when" items ticked and the operator-run ones named (the two-VM pairing, the tag `keel-v0.4.0` on
+the channel, the demo host updated from the button), `README.md`'s M6 row, the versions raised to
+`0.4.0` after grepping the tests and fixtures for the old one.
+
+**Touches.** `docs/`, `README.md`, the versions.
+
+**Out of scope.** Code beyond the version bump.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` green; every "Done when" item of M6 ticked or marked operator-run;
+  `keel --version` answers `0.4.0`.
+
 ## How we work
 
 - The code lives in the monorepo `GlobalArtInc/keel` on the `main` branch until the SDK reaches
