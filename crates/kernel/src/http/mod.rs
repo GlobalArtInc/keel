@@ -44,7 +44,7 @@ use events::{SSE_KEEP_ALIVE, Streams};
 use live::Live;
 
 pub use assets::Frontend;
-pub use auth::{GUEST_LOGIN, SESSION_COOKIE, guest};
+pub use auth::{GUEST_LOGIN, ON_BEHALF_OF, ON_BEHALF_REFUSED, SESSION_COOKIE, guest};
 pub use descriptors::Projection;
 pub use events::{
     DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SSE_MAX_CLIENTS, SSE_REPLAY_WINDOW, SSE_RETRY,

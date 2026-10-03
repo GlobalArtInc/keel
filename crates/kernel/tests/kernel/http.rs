@@ -10,13 +10,16 @@ use axum::http::header::{
 use axum::http::{HeaderMap, Method, Request, StatusCode};
 use keel_kernel::dispatcher::{CallOptions, Dispatcher};
 use keel_kernel::http::{
-    IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, REQUEST_ID, SESSION_COOKIE,
+    IDEMPOTENCY_KEY, IDEMPOTENT_REPLAY, META_VERSION, ON_BEHALF_OF, ON_BEHALF_REFUSED, REQUEST_ID,
+    SESSION_COOKIE,
 };
 use keel_kernel::{Composition, Http, HttpError, HttpOptions, Kernel, Readiness, Storage};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticated, Authenticator, CallExt, Client, Credential, SessionChange};
+use keel_sdk::system::{
+    Authenticated, Authenticator, CallExt, Client, Credential, OnBehalf, SessionChange,
+};
 use keel_sdk::ui::{Band, Chart, Report};
 use keel_testkit::TestDatabase;
 use keel_types::{ChartType, ErrorCode, Scope, Via};
@@ -84,6 +87,32 @@ impl Authenticator for TestAuthenticator {
             None => None,
         };
         Ok(principal.map(|principal| Authenticated { principal, session }))
+    }
+}
+
+struct ProbeDelegate;
+
+#[async_trait]
+impl OnBehalf for ProbeDelegate {
+    async fn act_for(&self, caller: &Principal, header: &str, _: &Db) -> Result<Option<Principal>> {
+        if caller.level < Level::Admin {
+            return Ok(None);
+        }
+        let malformed = || KeelError::validation("probe.error.header");
+        let (level, account) = header
+            .strip_prefix("as=")
+            .and_then(|rest| rest.split_once(':'))
+            .ok_or_else(malformed)?;
+        let level: Level = level.parse().map_err(|_| malformed())?;
+        let account: Id = account
+            .parse()
+            .map_err(|_| KeelError::not_found("probe.error.customer"))?;
+        let mut actor = caller.clone();
+        actor.via = Via::Peer(Id::ROOT_ACCOUNT);
+        let mut delegated = principal(level, account);
+        delegated.via = Via::Peer(Id::ROOT_ACCOUNT);
+        delegated.actor = Some(Box::new(actor));
+        Ok(Some(delegated))
     }
 }
 
@@ -240,7 +269,8 @@ fn init(r: &mut Registrar) -> Result<()> {
     )
     .i18n("en", EN)
     .i18n("ru", RU)
-    .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator));
+    .contribute::<Arc<dyn Authenticator>>(Arc::new(TestAuthenticator))
+    .contribute::<Arc<dyn OnBehalf>>(Arc::new(ProbeDelegate));
     Ok(())
 }
 
@@ -1459,6 +1489,125 @@ async fn a_recorded_session_change_becomes_the_cookie_of_a_committed_call_only()
         .await;
     assert_eq!(none.status, StatusCode::OK, "{}", none.body);
     assert_eq!(none.header(axum::http::header::SET_COOKIE), None);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_delegate_turns_the_on_behalf_header_into_the_principal_of_the_call() {
+    let bench = bench().await;
+    let header = format!("as=user:{CUSTOMER}");
+    let posted = bench
+        .post(
+            "probe.ping",
+            Some(&admin()),
+            &[(ON_BEHALF_OF, header.as_str())],
+            json!({}),
+        )
+        .await;
+    assert_eq!(posted.status, StatusCode::OK, "{}", posted.body);
+    assert_eq!(posted.data()["login"], json!(format!("user-{CUSTOMER}")));
+    assert_eq!(posted.data()["level"], json!("user"));
+    let principal = &posted.body["meta"]["principal"];
+    assert_eq!(principal["account"], json!(CUSTOMER));
+    assert_eq!(principal["actor"]["login"], json!(format!("admin-{ROOT}")));
+    assert_eq!(principal["actor"]["level"], json!("admin"));
+    assert_eq!(principal["actor"]["via"], json!("peer"));
+    let fetched = bench
+        .send(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/v1/call/probe.ping")
+                .header(AUTHORIZATION, format!("Bearer {}", admin()))
+                .header("X-Keel-On-Behalf-Of", header.as_str())
+                .body(Body::empty())
+                .expect("a request"),
+        )
+        .await;
+    assert_eq!(fetched.status, StatusCode::OK, "{}", fetched.body);
+    assert_eq!(fetched.data()["login"], json!(format!("user-{CUSTOMER}")));
+    let above = bench
+        .post(
+            "probe.admin",
+            Some(&admin()),
+            &[(ON_BEHALF_OF, header.as_str())],
+            json!({}),
+        )
+        .await;
+    assert_eq!(above.status, StatusCode::FORBIDDEN, "{}", above.body);
+    assert_eq!(above.key(), "keel.error.level");
+    let plain = bench.call("probe.ping", Some(&admin()), json!({})).await;
+    assert_eq!(plain.data()["login"], json!(format!("admin-{ROOT}")));
+    assert_eq!(plain.body["meta"]["principal"]["actor"], Value::Null);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_on_behalf_header_no_delegate_takes_is_refused_and_a_delegate_refusal_is_answered() {
+    let bench = bench().await;
+    let header = format!("as=user:{CUSTOMER}");
+    for auth in [Some(user()), Some(reseller()), None] {
+        let refused = bench
+            .post(
+                "probe.ping",
+                auth.as_deref(),
+                &[(ON_BEHALF_OF, header.as_str())],
+                json!({}),
+            )
+            .await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.body);
+        assert_eq!(refused.code(), ErrorCode::Forbidden);
+        assert_eq!(refused.key(), ON_BEHALF_REFUSED);
+    }
+    let session = bench
+        .send(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/v1/call/probe.ping")
+                .header(COOKIE, format!("{SESSION_COOKIE}={}", admin()))
+                .header(ON_BEHALF_OF, "as=nonsense")
+                .body(Body::empty())
+                .expect("a request"),
+        )
+        .await;
+    assert_eq!(
+        session.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{}",
+        session.body
+    );
+    assert_eq!(session.key(), "probe.error.header");
+    assert_eq!(
+        session.header(axum::http::header::SET_COOKIE),
+        None,
+        "a refused delegation keeps the session"
+    );
+    let unknown = bench
+        .post(
+            "probe.ping",
+            Some(&admin()),
+            &[(ON_BEHALF_OF, "as=user:nobody")],
+            json!({}),
+        )
+        .await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND, "{}", unknown.body);
+    assert_eq!(unknown.key(), "probe.error.customer");
+    let unauthenticated = bench
+        .post(
+            "probe.ping",
+            Some("nobody"),
+            &[(ON_BEHALF_OF, header.as_str())],
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        unauthenticated.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        unauthenticated.body
+    );
+    assert_eq!(unauthenticated.key(), "keel.error.unauthenticated");
+    let guest = bench.call("probe.ping", None, json!({})).await;
+    assert_eq!(guest.data()["login"], json!("guest"));
     bench.finish().await;
 }
 

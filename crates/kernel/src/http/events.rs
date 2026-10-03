@@ -11,9 +11,9 @@ use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::stream;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Client, Credential, Frame, OutboxSubscriber};
+use keel_sdk::system::{Client, Credential, Frame, OutboxSubscriber};
 use keel_sdk::{AccountScope, KeelError};
-use keel_types::{ErrorCode, Event, Level, Principal};
+use keel_types::{Event, Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -22,7 +22,7 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::time::{Instant, MissedTickBehavior};
 
 use super::auth::{self, Caller};
-use super::live::Live;
+use super::live::{Live, Resolvers};
 use super::{Readiness, Shared, reply};
 use crate::dispatcher::{OUTBOX_BATCH, OutboxFeed};
 use crate::registry::Registry;
@@ -199,8 +199,9 @@ pub(super) async fn serve(
         scope: AccountScope::of(&caller.principal),
         principal: caller.principal,
         credential,
+        on_behalf: auth::on_behalf(&headers),
         client: caller.client,
-        authenticators: live.authenticators.clone(),
+        resolvers: live.resolvers.clone(),
         keep_alive: state.options.sse_keep_alive.max(KEEP_ALIVE_FLOOR),
         db: state.db.clone(),
         registry: live.registry.clone(),
@@ -265,8 +266,9 @@ struct Connection {
     principal: Principal,
     scope: AccountScope,
     credential: Credential,
+    on_behalf: Option<String>,
     client: Client,
-    authenticators: Arc<[Arc<dyn Authenticator>]>,
+    resolvers: Resolvers,
     keep_alive: Duration,
     db: DatabaseConnection,
     registry: Arc<Registry>,
@@ -362,17 +364,26 @@ impl Connection {
 
     async fn recheck(&mut self) -> bool {
         let db = Db::from_connection(self.db.clone());
-        match auth::resolve(&self.authenticators, &self.credential, &self.client, &db).await {
+        match auth::resolve(
+            &self.resolvers,
+            &self.credential,
+            self.on_behalf.as_deref(),
+            &self.client,
+            &db,
+        )
+        .await
+        {
             Ok(authenticated) => {
                 self.scope = AccountScope::of(&authenticated.principal);
                 self.principal = authenticated.principal;
                 true
             }
-            Err(error) if error.code() == ErrorCode::Unauthenticated => {
+            Err(error) if auth::refuses(&error) => {
                 tracing::debug!(
                     request_id = self.request_id,
                     principal = %self.principal.id,
-                    "the event stream's credential no longer authenticates"
+                    key = error.key(),
+                    "the event stream's credential no longer admits it"
                 );
                 false
             }

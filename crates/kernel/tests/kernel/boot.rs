@@ -15,11 +15,13 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{
-    Authenticated, Authenticator, Client as HttpClient, Credential, NewPrincipal, PrincipalSource,
-    ProblemCounter,
+    AccountSource, Authenticated, Authenticator, Client as HttpClient, Credential, NewPrincipal,
+    PrincipalSource, ProblemCounter,
 };
 use keel_testkit::TestDatabase;
-use keel_types::{Boot, BootProblems, BootWidget, Envelope, ErrorCode, Scope, Via, WidgetKind};
+use keel_types::{
+    AccountState, Boot, BootProblems, BootWidget, Envelope, ErrorCode, Scope, Via, WidgetKind,
+};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -1179,5 +1181,120 @@ async fn create_stores_a_principal_in_the_named_account_and_refuses_a_taken_logi
     let taken = source.create(new(), now, &db).await.unwrap_err();
     assert_eq!(taken.code(), ErrorCode::Conflict);
     assert_eq!(taken.key(), "keel.principal.error.login_exists");
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_principal_is_found_by_its_origin_and_external_id_and_an_account_by_its_id() {
+    let bench = start(Composition::new()).await;
+    for login in ["synced", "local"] {
+        bench
+            .as_owner(
+                "keel.principal.create",
+                json!({ "login": login, "level": "user", "account": CUSTOMER }),
+            )
+            .await;
+    }
+    bench
+        .storage
+        .db()
+        .execute_unprepared(&format!(
+            "UPDATE keel_principal SET origin = 'bill:01J9A00000000000000000000A', external_id = 'client-42' WHERE login = 'synced'; \
+             UPDATE keel_principal SET external_id = 'client-42' WHERE login = 'local'; \
+             UPDATE keel_account SET origin = 'bill:01J9A00000000000000000000A', external_id = 'acc-7', state = 'suspended' WHERE id = '{CUSTOMER}'"
+        ))
+        .await
+        .expect("the external identities are set");
+    let registry = bench.kernel.registry();
+    let principals = registry
+        .services()
+        .get::<dyn PrincipalSource>()
+        .expect("the kernel provides the principal source");
+    let accounts = registry
+        .services()
+        .get::<dyn AccountSource>()
+        .expect("the kernel provides the account source");
+    let db = Db::from_connection(bench.storage.db().clone());
+    let found = principals
+        .by_external("bill:01J9A00000000000000000000A", "client-42", &db)
+        .await
+        .expect("read")
+        .expect("the synced principal");
+    assert_eq!(found.login, "synced");
+    assert_eq!(
+        found.origin.as_deref(),
+        Some("bill:01J9A00000000000000000000A")
+    );
+    assert_eq!(found.external_id.as_deref(), Some("client-42"));
+    assert_eq!(found.via, Via::Internal);
+    assert!(found.actor.is_none());
+    for (origin, external_id) in [
+        ("bill:01J9B00000000000000000000B", "client-42"),
+        ("bill:01J9A00000000000000000000A", "client-43"),
+        ("", "client-42"),
+    ] {
+        assert_eq!(
+            principals
+                .by_external(origin, external_id, &db)
+                .await
+                .expect("read"),
+            None,
+            "{origin} {external_id}"
+        );
+    }
+    let carrying: Vec<(String, Option<String>)> = principals
+        .of_external_id("client-42", &db)
+        .await
+        .expect("read")
+        .into_iter()
+        .map(|principal| (principal.login, principal.origin))
+        .collect();
+    assert_eq!(carrying.len(), 2, "{carrying:?}");
+    assert!(
+        carrying.contains(&(
+            "synced".to_owned(),
+            Some("bill:01J9A00000000000000000000A".to_owned())
+        )),
+        "{carrying:?}"
+    );
+    assert!(
+        carrying.contains(&("local".to_owned(), None)),
+        "{carrying:?}"
+    );
+    assert!(
+        principals
+            .of_external_id("client-43", &db)
+            .await
+            .expect("read")
+            .is_empty()
+    );
+    let customer: Id = CUSTOMER.parse().expect("an id");
+    let account = accounts
+        .by_id(customer, &db)
+        .await
+        .expect("read")
+        .expect("the customer account");
+    assert_eq!(account.id, customer);
+    assert_eq!(account.kind, "user");
+    assert_eq!(account.state, AccountState::Suspended);
+    assert_eq!(
+        account.origin.as_deref(),
+        Some("bill:01J9A00000000000000000000A")
+    );
+    assert_eq!(account.external_id.as_deref(), Some("acc-7"));
+    assert!(account.parent_id.is_some());
+    let root = accounts
+        .by_id(Id::ROOT_ACCOUNT, &db)
+        .await
+        .expect("read")
+        .expect("the root account");
+    assert_eq!(
+        (root.parent_id, root.origin, root.path.as_str()),
+        (None, None, "/")
+    );
+    assert_eq!(
+        accounts.by_id(Id::generate(), &db).await.expect("read"),
+        None
+    );
     bench.finish().await;
 }

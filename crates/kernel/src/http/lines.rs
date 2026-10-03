@@ -9,8 +9,8 @@ use axum::response::{IntoResponse, Response};
 use futures::{StreamExt, stream};
 use keel_sdk::Lines;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Authenticator, Client, Credential};
-use keel_types::{ErrorCode, LogLine, Principal};
+use keel_sdk::system::{Client, Credential};
+use keel_types::{LogLine, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -18,6 +18,7 @@ use tokio::time::{Instant, MissedTickBehavior};
 
 use super::auth;
 use super::events::{KEEP_ALIVE_COMMENT, Opened, Streams, draining, session_key};
+use super::live::Resolvers;
 
 pub const LINE_EVENT: &str = "line";
 pub const END_EVENT: &str = "end";
@@ -49,8 +50,9 @@ pub(super) struct Tail {
     pub(super) request_id: String,
     pub(super) principal: Principal,
     pub(super) credential: Credential,
+    pub(super) on_behalf: Option<String>,
     pub(super) client: Client,
-    pub(super) authenticators: Arc<[Arc<dyn Authenticator>]>,
+    pub(super) resolvers: Resolvers,
     pub(super) keep_alive: Duration,
     pub(super) db: DatabaseConnection,
 }
@@ -139,12 +141,20 @@ async fn pump(
 
 async fn still_admitted(tail: &Tail) -> bool {
     let db = Db::from_connection(tail.db.clone());
-    match auth::resolve(&tail.authenticators, &tail.credential, &tail.client, &db).await {
+    match auth::resolve(
+        &tail.resolvers,
+        &tail.credential,
+        tail.on_behalf.as_deref(),
+        &tail.client,
+        &db,
+    )
+    .await
+    {
         Ok(authenticated) => {
             authenticated.principal.id == tail.principal.id
                 && authenticated.principal.level == tail.principal.level
         }
-        Err(error) if error.code() == ErrorCode::Unauthenticated => false,
+        Err(error) if auth::refuses(&error) => false,
         Err(error) => {
             tracing::warn!(
                 request_id = tail.request_id,

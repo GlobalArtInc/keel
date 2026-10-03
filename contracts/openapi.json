@@ -1104,7 +1104,24 @@
                 "type": "object",
                 "properties": {
                   "principal": {
-                    "$ref": "#/components/schemas/Id"
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "externalId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "default": null
                   },
                   "ttl": {
                     "type": "integer",
@@ -1119,7 +1136,6 @@
                   }
                 },
                 "required": [
-                  "principal",
                   "ttl",
                   "redirect"
                 ]

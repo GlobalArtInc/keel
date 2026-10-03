@@ -6608,6 +6608,11 @@ when `dns` is not enabled locally and a link to an installation offering `dns` e
 **Goal.** A row action "Open in KeelDNS" on a site whose zone lives on a neighbour: `panel` calls
 `auth.key.issue` on the neighbour on behalf of the customer, receives the absolute URL and opens
 it; the neighbour's audit records the issuing peer as the actor of the key and the session.
+Step 1c lets a peer name the target of `auth.key.issue` by `externalId` and keeps the rule that the
+target lies below the caller. A peer acting for a `user`-level customer cannot issue that
+customer's own key. Calling as the principal of its link it can: the key's `issued_by` is then that
+principal, not the customer. This step keeps that call or decides an issue on behalf for the
+customer itself.
 
 **Touches.** `products/panel/crates/dns-peer/`, `frontend/products/panel/`, `contracts/`.
 
@@ -6664,6 +6669,9 @@ and receive the live outbound token that `peer.rotate` sends in `peer.renew`. Th
 of possession — the neighbour signs a fresh challenge with its instance key — before `peer.rotate`
 sends a token and before the daily check accepts a handshake, with a test that a server repeating a
 copied key is refused.
+Step 1c leaves another point: what a peer mints while it acts for a customer — an API token, a
+login key — belongs to the customer and outlives `peer.rotate` and `peer.delete`, unlike what it
+mints as the principal of its link; the review decides whether such a credential dies with the link.
 
 **Touches.** the modules named.
 
@@ -6680,6 +6688,14 @@ and [design/10-contracts.md](design/10-contracts.md)), the `## M6 exit checklist
 when" items ticked and the operator-run ones named (the two-VM pairing, the tag `keel-v0.4.0` on
 the channel, the demo host updated from the button), `README.md`'s M6 row, the versions raised to
 `0.4.0` after grepping the tests and fixtures for the old one.
+Step 1c leaves two points for the pass over [design/07-ecosystem.md](design/07-ecosystem.md). The
+actor of an on-behalf call is the principal of the peer's link, `{ id, login, level, via: peer }`
+like the actor of `su`, with no `kind` member, and its `id` is that principal's id, not the peer's
+instance id; the example in "Acting on behalf of a customer" is amended to that shape. "One-click
+login" gains the rule `auth.key.issue` applies to a peer, as its link or for a customer: the target
+is a principal whose origin and whose account's origin name the peer, or the answer is
+`not_found`, and an `externalId` the link sends as itself is resolved against every origin naming
+the peer's instance and refused when two principals match.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

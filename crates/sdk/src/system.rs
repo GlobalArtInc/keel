@@ -8,8 +8,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use keel_types::{
-    BootLicense, BootProblems, CallError, DashboardLayout, DownloadFile, Event, Id, Level, Mode,
-    Principal, TaskState,
+    Account, BootLicense, BootProblems, CallError, DashboardLayout, DownloadFile, Event, Id, Level,
+    Mode, Principal, TaskState,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -58,6 +58,18 @@ pub trait Authenticator: Send + Sync {
     ) -> Result<Option<Authenticated>>;
 }
 
+#[async_trait]
+pub trait OnBehalf: Send + Sync {
+    async fn act_for(&self, caller: &Principal, header: &str, db: &Db)
+    -> Result<Option<Principal>>;
+}
+
+#[async_trait]
+pub trait PeerReach: Send + Sync {
+    async fn reaches(&self, link: Id, principal: &Principal, db: &Db) -> Result<bool>;
+    async fn customer(&self, link: Id, external_id: &str, db: &Db) -> Result<Option<Principal>>;
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewPrincipal {
     pub account: Id,
@@ -71,6 +83,13 @@ pub struct NewPrincipal {
 pub trait PrincipalSource: Send + Sync {
     async fn by_id(&self, id: Id, db: &Db) -> Result<Option<Principal>>;
     async fn by_login(&self, login: &str, db: &Db) -> Result<Option<Principal>>;
+    async fn by_external(
+        &self,
+        origin: &str,
+        external_id: &str,
+        db: &Db,
+    ) -> Result<Option<Principal>>;
+    async fn of_external_id(&self, external_id: &str, db: &Db) -> Result<Vec<Principal>>;
     async fn at_or_above(&self, level: Level, db: &Db) -> Result<Vec<Principal>>;
     async fn of_account(&self, account: Id, db: &Db) -> Result<Vec<Principal>>;
     async fn touch_acl(&self, id: Id, db: &Db) -> Result<()>;
@@ -139,6 +158,7 @@ pub struct Installation {
 #[async_trait]
 pub trait AccountSource: Send + Sync {
     async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;
+    async fn by_id(&self, account: Id, db: &Db) -> Result<Option<Account>>;
 }
 
 #[async_trait]

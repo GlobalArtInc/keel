@@ -150,8 +150,9 @@ async fn serve(
                 request_id,
                 principal,
                 credential,
+                on_behalf: auth::on_behalf(headers),
                 client,
-                authenticators: live.authenticators.clone(),
+                resolvers: live.resolvers.clone(),
                 keep_alive: state.options.sse_keep_alive.max(KEEP_ALIVE_FLOOR),
                 db: state.db.clone(),
             };

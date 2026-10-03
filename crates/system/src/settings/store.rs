@@ -241,6 +241,10 @@ mod tests {
         async fn ancestry(&self, _: Id, _: &Db) -> Result<Vec<Id>> {
             Ok(Vec::new())
         }
+
+        async fn by_id(&self, _: Id, _: &Db) -> Result<Option<keel_sdk::Account>> {
+            Ok(None)
+        }
     }
 
     fn store() -> Store {

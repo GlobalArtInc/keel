@@ -11,14 +11,14 @@ use chrono_tz::Tz;
 use ipnet::IpNet;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{
-    Authenticated, Authenticator, Client, Credential, PreferenceSource, Preferences, SessionChange,
+    Authenticated, Client, Credential, OnBehalf, PreferenceSource, Preferences, SessionChange,
 };
 use keel_sdk::{KeelError, Secret};
 use keel_types::{ErrorCode, Id, Level, Principal, Scope, Via};
 
 use super::Shared;
 use super::cookie;
-use super::live::Live;
+use super::live::{Live, Resolvers};
 use super::proxy;
 use super::reply;
 use crate::grants;
@@ -27,6 +27,8 @@ use crate::registry::Registry;
 
 pub const SESSION_COOKIE: &str = "__Host-keel_session";
 pub const GUEST_LOGIN: &str = "guest";
+pub const ON_BEHALF_OF: &str = "x-keel-on-behalf-of";
+pub const ON_BEHALF_REFUSED: &str = "keel.error.on_behalf";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct Zone(pub(super) Option<Tz>);
@@ -92,6 +94,7 @@ pub(super) async fn authenticate(
     let request_id = reply::request_id_in(request.extensions());
     let headers = request.headers();
     let credential = credential(headers);
+    let on_behalf = on_behalf(headers);
     let trusted = &state.options.trusted_proxies;
     let trusted_peer = proxy::is_trusted(proxy::peer(request.extensions()), trusted);
     let authority = proxy::authority(headers, request.uri(), trusted_peer);
@@ -103,7 +106,15 @@ pub(super) async fn authenticate(
     let principal = match credential {
         Some(credential) => {
             let db = Db::from_connection(state.db.clone());
-            match resolve(&live.authenticators, &credential, &client, &db).await {
+            match resolve(
+                &live.resolvers,
+                &credential,
+                on_behalf.as_deref(),
+                &client,
+                &db,
+            )
+            .await
+            {
                 Ok(authenticated) => {
                     client.session = authenticated.session;
                     let mut principal = authenticated.principal;
@@ -126,6 +137,9 @@ pub(super) async fn authenticate(
                     return response;
                 }
             }
+        }
+        None if on_behalf.is_some() => {
+            return reply::error(KeelError::forbidden(ON_BEHALF_REFUSED), &request_id);
         }
         None => guest(&accept_language(headers, &live.registry)),
     };
@@ -163,17 +177,57 @@ pub(super) fn overlay(
 }
 
 pub(super) async fn resolve(
-    authenticators: &[Arc<dyn Authenticator>],
+    resolvers: &Resolvers,
     credential: &Credential,
+    on_behalf: Option<&str>,
     client: &Client,
     db: &Db,
 ) -> Result<Authenticated, KeelError> {
-    for authenticator in authenticators {
+    for authenticator in resolvers.authenticators.iter() {
         if let Some(authenticated) = authenticator.authenticate(credential, client, db).await? {
-            return Ok(authenticated);
+            return match on_behalf {
+                Some(header) => delegate(&resolvers.delegates, authenticated, header, db).await,
+                None => Ok(authenticated),
+            };
         }
     }
     Err(KeelError::unauthenticated("keel.error.unauthenticated"))
+}
+
+async fn delegate(
+    delegates: &[Arc<dyn OnBehalf>],
+    authenticated: Authenticated,
+    header: &str,
+    db: &Db,
+) -> Result<Authenticated, KeelError> {
+    for delegate in delegates {
+        if let Some(principal) = delegate
+            .act_for(&authenticated.principal, header, db)
+            .await?
+        {
+            return Ok(Authenticated {
+                principal,
+                session: authenticated.session,
+            });
+        }
+    }
+    Err(KeelError::forbidden(ON_BEHALF_REFUSED))
+}
+
+pub(super) fn refuses(error: &KeelError) -> bool {
+    matches!(
+        error.code(),
+        ErrorCode::Unauthenticated | ErrorCode::Forbidden | ErrorCode::NotFound
+    )
+}
+
+pub(super) fn on_behalf(headers: &HeaderMap) -> Option<String> {
+    let values: Vec<String> = headers
+        .get_all(ON_BEHALF_OF)
+        .iter()
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
+        .collect();
+    (!values.is_empty()).then(|| values.join(", "))
 }
 
 pub(super) fn client(headers: &HeaderMap, extensions: &Extensions, trusted: &[IpNet]) -> Client {
@@ -295,6 +349,55 @@ mod tests {
         assert!(credential(&headers(&[("authorization", "Basic abc")])).is_none());
         assert!(credential(&headers(&[("authorization", "Bearer ")])).is_none());
         assert!(credential(&headers(&[("authorization", "bearer lower")])).is_some());
+    }
+
+    #[test]
+    fn a_recheck_ends_a_stream_on_a_refusal_and_keeps_it_through_a_fault() {
+        for refusal in [
+            KeelError::unauthenticated("keel.error.unauthenticated"),
+            KeelError::forbidden(ON_BEHALF_REFUSED),
+            KeelError::not_found("peer.error.customer"),
+        ] {
+            assert!(refuses(&refusal), "{refusal}");
+        }
+        for fault in [
+            KeelError::internal("keel.error.db"),
+            KeelError::unavailable("keel.error.unavailable"),
+            KeelError::validation("peer.error.header"),
+        ] {
+            assert!(!refuses(&fault), "{fault}");
+        }
+    }
+
+    #[test]
+    fn the_on_behalf_header_is_passed_on_as_sent_and_repeated_values_are_joined() {
+        assert_eq!(on_behalf(&headers(&[])), None);
+        assert_eq!(
+            on_behalf(&headers(&[(
+                "x-keel-on-behalf-of",
+                "origin=bill:01J9A; external_id=client-42"
+            )]))
+            .as_deref(),
+            Some("origin=bill:01J9A; external_id=client-42")
+        );
+        assert_eq!(
+            on_behalf(&headers(&[("x-keel-on-behalf-of", "")])).as_deref(),
+            Some("")
+        );
+        assert_eq!(
+            on_behalf(&headers(&[
+                ("x-keel-on-behalf-of", "origin=bill:01J9A"),
+                ("X-Keel-On-Behalf-Of", "external_id=client-42"),
+            ]))
+            .as_deref(),
+            Some("origin=bill:01J9A, external_id=client-42")
+        );
+        let mut opaque = HeaderMap::new();
+        opaque.insert(
+            ON_BEHALF_OF,
+            HeaderValue::from_bytes(b"origin=b\xffill").expect("an opaque value"),
+        );
+        assert_eq!(on_behalf(&opaque).as_deref(), Some("origin=b\u{fffd}ill"));
     }
 
     #[test]

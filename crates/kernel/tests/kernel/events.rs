@@ -1,27 +1,35 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
+use futures::{StreamExt, stream};
 use keel_kernel::dispatcher::OUTBOX_BATCH;
 use keel_kernel::http::{
-    DATA_INVALIDATE, LAST_EVENT_ID, META_INVALIDATE, SESSION_COOKIE, SSE_MAX_CLIENTS, SSE_RETRY,
+    DATA_INVALIDATE, END_EVENT, LAST_EVENT_ID, LINE_EVENT, META_INVALIDATE, ON_BEHALF_OF,
+    SESSION_COOKIE, SSE_MAX_CLIENTS, SSE_RETRY,
 };
 use keel_kernel::{Http, HttpOptions};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    Authenticated, Authenticator, Client, Credential, Frame, LiveEvents, OutboxSubscriber,
+    Authenticated, Authenticator, Client, Credential, Frame, LiveEvents, OnBehalf, OutboxSubscriber,
 };
 use keel_testkit::http::with_test_principal;
 use keel_testkit::{EVENTS_PATH, EventStream, Harness, PRINCIPAL_HEADER, SseFrame, TestHttp, Who};
-use keel_types::Event;
+use keel_types::{Event, Via};
+use tokio::sync::broadcast;
 
 const QUIET: Duration = Duration::from_millis(700);
 const PATIENCE: Duration = Duration::from_secs(5);
 const STOP_WITHIN: Duration = Duration::from_secs(1);
 const KEEP_ALIVE: Duration = Duration::from_millis(200);
+const TAIL_FUNCTION: &str = "stream.tail.follow";
+const TAIL_PATH: &str = "/api/v1/x/stream/tail.follow";
 
 static CREDENTIALS: LazyLock<Mutex<HashMap<String, Principal>>> = LazyLock::new(Mutex::default);
+static DELEGATIONS: LazyLock<Mutex<HashMap<String, Principal>>> = LazyLock::new(Mutex::default);
+static REFUSALS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
+static TAIL: LazyLock<broadcast::Sender<String>> = LazyLock::new(|| broadcast::channel(16).0);
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Labelled {
@@ -76,8 +84,36 @@ fn init(r: &mut Registrar) -> Result<()> {
                 )?;
                 Ok(Nothing {})
             }),
+    )
+    .stream(
+        function::<Nothing, LogLine>(TAIL_FUNCTION)
+            .level(Level::User)
+            .unowned(),
+        follow,
     );
     Ok(())
+}
+
+async fn follow(call: Call<Nothing>) -> Result<Lines> {
+    let first = LogLine::new(LogLevel::Info, call.principal().login.clone());
+    let live = stream::unfold(TAIL.subscribe(), |mut tail| async move {
+        tail.recv()
+            .await
+            .ok()
+            .map(|text| (LogLine::new(LogLevel::Info, text), tail))
+    });
+    Ok(Lines::new(stream::once(async { first }).chain(live)))
+}
+
+fn refused(key: &str) -> bool {
+    REFUSALS.lock().expect("the refusals").contains(key)
+}
+
+fn refuse(key: &str) {
+    REFUSALS
+        .lock()
+        .expect("the refusals")
+        .insert(key.to_owned());
 }
 
 static CREDENTIAL: ModuleDef = ModuleDef {
@@ -100,6 +136,9 @@ impl Authenticator for Revocable {
         _: &Db,
     ) -> Result<Option<Authenticated>> {
         let (Credential::Bearer(secret) | Credential::Session(secret)) = credential;
+        if refused(secret.expose()) {
+            return Err(KeelError::forbidden("credential.error.refused"));
+        }
         let principal = CREDENTIALS
             .lock()
             .expect("the credentials")
@@ -112,9 +151,37 @@ impl Authenticator for Revocable {
     }
 }
 
+struct Delegating;
+
+#[async_trait]
+impl OnBehalf for Delegating {
+    async fn act_for(&self, caller: &Principal, header: &str, _: &Db) -> Result<Option<Principal>> {
+        if caller.level < Level::Admin {
+            return Ok(None);
+        }
+        if refused(header) {
+            return Err(KeelError::forbidden("stream.error.refused"));
+        }
+        let Some(mut principal) = DELEGATIONS
+            .lock()
+            .expect("the delegations")
+            .get(header)
+            .cloned()
+        else {
+            return Err(KeelError::not_found("stream.error.customer"));
+        };
+        let mut actor = caller.clone();
+        actor.via = Via::Peer(Id::ROOT_ACCOUNT);
+        principal.via = Via::Peer(Id::ROOT_ACCOUNT);
+        principal.actor = Some(Box::new(actor));
+        Ok(Some(principal))
+    }
+}
+
 fn init_credential(r: &mut Registrar) -> Result<()> {
     let authenticator: Arc<dyn Authenticator> = Arc::new(Revocable);
-    r.contribute(authenticator);
+    let delegate: Arc<dyn OnBehalf> = Arc::new(Delegating);
+    r.contribute(authenticator).contribute(delegate);
     Ok(())
 }
 
@@ -670,6 +737,143 @@ async fn the_fifth_stream_of_a_session_closes_the_first_with_retry_zero() {
         assert_eq!(invalidate(&stream.next_event().await).0, seq);
     }
     drop((first, streams, neighbour));
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_stream_opened_on_behalf_keeps_the_customer_at_each_keep_alive_until_the_delegation_is_refused()
+ {
+    let harness = boot_with_credentials().await;
+    let http = harness
+        .http_with(HttpOptions {
+            sse_keep_alive: KEEP_ALIVE,
+            ..HttpOptions::default()
+        })
+        .await;
+    let token = issue(&harness, Who::Admin, "kpt_");
+    let header = format!("as={}", Id::generate());
+    DELEGATIONS
+        .lock()
+        .expect("the delegations")
+        .insert(header.clone(), harness.principal(Who::A1).clone());
+    let bearer = format!("Bearer {token}");
+    let headers = [
+        ("authorization", bearer.as_str()),
+        (ON_BEHALF_OF, header.as_str()),
+    ];
+    let mut stream = opened_with(&http, &headers).await;
+    for _ in 0..2 {
+        let beat = stream.next().await;
+        assert!(
+            beat.comments.iter().any(|c| c == "keep-alive"),
+            "a keep-alive passes while the delegation holds: {beat:?}"
+        );
+    }
+    let other = touch(&harness, Who::A2, "of another account").await;
+    let own = touch(&harness, Who::A1, "of the customer").await;
+    assert!(other < own);
+    assert_eq!(invalidate(&stream.next_event().await).0, own);
+
+    DELEGATIONS.lock().expect("the delegations").remove(&header);
+    assert!(
+        stream.closes_within(PATIENCE).await,
+        "a refused delegation loses its stream"
+    );
+    let refused = http.stream(EVENTS_PATH, &headers).await;
+    assert_eq!(refused.status(), 404);
+    let wide = opened_with(&http, &[("authorization", bearer.as_str())]).await;
+    revoke(&token);
+    drop((stream, refused, wide));
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+async fn followed(http: &TestHttp, token: &str, on_behalf: Option<&str>) -> EventStream {
+    let bearer = format!("Bearer {token}");
+    let mut headers = vec![("authorization", bearer.as_str())];
+    headers.extend(on_behalf.map(|header| (ON_BEHALF_OF, header)));
+    let tail = http.stream(TAIL_PATH, &headers).await;
+    assert_eq!(tail.status(), 200, "{headers:?}");
+    tail
+}
+
+async fn keeps_alive(tail: &mut EventStream) {
+    for _ in 0..2 {
+        let beat = tail.next().await;
+        assert!(
+            beat.comments.iter().any(|c| c == "keep-alive"),
+            "a keep-alive passes while the stream is admitted: {beat:?}"
+        );
+    }
+}
+
+async fn next_line(tail: &mut EventStream) -> Value {
+    let line = tail.next_event().await;
+    assert_eq!(line.event.as_deref(), Some(LINE_EVENT), "{line:?}");
+    line.json()["text"].clone()
+}
+
+#[tokio::test]
+async fn a_line_stream_opened_on_behalf_keeps_the_customer_until_the_delegation_is_refused() {
+    let harness = boot_with_credentials().await;
+    let http = harness
+        .http_with(HttpOptions {
+            sse_keep_alive: KEEP_ALIVE,
+            ..HttpOptions::default()
+        })
+        .await;
+    let customer = harness.principal(Who::A1).clone();
+    let forbidden = format!("as={}", Id::generate());
+    let missing = format!("as={}", Id::generate());
+    for header in [&forbidden, &missing] {
+        DELEGATIONS
+            .lock()
+            .expect("the delegations")
+            .insert(header.clone(), customer.clone());
+    }
+    let mut delegated = Vec::new();
+    for header in [&forbidden, &missing] {
+        let token = issue(&harness, Who::Admin, "kpt_");
+        delegated.push(followed(&http, &token, Some(header)).await);
+    }
+    let revoked = issue(&harness, Who::A2, "kat_");
+    let refused_token = issue(&harness, Who::A2, "kat_");
+    let mut plain = Vec::new();
+    for token in [&revoked, &refused_token] {
+        plain.push(followed(&http, token, None).await);
+    }
+    for tail in &mut delegated {
+        assert_eq!(next_line(tail).await, json!(customer.login));
+        keeps_alive(tail).await;
+    }
+    for tail in &mut plain {
+        assert_eq!(next_line(tail).await, json!(Who::A2.login()));
+        keeps_alive(tail).await;
+    }
+    TAIL.send("after the keep-alives".to_owned())
+        .expect("the streams listen");
+    for tail in delegated.iter_mut().chain(plain.iter_mut()) {
+        assert_eq!(next_line(tail).await, json!("after the keep-alives"));
+    }
+
+    refuse(&forbidden);
+    DELEGATIONS
+        .lock()
+        .expect("the delegations")
+        .remove(&missing);
+    revoke(&revoked);
+    refuse(&refused_token);
+    for tail in delegated.iter_mut().chain(plain.iter_mut()) {
+        let end = tail.next_event().await;
+        assert_eq!(end.event.as_deref(), Some(END_EVENT), "{end:?}");
+        assert_eq!(end.json(), json!({ "reason": "expired" }));
+        assert!(
+            tail.closes_within(PATIENCE).await,
+            "a stream that is no longer admitted ends"
+        );
+    }
+    drop((delegated, plain));
     http.stop().await.expect("the server stops");
     harness.finish().await;
 }

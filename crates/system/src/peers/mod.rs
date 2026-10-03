@@ -3,6 +3,7 @@ mod check;
 mod codes;
 mod entity;
 mod functions;
+mod on_behalf;
 mod pairing;
 mod remote;
 mod rotation;
@@ -12,7 +13,8 @@ use std::sync::Arc;
 use keel_sdk::InstanceInfoSource;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    Authenticator, Caller, Degradation, Features, PrincipalSource, SecretCipher,
+    AccountSource, Authenticator, Caller, Degradation, Features, OnBehalf, PeerReach,
+    PrincipalSource, SecretCipher,
 };
 use keel_sdk::types::Scope;
 
@@ -23,6 +25,9 @@ pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, SCHEDULE, SOURCE
 pub use codes::{CODE_PREFIX, CODE_SYMBOLS};
 pub use functions::{
     DELETE, ERROR_STORED, EVENT_CREATED, EVENT_DELETED, EVENT_ROTATED, GET, LIST, STATUS_ACTIVE,
+};
+pub use on_behalf::{
+    ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, MAX_EXTERNAL_ID, is_external_id, names_peer,
 };
 pub use pairing::{
     CREATE, ERROR_CODE, ERROR_INSTANCE_KEY, ERROR_LEVEL, ERROR_MASK, ERROR_PAIRED, ERROR_PROTOCOL,
@@ -83,11 +88,16 @@ fn continuation(
 fn init(r: &mut Registrar) -> Result<()> {
     let authenticator = Arc::new(PeerAuthenticator::default());
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
+    let delegate: Arc<dyn OnBehalf> = authenticator.clone();
+    let reach: Arc<dyn PeerReach> = authenticator.clone();
     r.require::<dyn Caller>()
         .require::<dyn PrincipalSource>()
+        .require::<dyn AccountSource>()
         .require::<dyn SecretCipher>()
         .contribute(InstanceInfoSource::new().feature(FEATURE))
         .contribute(contributed)
+        .contribute(delegate)
+        .provide(reach)
         .contribute(check::job())
         .function(functions::list())
         .function(functions::get())
@@ -106,6 +116,7 @@ fn init(r: &mut Registrar) -> Result<()> {
             authenticator.attach(
                 ctx.require::<dyn Clock>()?,
                 ctx.require::<dyn PrincipalSource>()?,
+                ctx.require::<dyn AccountSource>()?,
             );
             Ok(())
         });
@@ -172,6 +183,14 @@ mod tests {
                 .count(),
             1
         );
+        assert_eq!(
+            registrations
+                .contributions
+                .of::<Arc<dyn OnBehalf>>()
+                .count(),
+            1
+        );
+        assert!(registrations.provides.get::<dyn PeerReach>().is_some());
         let jobs: Vec<(&str, &str)> = registrations
             .contributions
             .of::<CronJob>()

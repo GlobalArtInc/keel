@@ -35,6 +35,7 @@
         "parent_scope": "A level of the account tree is named by an account id, or by null for the top of the accounts you reach",
         "path_unknown": "The stored path of an account carries the segment {segment}, which is not a ULID",
         "root_immutable": "The root account cannot be changed",
+        "row_unknown": "The stored account {id} carries an unreadable {member}",
         "rows_remain": "Data of the account remains in a module that did not remove it: {detail}",
         "state_changed": "The account is {state}, not {expected}; it changed while the operation ran"
       },
@@ -187,6 +188,7 @@
       "multi_field": "The field {field} cannot be edited across several rows",
       "multi_unmasked": "The field {field} is not in the mask of the group edit",
       "not_found": "Not found",
+      "on_behalf": "This credential may not act on behalf of a customer",
       "outbox_row": "The outbox row {seq} carries an unreadable {member}",
       "outbox_seq": "The outbox did not answer the sequence number of a written event",
       "outbox_unavailable": "The outbox cannot be read yet: the dispatcher is not attached",

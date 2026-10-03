@@ -7,10 +7,13 @@ use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use keel_sdk::system::{AccountSource, NewPrincipal, PrincipalSource};
 use keel_sdk::{KeelError, Result};
-use keel_types::{Id, Level, Principal, Scope, Via};
+use keel_types::{Account, AccountState, Id, Level, Principal, Scope, Via};
 
+use super::accounts::state_name;
 use super::entity::{account, principal};
 use super::principals;
+
+const ACCOUNT_UNKNOWN: &str = "keel.account.error.row_unknown";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StoredPrincipals;
@@ -29,6 +32,14 @@ impl AccountSource for StoredAccounts {
         };
         ancestry_of(&row.path)
     }
+
+    async fn by_id(&self, account: Id, db: &Db) -> Result<Option<Account>> {
+        account::Entity::find_by_id(account.to_string())
+            .one(db)
+            .await?
+            .map(account_of)
+            .transpose()
+    }
 }
 
 fn ancestry_of(path: &str) -> Result<Vec<Id>> {
@@ -44,6 +55,37 @@ fn ancestry_of(path: &str) -> Result<Vec<Id>> {
     chain.reverse();
     chain.push(Id::ROOT_ACCOUNT);
     Ok(chain)
+}
+
+fn account_of(row: account::Model) -> Result<Account> {
+    let unknown = |member: &str| {
+        KeelError::internal(ACCOUNT_UNKNOWN)
+            .param("id", row.id.as_str())
+            .param("member", member)
+    };
+    let id = row.id.parse().map_err(|_| unknown("id"))?;
+    let parent_id = row
+        .parent_id
+        .as_deref()
+        .map(|parent| parent.parse().map_err(|_| unknown("parentId")))
+        .transpose()?;
+    let state = [
+        AccountState::Active,
+        AccountState::Suspended,
+        AccountState::Deleting,
+    ]
+    .into_iter()
+    .find(|state| state_name(*state) == row.state)
+    .ok_or_else(|| unknown("state"))?;
+    Ok(Account {
+        id,
+        kind: row.kind,
+        parent_id,
+        path: row.path,
+        state,
+        external_id: row.external_id,
+        origin: row.origin,
+    })
 }
 
 #[async_trait]
@@ -63,6 +105,32 @@ impl PrincipalSource for StoredPrincipals {
             .await?
             .map(from_row)
             .transpose()
+    }
+
+    async fn by_external(
+        &self,
+        origin: &str,
+        external_id: &str,
+        db: &Db,
+    ) -> Result<Option<Principal>> {
+        principal::Entity::find()
+            .filter(principal::Column::Origin.eq(origin))
+            .filter(principal::Column::ExternalId.eq(external_id))
+            .one(db)
+            .await?
+            .map(from_row)
+            .transpose()
+    }
+
+    async fn of_external_id(&self, external_id: &str, db: &Db) -> Result<Vec<Principal>> {
+        principal::Entity::find()
+            .filter(principal::Column::ExternalId.eq(external_id))
+            .order_by_asc(principal::Column::Id)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(from_row)
+            .collect()
     }
 
     async fn at_or_above(&self, level: Level, db: &Db) -> Result<Vec<Principal>> {
@@ -213,6 +281,49 @@ mod tests {
         let error = ancestry_of("/not-an-id/").expect_err("the segment is not a ULID");
         assert_eq!(error.key(), "keel.account.error.path_unknown");
         assert_eq!(error.params()["segment"], "not-an-id");
+    }
+
+    fn account_row(parent: Option<&str>, state: &str) -> account::Model {
+        account::Model {
+            id: "01J8A0000000000000000000A1".into(),
+            kind: "user".into(),
+            parent_id: parent.map(str::to_owned),
+            path: "/01J8A0000000000000000000A1/".into(),
+            state: state.into(),
+            external_id: Some("acc-7".into()),
+            origin: Some("bill:01J9A".into()),
+            created_at: DateTimeUtc::default(),
+            updated_at: DateTimeUtc::default(),
+        }
+    }
+
+    #[test]
+    fn a_stored_account_carries_its_external_identity_and_a_malformed_member_is_named() {
+        let account = account_of(account_row(None, "suspended")).expect("a valid row");
+        assert_eq!(account.id.to_string(), "01J8A0000000000000000000A1");
+        assert_eq!(account.parent_id, None);
+        assert_eq!(account.state, AccountState::Suspended);
+        assert_eq!(account.external_id.as_deref(), Some("acc-7"));
+        assert_eq!(account.origin.as_deref(), Some("bill:01J9A"));
+        let parented = account_of(account_row(Some("01J8A0000000000000000000A0"), "active"))
+            .expect("a valid row");
+        assert_eq!(
+            parented
+                .parent_id
+                .map(|parent| parent.to_string())
+                .as_deref(),
+            Some("01J8A0000000000000000000A0")
+        );
+        for (row, member) in [
+            (account_row(None, "closed"), "state"),
+            (account_row(Some("nope"), "active"), "parentId"),
+        ] {
+            let error = account_of(row).expect_err("the row is malformed");
+            assert_eq!(error.code(), ErrorCode::Internal);
+            assert_eq!(error.key(), ACCOUNT_UNKNOWN);
+            assert_eq!(error.params()["member"], member);
+            assert_eq!(error.params()["id"], "01J8A0000000000000000000A1");
+        }
     }
 
     #[test]

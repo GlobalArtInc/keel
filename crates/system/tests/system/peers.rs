@@ -22,11 +22,11 @@ const PATIENCE: Duration = Duration::from_secs(30);
 const PASSWORD: &str = "correct-horse-battery-staple";
 const AGENT: &str = "keel-system-tests/1";
 
-async fn installation() -> Harness {
+pub(crate) async fn installation() -> Harness {
     composed(Harness::new()).boot().await
 }
 
-fn composed(builder: keel_testkit::Builder) -> keel_testkit::Builder {
+pub(crate) fn composed(builder: keel_testkit::Builder) -> keel_testkit::Builder {
     builder
         .module(&keel_system::auth::MODULE)
         .module(&keel_system::cron::MODULE)
@@ -34,22 +34,24 @@ fn composed(builder: keel_testkit::Builder) -> keel_testkit::Builder {
         .module(&MODULE)
 }
 
-struct Two {
-    a: Harness,
-    b: Harness,
-    a_http: TestHttp,
-    b_http: TestHttp,
+pub(crate) struct Two {
+    pub(crate) a: Harness,
+    pub(crate) b: Harness,
+    pub(crate) a_http: TestHttp,
+    pub(crate) b_http: TestHttp,
 }
 
-struct Linked {
-    a_link: String,
-    b_link: String,
+pub(crate) struct Linked {
+    pub(crate) a_link: String,
+    pub(crate) b_link: String,
 }
 
 impl Two {
-    async fn start() -> Self {
-        let a = installation().await;
-        let b = installation().await;
+    pub(crate) async fn start() -> Self {
+        Self::of(installation().await, installation().await).await
+    }
+
+    pub(crate) async fn of(a: Harness, b: Harness) -> Self {
         let a_http = a.http().await;
         let b_http = b.http().await;
         Self {
@@ -64,7 +66,7 @@ impl Two {
         self.b_http.url("")
     }
 
-    async fn pair(&self, b_grants: Value, a_grants: Value) -> Linked {
+    pub(crate) async fn pair(&self, b_grants: Value, a_grants: Value) -> Linked {
         let code = code(&self.b, b_grants).await;
         let mut params = a_grants;
         params["url"] = json!(self.b_url());
@@ -76,7 +78,7 @@ impl Two {
         Linked { a_link, b_link }
     }
 
-    async fn finish(self) {
+    pub(crate) async fn finish(self) {
         self.a_http.stop().await.unwrap();
         self.b_http.stop().await.unwrap();
         self.a.finish().await;
@@ -84,14 +86,14 @@ impl Two {
     }
 }
 
-fn data(reply: &Reply) -> &Value {
+pub(crate) fn data(reply: &Reply) -> &Value {
     match reply.data() {
         Some(data) => data,
         None => panic!("{reply:?}"),
     }
 }
 
-async fn code(harness: &Harness, grants: Value) -> String {
+pub(crate) async fn code(harness: &Harness, grants: Value) -> String {
     let issued = harness.call(Who::Admin, PAIR_CODE, grants).await;
     assert_eq!(issued.status(), 200, "{issued:?}");
     data(&issued)["code"].as_str().unwrap().to_owned()
@@ -103,7 +105,7 @@ async fn only_link(harness: &Harness) -> String {
     ids[0].clone()
 }
 
-async fn outbound(harness: &Harness, link: &str) -> String {
+pub(crate) async fn outbound(harness: &Harness, link: &str) -> String {
     let sealed = harness
         .database()
         .rows(&format!(
@@ -118,7 +120,7 @@ async fn outbound(harness: &Harness, link: &str) -> String {
     String::from_utf8(cipher.open(&sealed[0]).expect("the data key opens it")).unwrap()
 }
 
-async fn call_with(http: &TestHttp, token: &str, func: &str, params: Value) -> Answer {
+pub(crate) async fn call_with(http: &TestHttp, token: &str, func: &str, params: Value) -> Answer {
     let bearer = format!("Bearer {token}");
     http.request(
         "POST",
@@ -132,7 +134,7 @@ async fn call_with(http: &TestHttp, token: &str, func: &str, params: Value) -> A
     .await
 }
 
-fn refused(answer: &Answer, status: u16, key: &str) {
+pub(crate) fn refused(answer: &Answer, status: u16, key: &str) {
     assert_eq!(answer.status, status, "{}", answer.body);
     assert_eq!(answer.json()["error"]["key"], json!(key), "{}", answer.body);
 }
@@ -206,7 +208,7 @@ async fn link_state(harness: &Harness, link: &str) -> Vec<String> {
         .await
 }
 
-async fn link_principal(harness: &Harness, link: &str) -> String {
+pub(crate) async fn link_principal(harness: &Harness, link: &str) -> String {
     let ids = harness
         .database()
         .rows(&format!(
@@ -217,7 +219,7 @@ async fn link_principal(harness: &Harness, link: &str) -> String {
     ids[0].clone()
 }
 
-async fn mint(http: &TestHttp, peer_token: &str) -> String {
+pub(crate) async fn mint(http: &TestHttp, peer_token: &str) -> String {
     let created = call_with(
         http,
         peer_token,
