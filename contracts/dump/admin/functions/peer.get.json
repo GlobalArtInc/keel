@@ -60,7 +60,7 @@
         "type": "string"
       },
       "scopes": {
-        "$ref": "#/$defs/Scopes"
+        "$ref": "#/$defs/PeerScope"
       },
       "status": {
         "type": "string"
@@ -89,7 +89,7 @@
       "createdAt"
     ],
     "$defs": {
-      "Scopes": {
+      "PeerScope": {
         "type": "object",
         "properties": {
           "functions": {

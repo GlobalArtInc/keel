@@ -141,6 +141,9 @@ export type Scope =
   | ('full' | 'read_only')
   | {
       functions: string[];
+    }
+  | {
+      peer: PeerScope;
     };
 export type Via =
   | ('http' | 'socket' | 'internal' | 'su')
@@ -498,6 +501,11 @@ export interface Page {
   data: unknown[];
   total: number;
   totals?: Record<string, unknown> | null;
+}
+export interface PeerScope {
+  functions: string[];
+  level: Level;
+  onBehalf?: boolean;
 }
 export interface Principal {
   id: Id;

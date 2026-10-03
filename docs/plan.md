@@ -6472,6 +6472,11 @@ storing its cursor; and the inbox `peer_inbox(event_id, peer_id, received_at, pr
 the receiving side — `POST /api/v1/x/peers/hook` verifying the HMAC signature in the ±300 s
 window with constant-time comparison, inserting by event id, answering `200` at once — processed
 asynchronously onto the local bus so module subscribers see a peer's events like local ones.
+Step 1b carries the subscription in `peer.pair` as two fields where the design sketches a
+`webhook: { url, events }` object: `url`, the initiator's base address (its `auth.shell_url`, which
+the receiver also keeps for the handshake of the daily check), and `subscribe`, the event masks;
+the receiver issues the webhook secret only when both are present. This step derives the hook
+address as `<url>/api/v1/x/peers/hook`, and step 8c amends the example of the design.
 
 **Touches.** `crates/system/src/peers/`, `crates/system/src/webhooks/`, `crates/kernel/src/` (the
 bus entry for remote events), `contracts/`.
@@ -6652,7 +6657,13 @@ two VMs for the operator.
 their combination with on-behalf, origin binding, TOFU and key change, the replay window and
 constant-time checks, the pull feed's scope, the inbox under floods, idempotency keys across
 principals, `svc` params reaching templates; every finding fixed with a test, the rest recorded
-for 8c.
+for 8c. One gap is known from step 1b: trust on first use pins the instance key the handshake
+publishes and compares it on every later contact, but the handshake is unsigned and the key is
+public, so a server answering at the stored address can repeat the pinned key, pass the comparison
+and receive the live outbound token that `peer.rotate` sends in `peer.renew`. This step adds proof
+of possession — the neighbour signs a fresh challenge with its instance key — before `peer.rotate`
+sends a token and before the daily check accepts a handshake, with a test that a server repeating a
+copied key is refused.
 
 **Touches.** the modules named.
 

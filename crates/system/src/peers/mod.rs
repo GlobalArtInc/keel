@@ -1,12 +1,46 @@
+mod authenticator;
+mod check;
+mod codes;
 mod entity;
 mod functions;
+mod pairing;
+mod remote;
+mod rotation;
+
+use std::sync::Arc;
 
 use keel_sdk::InstanceInfoSource;
 use keel_sdk::prelude::*;
+use keel_sdk::system::{
+    Authenticator, Caller, Degradation, Features, PrincipalSource, SecretCipher,
+};
+use keel_sdk::types::Scope;
 
-pub use functions::{ERROR_STORED, GET, LIST, STATUS_ACTIVE};
+use authenticator::PeerAuthenticator;
+
+pub use authenticator::ERROR_PRINCIPAL;
+pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, SCHEDULE, SOURCE};
+pub use codes::{CODE_PREFIX, CODE_SYMBOLS};
+pub use functions::{
+    DELETE, ERROR_STORED, EVENT_CREATED, EVENT_DELETED, EVENT_ROTATED, GET, LIST, STATUS_ACTIVE,
+};
+pub use pairing::{
+    CREATE, ERROR_CODE, ERROR_INSTANCE_KEY, ERROR_LEVEL, ERROR_MASK, ERROR_PAIRED, ERROR_PROTOCOL,
+    ERROR_SCOPE, ERROR_SELF, ERROR_TOKEN, LINK, LOGIN_PREFIX, PAIR, PAIR_CODE, ROLE, TTL_DEFAULT,
+    TTL_MAX, TTL_MIN, WEBHOOK_SECRET_PREFIX, compatible,
+};
+pub use remote::{ERROR_ANSWER, ERROR_HANDSHAKE, ERROR_UNREACHABLE, ERROR_URL};
+pub use rotation::{ERROR_NO_URL, REKEY, RENEW, ROTATE};
 
 pub const FEATURE: &str = "peers";
+pub const MENU_PATH: &str = "system/peers";
+pub const MENU_ICON: &str = "network";
+pub const FUNCTIONS: [&str; 10] = [
+    LIST, GET, PAIR_CODE, PAIR, CREATE, LINK, ROTATE, RENEW, REKEY, DELETE,
+];
+const LICENSE: &str = "keel.error.license";
+const READ_ONLY: &str = "read_only";
+const TOKEN_READ_ONLY: &str = "keel.error.token_read_only";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/peers").table("keel_migration_peer");
@@ -15,26 +49,78 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "peer",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &[],
+    requires: &["auth", "cron", "notify"],
     migrations: Some(&MIGRATIONS),
     init,
 };
 
+fn continuation(
+    principal: &Principal,
+    features: Option<&dyn Features>,
+    function: &str,
+) -> Result<Principal> {
+    if !principal.scope.admits_write() {
+        return Err(KeelError::forbidden(TOKEN_READ_ONLY).param("function", function));
+    }
+    match features.and_then(|features| features.degradation(MODULE.id)) {
+        None => {}
+        Some(Degradation::ReadOnly) => {
+            return Err(KeelError::license(LICENSE)
+                .param("function", function)
+                .param("state", READ_ONLY));
+        }
+        Some(Degradation::Unlisted { product }) => {
+            return Err(KeelError::license(LICENSE)
+                .param("function", function)
+                .param("product", product));
+        }
+    }
+    let mut principal = principal.clone();
+    principal.scope = Scope::Full;
+    Ok(principal)
+}
+
 fn init(r: &mut Registrar) -> Result<()> {
-    r.contribute(InstanceInfoSource::new().feature(FEATURE))
+    let authenticator = Arc::new(PeerAuthenticator::default());
+    let contributed: Arc<dyn Authenticator> = authenticator.clone();
+    r.require::<dyn Caller>()
+        .require::<dyn PrincipalSource>()
+        .require::<dyn SecretCipher>()
+        .contribute(InstanceInfoSource::new().feature(FEATURE))
+        .contribute(contributed)
+        .contribute(check::job())
         .function(functions::list())
         .function(functions::get())
+        .function(pairing::pair_code())
+        .function(pairing::pair())
+        .function(pairing::create())
+        .function(pairing::link())
+        .function(rotation::rotate())
+        .function(rotation::renew())
+        .function(rotation::rekey())
+        .function(functions::delete())
+        .menu(MenuNode::new(MENU_PATH, LIST).icon(MENU_ICON).order(55))
         .i18n("en", include_str!("../../i18n/peers/en.json"))
-        .i18n("ru", include_str!("../../i18n/peers/ru.json"));
+        .i18n("ru", include_str!("../../i18n/peers/ru.json"))
+        .start(move |ctx| async move {
+            authenticator.attach(
+                ctx.require::<dyn Clock>()?,
+                ctx.require::<dyn PrincipalSource>()?,
+            );
+            Ok(())
+        });
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use keel_sdk::types::{ErrorCode, PeerScope, Via};
+
     use super::*;
+    use crate::cron::api::CronJob;
 
     #[test]
-    fn the_module_registers_its_two_readers_and_contributes_its_feature() {
+    fn the_module_registers_its_functions_its_menu_its_job_and_its_authenticator() {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let registrations = registrar
@@ -49,7 +135,7 @@ mod tests {
                     def.kind(),
                     def.mode(),
                     def.access().level,
-                    def.owned().is_some(),
+                    def.is_internal(),
                 )
             })
             .collect();
@@ -58,9 +144,20 @@ mod tests {
             [
                 (LIST, Kind::List, Mode::Read, Level::Admin, false),
                 (GET, Kind::Get, Mode::Read, Level::Admin, false),
+                (PAIR_CODE, Kind::Form, Mode::Write, Level::Admin, false),
+                (PAIR, Kind::Action, Mode::Write, Level::Guest, false),
+                (CREATE, Kind::Form, Mode::Read, Level::Admin, false),
+                (LINK, Kind::Action, Mode::Write, Level::Admin, true),
+                (ROTATE, Kind::Action, Mode::Read, Level::Admin, false),
+                (RENEW, Kind::Action, Mode::Write, Level::Guest, false),
+                (REKEY, Kind::Action, Mode::Write, Level::Admin, true),
+                (DELETE, Kind::Action, Mode::Write, Level::Admin, false),
             ]
         );
+        let names: Vec<&str> = functions.iter().map(|(name, ..)| *name).collect();
+        assert_eq!(names, FUNCTIONS);
         for def in &registrations.functions {
+            assert!(def.owned().is_none(), "{}", def.name());
             def.descriptor().expect("the descriptor compiles");
         }
         let sources: Vec<&InstanceInfoSource> = registrations
@@ -68,8 +165,27 @@ mod tests {
             .of::<InstanceInfoSource>()
             .collect();
         assert_eq!(sources, [&InstanceInfoSource::new().feature(FEATURE)]);
+        assert_eq!(
+            registrations
+                .contributions
+                .of::<Arc<dyn Authenticator>>()
+                .count(),
+            1
+        );
+        let jobs: Vec<(&str, &str)> = registrations
+            .contributions
+            .of::<CronJob>()
+            .map(|job| (job.id(), job.schedule()))
+            .collect();
+        assert_eq!(jobs, [(JOB_ID, SCHEDULE)]);
         assert!(registrations.permissions.is_empty());
-        assert!(registrations.menu.is_empty());
+        let menu: Vec<(&str, &str, Option<&str>)> = registrations
+            .menu
+            .iter()
+            .map(|node| (node.path(), node.func(), node.icon_name()))
+            .collect();
+        assert_eq!(menu, [(MENU_PATH, LIST, Some(MENU_ICON))]);
+        assert!(registrations.start.is_some());
         let languages: Vec<&str> = registrations
             .i18n
             .iter()
@@ -77,10 +193,88 @@ mod tests {
             .collect();
         assert_eq!(languages, ["en", "ru"]);
         assert_eq!(MODULE.id, "peer");
-        assert!(MODULE.requires.is_empty());
+        assert_eq!(MODULE.requires, ["auth", "cron", "notify"]);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),
             Some("keel_migration_peer")
         );
+    }
+
+    struct Degraded(Option<Degradation>);
+
+    impl Features for Degraded {
+        fn enabled(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn allows(&self, _: &str) -> bool {
+            true
+        }
+
+        fn degradation(&self, module: &str) -> Option<Degradation> {
+            assert_eq!(module, MODULE.id);
+            self.0.clone()
+        }
+    }
+
+    fn admin(scope: Scope) -> Principal {
+        Principal {
+            id: Id::generate(),
+            login: "root".into(),
+            level: Level::Admin,
+            account_id: Id::ROOT_ACCOUNT,
+            role: "owner".into(),
+            actor: None,
+            scope,
+            via: Via::Http,
+            external_id: None,
+            origin: None,
+            lang: "en".into(),
+            grants: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_continuation_writes_as_the_caller_with_a_full_scope_unless_the_token_or_the_lease_is_read_only()
+     {
+        let scoped = admin(Scope::Functions(vec![CREATE.into()]));
+        let continued = continuation(&scoped, None, CREATE).unwrap();
+        assert_eq!(continued.scope, Scope::Full);
+        assert_eq!(continued.id, scoped.id);
+        assert_eq!(continued.level, Level::Admin);
+        let peer = admin(Scope::Peer(PeerScope {
+            functions: vec!["peer.*".into()],
+            level: Level::Admin,
+            on_behalf: false,
+        }));
+        assert_eq!(
+            continuation(&peer, Some(&Degraded(None)), CREATE)
+                .unwrap()
+                .scope,
+            Scope::Full
+        );
+        let read_only = continuation(&admin(Scope::ReadOnly), None, CREATE).unwrap_err();
+        assert_eq!(read_only.code(), ErrorCode::Forbidden);
+        assert_eq!(read_only.key(), TOKEN_READ_ONLY);
+        assert_eq!(read_only.params()["function"], CREATE);
+        let lease = continuation(
+            &admin(Scope::Full),
+            Some(&Degraded(Some(Degradation::ReadOnly))),
+            ROTATE,
+        )
+        .unwrap_err();
+        assert_eq!(lease.code(), ErrorCode::License);
+        assert_eq!(lease.params()["state"], READ_ONLY);
+        assert_eq!(lease.params()["function"], ROTATE);
+        let unlisted = continuation(
+            &admin(Scope::Full),
+            Some(&Degraded(Some(Degradation::Unlisted {
+                product: "dns".into(),
+            }))),
+            ROTATE,
+        )
+        .unwrap_err();
+        assert_eq!(unlisted.code(), ErrorCode::License);
+        assert_eq!(unlisted.params()["product"], "dns");
     }
 }

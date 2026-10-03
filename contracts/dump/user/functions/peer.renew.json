@@ -1,0 +1,53 @@
+{
+  "keel": 1,
+  "name": "peer.renew",
+  "module": "peer",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "Renew",
+    "type": "object",
+    "properties": {
+      "token": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "inboundToken": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      }
+    },
+    "required": [
+      "token",
+      "inboundToken"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      }
+    }
+  },
+  "result": {
+    "title": "Renewed",
+    "type": "object",
+    "properties": {
+      "token": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "token"
+    ]
+  }
+}

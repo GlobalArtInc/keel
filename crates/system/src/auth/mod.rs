@@ -12,6 +12,7 @@ mod mail;
 mod password;
 mod policy;
 mod reset;
+mod retire;
 mod session;
 mod su;
 mod token;
@@ -51,7 +52,7 @@ pub use session::{
     REASON_REVOKED, REASON_SU_EXIT, TOKEN_PREFIX,
 };
 pub use su::PERMISSION as SU;
-pub use token::API_TOKEN_PREFIX;
+pub use token::{API_TOKEN_PREFIX, PEER_TOKEN_PREFIX};
 pub use totp::challenge::{
     LIFETIME_MINUTES as CHALLENGE_MINUTES, MAX_ATTEMPTS as CHALLENGE_ATTEMPTS,
 };

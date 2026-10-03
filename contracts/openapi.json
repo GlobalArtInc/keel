@@ -17019,6 +17019,254 @@
         }
       }
     },
+    "/api/v1/call/peer.create": {
+      "post": {
+        "operationId": "peer.create",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "PairCreate",
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "code": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "subscribe": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "default": [],
+                    "x-ui": {
+                      "control": "tags"
+                    }
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "default": [],
+                    "x-ui": {
+                      "control": "tags"
+                    }
+                  },
+                  "level": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Level"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "onBehalf": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "url",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Paired",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "instanceId": {
+                          "type": "string"
+                        },
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "keel": {
+                          "type": "string"
+                        },
+                        "protocol": {
+                          "type": "integer",
+                          "format": "int32"
+                        },
+                        "url": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "publicKey": {
+                          "type": "string"
+                        },
+                        "scopes": {
+                          "$ref": "#/components/schemas/PeerScope"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "lastSeenAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "granted": {
+                          "$ref": "#/components/schemas/PeerScope"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "instanceId",
+                        "products",
+                        "keel",
+                        "protocol",
+                        "publicKey",
+                        "scopes",
+                        "status",
+                        "createdAt",
+                        "granted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/peer.delete": {
+      "post": {
+        "operationId": "peer.delete",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Deleted",
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/peer.get": {
       "post": {
         "operationId": "peer.get",
@@ -17095,7 +17343,7 @@
                           "type": "string"
                         },
                         "scopes": {
-                          "$ref": "#/components/schemas/Scopes"
+                          "$ref": "#/components/schemas/PeerScope"
                         },
                         "status": {
                           "type": "string"
@@ -17203,6 +17451,408 @@
                       "required": [
                         "data",
                         "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/peer.pair": {
+      "post": {
+        "operationId": "peer.pair",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "PairRequest",
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "instance": {
+                    "$ref": "#/components/schemas/InstanceInfo"
+                  },
+                  "url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "default": null
+                  },
+                  "inboundToken": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "inboundScopes": {
+                    "$ref": "#/components/schemas/PeerScope"
+                  },
+                  "subscribe": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "default": []
+                  }
+                },
+                "required": [
+                  "code",
+                  "instance",
+                  "inboundToken",
+                  "inboundScopes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "PairAnswer",
+                      "type": "object",
+                      "properties": {
+                        "peerId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "token": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        },
+                        "scopes": {
+                          "$ref": "#/components/schemas/PeerScope"
+                        },
+                        "webhookSecret": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "x-keel": {
+                            "once": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "peerId",
+                        "token",
+                        "scopes"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/call/peer.pair_code": {
+      "post": {
+        "operationId": "peer.pair_code",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "form",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "PairCodeIssue",
+                "type": "object",
+                "properties": {
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "default": [],
+                    "x-ui": {
+                      "control": "tags"
+                    }
+                  },
+                  "level": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Level"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "onBehalf": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "ttl": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 60,
+                    "maximum": 86400
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "PairCode",
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        },
+                        "expiresAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "expiresAt"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/peer.renew": {
+      "post": {
+        "operationId": "peer.renew",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "guest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Renew",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  },
+                  "inboundToken": {
+                    "$ref": "#/components/schemas/Secret",
+                    "x-keel": {
+                      "secret": true
+                    }
+                  }
+                },
+                "required": [
+                  "token",
+                  "inboundToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Renewed",
+                      "type": "object",
+                      "properties": {
+                        "token": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "token"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/call/peer.rotate": {
+      "post": {
+        "operationId": "peer.rotate",
+        "tags": [
+          "peer"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Rotated",
+                      "type": "object",
+                      "properties": {
+                        "rotated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "rotated"
                       ]
                     },
                     "meta": {
@@ -21410,6 +22060,52 @@
         "minLength": 26,
         "maxLength": 26
       },
+      "InstanceInfo": {
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "keel": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "serviceKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "instanceId",
+          "keel",
+          "protocol",
+          "products",
+          "publicKey"
+        ]
+      },
       "IpRule": {
         "type": "object",
         "properties": {
@@ -21727,7 +22423,7 @@
             "type": "string"
           },
           "scopes": {
-            "$ref": "#/components/schemas/Scopes"
+            "$ref": "#/components/schemas/PeerScope"
           },
           "status": {
             "type": "string"
@@ -21754,6 +22450,28 @@
           "scopes",
           "status",
           "createdAt"
+        ]
+      },
+      "PeerScope": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
         ]
       },
       "Period": {
@@ -22145,28 +22863,6 @@
           "scheduledAt",
           "startedAt",
           "outcome"
-        ]
-      },
-      "Scopes": {
-        "type": "object",
-        "properties": {
-          "functions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "level": {
-            "$ref": "#/components/schemas/Level"
-          },
-          "onBehalf": {
-            "type": "boolean",
-            "default": false
-          }
-        },
-        "required": [
-          "functions",
-          "level"
         ]
       },
       "Secret": {

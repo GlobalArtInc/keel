@@ -117,7 +117,7 @@ impl CredentialAuthenticator {
         };
         token::touch(db, &row.id, now).await?;
         principal.level = principal.level.min(ceiling);
-        principal.scope = row.scope.0;
+        principal.scope = row.scope.0.into();
         principal.via = Via::Http;
         Ok(Authenticated {
             principal,

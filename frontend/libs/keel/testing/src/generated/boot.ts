@@ -240,6 +240,13 @@ export const BOOT_ONE: Boot = {
           icon: 'key',
         },
         {
+          path: 'system/peers',
+          label: 'peer.list.title',
+          func: 'peer.list',
+          kind: 'list',
+          icon: 'network',
+        },
+        {
           path: 'system/ip-rules',
           label: 'auth.ip_rule.list.title',
           func: 'auth.ip_rule.list',

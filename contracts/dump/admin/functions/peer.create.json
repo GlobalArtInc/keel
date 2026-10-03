@@ -1,0 +1,202 @@
+{
+  "keel": 1,
+  "name": "peer.create",
+  "module": "peer",
+  "kind": "form",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "PairCreate",
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "format": "uri",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "code": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "subscribe": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "default": [],
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "default": [],
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "level": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Level"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "onBehalf": {
+        "type": "boolean",
+        "default": false
+      }
+    },
+    "required": [
+      "url",
+      "code"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "Paired",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "instanceId": {
+        "type": "string"
+      },
+      "products": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "keel": {
+        "type": "string"
+      },
+      "protocol": {
+        "type": "integer",
+        "format": "int32"
+      },
+      "url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "publicKey": {
+        "type": "string"
+      },
+      "scopes": {
+        "$ref": "#/$defs/PeerScope"
+      },
+      "status": {
+        "type": "string"
+      },
+      "lastSeenAt": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "granted": {
+        "$ref": "#/$defs/PeerScope"
+      }
+    },
+    "required": [
+      "id",
+      "instanceId",
+      "products",
+      "keel",
+      "protocol",
+      "publicKey",
+      "scopes",
+      "status",
+      "createdAt",
+      "granted"
+    ],
+    "$defs": {
+      "PeerScope": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "ui": {
+    "title": "peer.create.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "url",
+          "code",
+          "subscribe",
+          "scopes",
+          "level",
+          "onBehalf"
+        ]
+      }
+    ]
+  }
+}

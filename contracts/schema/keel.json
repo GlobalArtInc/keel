@@ -2009,6 +2009,28 @@
         "total"
       ]
     },
+    "PeerScope": {
+      "type": "object",
+      "properties": {
+        "functions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "level": {
+          "$ref": "#/$defs/Level"
+        },
+        "onBehalf": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "functions",
+        "level"
+      ]
+    },
     "Platform": {
       "type": "object",
       "properties": {
@@ -2108,6 +2130,18 @@
           },
           "required": [
             "functions"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "peer": {
+              "$ref": "#/$defs/PeerScope"
+            }
+          },
+          "required": [
+            "peer"
           ],
           "additionalProperties": false
         }

@@ -70,7 +70,7 @@
             "type": "string"
           },
           "scopes": {
-            "$ref": "#/$defs/Scopes"
+            "$ref": "#/$defs/PeerScope"
           },
           "status": {
             "type": "string"
@@ -99,7 +99,7 @@
           "createdAt"
         ]
       },
-      "Scopes": {
+      "PeerScope": {
         "type": "object",
         "properties": {
           "functions": {
@@ -179,8 +179,45 @@
         "sortable": true
       }
     ],
+    "actions": [
+      {
+        "id": "create",
+        "role": "new",
+        "screen": "peer.create",
+        "icon": "plus"
+      },
+      {
+        "id": "pair_code",
+        "role": "button",
+        "screen": "peer.pair_code",
+        "icon": "key-round"
+      },
+      {
+        "id": "rotate",
+        "role": "button",
+        "function": "peer.rotate",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      },
+      {
+        "id": "delete",
+        "role": "button",
+        "function": "peer.delete",
+        "params": {
+          "id": "$id"
+        },
+        "confirm": true
+      }
+    ],
+    "row_actions": [
+      "rotate",
+      "delete"
+    ],
     "empty": {
-      "title": "peer.empty"
+      "title": "peer.empty",
+      "action": "create"
     },
     "invalidate_on": [
       "peer.*"

@@ -3,7 +3,7 @@ use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use keel_sdk::types::{Scope, is_mask};
 
-use super::super::entity::token;
+use super::super::entity::token::{self, TokenScope};
 use super::{Issue, issue, revoke};
 
 pub const PERMISSION_READ: &str = "auth.token.read";
@@ -16,7 +16,7 @@ pub struct TokenCreate {
     #[schemars(length(min = 1, max = 64))]
     pub name: String,
     pub level: Option<Level>,
-    pub scope: Option<Scope>,
+    pub scope: Option<TokenScope>,
     #[schemars(extend("x-keel" = json!({ "check": "cidr" })))]
     pub ip_allow: Option<Vec<String>>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -116,8 +116,11 @@ pub fn create() -> FunctionDef {
                     .param("level", level.as_str())
                     .param("caller", caller.level.as_str()));
             }
-            let scope = params.scope.clone().unwrap_or_else(|| caller.scope.clone());
-            if let Scope::Functions(masks) = &scope {
+            let scope = params
+                .scope
+                .clone()
+                .unwrap_or_else(|| TokenScope::of(&caller.scope));
+            if let TokenScope::Functions(masks) = &scope {
                 for (index, mask) in masks.iter().enumerate() {
                     if !is_mask(mask) {
                         return Err(KeelError::validation("auth.error.token_mask")
@@ -126,7 +129,7 @@ pub fn create() -> FunctionDef {
                     }
                 }
             }
-            if !caller.scope.contains(&scope) {
+            if !caller.scope.contains(&Scope::from(scope.clone())) {
                 return Err(KeelError::forbidden("auth.error.token_scope"));
             }
             let now = call.require::<dyn Clock>()?.now();

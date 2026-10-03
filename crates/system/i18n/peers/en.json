@@ -1,5 +1,12 @@
 {
   "peer": {
+    "action": {
+      "create": "Pair with an installation",
+      "delete": "Unpair",
+      "pair_code": "Pairing code",
+      "rotate": "Rotate tokens"
+    },
+    "code": "Pairing code",
     "column": {
       "createdAt": "Paired",
       "keel": "Version",
@@ -9,15 +16,49 @@
       "status": "Status",
       "url": "Address"
     },
+    "create": {
+      "title": "Pair with another installation"
+    },
     "empty": "No other installation is paired with this one yet",
     "error": {
-      "stored": "The stored link {id} cannot be read"
+      "answer": "The installation at {url} gave an answer that cannot be read",
+      "code": "The pairing code is unknown, used or expired",
+      "entropy": "The system gave no randomness",
+      "handshake": "{url} does not answer as an installation",
+      "instance_key": "The installation {instanceId} presents another instance key than the one pinned at pairing",
+      "level": "The level {level} lies outside the range from service to {ceiling}",
+      "mask": "{mask} is not a mask of names",
+      "no_url": "The installation {instanceId} gave no address, so its tokens are rotated from its side",
+      "not_started": "The peers module has not started",
+      "paired": "The installation {instanceId} is already paired with this one",
+      "principal": "The link {id} names no principal that can be read",
+      "protocol": "The other installation speaks protocol {protocol}, and this one supports {supported} and its neighbours",
+      "scope": "A pairing may not grant more than the token of the caller holds",
+      "self": "The address leads to this installation itself",
+      "stored": "The stored link {id} cannot be read",
+      "token": "The peer token is unknown, retired or malformed",
+      "unreachable": "The installation at {url} did not answer: {reason}",
+      "url": "{url} is not an http or https address without credentials, query or fragment"
     },
+    "expiresAt": "Expires",
+    "level": "Level ceiling",
     "list": {
       "title": "Peers"
     },
+    "onBehalf": "May act on behalf of customers",
+    "pair_code": {
+      "title": "Issue a pairing code"
+    },
+    "problem": {
+      "instance_key": "The installation at {url} presents another instance key than the one pinned for {instanceId}",
+      "protocol": "The installation at {url} speaks protocol {protocol}, which this one no longer understands with {supported}"
+    },
+    "scopes": "Functions it may call",
     "status": {
       "active": "Active"
-    }
+    },
+    "subscribe": "Events to receive",
+    "ttl": "Code lifetime, seconds",
+    "url": "Address"
   }
 }

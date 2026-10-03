@@ -1,0 +1,43 @@
+{
+  "keel": 1,
+  "name": "peer.rotate",
+  "module": "peer",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Rotated",
+    "type": "object",
+    "properties": {
+      "rotated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "rotated"
+    ]
+  }
+}

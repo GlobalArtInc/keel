@@ -58,6 +58,15 @@ pub trait Authenticator: Send + Sync {
     ) -> Result<Option<Authenticated>>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NewPrincipal {
+    pub account: Id,
+    pub login: String,
+    pub level: Level,
+    pub role: String,
+    pub lang: String,
+}
+
 #[async_trait]
 pub trait PrincipalSource: Send + Sync {
     async fn by_id(&self, id: Id, db: &Db) -> Result<Option<Principal>>;
@@ -65,6 +74,12 @@ pub trait PrincipalSource: Send + Sync {
     async fn at_or_above(&self, level: Level, db: &Db) -> Result<Vec<Principal>>;
     async fn of_account(&self, account: Id, db: &Db) -> Result<Vec<Principal>>;
     async fn touch_acl(&self, id: Id, db: &Db) -> Result<()>;
+    async fn create(
+        &self,
+        principal: NewPrincipal,
+        now: DateTime<Utc>,
+        db: &Db,
+    ) -> Result<Principal>;
 }
 
 #[async_trait]

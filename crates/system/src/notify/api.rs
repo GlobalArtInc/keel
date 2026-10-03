@@ -13,6 +13,7 @@ use keel_sdk::{Db, Id, KeelError, Result};
 
 use super::super::cron::api::owner;
 use super::functions::internal::{MESSAGE_CREATE, PROBLEM_CLEAR, PROBLEM_RAISE};
+use super::problems::{open_of_source, problem_of};
 
 pub use super::channels::{Channel, ChannelKind, EmailInput, EmailView, Security};
 pub use super::templates::Rendered;
@@ -200,6 +201,14 @@ impl Problems {
             )
             .await?;
         Ok(serde_json::from_value(answered)?)
+    }
+
+    pub async fn open(db: &Db, source: &str) -> Result<Vec<Problem>> {
+        open_of_source(db, source)
+            .await?
+            .into_iter()
+            .map(problem_of)
+            .collect()
     }
 
     pub async fn clear(caller: &dyn Caller, key: &str, subject: &str) -> Result<Cleared> {

@@ -3,13 +3,15 @@ use std::collections::BTreeMap;
 use keel_sdk::runtime::{Db, Ownership, PermissionDef};
 use keel_sdk::system::{Degradation, Features, PermissionCatalogue};
 use keel_sdk::{AccountScope, FunctionDef, KeelError};
-use keel_types::{Access, Id, Level, Mode, Principal, Via};
+use keel_types::{Access, Id, Level, Mode, Principal, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 use serde_json::Value;
 
 use crate::registry::Registry;
 
 pub(crate) const LICENSE: &str = "keel.error.license";
+pub const TOKEN_LEVEL: &str = "keel.error.token_level";
+pub const TOKEN_ON_BEHALF: &str = "keel.error.token_on_behalf";
 const READ_ONLY: &str = "read_only";
 
 pub fn level(access: &Access, principal: &Principal) -> Result<(), KeelError> {
@@ -103,7 +105,26 @@ pub fn scope(function: &str, mode: Mode, principal: &Principal) -> Result<(), Ke
     if mode == Mode::Write && !principal.scope.admits_write() {
         return Err(KeelError::forbidden("keel.error.token_read_only").param("function", function));
     }
+    let Scope::Peer(peer) = &principal.scope else {
+        return Ok(());
+    };
+    if principal.level > peer.level {
+        return Err(KeelError::forbidden(TOKEN_LEVEL)
+            .param("function", function)
+            .param("level", principal.level.as_str())
+            .param("ceiling", peer.level.as_str()));
+    }
+    if on_behalf(principal) && !peer.on_behalf {
+        return Err(KeelError::forbidden(TOKEN_ON_BEHALF).param("function", function));
+    }
     Ok(())
+}
+
+fn on_behalf(principal: &Principal) -> bool {
+    principal
+        .actor
+        .as_deref()
+        .is_some_and(|actor| matches!(actor.via, Via::Peer(_)))
 }
 
 pub fn holds(registry: &Registry, key: &str, principal: &Principal) -> bool {
@@ -274,6 +295,55 @@ mod tests {
             &principal(Level::User),
         )
         .unwrap();
+    }
+
+    fn peer_scope(level: Level, on_behalf: bool) -> Scope {
+        Scope::Peer(keel_types::PeerScope {
+            functions: vec!["svc.*".into(), "auth.key.issue".into()],
+            level,
+            on_behalf,
+        })
+    }
+
+    #[test]
+    fn the_scope_guard_enforces_the_masks_the_level_ceiling_and_on_behalf_of_a_peer_token() {
+        let link: Id = "01J9A0000000000000000000A1".parse().unwrap();
+        let mut direct = principal(Level::Admin);
+        direct.scope = peer_scope(Level::Admin, false);
+        direct.via = Via::Peer(link);
+        scope("svc.dns.zones.open", Mode::Write, &direct).unwrap();
+        scope("auth.key.issue", Mode::Write, &direct).unwrap();
+        let outside = scope("keel.account.list", Mode::Read, &direct).unwrap_err();
+        assert_eq!(outside.code(), ErrorCode::Forbidden);
+        assert_eq!(outside.key(), "keel.error.token_scope");
+
+        let mut above = principal(Level::Reseller);
+        above.scope = peer_scope(Level::User, true);
+        let ceiling = scope("svc.dns.zones.open", Mode::Read, &above).unwrap_err();
+        assert_eq!(ceiling.code(), ErrorCode::Forbidden);
+        assert_eq!(ceiling.key(), TOKEN_LEVEL);
+        assert_eq!(ceiling.params()["level"], "reseller");
+        assert_eq!(ceiling.params()["ceiling"], "user");
+        assert_eq!(ceiling.params()["function"], "svc.dns.zones.open");
+
+        let mut actor = principal(Level::Admin);
+        actor.via = Via::Peer(link);
+        let mut customer = principal(Level::User);
+        customer.actor = Some(Box::new(actor));
+        customer.scope = peer_scope(Level::Admin, false);
+        let refused = scope("svc.dns.zones.open", Mode::Write, &customer).unwrap_err();
+        assert_eq!(refused.code(), ErrorCode::Forbidden);
+        assert_eq!(refused.key(), TOKEN_ON_BEHALF);
+        assert_eq!(refused.params()["function"], "svc.dns.zones.open");
+        customer.scope = peer_scope(Level::Admin, true);
+        scope("svc.dns.zones.open", Mode::Write, &customer).unwrap();
+
+        let mut delegated = principal(Level::User);
+        let mut su = principal(Level::Admin);
+        su.via = Via::Su;
+        delegated.actor = Some(Box::new(su));
+        delegated.scope = peer_scope(Level::Admin, false);
+        scope("svc.dns.zones.open", Mode::Write, &delegated).unwrap();
     }
 
     #[test]

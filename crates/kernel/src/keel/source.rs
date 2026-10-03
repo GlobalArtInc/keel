@@ -1,14 +1,16 @@
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
 use keel_sdk::async_trait::async_trait;
 use keel_sdk::runtime::Db;
 use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use keel_sdk::system::{AccountSource, PrincipalSource};
+use keel_sdk::system::{AccountSource, NewPrincipal, PrincipalSource};
 use keel_sdk::{KeelError, Result};
 use keel_types::{Id, Level, Principal, Scope, Via};
 
 use super::entity::{account, principal};
+use super::principals;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StoredPrincipals;
@@ -103,6 +105,24 @@ impl PrincipalSource for StoredPrincipals {
             return Err(KeelError::not_found("keel.error.not_found"));
         }
         Ok(())
+    }
+
+    async fn create(&self, new: NewPrincipal, now: DateTime<Utc>, db: &Db) -> Result<Principal> {
+        let id = principals::insert(
+            db,
+            principals::NewPrincipal {
+                account_id: new.account.to_string(),
+                login: new.login,
+                level: new.level,
+                role: new.role,
+                lang: new.lang,
+            },
+            now,
+        )
+        .await?;
+        self.by_id(id, db).await?.ok_or_else(|| {
+            KeelError::internal("keel.principal.error.id_unknown").param("id", id.to_string())
+        })
     }
 }
 

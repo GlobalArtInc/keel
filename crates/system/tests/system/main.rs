@@ -13,6 +13,8 @@ mod auth_passwords;
 #[cfg(feature = "auth")]
 mod auth_policy;
 #[cfg(feature = "auth")]
+mod auth_retire;
+#[cfg(feature = "auth")]
 mod auth_session_list;
 #[cfg(feature = "auth")]
 mod auth_sessions;

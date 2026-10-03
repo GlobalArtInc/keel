@@ -1,0 +1,97 @@
+{
+  "keel": 1,
+  "name": "peer.pair_code",
+  "module": "peer",
+  "kind": "form",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "PairCodeIssue",
+    "type": "object",
+    "properties": {
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "default": [],
+        "x-ui": {
+          "control": "tags"
+        }
+      },
+      "level": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Level"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "onBehalf": {
+        "type": "boolean",
+        "default": false
+      },
+      "ttl": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "format": "uint32",
+        "minimum": 60,
+        "maximum": 86400
+      }
+    },
+    "$defs": {
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "PairCode",
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      },
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "code",
+      "expiresAt"
+    ]
+  },
+  "ui": {
+    "title": "peer.pair_code.title",
+    "pages": [
+      {
+        "id": "main",
+        "fields": [
+          "scopes",
+          "level",
+          "onBehalf",
+          "ttl"
+        ]
+      }
+    ]
+  }
+}

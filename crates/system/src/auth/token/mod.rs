@@ -6,21 +6,22 @@ use ipnet::IpNet;
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::sea_orm::sea_query::Expr;
 use keel_sdk::sea_orm::{ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, Set};
-use keel_sdk::types::{Level, Scope};
+use keel_sdk::types::Level;
 use keel_sdk::{Db, Id, KeelError, Principal, Result, Secret};
 
-use super::entity::token::{self, StoredNets, StoredScope};
+use super::entity::token::{self, StoredNets, StoredScope, TokenScope};
 use super::password::{hex, random_bytes};
 use super::session;
 
 pub const API_TOKEN_PREFIX: &str = "kat_";
-const TOKEN_LEN: usize = 32;
+pub const PEER_TOKEN_PREFIX: &str = "kpt_";
+pub const TOKEN_LEN: usize = 32;
 
 pub struct Issue<'a> {
     pub principal: &'a Principal,
     pub name: &'a str,
     pub level: Level,
-    pub scope: Scope,
+    pub scope: TokenScope,
     pub ip_allow: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
 }
@@ -32,8 +33,21 @@ pub fn generate() -> Result<Secret> {
     )))
 }
 
+pub fn generate_peer() -> Result<Secret> {
+    Ok(Secret::new(format!(
+        "{PEER_TOKEN_PREFIX}{}",
+        hex(&random_bytes(TOKEN_LEN)?)
+    )))
+}
+
 pub fn is_token(value: &str) -> bool {
     value.starts_with(API_TOKEN_PREFIX)
+}
+
+pub fn is_peer_token(value: &str) -> bool {
+    value.strip_prefix(PEER_TOKEN_PREFIX).is_some_and(|rest| {
+        rest.len() == TOKEN_LEN * 2 && rest.bytes().all(|b| b.is_ascii_hexdigit())
+    })
 }
 
 pub fn hash(token: &str) -> String {
@@ -153,6 +167,79 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert!(!digest.contains(API_TOKEN_PREFIX));
         assert_ne!(hash(generate().expect("entropy").expose()), digest);
+    }
+
+    #[test]
+    fn a_peer_token_is_the_fourth_prefix_with_thirty_two_random_bytes_and_no_other_reader_claims_it()
+     {
+        let token = generate_peer().expect("entropy");
+        let text = token.expose();
+        assert!(text.starts_with(PEER_TOKEN_PREFIX), "{text}");
+        assert_eq!(text.len(), PEER_TOKEN_PREFIX.len() + TOKEN_LEN * 2);
+        assert!(is_peer_token(text));
+        assert!(!is_token(text));
+        assert!(!session::is_token(text));
+        assert!(!text.starts_with(super::super::LOGIN_KEY_PREFIX));
+        assert_ne!(generate_peer().expect("entropy").expose(), text);
+        assert_eq!(hash(text).len(), 64);
+        for refused in [
+            "kpt_",
+            "kpt_abc",
+            "kat_0000000000000000000000000000000000000000000000000000000000000000",
+            "kpt_000000000000000000000000000000000000000000000000000000000000000g",
+            "kpt_00000000000000000000000000000000000000000000000000000000000000000",
+        ] {
+            assert!(!is_peer_token(refused), "{refused}");
+        }
+        let prefixes = [
+            session::TOKEN_PREFIX,
+            API_TOKEN_PREFIX,
+            PEER_TOKEN_PREFIX,
+            super::super::LOGIN_KEY_PREFIX,
+        ];
+        for (index, prefix) in prefixes.iter().enumerate() {
+            for other in &prefixes[index + 1..] {
+                assert!(!prefix.starts_with(other) && !other.starts_with(prefix));
+            }
+        }
+    }
+
+    #[test]
+    fn an_api_token_scope_travels_as_the_scope_of_the_principal_and_a_peer_scope_narrows_to_its_masks()
+     {
+        use keel_sdk::serde_json::{self, json};
+        use keel_sdk::types::{PeerScope, Scope};
+
+        for (token, scope) in [
+            (TokenScope::Full, Scope::Full),
+            (TokenScope::ReadOnly, Scope::ReadOnly),
+            (
+                TokenScope::Functions(vec!["svc.*".into()]),
+                Scope::Functions(vec!["svc.*".into()]),
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(&token).unwrap(),
+                serde_json::to_value(&scope).unwrap()
+            );
+            assert_eq!(TokenScope::of(&scope), token);
+            assert_eq!(Scope::from(token), scope);
+        }
+        let peer = Scope::Peer(PeerScope {
+            functions: vec!["svc.*".into()],
+            level: Level::Admin,
+            on_behalf: true,
+        });
+        assert_eq!(
+            TokenScope::of(&peer),
+            TokenScope::Functions(vec!["svc.*".into()])
+        );
+        assert!(
+            serde_json::from_value::<TokenScope>(
+                json!({ "peer": { "functions": [], "level": "admin" } })
+            )
+            .is_err()
+        );
     }
 
     #[test]

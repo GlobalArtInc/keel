@@ -15,7 +15,8 @@ use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{
-    Authenticated, Authenticator, Client as HttpClient, Credential, PrincipalSource, ProblemCounter,
+    Authenticated, Authenticator, Client as HttpClient, Credential, NewPrincipal, PrincipalSource,
+    ProblemCounter,
 };
 use keel_testkit::TestDatabase;
 use keel_types::{Boot, BootProblems, BootWidget, Envelope, ErrorCode, Scope, Via, WidgetKind};
@@ -1124,5 +1125,59 @@ async fn at_or_above_and_of_account_answer_the_principals_the_menu_and_the_scope
             .expect("an unknown account")
             .is_empty()
     );
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn create_stores_a_principal_in_the_named_account_and_refuses_a_taken_login() {
+    let bench = start(Composition::new()).await;
+    let source = bench
+        .kernel
+        .registry()
+        .services()
+        .get::<dyn PrincipalSource>()
+        .expect("the kernel provides the principal source");
+    let db = Db::from_connection(bench.storage.db().clone());
+    let now: keel_sdk::chrono::DateTime<keel_sdk::chrono::Utc> =
+        "2026-10-03T10:00:00Z".parse().expect("a time");
+    let new = || NewPrincipal {
+        account: Id::ROOT_ACCOUNT,
+        login: "peer-link".to_owned(),
+        level: Level::Service,
+        role: "peer".to_owned(),
+        lang: "en".to_owned(),
+    };
+    let created = source.create(new(), now, &db).await.expect("created");
+    assert_eq!(created.login, "peer-link");
+    assert_eq!(created.level, Level::Service);
+    assert_eq!(created.account_id, Id::ROOT_ACCOUNT);
+    assert_eq!(created.role, "peer");
+    assert_eq!(created.via, Via::Internal);
+    assert_eq!(created.scope, Scope::Full);
+    assert!(created.actor.is_none() && created.origin.is_none() && created.external_id.is_none());
+    assert_eq!(
+        source.by_id(created.id, &db).await.expect("read"),
+        Some(created.clone())
+    );
+    let row = bench
+        .storage
+        .db()
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            format!(
+                "SELECT state || ' ' || (created_at = '2026-10-03T10:00:00Z'::timestamptz)::text AS row FROM keel_principal WHERE id = '{}'",
+                created.id
+            ),
+        ))
+        .await
+        .expect("the row is read")
+        .expect("the row exists");
+    assert_eq!(
+        row.try_get::<String>("", "row").expect("text"),
+        "active true"
+    );
+    let taken = source.create(new(), now, &db).await.unwrap_err();
+    assert_eq!(taken.code(), ErrorCode::Conflict);
+    assert_eq!(taken.key(), "keel.principal.error.login_exists");
     bench.finish().await;
 }

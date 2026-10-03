@@ -64,12 +64,46 @@ pub mod token {
     use keel_sdk::serde_json;
     use keel_sdk::types::Scope;
 
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+    #[serde(crate = "keel_sdk::serde", rename_all = "snake_case")]
+    #[schemars(
+        crate = "keel_sdk::schemars",
+        rename = "Scope",
+        rename_all = "snake_case"
+    )]
+    pub enum TokenScope {
+        Full,
+        Functions(Vec<String>),
+        ReadOnly,
+    }
+
+    impl TokenScope {
+        pub fn of(scope: &Scope) -> Self {
+            match scope {
+                Scope::Full => Self::Full,
+                Scope::Functions(masks) => Self::Functions(masks.clone()),
+                Scope::ReadOnly => Self::ReadOnly,
+                Scope::Peer(peer) => Self::Functions(peer.functions.clone()),
+            }
+        }
+    }
+
+    impl From<TokenScope> for Scope {
+        fn from(scope: TokenScope) -> Self {
+            match scope {
+                TokenScope::Full => Scope::Full,
+                TokenScope::Functions(masks) => Scope::Functions(masks),
+                TokenScope::ReadOnly => Scope::ReadOnly,
+            }
+        }
+    }
+
     #[derive(
         Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema, FromJsonQueryResult,
     )]
     #[serde(crate = "keel_sdk::serde", transparent)]
     #[schemars(crate = "keel_sdk::schemars")]
-    pub struct StoredScope(pub Scope);
+    pub struct StoredScope(pub TokenScope);
 
     #[derive(
         Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema, FromJsonQueryResult,

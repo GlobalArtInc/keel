@@ -1,0 +1,221 @@
+{
+  "keel": 1,
+  "name": "peer.pair",
+  "module": "peer",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "guest"
+  },
+  "params": {
+    "title": "PairRequest",
+    "type": "object",
+    "properties": {
+      "code": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "instance": {
+        "$ref": "#/$defs/InstanceInfo"
+      },
+      "url": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 2048,
+        "default": null
+      },
+      "inboundToken": {
+        "$ref": "#/$defs/Secret",
+        "x-keel": {
+          "secret": true
+        }
+      },
+      "inboundScopes": {
+        "$ref": "#/$defs/PeerScope"
+      },
+      "subscribe": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "default": []
+      }
+    },
+    "required": [
+      "code",
+      "instance",
+      "inboundToken",
+      "inboundScopes"
+    ],
+    "$defs": {
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      },
+      "InstanceInfo": {
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "$ref": "#/$defs/Id"
+          },
+          "keel": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "serviceKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "instanceId",
+          "keel",
+          "protocol",
+          "products",
+          "publicKey"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "PeerScope": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  },
+  "result": {
+    "title": "PairAnswer",
+    "type": "object",
+    "properties": {
+      "peerId": {
+        "$ref": "#/$defs/Id"
+      },
+      "token": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      },
+      "scopes": {
+        "$ref": "#/$defs/PeerScope"
+      },
+      "webhookSecret": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "peerId",
+      "token",
+      "scopes"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "PeerScope": {
+        "type": "object",
+        "properties": {
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "$ref": "#/$defs/Level"
+          },
+          "onBehalf": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "functions",
+          "level"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "guest",
+          "service",
+          "user",
+          "reseller",
+          "admin",
+          "owner"
+        ]
+      }
+    }
+  }
+}

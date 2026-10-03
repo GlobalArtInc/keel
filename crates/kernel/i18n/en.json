@@ -216,6 +216,8 @@
       "task_output": "The task output at {path} could not be opened",
       "tasks_unavailable": "Background tasks are not available on this installation",
       "timeout": "The call took too long",
+      "token_level": "The token acts up to the level {ceiling}, and {function} was called as {level}",
+      "token_on_behalf": "The token may not act on behalf of a customer, so {function} is refused",
       "token_read_only": "The token is read-only and {function} writes",
       "token_scope": "The token is not scoped to {function}",
       "unauthenticated": "Sign in to continue",

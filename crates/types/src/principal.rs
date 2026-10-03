@@ -31,6 +31,16 @@ pub enum Scope {
     Full,
     Functions(Vec<String>),
     ReadOnly,
+    Peer(PeerScope),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerScope {
+    pub functions: Vec<String>,
+    pub level: Level,
+    #[serde(default)]
+    pub on_behalf: bool,
 }
 
 const MASK_SUFFIX: &str = ".*";
@@ -39,7 +49,8 @@ impl Scope {
     pub fn admits(&self, function: &str) -> bool {
         match self {
             Scope::Full | Scope::ReadOnly => true,
-            Scope::Functions(masks) => masks.iter().any(|mask| mask_matches(mask, function)),
+            Scope::Functions(masks) => admitted(masks, function),
+            Scope::Peer(peer) => admitted(&peer.functions, function),
         }
     }
 
@@ -50,15 +61,31 @@ impl Scope {
     pub fn contains(&self, other: &Scope) -> bool {
         match (self, other) {
             (Scope::Full, _) => true,
-            (Scope::Functions(_) | Scope::ReadOnly, Scope::Full) => false,
-            (Scope::Functions(outer), Scope::Functions(inner)) => inner
-                .iter()
-                .all(|mask| outer.iter().any(|wider| mask_covers(wider, mask))),
-            (Scope::Functions(_), Scope::ReadOnly) => false,
+            (Scope::Functions(_) | Scope::ReadOnly | Scope::Peer(_), Scope::Full) => false,
+            (Scope::Functions(outer), Scope::Functions(inner)) => covered(outer, inner),
+            (Scope::Functions(outer), Scope::Peer(inner)) => covered(outer, &inner.functions),
+            (Scope::Peer(outer), Scope::Functions(inner)) => covered(&outer.functions, inner),
+            (Scope::Peer(outer), Scope::Peer(inner)) => {
+                covered(&outer.functions, &inner.functions)
+                    && inner.level <= outer.level
+                    && (outer.on_behalf || !inner.on_behalf)
+            }
+            (Scope::ReadOnly, Scope::Peer(_)) => false,
+            (Scope::Functions(_) | Scope::Peer(_), Scope::ReadOnly) => false,
             (Scope::ReadOnly, Scope::ReadOnly) => true,
             (Scope::ReadOnly, Scope::Functions(_)) => false,
         }
     }
+}
+
+fn admitted(masks: &[String], function: &str) -> bool {
+    masks.iter().any(|mask| mask_matches(mask, function))
+}
+
+fn covered(outer: &[String], inner: &[String]) -> bool {
+    inner
+        .iter()
+        .all(|mask| outer.iter().any(|wider| mask_covers(wider, mask)))
 }
 
 pub fn is_mask(text: &str) -> bool {
@@ -350,6 +377,58 @@ mod tests {
         assert!(!mask_covers("keel.account.*", "keel.*"));
         assert!(!mask_covers("keel.account.list", "keel.account.*"));
         assert!(!mask_covers("keel.account.list", "keel.account.get"));
+    }
+
+    fn peer(functions: &[&str], level: Level, on_behalf: bool) -> Scope {
+        Scope::Peer(PeerScope {
+            functions: functions.iter().map(|mask| (*mask).to_owned()).collect(),
+            level,
+            on_behalf,
+        })
+    }
+
+    #[test]
+    fn a_peer_scope_travels_with_its_three_facets_and_admits_its_masks_alone() {
+        let scope = peer(&["svc.*", "auth.key.issue"], Level::Admin, true);
+        let wire = serde_json::to_value(&scope).unwrap();
+        assert_eq!(
+            wire,
+            json!({ "peer": { "functions": ["svc.*", "auth.key.issue"], "level": "admin", "onBehalf": true } })
+        );
+        assert_eq!(serde_json::from_value::<Scope>(wire).unwrap(), scope);
+        let without: Scope =
+            serde_json::from_value(json!({ "peer": { "functions": [], "level": "service" } }))
+                .unwrap();
+        assert_eq!(without, peer(&[], Level::Service, false));
+        assert!(scope.admits("svc.dns.zones.open"));
+        assert!(scope.admits("auth.key.issue"));
+        assert!(!scope.admits("auth.key.redeem"));
+        assert!(!scope.admits("keel.account.list"));
+        assert!(scope.admits_write());
+        assert!(!peer(&[], Level::Admin, true).admits("svc.dns.zones.open"));
+    }
+
+    #[test]
+    fn a_peer_scope_contains_narrower_masks_a_lower_ceiling_and_on_behalf_only_when_granted_and_masks_cover_it()
+     {
+        let wide = peer(&["svc.*", "auth.key.issue"], Level::Admin, true);
+        let narrow = peer(&["svc.dns.*"], Level::User, false);
+        assert!(wide.contains(&narrow));
+        assert!(!narrow.contains(&wide));
+        assert!(!wide.contains(&peer(&["svc.*"], Level::Owner, false)));
+        assert!(!peer(&["svc.*"], Level::Admin, false).contains(&peer(
+            &["svc.*"],
+            Level::Admin,
+            true
+        )));
+        assert!(wide.contains(&Scope::Functions(vec!["svc.dns.zones.open".into()])));
+        assert!(!wide.contains(&Scope::Functions(vec!["keel.*".into()])));
+        assert!(!wide.contains(&Scope::Full));
+        assert!(!wide.contains(&Scope::ReadOnly));
+        assert!(Scope::Full.contains(&wide));
+        assert!(Scope::Functions(vec!["svc.*".into()]).contains(&narrow));
+        assert!(!Scope::Functions(vec!["keel.*".into()]).contains(&narrow));
+        assert!(!Scope::ReadOnly.contains(&narrow));
     }
 
     #[test]
