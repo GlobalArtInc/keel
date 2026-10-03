@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -32,6 +33,7 @@ struct Counted {
 struct Paced {
     steps: u64,
     pace: u64,
+    hold: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -98,6 +100,22 @@ fn moment(id: Id, what: &str) -> Instant {
         .find(|(task, mark, _)| *task == id.to_string() && *mark == what)
         .map(|(_, _, at)| *at)
         .unwrap_or_else(|| panic!("no {what} mark for {id}"))
+}
+
+static RELEASED: Mutex<BTreeSet<Id>> = Mutex::new(BTreeSet::new());
+
+fn release(id: Id) {
+    RELEASED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(id);
+}
+
+fn released(task: &TaskHandle) -> bool {
+    RELEASED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&task.id())
 }
 
 static PROBE: ModuleDef = ModuleDef {
@@ -197,6 +215,7 @@ fn paced(name: &str, class: &str, resumable: bool) -> FunctionDef {
             .ok_or_else(|| KeelError::internal("probe.error.inline"))?;
         let steps = call.params().steps;
         let pace = Duration::from_millis(call.params().pace);
+        let hold = call.params().hold;
         let from = task
             .resume_from::<Cursor>()?
             .map(|cursor| cursor.next)
@@ -213,6 +232,11 @@ fn paced(name: &str, class: &str, resumable: bool) -> FunctionDef {
                 .await?;
             task.log(&format!("step {step}")).await?;
             task.checkpoint(&Cursor { next: step + 1 }).await?;
+            if hold == Some(step + 1) {
+                while !released(task) && !task.is_cancelled() {
+                    tokio::time::sleep(pace).await;
+                }
+            }
         }
         mark(task, "end");
         Ok(Stepped { steps, from })
@@ -485,7 +509,7 @@ async fn a_cancelled_job_stops_at_its_next_checkpoint_and_ends_cancelled() {
             &harness,
             Who::A1,
             "probe.paced",
-            json!({ "steps": 40, "pace": 50 }),
+            json!({ "steps": 40, "pace": 50, "hold": 2 }),
             "slow",
         ))
         .await
@@ -560,7 +584,7 @@ async fn a_job_running_at_stop_is_interrupted_and_a_resumable_one_restarts_from_
             &first,
             Who::A1,
             "probe.paced",
-            json!({ "steps": 6, "pace": 100 }),
+            json!({ "steps": 6, "pace": 100, "hold": 2 }),
             "slow",
         ))
         .await
@@ -570,7 +594,7 @@ async fn a_job_running_at_stop_is_interrupted_and_a_resumable_one_restarts_from_
             &first,
             Who::A2,
             "probe.stubborn",
-            json!({ "steps": 6, "pace": 100 }),
+            json!({ "steps": 6, "pace": 100, "hold": 2 }),
             "stubborn",
         ))
         .await
@@ -664,7 +688,7 @@ async fn stop_lets_a_running_job_reach_its_checkpoint_and_leaves_queued_jobs_for
             &first,
             Who::A1,
             "probe.paced",
-            json!({ "steps": 8, "pace": 100 }),
+            json!({ "steps": 8, "pace": 100, "hold": 1 }),
             "slow",
         ))
         .await
@@ -740,7 +764,7 @@ async fn jobs_of_two_classes_run_concurrently_while_jobs_of_one_class_run_in_ord
             &harness,
             Who::A1,
             "probe.paced",
-            json!({ "steps": 4, "pace": 100 }),
+            json!({ "steps": 2, "pace": 10, "hold": 1 }),
             "slow",
         ))
         .await
@@ -775,6 +799,7 @@ async fn jobs_of_two_classes_run_concurrently_while_jobs_of_one_class_run_in_ord
         runner.state(slow_two).await.expect("state"),
         TaskState::Queued
     );
+    release(slow_one);
     assert_eq!(wait_final(&harness, slow_one).await, TaskState::Done);
     assert_eq!(wait_final(&harness, slow_two).await, TaskState::Done);
     assert!(moment(quick, "end") < moment(slow_one, "end"));
@@ -981,7 +1006,7 @@ async fn task_get_shows_the_last_step_the_log_tail_and_task_cancel_ends_a_paced_
             &harness,
             Who::A1,
             "probe.paced",
-            json!({ "steps": 40, "pace": 50 }),
+            json!({ "steps": 40, "pace": 50, "hold": 1 }),
             "slow",
         ))
         .await

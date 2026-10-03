@@ -2,6 +2,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use keel::prelude::*;
+use keel::sdk::sea_orm::{
+    ConnectionTrait, DatabaseTransaction, DbBackend, Statement, TransactionTrait,
+};
 use keel::sdk::serde_json;
 use keel::types::{TaskProgress, TaskState};
 use keel_demo::note::{EXPORT_CLASS, EXPORT_CSV_HEADER, EXPORT_LOG_PREFIX, export_file_of};
@@ -10,6 +13,9 @@ use keel_system::tasks::{DOWNLOAD_FUNCTION, FRAME_KIND, output_path};
 use keel_testkit::{Answer, Harness, Reply, TestHttp, Who, tokio};
 
 const WAIT: Duration = Duration::from_secs(30);
+const PAUSE: Duration = Duration::from_millis(10);
+const HOLD_STEPS: &str = "LOCK TABLE task_step IN SHARE MODE";
+const STEP_WRITER_WAITS: &str = "SELECT count(*) FROM pg_locks WHERE relation = 'task_step'::regclass AND mode = 'RowExclusiveLock' AND NOT granted AND pg_backend_pid() = ANY(pg_blocking_pids(pid))";
 
 fn drain(harness: &Harness) -> Arc<Drain> {
     harness
@@ -38,20 +44,41 @@ async fn wait_requeued(harness: &Harness, id: Id) {
     panic!("the job {id} was not requeued by the worker of the second kernel");
 }
 
-async fn wait_progress(harness: &Harness, id: Id, at_least: u64) {
-    let sql = format!("SELECT progress_done::text FROM task_job WHERE id = '{id}'");
-    for _ in 0..600 {
-        let rows = harness.database().rows(&sql).await;
-        if rows
-            .first()
-            .and_then(|done| done.parse::<u64>().ok())
-            .is_some_and(|done| done >= at_least)
-        {
-            return;
+async fn hold_steps(harness: &Harness) -> DatabaseTransaction {
+    let gate = harness.db().begin().await.expect("a transaction");
+    gate.execute_unprepared(HOLD_STEPS)
+        .await
+        .expect("the step table is held");
+    gate
+}
+
+async fn wait_step_writer(gate: &DatabaseTransaction) {
+    let waiting = Statement::from_string(DbBackend::Postgres, STEP_WRITER_WAITS);
+    tokio::time::timeout(WAIT, async {
+        loop {
+            let row = gate
+                .query_one(waiting.clone())
+                .await
+                .expect("the locks are read")
+                .expect("a count");
+            if row.try_get_by_index::<i64>(0).expect("a count") > 0 {
+                return;
+            }
+            tokio::time::sleep(PAUSE).await;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("the job {id} did not reach {at_least} notes");
+    })
+    .await
+    .expect("the job reaches its first step");
+}
+
+async fn wait_draining(drain: &Drain) {
+    tokio::time::timeout(WAIT, async {
+        while !drain.is_quiesced().expect("the runner started") {
+            tokio::time::sleep(PAUSE).await;
+        }
+    })
+    .await
+    .expect("the runner drains on stop");
 }
 
 async fn create(harness: &Harness, who: Who, title: &str) -> Id {
@@ -347,32 +374,23 @@ async fn note_export_interrupted_by_a_restart_resumes_from_its_checkpoint_and_wr
     }
     titles.sort();
     let http = first.http().await;
-    let id = export(&http, Who::A1, json!({ "format": "csv", "pace": 300 })).await;
-    wait_progress(&first, id, 1).await;
+    let gate = hold_steps(&first).await;
+    let id = export(&http, Who::A1, json!({ "format": "csv" })).await;
+    wait_step_writer(&gate).await;
     http.stop().await.expect("the server stops");
-    let database = first.stop().await;
+    let drain = drain(&first);
+    let (database, ()) = tokio::join!(first.stop(), async {
+        wait_draining(&drain).await;
+        gate.rollback().await.expect("the step table is released");
+    });
 
     let left = database
         .rows(&format!(
             "SELECT state || ' ' || progress_done || ' ' || coalesce(checkpoint_json->>'written', '-') FROM task_job WHERE id = '{id}'"
         ))
         .await;
-    let mut parts = left[0].split(' ');
-    assert_eq!(parts.next(), Some("interrupted"), "{left:?}");
-    let written_before: u64 = parts
-        .next()
-        .and_then(|done| done.parse().ok())
-        .expect("a count");
-    assert!((1..4).contains(&written_before), "{left:?}");
-    assert_eq!(
-        parts.next(),
-        Some(written_before.to_string().as_str()),
-        "{left:?}"
-    );
-    assert_eq!(
-        output_lines(dir.path(), id).len() as u64,
-        written_before + 1
-    );
+    assert_eq!(left, ["interrupted 1 1"]);
+    assert_eq!(output_lines(dir.path(), id).len(), 2);
 
     let second = crate::demo()
         .data_dir(dir.path())
