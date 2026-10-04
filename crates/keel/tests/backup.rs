@@ -456,7 +456,7 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
         .iter()
         .map(|module| (module.id.as_str(), module.applied))
         .collect();
-    assert!(modules.contains(&("keel", 2)), "{modules:?}");
+    assert!(modules.contains(&("keel", 3)), "{modules:?}");
     assert!(modules.contains(&("probe", 1)), "{modules:?}");
     assert!(
         modules

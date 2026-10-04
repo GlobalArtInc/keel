@@ -8,6 +8,7 @@ use keel_sdk::system::Caller;
 use keel_sdk::types::{InstanceInfo, PROTOCOL};
 
 use super::entity::{pair_code, product};
+use super::inbox;
 use super::pairing::compatible;
 use super::remote::Remote;
 use crate::cron::api::{CronJob, JobRun, JobRunExt};
@@ -50,6 +51,7 @@ async fn check(run: &JobRun) -> Result<()> {
         .filter(pair_code::Column::ExpiresAt.lte(now))
         .exec(&db)
         .await?;
+    inbox::prune(&db, now).await?;
     let links = product::Entity::find()
         .order_by_asc(product::Column::Id)
         .all(&db)
@@ -150,6 +152,9 @@ mod tests {
             last_seen_at: None,
             created_at: Utc::now(),
             principal_id: None,
+            events: Vec::new(),
+            pull_seq: None,
+            feed_seq: 0,
         }
     }
 

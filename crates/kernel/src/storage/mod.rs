@@ -15,6 +15,21 @@ pub use lock::{MigrationLock, SessionLocks};
 const POOL_SIZE: u32 = 20;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pool {
+    pub max_connections: u32,
+    pub idle_timeout: Option<Duration>,
+}
+
+impl Default for Pool {
+    fn default() -> Self {
+        Self {
+            max_connections: POOL_SIZE,
+            idle_timeout: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Storage {
     db: DatabaseConnection,
@@ -50,14 +65,21 @@ pub enum StorageError {
 
 impl Storage {
     pub async fn connect(config: &Config) -> Result<Self, StorageError> {
+        Self::connect_with(config, Pool::default()).await
+    }
+
+    pub async fn connect_with(config: &Config, pool: Pool) -> Result<Self, StorageError> {
         let schema = SCHEMA.to_owned();
         let mut options = ConnectOptions::new(config.database.expose());
         options
-            .max_connections(POOL_SIZE)
+            .max_connections(pool.max_connections)
             .connect_timeout(TIMEOUT)
             .acquire_timeout(TIMEOUT)
             .set_schema_search_path(schema.clone())
             .sqlx_logging(false);
+        if let Some(idle) = pool.idle_timeout {
+            options.idle_timeout(idle);
+        }
         let db = Database::connect(options)
             .await
             .map_err(|source| StorageError::Connect {

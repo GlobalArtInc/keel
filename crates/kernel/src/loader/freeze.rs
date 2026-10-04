@@ -7,9 +7,9 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, Features, Installation, LanguageSource,
-    LicenseKey, LimitSource, LiveEvents, OutboxSubscriber, ParamMasker, PermissionCatalogue,
-    PrincipalSource, SecretCipher, TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, EventRelay, Features, Installation,
+    LanguageSource, LicenseKey, LimitSource, LiveEvents, OutboxSubscriber, ParamMasker,
+    PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
@@ -580,6 +580,7 @@ impl Freezer {
         services.provide::<LiveBus>(live);
         let outbox = Arc::new(OutboxFeed::new());
         services.provide::<dyn OutboxSubscriber>(outbox.clone());
+        services.provide::<dyn EventRelay>(outbox.clone());
         services.provide::<OutboxFeed>(outbox);
         services.provide::<dyn AdvisoryLock>(self.locks.clone());
         services.provide::<dyn ParamMasker>(self.masks.clone());

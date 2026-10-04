@@ -13,7 +13,7 @@ use futures::stream;
 use keel_sdk::runtime::Db;
 use keel_sdk::system::{Client, Credential, Frame, OutboxSubscriber};
 use keel_sdk::{AccountScope, KeelError};
-use keel_types::{Event, Level, Principal};
+use keel_types::{Event, Id, Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -180,6 +180,10 @@ pub(super) async fn serve(
         Ok(newest) => newest,
         Err(error) => return reply::error(error, &request_id),
     };
+    let local = match feed.instance() {
+        Ok(local) => local,
+        Err(error) => return reply::error(error, &request_id),
+    };
     let resume = resume_point(&headers, uri.query());
     let start = start(resume, newest, state.options.sse_replay_window);
     let (opened, evicted) = state.streams.enter(session_key(&credential));
@@ -206,6 +210,7 @@ pub(super) async fn serve(
         db: state.db.clone(),
         registry: live.registry.clone(),
         feed,
+        local,
         frames,
         latest,
         cursor: start.cursor,
@@ -273,6 +278,7 @@ struct Connection {
     db: DatabaseConnection,
     registry: Arc<Registry>,
     feed: Arc<OutboxFeed>,
+    local: Id,
     frames: broadcast::Receiver<Frame>,
     latest: watch::Receiver<u64>,
     cursor: u64,
@@ -405,7 +411,7 @@ impl Connection {
             let count = events.len();
             for event in events {
                 self.cursor = self.cursor.max(event.seq);
-                if admits_event(&self.scope, &event, &self.db).await?
+                if admits_event(&self.principal, &self.scope, &event, self.local, &self.db).await?
                     && !self.send(invalidate(&event)?).await
                 {
                     return Ok(false);
@@ -468,10 +474,15 @@ fn invalidate(event: &Event) -> Result<SseEvent, KeelError> {
 }
 
 async fn admits_event(
+    principal: &Principal,
     scope: &AccountScope,
     event: &Event,
+    local: Id,
     db: &DatabaseConnection,
 ) -> Result<bool, KeelError> {
+    if event.instance_id != local {
+        return Ok(*scope == AccountScope::All && !principal.is_narrowed());
+    }
     let account = event
         .subject
         .as_ref()
@@ -506,7 +517,7 @@ mod tests {
 
     use chrono::Utc;
     use keel_sdk::Secret;
-    use keel_types::{EventSubject, Id, Scope, Via};
+    use keel_types::{EventSubject, PeerScope, Scope, Via};
 
     use super::*;
 
@@ -535,13 +546,21 @@ mod tests {
         }
     }
 
+    fn local() -> Id {
+        "01J9K00000000000000000000K".parse().expect("an id")
+    }
+
     fn event(account: Option<Id>) -> Event {
+        emitted_by(local(), account)
+    }
+
+    fn emitted_by(instance: Id, account: Option<Id>) -> Event {
         Event {
             id: Id::generate(),
             seq: 7,
             kind: "shelf.book.saved".into(),
             at: Utc::now(),
-            instance_id: Id::generate(),
+            instance_id: instance,
             module: "shelf".into(),
             actor: None,
             subject: Some(EventSubject {
@@ -639,46 +658,67 @@ mod tests {
         );
     }
 
+    async fn admitted(principal: &Principal, scope: AccountScope, event: &Event) -> bool {
+        admits_event(
+            principal,
+            &scope,
+            event,
+            local(),
+            &DatabaseConnection::Disconnected,
+        )
+        .await
+        .expect("no account lookup is needed")
+    }
+
     #[tokio::test]
     async fn an_event_reaches_the_scopes_that_hold_its_account_and_one_without_reaches_all_alone() {
-        let db = DatabaseConnection::Disconnected;
         let a1 = Id::generate();
         let a2 = Id::generate();
-        assert!(
-            admits_event(&AccountScope::All, &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            admits_event(&AccountScope::All, &event(None), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            admits_event(&AccountScope::Own(a1), &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits_event(&AccountScope::Own(a1), &event(Some(a2)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits_event(&AccountScope::Own(a1), &event(None), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits_event(&AccountScope::Subtree(a1), &event(None), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits_event(&AccountScope::Nothing, &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
+        let who = principal(Level::Admin, Id::ROOT_ACCOUNT);
+        assert!(admitted(&who, AccountScope::All, &event(Some(a1))).await);
+        assert!(admitted(&who, AccountScope::All, &event(None)).await);
+        assert!(admitted(&who, AccountScope::Own(a1), &event(Some(a1))).await);
+        assert!(!admitted(&who, AccountScope::Own(a1), &event(Some(a2))).await);
+        assert!(!admitted(&who, AccountScope::Own(a1), &event(None)).await);
+        assert!(!admitted(&who, AccountScope::Subtree(a1), &event(None)).await);
+        assert!(!admitted(&who, AccountScope::Nothing, &event(Some(a1))).await);
+    }
+
+    #[tokio::test]
+    async fn an_event_of_another_installation_reaches_an_admin_alone_whose_credential_is_not_narrowed()
+     {
+        let other = Id::generate();
+        let root = Some(Id::ROOT_ACCOUNT);
+        let admin = principal(Level::Admin, Id::ROOT_ACCOUNT);
+        let relayed = emitted_by(other, root);
+        assert!(admitted(&admin, AccountScope::All, &relayed).await);
+        assert!(admitted(&admin, AccountScope::All, &emitted_by(other, None)).await);
+        let mut read_only = admin.clone();
+        read_only.scope = Scope::ReadOnly;
+        assert!(admitted(&read_only, AccountScope::All, &relayed).await);
+
+        let service = principal(Level::Service, Id::ROOT_ACCOUNT);
+        let user = principal(Level::User, Id::ROOT_ACCOUNT);
+        for below in [&service, &user] {
+            assert!(admitted(below, AccountScope::of(below), &event(root)).await);
+            assert!(!admitted(below, AccountScope::of(below), &relayed).await);
+        }
+        let reseller = principal(Level::Reseller, Id::ROOT_ACCOUNT);
+        assert!(!admitted(&reseller, AccountScope::Subtree(Id::ROOT_ACCOUNT), &relayed).await);
+
+        let mut token = admin.clone();
+        token.scope = Scope::Functions(vec!["shelf.*".into()]);
+        assert!(admitted(&token, AccountScope::All, &event(root)).await);
+        assert!(!admitted(&token, AccountScope::All, &relayed).await);
+        let mut link = admin.clone();
+        link.scope = Scope::Peer(PeerScope {
+            functions: Vec::new(),
+            level: Level::Admin,
+            on_behalf: false,
+        });
+        link.via = Via::Peer(Id::generate());
+        assert!(admitted(&link, AccountScope::of(&link), &event(root)).await);
+        assert!(!admitted(&link, AccountScope::of(&link), &relayed).await);
     }
 
     #[tokio::test]

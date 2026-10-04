@@ -1,12 +1,15 @@
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::future::Future;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use futures::future::BoxFuture;
 use keel_types::{
     Account, BootLicense, BootProblems, CallError, DashboardLayout, DownloadFile, Event, Id, Level,
     Mode, Principal, TaskState,
@@ -451,13 +454,173 @@ pub trait Backups: Send + Sync {
 #[async_trait]
 pub trait OutboxSubscriber: Send + Sync {
     async fn after(&self, seq: u64, limit: u32) -> Result<Vec<Event>>;
+    async fn newest(&self) -> Result<u64>;
     fn latest(&self) -> watch::Receiver<u64>;
+}
+
+#[async_trait]
+pub trait EventRelay: Send + Sync {
+    async fn relay(&self, event: &Event) -> Result<Option<u64>>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum EndpointMethod {
+    Get,
+    Post,
+}
+
+impl EndpointMethod {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            EndpointMethod::Get => "GET",
+            EndpointMethod::Post => "POST",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EndpointRequest {
+    pub principal: Principal,
+    pub client: Client,
+    pub request_id: String,
+    pub headers: Vec<(String, String)>,
+    pub query: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl EndpointRequest {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(header, _)| header.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn param(&self, name: &str) -> impl Iterator<Item = &str> {
+        self.query
+            .iter()
+            .filter(move |(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+pub type EndpointHandler =
+    Arc<dyn Fn(EndpointRequest) -> BoxFuture<'static, Result<Value>> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct Endpoint {
+    module: String,
+    name: String,
+    method: EndpointMethod,
+    handler: EndpointHandler,
+}
+
+impl Endpoint {
+    pub fn new<F, Fut>(method: EndpointMethod, name: &str, handler: F) -> Self
+    where
+        F: Fn(EndpointRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Value>> + Send + 'static,
+    {
+        Self {
+            module: String::new(),
+            name: name.to_owned(),
+            method,
+            handler: Arc::new(move |request| Box::pin(handler(request))),
+        }
+    }
+
+    pub fn get<F, Fut>(name: &str, handler: F) -> Self
+    where
+        F: Fn(EndpointRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Value>> + Send + 'static,
+    {
+        Self::new(EndpointMethod::Get, name, handler)
+    }
+
+    pub fn post<F, Fut>(name: &str, handler: F) -> Self
+    where
+        F: Fn(EndpointRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Value>> + Send + 'static,
+    {
+        Self::new(EndpointMethod::Post, name, handler)
+    }
+
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn method(&self) -> EndpointMethod {
+        self.method
+    }
+
+    pub fn serve(&self, request: EndpointRequest) -> BoxFuture<'static, Result<Value>> {
+        (self.handler)(request)
+    }
+
+    pub(crate) fn stamp(&mut self, module: &str) {
+        module.clone_into(&mut self.module);
+    }
+}
+
+impl fmt::Debug for Endpoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Endpoint")
+            .field("module", &self.module)
+            .field("name", &self.name)
+            .field("method", &self.method)
+            .finish()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::call::CallBuilder;
+
+    #[tokio::test]
+    async fn an_endpoint_request_reads_headers_regardless_of_case_and_repeated_query_values() {
+        let request = EndpointRequest {
+            principal: crate::tests::principal(Level::Guest),
+            client: Client::default(),
+            request_id: "req-1".into(),
+            headers: vec![
+                ("x-keel-peer".into(), "01J9B".into()),
+                ("x-keel-peer".into(), "second".into()),
+            ],
+            query: vec![
+                ("types".into(), "dns.zone.*".into()),
+                ("after".into(), "7".into()),
+                ("types".into(), "svc.*".into()),
+            ],
+            body: b"{}".to_vec(),
+        };
+        assert_eq!(request.header("X-Keel-Peer"), Some("01J9B"));
+        assert_eq!(request.header("x-keel-signature"), None);
+        assert_eq!(
+            request.param("types").collect::<Vec<_>>(),
+            ["dns.zone.*", "svc.*"]
+        );
+        assert_eq!(request.param("limit").count(), 0);
+        let endpoint = Endpoint::post("hook", |request: EndpointRequest| async move {
+            Ok(serde_json::json!({ "bytes": request.body.len() }))
+        });
+        assert_eq!(endpoint.method(), EndpointMethod::Post);
+        assert_eq!(endpoint.name(), "hook");
+        assert_eq!(endpoint.module(), "");
+        assert_eq!(
+            endpoint.serve(request).await.unwrap(),
+            serde_json::json!({ "bytes": 2 })
+        );
+        assert_eq!(EndpointMethod::Get.as_str(), "GET");
+        assert_eq!(
+            format!("{endpoint:?}"),
+            "Endpoint { module: \"\", name: \"hook\", method: Post }"
+        );
+    }
 
     #[test]
     fn a_call_carries_the_client_of_its_request_and_records_one_session_change() {

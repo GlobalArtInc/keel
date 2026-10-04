@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
-use axum::body::Body;
+use axum::Json;
+use axum::body::{Body, to_bytes};
 use axum::extract::multipart::{Field, Multipart, MultipartError};
 use axum::extract::{FromRequest, Path, Query, Request, State};
-use axum::http::header::{ALLOW, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::http::header::{
+    ALLOW, AUTHORIZATION, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE, COOKIE,
+};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use futures::StreamExt;
 use keel_sdk::multipart::{PARAMS_LIMIT, PARAMS_PART};
+use keel_sdk::system::{Endpoint, EndpointMethod, EndpointRequest};
 use keel_sdk::{Download, KeelError};
 use keel_types::{ErrorCode, FieldError, FileAttrs, Kind, Level};
 use serde_json::{Map, Value};
@@ -40,6 +44,12 @@ pub(super) async fn get(
     Query(pairs): Query<Vec<(String, String)>>,
     headers: HeaderMap,
 ) -> Response {
+    if let Some(endpoint) = endpoint(&live, &module, &name, EndpointMethod::Get) {
+        return answer(endpoint, caller, &headers, pairs, Vec::new()).await;
+    }
+    if let Some(allowed) = endpoint_elsewhere(&live, &module, &name, EndpointMethod::Get) {
+        return endpoint_method(&module, &name, allowed, &caller.request_id);
+    }
     let Some(function) = resolve(&live, &module, &name) else {
         return not_found(&module, &name, &caller.request_id);
     };
@@ -60,6 +70,24 @@ pub(super) async fn post(
     caller: Caller,
     request: Request,
 ) -> Response {
+    if let Some(endpoint) = endpoint(&live, &module, &name, EndpointMethod::Post) {
+        let headers = request.headers().clone();
+        let pairs = Query::<Vec<(String, String)>>::try_from_uri(request.uri())
+            .map(|Query(pairs)| pairs)
+            .unwrap_or_default();
+        return match to_bytes(request.into_body(), state.options.body_limit).await {
+            Ok(body) => answer(endpoint, caller, &headers, pairs, body.to_vec()).await,
+            Err(error) => reply::error(
+                KeelError::validation("keel.error.body_too_large")
+                    .param("limit", state.options.body_limit)
+                    .source(error),
+                &caller.request_id,
+            ),
+        };
+    }
+    if let Some(allowed) = endpoint_elsewhere(&live, &module, &name, EndpointMethod::Post) {
+        return endpoint_method(&module, &name, allowed, &caller.request_id);
+    }
     let Some(function) = resolve(&live, &module, &name) else {
         return not_found(&module, &name, &caller.request_id);
     };
@@ -75,6 +103,94 @@ pub(super) async fn post(
         _ => body(request, state.options.body_limit).await,
     };
     serve(&state, &live, function, caller, &headers, params).await
+}
+
+fn endpoint<'a>(
+    live: &'a Live,
+    module: &str,
+    name: &str,
+    method: EndpointMethod,
+) -> Option<&'a Endpoint> {
+    live.registry
+        .contributions()
+        .of::<Endpoint>()
+        .find(|endpoint| {
+            endpoint.module() == module && endpoint.name() == name && endpoint.method() == method
+        })
+}
+
+fn endpoint_elsewhere(
+    live: &Live,
+    module: &str,
+    name: &str,
+    method: EndpointMethod,
+) -> Option<&'static str> {
+    live.registry
+        .contributions()
+        .of::<Endpoint>()
+        .find(|endpoint| {
+            endpoint.module() == module && endpoint.name() == name && endpoint.method() != method
+        })
+        .map(|endpoint| endpoint.method().as_str())
+}
+
+fn endpoint_method(module: &str, name: &str, allowed: &'static str, request_id: &str) -> Response {
+    let mut response = reply::error(
+        KeelError::validation("keel.error.method_not_allowed")
+            .param("function", format!("{module}.{name}"))
+            .param("allowed", allowed),
+        request_id,
+    );
+    response
+        .headers_mut()
+        .insert(ALLOW, HeaderValue::from_static(allowed));
+    response
+}
+
+fn header_pairs(headers: &HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter(|(name, _)| *name != AUTHORIZATION && *name != COOKIE)
+        .map(|(name, value)| {
+            (
+                name.as_str().to_owned(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
+}
+
+async fn answer(
+    endpoint: &Endpoint,
+    caller: Caller,
+    headers: &HeaderMap,
+    query: Vec<(String, String)>,
+    body: Vec<u8>,
+) -> Response {
+    let Caller {
+        request_id,
+        principal,
+        client,
+        ..
+    } = caller;
+    let request = EndpointRequest {
+        principal,
+        client,
+        request_id: request_id.clone(),
+        headers: header_pairs(headers),
+        query,
+        body,
+    };
+    match endpoint.serve(request).await {
+        Ok(value) => {
+            let mut response = (StatusCode::OK, Json(value)).into_response();
+            response
+                .headers_mut()
+                .insert(CACHE_CONTROL, HeaderValue::from_static(NO_STORE));
+            response
+        }
+        Err(error) => reply::error(error, &request_id),
+    }
 }
 
 fn resolve<'a>(live: &'a Live, module: &str, name: &str) -> Option<&'a Function> {

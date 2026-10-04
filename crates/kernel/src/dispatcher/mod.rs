@@ -41,7 +41,7 @@ pub use caller::CallerHandle;
 pub use group::{GROUP_BODY_KEY, MULTI_FIELD_KEY, MULTI_UNMASKED_KEY};
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
-pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed};
+pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed, RELAY_LOCAL_KEY, RELAY_TAKEN_KEY};
 pub(crate) use raw::stream_route_error;
 pub use raw::{
     DOWNLOAD_ROUTE_KEY, RAW_PREFIX, STREAM_ROUTE_KEY, UPLOAD_ROUTE_KEY, download_route_error,
@@ -336,7 +336,7 @@ impl Dispatcher {
     pub fn fill_outbox(&self, instance: Id) -> bool {
         match &self.inner.outbox {
             Some(feed) => {
-                feed.fill(self.inner.db.clone(), instance);
+                feed.fill(self.inner.db.clone(), instance, self.inner.clock.clone());
                 true
             }
             None => false,

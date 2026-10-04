@@ -8,7 +8,9 @@ use keel_sdk::types::PeerScope;
 use super::authenticator::stored_principal;
 use super::check;
 use super::entity::product;
+use super::inbox;
 use crate::auth::api::retire_credentials;
+use crate::webhooks::api::unsubscribe_peer;
 
 pub const LIST: &str = "peer.list";
 pub const GET: &str = "peer.get";
@@ -188,6 +190,8 @@ pub(super) fn delete() -> FunctionDef {
             product::Entity::delete_by_id(id.as_str())
                 .exec(call.tx()?)
                 .await?;
+            unsubscribe_peer(call.tx()?, call.params().id).await?;
+            inbox::forget(call.tx()?, &row.id).await?;
             retire(&call, &row).await?;
             let caller = call.require::<dyn Caller>()?;
             let link = row.id.clone();

@@ -157,6 +157,10 @@ impl TryFrom<&Via> for ActorVia {
 }
 
 impl Principal {
+    pub fn is_narrowed(&self) -> bool {
+        matches!(self.via, Via::Peer(_)) || !matches!(self.scope, Scope::Full | Scope::ReadOnly)
+    }
+
     pub fn meta(&self) -> Result<MetaPrincipal, NotDelegated> {
         let actor = self
             .actor
@@ -259,6 +263,29 @@ mod tests {
                 "actor": { "id": "01J8A0000000000000000000B2", "login": "root", "level": "admin", "via": "su" }
             })
         );
+    }
+
+    #[test]
+    fn a_principal_is_narrowed_by_a_scope_of_functions_or_a_call_through_a_peer() {
+        let mut principal = alice();
+        assert!(principal.is_narrowed());
+        principal.scope = Scope::Full;
+        assert!(!principal.is_narrowed());
+        principal.scope = Scope::ReadOnly;
+        assert!(!principal.is_narrowed());
+        principal.scope = Scope::Peer(PeerScope {
+            functions: vec!["svc.*".into()],
+            level: Level::Admin,
+            on_behalf: false,
+        });
+        assert!(principal.is_narrowed());
+        principal.scope = Scope::Full;
+        principal.via = Via::Peer("01J9A0000000000000000000A1".parse().unwrap());
+        assert!(principal.is_narrowed());
+        for via in [Via::Su, Via::Socket, Via::Internal] {
+            principal.via = via;
+            assert!(!principal.is_narrowed());
+        }
     }
 
     #[test]

@@ -36,5 +36,5 @@ pub use instance::{Instance, InstanceError};
 pub use loader::{BootError, Composition, Kernel};
 pub use registry::Registry;
 pub use socket::{Socket, SocketError};
-pub use storage::{Storage, StorageError};
+pub use storage::{Pool, Storage, StorageError};
 pub use tls::{TlsError, TlsMaterial};

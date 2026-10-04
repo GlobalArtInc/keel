@@ -28,6 +28,7 @@ license = ["notify", "dep:tracing"]
 peers = [
   "auth",
   "notify",
+  "webhooks",
   "dep:rand",
   "dep:reqwest",
   "dep:tokio",

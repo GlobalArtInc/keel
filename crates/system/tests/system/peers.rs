@@ -31,6 +31,7 @@ pub(crate) fn composed(builder: keel_testkit::Builder) -> keel_testkit::Builder 
         .module(&keel_system::auth::MODULE)
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
+        .module(&keel_system::webhooks::MODULE)
         .module(&MODULE)
 }
 
@@ -155,7 +156,7 @@ fn error_key(reply: &Reply, code: ErrorCode, key: &str) {
     assert_eq!((error.code, error.key.as_str()), (code, key), "{reply:?}");
 }
 
-async fn run_check(harness: &Harness) {
+pub(crate) async fn run_check(harness: &Harness) {
     let scheduler = harness
         .registry()
         .services()
@@ -1288,11 +1289,18 @@ async fn an_initiator_with_an_address_and_events_receives_a_webhook_secret_both_
         .await;
     let stored_b = b
         .database()
-        .rows("SELECT webhook_secret_enc FROM peer_product")
+        .rows("SELECT secret FROM webhook_subscription")
         .await;
     let secret = opened(&b, &stored_b[0]);
     assert!(secret.starts_with("whs_"), "{secret}");
     assert_eq!(opened(&a, &on_a[0]), secret);
+    assert_eq!(
+        b.database()
+            .rows("SELECT (webhook_secret_enc IS NULL)::text FROM peer_product")
+            .await,
+        ["true"],
+        "the side that signs keeps the secret in its subscription alone"
+    );
 
     let bad = a
         .call(

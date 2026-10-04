@@ -45,9 +45,10 @@ rule for `PROTOCOL` are stated in [01-overview.md](01-overview.md); `PROTOCOL` i
 ### Endpoint map
 
 The routes this design names. Anything else the installation serves is a raw route under
-`/api/v1/x/<module>/…`: today the kernel's projection of every `download` and `upload` function,
-later a route a module registers with a mandatory guard and an audit event
-([02-functions.md](02-functions.md)).
+`/api/v1/x/<module>/…`: today the kernel's projection of every `download` and `upload` function
+and the `Endpoint` routes a module contributes, which authenticate on their own and may answer a
+guest ([05-modules.md](05-modules.md)); later a route a module registers with a mandatory guard and
+an audit event ([02-functions.md](02-functions.md)).
 
 | Route | Purpose |
 |-------|---------|
@@ -57,7 +58,7 @@ later a route a module registers with a mandatory guard and an audit event
 | `POST /api/v1/call/{func}` | the call; `GET` is accepted for `kind: list \| get` |
 | `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
 | `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
-| `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; `GET` for a `stream` function, answering `text/event-stream`; later the WebSocket terminal, VNC and the peers pull feed `/api/v1/x/peers/feed?after=seq` |
+| `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; `GET` for a `stream` function, answering `text/event-stream`; `GET` or `POST` for an `Endpoint` a module contributes, which receives the body, the query and the headers without the credential and runs neither the guards nor the audit of the pipeline, so it authenticates on its own and may answer a guest: the peers hook `POST /api/v1/x/peer/hook`, authenticated by the HMAC signature of the delivery, and the pull feed `GET /api/v1/x/peer/feed?after=seq`, behind the peer token of a link; later the WebSocket terminal and VNC |
 | `GET /api/v1/events` | the server-sent event stream, `text/event-stream` with `Cache-Control: no-store`, resumed by `Last-Event-ID` or the query member `after` |
 | `GET /brand/logo.svg`, `GET /brand/<id>/logo.svg` | the effective brand's logo and each compiled-in bundle's, served from the bundle's `assets` or the kernel's own mark, `no-store` ([08-frontend.md](08-frontend.md)) |
 | `/login?key=…` | the page that redeems a one-time login key same-origin ([07-ecosystem.md](07-ecosystem.md)) |
@@ -75,9 +76,11 @@ ahead of the table or unreadable is answered with one `meta.invalidate` and the 
 from the newest `seq`, so the client refetches rather than misses something. Events are filtered
 per connection by the account scope of the principal: a `data.invalidate` is sent when the
 event's `subject.accountId` lies within the scope, an event without one reaches admins alone, so
-a user receives `data.invalidate` only for its own objects; a live frame reaches its own
-principal, a reseller whose subtree holds its account and every admin, never another user. A
-guest is answered `401` as an envelope. A credential holds at most `SSE_MAX_CLIENTS`, 4, streams at
+a user receives `data.invalidate` only for its own objects; an event another installation emitted,
+whose account ids name nothing here, reaches only an admin or owner whose credential is not
+narrowed by a scope of functions or a call through a peer ([07-ecosystem.md](07-ecosystem.md)); a
+live frame reaches its own principal, a reseller whose subtree holds its account and every admin,
+never another user. A guest is answered `401` as an envelope. A credential holds at most `SSE_MAX_CLIENTS`, 4, streams at
 once, keyed by a SHA-256 of the session cookie or the bearer token, so a token is capped like a
 session and a stream under `su` counts against the session that holds it; the stream beyond the
 cap evicts the oldest stream of that credential, which ends with a final frame carrying

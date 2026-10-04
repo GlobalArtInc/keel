@@ -18,7 +18,8 @@ use std::sync::OnceLock;
 
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    Caller, ContextExt, LiveEvents, OutboxSubscriber, PrincipalSource, ProblemCounter, SecretCipher,
+    Caller, ContextExt, Installation, LiveEvents, OutboxSubscriber, PrincipalSource,
+    ProblemCounter, SecretCipher,
 };
 
 pub use channels::ERROR_KIND_UNAVAILABLE;
@@ -136,6 +137,10 @@ fn init(r: &mut Registrar) -> Result<()> {
                     caller: ctx.require::<dyn Caller>()?,
                     principals: ctx.require::<dyn PrincipalSource>()?,
                     subscriber: ctx.require::<dyn OutboxSubscriber>()?,
+                    instance: ctx
+                        .require::<Installation>()
+                        .ok()
+                        .and_then(|installation| installation.instance),
                 },
                 templates,
             )?;

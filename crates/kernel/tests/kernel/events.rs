@@ -12,11 +12,12 @@ use keel_kernel::{Http, HttpOptions};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    Authenticated, Authenticator, Client, Credential, Frame, LiveEvents, OnBehalf, OutboxSubscriber,
+    Authenticated, Authenticator, Client, Credential, EventRelay, Frame, LiveEvents, OnBehalf,
+    OutboxSubscriber,
 };
 use keel_testkit::http::with_test_principal;
 use keel_testkit::{EVENTS_PATH, EventStream, Harness, PRINCIPAL_HEADER, SseFrame, TestHttp, Who};
-use keel_types::{Event, Via};
+use keel_types::{Event, PeerScope, Scope, Via};
 use tokio::sync::broadcast;
 
 const QUIET: Duration = Duration::from_millis(700);
@@ -363,6 +364,107 @@ async fn a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admi
     assert!(a2.quiet(QUIET).await);
     assert!(admin.quiet(QUIET).await);
     drop((a1, a2, admin));
+    http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+fn issued_as(principal: Principal) -> String {
+    let secret = format!("narrowed-{}", Id::generate());
+    CREDENTIALS
+        .lock()
+        .expect("the credentials")
+        .insert(secret.clone(), principal);
+    secret
+}
+
+#[tokio::test]
+async fn an_event_of_another_installation_reaches_an_admin_alone_and_never_a_narrowed_credential() {
+    let harness = boot_with_credentials().await;
+    let http = harness.http().await;
+    let admin = harness.principal(Who::Admin).clone();
+    let mut scoped = admin.clone();
+    scoped.scope = Scope::Functions(vec!["stream.*".into()]);
+    let mut link = admin.clone();
+    link.scope = Scope::Peer(PeerScope {
+        functions: Vec::new(),
+        level: Level::Admin,
+        on_behalf: false,
+    });
+    link.via = Via::Peer(Id::generate());
+    let scoped = format!("Bearer {}", issued_as(scoped));
+    let link = format!("Bearer {}", issued_as(link));
+    assert_eq!(harness.principal(Who::Service).account_id, Id::ROOT_ACCOUNT);
+
+    let mut admin = opened(&http, Who::Admin, None).await;
+    let mut service = opened(&http, Who::Service, None).await;
+    let mut scoped = opened_with(&http, &[("authorization", scoped.as_str())]).await;
+    let mut link = opened_with(&http, &[("authorization", link.as_str())]).await;
+
+    let elsewhere = Id::generate();
+    let relayed = Event {
+        id: Id::generate(),
+        seq: 1,
+        kind: "stream.item.touched".into(),
+        at: keel_sdk::chrono::Utc::now(),
+        instance_id: elsewhere,
+        module: "stream".into(),
+        actor: None,
+        subject: Some(EventSubject {
+            kind: "stream.item".into(),
+            id: Id::generate(),
+            account_id: Some(Id::ROOT_ACCOUNT),
+        }),
+        data: json!({ "label": "elsewhere" }),
+    };
+    let relayed_seq = harness
+        .registry()
+        .services()
+        .get::<dyn EventRelay>()
+        .expect("the kernel relays events of peers")
+        .relay(&relayed)
+        .await
+        .expect("the relay answers")
+        .expect("the event enters the outbox");
+    let here = touch(&harness, Who::Admin, "here").await;
+    assert!(relayed_seq < here);
+
+    let frame = admin.next_event().await;
+    assert_eq!(
+        invalidate(&frame),
+        (
+            relayed_seq,
+            "stream.item.touched".to_owned(),
+            Some(Id::ROOT_ACCOUNT)
+        )
+    );
+    assert_eq!(frame.json()["instanceId"], json!(elsewhere.to_string()));
+    let frame = admin.next_event().await;
+    assert_eq!(invalidate(&frame).0, here);
+
+    for (name, stream) in [
+        ("a service principal of the root account", &mut service),
+        ("an admin token scoped to functions", &mut scoped),
+        ("an admin calling through a peer", &mut link),
+    ] {
+        let frame = stream.next_event().await;
+        assert_eq!(
+            invalidate(&frame),
+            (
+                here,
+                "stream.item.touched".to_owned(),
+                Some(Id::ROOT_ACCOUNT)
+            ),
+            "{name} receives the event of this installation and not the relayed one"
+        );
+        assert_eq!(
+            frame.json()["instanceId"],
+            json!(harness.instance().to_string()),
+            "{name}"
+        );
+        assert!(stream.quiet(QUIET).await, "{name}");
+    }
+    assert!(admin.quiet(QUIET).await);
+    drop((admin, service, scoped, link));
     http.stop().await.expect("the server stops");
     harness.finish().await;
 }

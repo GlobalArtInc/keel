@@ -6466,17 +6466,20 @@ customer's level, permissions, ownership and account scoping applying, and the t
 
 **Goal.** The webhook subscription the initiator asked for is created at pairing in the
 `webhooks` module of M3 with `X-Keel-Peer` joining its headers; the pull feed
-`GET /api/v1/x/peers/feed?after=&types=&limit=` behind a `kpt_` token and its scope, reading the
+`GET /api/v1/x/peer/feed?after=&types=&limit=` behind a `kpt_` token and its scope, reading the
 outbox by `seq`; a pull consumer on the initiating side for a peer marked `pull` (behind NAT)
 storing its cursor; and the inbox `peer_inbox(event_id, peer_id, received_at, processed_at)` on
-the receiving side — `POST /api/v1/x/peers/hook` verifying the HMAC signature in the ±300 s
-window with constant-time comparison, inserting by event id, answering `200` at once — processed
-asynchronously onto the local bus so module subscribers see a peer's events like local ones.
-Step 1b carries the subscription in `peer.pair` as two fields where the design sketches a
+the receiving side — `POST /api/v1/x/peer/hook` verifying the HMAC signature in the ±300 s
+window with constant-time comparison, inserting by link and event id, answering `200` at once —
+processed asynchronously onto the local bus so module subscribers see a peer's events like local
+ones. Step 1b carries the subscription in `peer.pair` as two fields where the design sketches a
 `webhook: { url, events }` object: `url`, the initiator's base address (its `auth.shell_url`, which
 the receiver also keeps for the handshake of the daily check), and `subscribe`, the event masks;
 the receiver issues the webhook secret only when both are present. This step derives the hook
-address as `<url>/api/v1/x/peers/hook`, and step 8c amends the example of the design.
+address as `<url>/api/v1/x/peer/hook`, and step 8c amends the example of the design. The
+initiator marks a link `pull` by `peer.create { pull: true }`, which sends no `url`, so the
+receiver creates no subscription; an initiator without an `auth.shell_url` of its own pulls as
+well.
 
 **Touches.** `crates/system/src/peers/`, `crates/system/src/webhooks/`, `crates/kernel/src/` (the
 bus entry for remote events), `contracts/`.
@@ -6672,6 +6675,12 @@ copied key is refused.
 Step 1c leaves another point: what a peer mints while it acts for a customer — an API token, a
 login key — belongs to the customer and outlives `peer.rotate` and `peer.delete`, unlike what it
 mints as the principal of its link; the review decides whether such a credential dies with the link.
+Step 2a leaves three points. The hook answers any caller: it looks the link up by `X-Keel-Peer`
+and checks the signature before it reads the body, and nothing bounds how often a stranger may
+make it do so. The webhook subscription a link carries delivers to the address the peer gave at
+pairing without the `webhook.private_targets` guard, as pairing itself does not filter private
+networks. The pull feed and that subscription serve the masks the peer asked for at pairing within
+the account scope of the level its token was granted; the receiving admin approves no masks.
 
 **Touches.** the modules named.
 

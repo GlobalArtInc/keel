@@ -54,8 +54,8 @@ The endpoints and headers that appear in this document:
 | `Authorization: Bearer kpt_…` | auth | the peer token of a paired instance |
 | `X-Keel-On-Behalf-Of: origin=…; external_id=…` | peers | act as a customer principal that belongs to the calling peer |
 | `/login?key=kok_…` | auth, shell | one-click login page; performs a same-origin `POST auth.key.redeem` |
-| `POST /api/v1/x/peers/hook` | peers | inbound signed event deliveries |
-| `GET /api/v1/x/peers/feed?after=seq` | peers | pull feed of outbox events for instances behind NAT |
+| `POST /api/v1/x/peer/hook` | peers | inbound signed event deliveries |
+| `GET /api/v1/x/peer/feed?after=seq` | peers | pull feed of outbox events for instances behind NAT |
 | `Idempotency-Key` | kernel | replay protection on retried calls |
 | `X-Keel-Idempotent-Replay` | kernel | marks a response that was replayed from the idempotency store |
 | `X-Keel-Event-Id`, `X-Keel-Peer`, `X-Keel-Signature` | webhooks | identity and HMAC signature of a webhook delivery |
@@ -108,7 +108,7 @@ POST /api/v1/call/peer.create
 A → B: POST /api/v1/x/peers/pair
 { "code": "PAIR-7K2Q-91XD", "instance": { …A… },
   "inboundToken": "kpt_01J9A.…", "inboundScopes": { "functions": ["billing.service.sync"], "level": "service" },
-  "webhook": { "url": "https://bill.example/api/v1/x/peers/hook", "events": ["dns.zone.*", "svc.*"] } }
+  "webhook": { "url": "https://bill.example/api/v1/x/peer/hook", "events": ["dns.zone.*", "svc.*"] } }
 
 B → A: 200
 { "peerId": "01J9B", "token": "kpt_01J9B.…",
@@ -269,14 +269,17 @@ the pull feed:
 ```
 
 `module` names the module that emitted the event; together with the prefix of `type` and
-`instanceId` it identifies the source. An installation carries several products, so an event names
-no product. `subject` names the row the event is about, and is what the webhook consumer and the
-browser stream scope an event by: a handler names it through `call.emit_about(type, subject,
-&data)`; a plain `call.emit` gets a subject the dispatcher derives — `kind` is the function name
-without its verb, `id` the key parameter when it is a single id, `accountId` the account the
-handler last resolved through `resolve_account`, the caller's account when it resolved none — and
-a call whose key is not a single id, a create or a batch over `ids`, gets no derived subject, so
-its events reach admins alone unless the handler names one.
+`instanceId` it identifies the source. `actor` is `{ kind: principal, id }` for a call of a local
+principal and `{ kind: peer, id }` for a call made through a peer link, `id` being the principal of
+that link whether the link calls as itself or on behalf of a customer; a guest's call emits no
+actor. An installation carries several products, so an event names no product. `subject` names the
+row the event is about, and is what the webhook consumer and the browser stream scope an event by: a
+handler names it through `call.emit_about(type, subject, &data)`; a plain `call.emit` gets a subject
+the dispatcher derives — `kind` is the function name without its verb, `id` the key parameter when
+it is a single id, `accountId` the account the handler last resolved through `resolve_account`, the
+caller's account when it resolved none — and a call whose key is not a single id, a create or a
+batch over `ids`, gets no derived subject, so its events reach admins alone unless the handler names
+one.
 
 There are two ways for an event to reach a peer.
 
@@ -288,7 +291,7 @@ for the timestamp is ±300 s, `t` being the time of the attempt so a retry carri
 and the check compares in constant time:
 
 ```
-POST https://bill.example/api/v1/x/peers/hook
+POST https://bill.example/api/v1/x/peer/hook
 X-Keel-Event-Id: 01J9EV5K…
 X-Keel-Peer: 01J9B
 X-Keel-Signature: t=1757671200,v1=<hmac_sha256(secret, t + "." + body)>
@@ -300,26 +303,49 @@ The subscription and delivery state live in the webhooks module's own tables,
 `webhook_subscription` (`url`, the sealed `secret`, the event masks, `account_id`, `enabled`) and
 `webhook_delivery` with `attempt`, `next_at`, `status` and `last_error`; `X-Keel-Peer` joins the
 headers at pairing in M6, a user subscription carries `X-Keel-Event-Id` and `X-Keel-Signature`.
+The subscription of a peer belongs to its link: it is addressed to `<url>/api/v1/x/peer/hook` of the
+address the initiator gave, carries the level granted to the link, starts after the outbox `seq` of
+the pairing, refuses `webhook.subscription.set`, `.toggle` and `.delete` with `webhook.error.peer`
+and goes with `peer.delete`. The receiving side keeps the secret in this subscription alone and the
+initiator in its link, so the hook of the side that signs refuses whatever the other side signs.
 
 **Pull feed.** An instance behind NAT, which cannot receive a webhook, reads the same outbox from
 the other side:
 
 ```
-GET /api/v1/x/peers/feed?after=8812&types=dns.zone.*&limit=500
+GET /api/v1/x/peer/feed?after=8812&types=dns.zone.*&limit=500
 → { "data": [ … ], "next": 9020 }
 ```
 
 `after` is the outbox `seq`; the consumer stores the last `seq` it processed and asks for what
-follows. The feed lives on its own path so that it is not confused with the browser event
-stream at `GET /api/v1/events`, which is filtered per principal and resumed by `Last-Event-ID`
-([08-frontend.md](08-frontend.md), [10-contracts.md](10-contracts.md)).
+follows. `peer.create` with `pull: true` sends the receiver no address, so no subscription is
+created and the initiator reads the feed with the token of its link; an initiator without an address
+of its own (`auth.shell_url` unset) reads it too. The feed answers the peer token of a link alone,
+serves the masks the link subscribed to at pairing within the account scope of the level its token
+was granted, and starts after the outbox `seq` of the pairing. The feed lives on its own path so
+that it is not confused with the browser event stream at `GET /api/v1/events`, which is filtered
+per principal and resumed by `Last-Event-ID` ([08-frontend.md](08-frontend.md),
+[10-contracts.md](10-contracts.md)).
 
-**Inbox.** Whichever way an event arrives, the receiver deduplicates it by event `id` in
-`peer_inbox(event_id, peer_id, received_at, processed_at)`: an insert that conflicts is ignored, the
-hook answers `200` at once, and processing happens asynchronously from the inbox. Module subscribers
-on the receiving side get the event through the same bus as local events. A repeated delivery
-therefore never creates a duplicate; the M6 acceptance in [../plan.md](../plan.md) tests exactly
-that.
+**Inbox.** Whichever way an event arrives, the receiver deduplicates it per link by event `id` in
+`peer_inbox(peer_id, event_id, event_json, received_at, processed_at, attempts)`: an insert that
+conflicts is ignored, the hook answers `200` at once, and processing happens asynchronously from the
+inbox, which keeps the event as `event_json` until then. Module subscribers on the receiving side get
+the event through the same bus as local events, under its own id and `instanceId`. A repeated
+delivery therefore never creates a duplicate; the M6 acceptance in [../plan.md](../plan.md) tests
+exactly that. A delivery, pushed or pulled, carries only events the sending installation emitted, so
+an event of a peer never travels on to a third installation or back. On the receiving side the
+account ids of such an event name nothing, since every installation's root account has the same nil
+id, so the browser stream and a user subscription carry it only to an admin or owner whose
+credential is not narrowed: neither a call through a peer nor a token scoped to functions, which is
+all a peer can mint. A user subscription remembers in `local_only` whether the credential that saved
+it was narrowed, a peer's subscription is always `local_only`, and the notify consumer leaves such
+events alone. The hook refuses an event whose `at` lies outside the years 0 to 9999 that a timestamp
+holds, and the pull consumer skips one. An event the bus refuses, such as one whose id the bus
+already holds for another installation, is dropped with an error in the log; one the bus fails to
+take is tried again up to five times before it is dropped the same way, so no single event holds the
+inbox. The rows of a link go with `peer.delete`, and the daily check prunes processed rows after
+seven days.
 
 ## Services for a billing product
 

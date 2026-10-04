@@ -55,6 +55,10 @@ pub struct Wanted {
     pub target: Target,
 }
 
+pub fn emitted_here(event: &Event, instance: Option<Id>) -> bool {
+    instance.is_none_or(|local| local == event.instance_id)
+}
+
 pub fn wants_delivery(event: &Event) -> Option<Wanted> {
     if event.kind != EVENT_MESSAGE_CREATED {
         return None;
@@ -135,7 +139,11 @@ async fn step(started: &Started, seq: &mut u64) -> Result<usize> {
     };
     let now = started.clock.now();
     let mut created = 0;
-    for wanted in events.iter().filter_map(wants_delivery) {
+    for wanted in events
+        .iter()
+        .filter(|event| emitted_here(event, started.instance))
+        .filter_map(wants_delivery)
+    {
         let channels = targets(started, &wanted).await?;
         created += enqueue(&started.db, &channels, &wanted.message, &wanted.key, now)
             .await?
@@ -260,5 +268,16 @@ mod tests {
             )),
             None
         );
+    }
+
+    #[test]
+    fn an_event_relayed_from_another_installation_is_not_emitted_here() {
+        let relayed = event(
+            EVENT_MESSAGE_CREATED,
+            json!({ "id": "01J", "key": "notify.problem.raised", "source": "problem" }),
+        );
+        assert!(!emitted_here(&relayed, Some(Id::generate())));
+        assert!(emitted_here(&relayed, Some(relayed.instance_id)));
+        assert!(emitted_here(&relayed, None));
     }
 }

@@ -18,6 +18,10 @@ pub mod subscription {
         pub created_at: DateTimeUtc,
         pub created_by: String,
         pub updated_at: DateTimeUtc,
+        pub peer_id: Option<String>,
+        pub level: Option<String>,
+        pub floor_seq: Option<i64>,
+        pub local_only: bool,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

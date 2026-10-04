@@ -1,18 +1,21 @@
 use std::time::Duration;
 
-use keel_sdk::serde::Serialize;
 use keel_sdk::serde::de::DeserializeOwned;
+use keel_sdk::serde::{Deserialize, Serialize};
 use keel_sdk::serde_json::{self, Value};
-use keel_sdk::types::{CallError, Envelope, ErrorCode, InstanceInfo};
+use keel_sdk::types::{CallError, Envelope, ErrorCode, Event, InstanceInfo};
 use keel_sdk::{KeelError, Result};
-use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::redirect::Policy;
 
 pub const INSTANCE_PATH: &str = "/api/v1/instance";
 pub const CALL_PATH: &str = "/api/v1/call";
+pub const HOOK_PATH: &str = "/api/v1/x/peer/hook";
+pub const FEED_PATH: &str = "/api/v1/x/peer/feed";
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 pub const BODY_CAP: usize = 1 << 20;
+pub const FEED_BODY_CAP: usize = 8 << 20;
 pub const ERROR_UNREACHABLE: &str = "peer.error.unreachable";
 pub const ERROR_HANDSHAKE: &str = "peer.error.handshake";
 pub const ERROR_ANSWER: &str = "peer.error.answer";
@@ -23,6 +26,13 @@ const REASON_CAP: usize = 256;
 pub struct Remote {
     base: String,
     client: reqwest::Client,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "keel_sdk::serde")]
+pub struct FeedPage {
+    pub data: Vec<Event>,
+    pub next: u64,
 }
 
 impl Remote {
@@ -52,7 +62,7 @@ impl Remote {
             .await
             .map_err(|error| unreachable(&self.base, &describe(&error)))?;
         let status = response.status();
-        let body = read(response)
+        let body = read(response, BODY_CAP)
             .await
             .map_err(|reason| unreachable(&self.base, &reason))?;
         if !status.is_success() {
@@ -77,13 +87,37 @@ impl Remote {
             .send()
             .await
             .map_err(|error| unreachable(&self.base, &describe(&error)))?;
-        let body = read(response)
+        let body = read(response, BODY_CAP)
             .await
             .map_err(|reason| unreachable(&self.base, &reason))?;
         let answer = || KeelError::peer(ERROR_ANSWER).param("url", self.base.as_str());
         match serde_json::from_slice::<Envelope<Value>>(&body).map_err(|_| answer())? {
             Envelope::Ok { data, .. } => serde_json::from_value(data).map_err(|_| answer()),
             Envelope::Err { error } => Err(refused(error)),
+        }
+    }
+
+    pub async fn feed(&self, token: &str, after: u64, limit: u32) -> Result<FeedPage> {
+        let url = format!("{}{FEED_PATH}?after={after}&limit={limit}", self.base);
+        let response = self
+            .client
+            .get(&url)
+            .header(ACCEPT, JSON)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|error| unreachable(&self.base, &describe(&error)))?;
+        let status = response.status();
+        let body = read(response, FEED_BODY_CAP)
+            .await
+            .map_err(|reason| unreachable(&self.base, &reason))?;
+        let answer = || KeelError::peer(ERROR_ANSWER).param("url", self.base.as_str());
+        if status.is_success() {
+            return serde_json::from_slice(&body).map_err(|_| answer());
+        }
+        match serde_json::from_slice::<Envelope<Value>>(&body).map_err(|_| answer())? {
+            Envelope::Err { error } => Err(refused(error)),
+            Envelope::Ok { .. } => Err(answer()),
         }
     }
 }
@@ -131,11 +165,11 @@ fn unreachable(url: &str, reason: &str) -> KeelError {
         .param("reason", truncate(reason))
 }
 
-async fn read(mut response: reqwest::Response) -> std::result::Result<Vec<u8>, String> {
+async fn read(mut response: reqwest::Response, cap: usize) -> std::result::Result<Vec<u8>, String> {
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|error| describe(&error))? {
-        if body.len() + chunk.len() > BODY_CAP {
-            return Err(format!("the answer is larger than {BODY_CAP} bytes"));
+        if body.len() + chunk.len() > cap {
+            return Err(format!("the answer is larger than {cap} bytes"));
         }
         body.extend_from_slice(&chunk);
     }

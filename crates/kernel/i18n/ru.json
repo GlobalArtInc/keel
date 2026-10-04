@@ -204,6 +204,8 @@
       "rate_limited": "Слишком много запросов",
       "read_call_has_no_outbox": "У вызова чтения нет outbox",
       "read_call_has_no_transaction": "У вызова чтения нет транзакции",
+      "relay_local": "Событие {id} создано здесь, в установке {instanceId}, и не может попасть в шину как событие другой установки",
+      "relay_taken": "Идентификатор события {id} уже занят в шине событием установки {instanceId}",
       "request": "{message} (запрос {id})",
       "restart_inline": "Перезапуск выполняется задачей, а не в вызове",
       "restart_pending": "Перезапуск уже запрошен: {reason}, запросил {requestedBy}",

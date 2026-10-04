@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use keel_kernel::dispatcher::{CallOptions, Dispatcher, OUTBOX_BATCH, Reply};
+use keel_kernel::dispatcher::{
+    CallOptions, Dispatcher, OUTBOX_BATCH, RELAY_LOCAL_KEY, RELAY_TAKEN_KEY, Reply,
+};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
-use keel_sdk::system::OutboxSubscriber;
+use keel_sdk::system::{EventRelay, OutboxSubscriber};
 use keel_testkit::TestDatabase;
-use keel_types::{Event, EventActorKind, Scope, Via};
+use keel_types::{ErrorCode, Event, EventActor, EventActorKind, EventSubject, Scope, Via};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value as DbValue};
 use tokio::sync::{Notify, watch};
 
@@ -270,5 +272,177 @@ async fn a_transaction_writing_an_event_waits_for_the_earlier_writer_to_commit_s
     let (held, ()) = tokio::join!(held, released);
     assert_eq!(held.status(), 200, "{:?}", held.error());
     assert_eq!(labels(&bench.after(newest).await), ["held"]);
+    bench.finish().await;
+}
+
+fn foreign(origin: Id, label: &str) -> Event {
+    Event {
+        id: Id::generate(),
+        seq: 8812,
+        kind: "dns.zone.created".into(),
+        at: "2026-09-12T10:00:00.000Z".parse().expect("an instant"),
+        instance_id: origin,
+        module: "dns".into(),
+        actor: Some(EventActor {
+            kind: EventActorKind::Peer,
+            id: Id::generate(),
+        }),
+        subject: Some(EventSubject {
+            kind: "dns.zone".into(),
+            id: Id::generate(),
+            account_id: Some(Id::generate()),
+        }),
+        data: json!({ "label": label }),
+    }
+}
+
+#[tokio::test]
+async fn a_relayed_event_enters_the_outbox_once_under_its_own_id_and_origin_and_wakes_the_feed() {
+    let bench = bench().await;
+    let relay = bench
+        .kernel
+        .registry()
+        .services()
+        .get::<dyn EventRelay>()
+        .expect("the kernel provides the relay");
+    let mut latest = bench.subscriber.latest();
+    bench.ping("local", false).await;
+    let local = changed(&mut latest).await;
+    let origin = Id::generate();
+    let event = foreign(origin, "remote");
+    let seq = relay
+        .relay(&event)
+        .await
+        .expect("the relay writes")
+        .expect("a new event gets a seq");
+    assert!(seq > local, "{seq} follows {local}");
+    assert_eq!(changed(&mut latest).await, seq);
+    let read = bench.after(local).await;
+    assert_eq!(read.len(), 1);
+    let relayed = &read[0];
+    assert_eq!(relayed.seq, seq);
+    assert_eq!(relayed.id, event.id);
+    assert_eq!(relayed.instance_id, origin);
+    assert_eq!(relayed.kind, event.kind);
+    assert_eq!(relayed.module, event.module);
+    assert_eq!(relayed.at, event.at);
+    assert_eq!(relayed.actor, event.actor);
+    assert_eq!(relayed.subject, event.subject);
+    assert_eq!(relayed.data, event.data);
+    let everything = bench.after(0).await;
+    assert_eq!(everything[0].instance_id, bench.instance);
+    assert_eq!(labels(&everything), ["local", "remote"]);
+    assert_eq!(
+        relay.relay(&event).await.expect("a repeat is no error"),
+        None
+    );
+    assert_eq!(bench.after(0).await.len(), 2);
+    let mut own = foreign(origin, "own");
+    own.instance_id = bench.instance;
+    let refused = relay
+        .relay(&own)
+        .await
+        .expect_err("an event of this installation is not relayed");
+    assert_eq!(refused.code(), ErrorCode::Validation);
+    assert_eq!(refused.key(), RELAY_LOCAL_KEY);
+    assert_eq!(refused.params()["id"], json!(own.id.to_string()));
+    assert_eq!(bench.after(0).await.len(), 2);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_event_of_a_call_through_a_peer_link_names_the_link_as_its_peer_actor() {
+    let bench = bench().await;
+    let link = Id::generate();
+    let mut direct = owner();
+    direct.level = Level::Admin;
+    direct.via = Via::Peer(link);
+    let mut customer = owner();
+    customer.level = Level::Admin;
+    customer.via = Via::Peer(link);
+    customer.actor = Some(Box::new(direct.clone()));
+    for principal in [direct.clone(), customer.clone()] {
+        let reply = bench
+            .dispatcher
+            .call(
+                principal,
+                "feeder.item.ping",
+                json!({ "label": "peer" }),
+                CallOptions::default(),
+            )
+            .await;
+        assert_eq!(reply.status(), 200, "{:?}", reply.error());
+    }
+    let actors: Vec<Option<EventActor>> = bench
+        .after(0)
+        .await
+        .into_iter()
+        .map(|event| event.actor)
+        .collect();
+    assert_eq!(
+        actors,
+        [
+            Some(EventActor {
+                kind: EventActorKind::Peer,
+                id: direct.id,
+            }),
+            Some(EventActor {
+                kind: EventActorKind::Peer,
+                id: direct.id,
+            }),
+        ]
+    );
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_id_the_bus_holds_for_another_installation_is_refused_rather_than_taken_for_a_repeat() {
+    let bench = bench().await;
+    let relay = bench
+        .kernel
+        .registry()
+        .services()
+        .get::<dyn EventRelay>()
+        .expect("the kernel provides the relay");
+    let first = Id::generate();
+    let event = foreign(first, "first");
+    relay
+        .relay(&event)
+        .await
+        .expect("the relay writes")
+        .expect("a new event gets a seq");
+    let mut forged = foreign(Id::generate(), "forged");
+    forged.id = event.id;
+    let refused = relay
+        .relay(&forged)
+        .await
+        .expect_err("an id held for another installation is no repeat");
+    assert_eq!(refused.code(), ErrorCode::Validation);
+    assert_eq!(refused.key(), RELAY_TAKEN_KEY);
+    assert_eq!(refused.params()["id"], json!(event.id.to_string()));
+    assert_eq!(refused.params()["instanceId"], json!(first.to_string()));
+    assert_eq!(
+        relay.relay(&event).await.expect("a repeat is no error"),
+        None
+    );
+    bench.ping("local", false).await;
+    let local = bench
+        .after(0)
+        .await
+        .into_iter()
+        .find(|seen| seen.instance_id == bench.instance)
+        .expect("the local event is on the bus");
+    let mut copied = foreign(Id::generate(), "copied");
+    copied.id = local.id;
+    let refused = relay
+        .relay(&copied)
+        .await
+        .expect_err("an id of a local event is no repeat");
+    assert_eq!(refused.key(), RELAY_TAKEN_KEY);
+    assert_eq!(
+        refused.params()["instanceId"],
+        json!(bench.instance.to_string())
+    );
+    assert_eq!(labels(&bench.after(0).await), ["first", "local"]);
     bench.finish().await;
 }

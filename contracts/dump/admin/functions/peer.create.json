@@ -34,6 +34,10 @@
           "control": "tags"
         }
       },
+      "pull": {
+        "type": "boolean",
+        "default": false
+      },
       "scopes": {
         "type": "array",
         "items": {
@@ -192,6 +196,7 @@
           "url",
           "code",
           "subscribe",
+          "pull",
           "scopes",
           "level",
           "onBehalf"

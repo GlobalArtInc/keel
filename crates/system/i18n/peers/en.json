@@ -25,6 +25,8 @@
       "code": "The pairing code is unknown, used or expired",
       "customer": "No customer of the calling installation has the external id {externalId} under {origin}",
       "entropy": "The system gave no randomness",
+      "event": "The delivery is not an event of the installation that signed it ({reason})",
+      "feed": "The event feed answers the peer token of a link alone",
       "handshake": "{url} does not answer as an installation",
       "header": "The on-behalf header must read origin=name:instance; external_id=id",
       "instance_key": "The installation {instanceId} presents another instance key than the one pinned at pairing",
@@ -36,8 +38,10 @@
       "paired": "The installation {instanceId} is already paired with this one",
       "principal": "The link {id} names no principal that can be read",
       "protocol": "The other installation speaks protocol {protocol}, and this one supports {supported} and its neighbours",
+      "query": "The query parameter {name} is malformed",
       "scope": "A pairing may not grant more than the token of the caller holds",
       "self": "The address leads to this installation itself",
+      "signature": "The delivery carries no valid signature of a paired installation",
       "stored": "The stored link {id} cannot be read",
       "token": "The peer token is unknown, retired or malformed",
       "unreachable": "The installation at {url} did not answer: {reason}",
@@ -56,6 +60,7 @@
       "instance_key": "The installation at {url} presents another instance key than the one pinned for {instanceId}",
       "protocol": "The installation at {url} speaks protocol {protocol}, which this one no longer understands with {supported}"
     },
+    "pull": "Pull its events from its feed (this installation is behind NAT)",
     "scopes": "Functions it may call",
     "status": {
       "active": "Active"

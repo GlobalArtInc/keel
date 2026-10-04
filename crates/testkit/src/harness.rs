@@ -18,7 +18,7 @@ use keel_types::{Id, Level, Principal};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use tokio::sync::broadcast;
+use tokio::sync::{Semaphore, broadcast};
 
 use crate::agent::{self, InProcessAgent, Prepared};
 use crate::auth;
@@ -27,6 +27,10 @@ use crate::database::{DatabaseError, DatabaseHandle, TestDatabase};
 use crate::fixtures::{Fixtures, SeedError, Who, recover, seed};
 use crate::http::{HttpError, TestHttp, with_test_principal};
 use crate::snapshots;
+
+pub const BOOTS_AT_ONCE: usize = 4;
+
+static BOOTS: Semaphore = Semaphore::const_new(BOOTS_AT_ONCE);
 
 #[derive(Default)]
 pub struct Builder {
@@ -206,6 +210,7 @@ impl Builder {
     }
 
     pub async fn try_boot(self) -> Result<Harness, Error> {
+        let _turn = BOOTS.acquire().await.ok();
         keel_kernel::tls::install_provider();
         let (database, seeded) = match self.database {
             Some(database) => (database, true),

@@ -1,10 +1,13 @@
 mod authenticator;
 mod check;
 mod codes;
+mod delivery;
 mod entity;
 mod functions;
+mod inbox;
 mod on_behalf;
 mod pairing;
+mod pull;
 mod remote;
 mod rotation;
 
@@ -13,18 +16,27 @@ use std::sync::Arc;
 use keel_sdk::InstanceInfoSource;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    AccountSource, Authenticator, Caller, Degradation, Features, OnBehalf, PeerReach,
-    PrincipalSource, SecretCipher,
+    AccountSource, Authenticator, Caller, ContextExt, Degradation, EventRelay, Features,
+    Installation, OnBehalf, OutboxSubscriber, PeerReach, PrincipalSource, SecretCipher,
 };
 use keel_sdk::types::Scope;
 
 use authenticator::PeerAuthenticator;
+use delivery::Delivery;
 
 pub use authenticator::ERROR_PRINCIPAL;
 pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, SCHEDULE, SOURCE};
 pub use codes::{CODE_PREFIX, CODE_SYMBOLS};
+pub use delivery::{
+    ERROR_EVENT, ERROR_FEED, ERROR_QUERY, ERROR_SIGNATURE, FEED, FEED_BATCH, FEED_LIMIT,
+    FEED_LIMIT_MAX, FEED_SCAN, HOOK, MAX_TYPES, YEARS,
+};
 pub use functions::{
     DELETE, ERROR_STORED, EVENT_CREATED, EVENT_DELETED, EVENT_ROTATED, GET, LIST, STATUS_ACTIVE,
+};
+pub use inbox::{
+    BATCH as INBOX_BATCH, MAX_ATTEMPTS as INBOX_MAX_ATTEMPTS, POLL as INBOX_POLL,
+    RETENTION_DAYS as INBOX_RETENTION_DAYS,
 };
 pub use on_behalf::{
     ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, MAX_EXTERNAL_ID, is_external_id, names_peer,
@@ -34,7 +46,10 @@ pub use pairing::{
     ERROR_SCOPE, ERROR_SELF, ERROR_TOKEN, LINK, LOGIN_PREFIX, PAIR, PAIR_CODE, ROLE, TTL_DEFAULT,
     TTL_MAX, TTL_MIN, WEBHOOK_SECRET_PREFIX, compatible,
 };
-pub use remote::{ERROR_ANSWER, ERROR_HANDSHAKE, ERROR_UNREACHABLE, ERROR_URL};
+pub use pull::{LIMIT as PULL_LIMIT, PAUSE as PULL_PAUSE, ROUNDS as PULL_ROUNDS};
+pub use remote::{
+    ERROR_ANSWER, ERROR_HANDSHAKE, ERROR_UNREACHABLE, ERROR_URL, FEED_PATH, HOOK_PATH,
+};
 pub use rotation::{ERROR_NO_URL, REKEY, RENEW, ROTATE};
 
 pub const FEATURE: &str = "peers";
@@ -54,7 +69,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "peer",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &["auth", "cron", "notify"],
+    requires: &["auth", "cron", "notify", "webhook"],
     migrations: Some(&MIGRATIONS),
     init,
 };
@@ -90,11 +105,17 @@ fn init(r: &mut Registrar) -> Result<()> {
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
     let delegate: Arc<dyn OnBehalf> = authenticator.clone();
     let reach: Arc<dyn PeerReach> = authenticator.clone();
+    let delivery = Arc::new(Delivery::default());
+    let [hook, feed] = delivery::endpoints(&delivery);
     r.require::<dyn Caller>()
         .require::<dyn PrincipalSource>()
         .require::<dyn AccountSource>()
         .require::<dyn SecretCipher>()
+        .require::<dyn OutboxSubscriber>()
+        .require::<dyn EventRelay>()
         .contribute(InstanceInfoSource::new().feature(FEATURE))
+        .contribute(hook)
+        .contribute(feed)
         .contribute(contributed)
         .contribute(delegate)
         .provide(reach)
@@ -118,6 +139,19 @@ fn init(r: &mut Registrar) -> Result<()> {
                 ctx.require::<dyn PrincipalSource>()?,
                 ctx.require::<dyn AccountSource>()?,
             );
+            delivery.attach(delivery::Seams {
+                db: ctx.db(),
+                clock: ctx.require::<dyn Clock>()?,
+                cipher: ctx.require::<dyn SecretCipher>()?,
+                subscriber: ctx.require::<dyn OutboxSubscriber>()?,
+                relay: ctx.require::<dyn EventRelay>()?,
+                instance: ctx
+                    .require::<Installation>()
+                    .ok()
+                    .and_then(|installation| installation.instance),
+            });
+            ctx.spawn(inbox::run(delivery.clone()));
+            ctx.spawn(pull::run(delivery));
             Ok(())
         });
     Ok(())
@@ -191,6 +225,18 @@ mod tests {
             1
         );
         assert!(registrations.provides.get::<dyn PeerReach>().is_some());
+        let endpoints: Vec<(&str, &str, &str)> = registrations
+            .contributions
+            .of::<keel_sdk::system::Endpoint>()
+            .map(|endpoint| {
+                (
+                    endpoint.module(),
+                    endpoint.method().as_str(),
+                    endpoint.name(),
+                )
+            })
+            .collect();
+        assert_eq!(endpoints, [("peer", "POST", HOOK), ("peer", "GET", FEED)]);
         let jobs: Vec<(&str, &str)> = registrations
             .contributions
             .of::<CronJob>()
@@ -212,7 +258,7 @@ mod tests {
             .collect();
         assert_eq!(languages, ["en", "ru"]);
         assert_eq!(MODULE.id, "peer");
-        assert_eq!(MODULE.requires, ["auth", "cron", "notify"]);
+        assert_eq!(MODULE.requires, ["auth", "cron", "notify", "webhook"]);
         assert_eq!(
             MODULE.migrations.map(|migrations| migrations.ledger()),
             Some("keel_migration_peer")

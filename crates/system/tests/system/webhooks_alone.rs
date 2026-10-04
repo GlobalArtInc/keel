@@ -19,7 +19,7 @@ async fn webhooks_alone_boots_with_its_tables_and_answers_its_lists_on_the_socke
         .database()
         .rows("SELECT count(*)::text FROM keel_migration_webhook")
         .await;
-    assert_eq!(applied, ["3"]);
+    assert_eq!(applied, ["4"]);
     let tables = harness
         .database()
         .rows("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'webhook\\_%' ORDER BY table_name")

@@ -20,6 +20,7 @@ use crate::lifecycle::AccountLifecycle;
 use crate::limit::LimitDef;
 use crate::services::{ServiceKey, Services};
 use crate::stream::Lines;
+use crate::system::Endpoint;
 use crate::ui::ViewSpec;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -550,6 +551,14 @@ impl Registrar {
             let module = self.module.clone();
             self.check_unique("account lifecycle", &module, taken);
         }
+        if let Some(endpoint) = any.downcast_mut::<Endpoint>() {
+            endpoint.stamp(&self.module);
+            let taken = self.contributions.of::<Endpoint>().any(|other| {
+                other.name() == endpoint.name() && other.method() == endpoint.method()
+            });
+            let name = format!("{} {}", endpoint.method().as_str(), endpoint.name());
+            self.check_unique("endpoint", &name, taken);
+        }
         let any: &dyn Any = &contribution;
         if let Some(op) = any.downcast_ref::<AgentOp>() {
             self.check_prefix("agent operation", op.name());
@@ -1065,6 +1074,39 @@ mod tests {
         assert_eq!(
             listed,
             ["module zones: account lifecycle \"zones\" is registered twice"]
+        );
+    }
+
+    #[test]
+    fn an_endpoint_carries_the_contributing_module_and_one_name_takes_each_method_once() {
+        let mut r = Registrar::new("relay");
+        r.contribute(Endpoint::get("feed", |_| async { Ok(json!([])) }))
+            .contribute(Endpoint::post("feed", |_| async { Ok(json!({})) }));
+        let registrations = r.into_registrations().expect("two methods are valid");
+        let endpoints: Vec<(&str, &str, &str)> = registrations
+            .contributions
+            .of::<Endpoint>()
+            .map(|endpoint| {
+                (
+                    endpoint.module(),
+                    endpoint.method().as_str(),
+                    endpoint.name(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            endpoints,
+            [("relay", "GET", "feed"), ("relay", "POST", "feed")]
+        );
+        let mut twice = Registrar::new("relay");
+        twice
+            .contribute(Endpoint::post("hook", |_| async { Ok(json!({})) }))
+            .contribute(Endpoint::post("hook", |_| async { Ok(json!({})) }));
+        let errors = twice.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            ["module relay: endpoint \"POST hook\" is registered twice"]
         );
     }
 

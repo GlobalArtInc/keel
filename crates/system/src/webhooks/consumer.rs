@@ -13,6 +13,7 @@ use keel_sdk::types::Event;
 
 use super::entity::{cursor, delivery, subscription};
 use super::masks;
+use super::peer::{below_floor, scope_level};
 use super::started::Started;
 
 pub const CURSOR: &str = "deliveries";
@@ -46,7 +47,15 @@ async fn store_cursor(db: &Db, seq: u64) -> Result<()> {
     Ok(())
 }
 
-pub async fn admits(scope: &AccountScope, event: &Event, db: &Db) -> Result<bool> {
+pub async fn admits(
+    scope: &AccountScope,
+    event: &Event,
+    local: Option<Id>,
+    db: &Db,
+) -> Result<bool> {
+    if local.is_some_and(|local| local != event.instance_id) {
+        return Ok(*scope == AccountScope::All);
+    }
     let account = event
         .subject
         .as_ref()
@@ -94,7 +103,7 @@ pub async fn enqueue(
 
 struct Scopes<'a> {
     started: &'a Started,
-    known: HashMap<(String, String), Option<AccountScope>>,
+    known: HashMap<(String, String, Option<String>), Option<AccountScope>>,
 }
 
 impl Scopes<'_> {
@@ -102,6 +111,7 @@ impl Scopes<'_> {
         let key = (
             subscription.principal_id.clone(),
             subscription.account_id.clone(),
+            subscription.level.clone(),
         );
         if let Some(scope) = self.known.get(&key) {
             return Ok(*scope);
@@ -121,7 +131,12 @@ impl Scopes<'_> {
                 .principals
                 .by_id(id, db)
                 .await?
-                .map(|principal| (principal.account_id, AccountScope::of(&principal))),
+                .map(|mut principal| {
+                    if let Some(level) = scope_level(subscription) {
+                        principal.level = level;
+                    }
+                    (principal.account_id, AccountScope::of(&principal))
+                }),
             Err(_) => None,
         };
         let Some((home, scope)) = subscriber else {
@@ -169,10 +184,18 @@ async fn step(started: &Started, seq: &mut u64) -> Result<usize> {
             if !masks::any_matches(subscription.events.iter().map(String::as_str), &event.kind) {
                 continue;
             }
+            if (subscription.peer_id.is_some() || subscription.local_only)
+                && !started.emitted_here(event.instance_id)
+            {
+                continue;
+            }
+            if below_floor(subscription, event.seq) {
+                continue;
+            }
             let Some(scope) = scopes.of(subscription).await? else {
                 continue;
             };
-            if !admits(&scope, event, started.db()).await? {
+            if !admits(&scope, event, started.seams.instance, started.db()).await? {
                 continue;
             }
             if enqueue(started.db(), subscription, event, now)
@@ -227,13 +250,21 @@ mod tests {
 
     use super::*;
 
+    fn local() -> Id {
+        "01J9K00000000000000000000K".parse().unwrap()
+    }
+
     fn event(account: Option<Id>) -> Event {
+        emitted_by(local(), account)
+    }
+
+    fn emitted_by(instance: Id, account: Option<Id>) -> Event {
         Event {
             id: Id::generate(),
             seq: 1,
             kind: "note.saved".into(),
             at: Utc::now(),
-            instance_id: Id::generate(),
+            instance_id: instance,
             module: "note".into(),
             actor: None,
             subject: account.map(|account| EventSubject {
@@ -245,42 +276,42 @@ mod tests {
         }
     }
 
+    async fn admitted(scope: AccountScope, event: &Event, local: Option<Id>) -> bool {
+        let db = Db::from_connection(DatabaseConnection::Disconnected);
+        admits(&scope, event, local, &db)
+            .await
+            .expect("no account lookup is needed")
+    }
+
     #[tokio::test]
     async fn an_event_is_admitted_to_an_admin_always_and_to_a_user_for_the_own_account_alone() {
-        let db = Db::from_connection(DatabaseConnection::Disconnected);
         let a1 = Id::generate();
         let a2 = Id::generate();
-        assert!(
-            admits(&AccountScope::All, &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(admits(&AccountScope::All, &event(None), &db).await.unwrap());
-        assert!(
-            admits(&AccountScope::Own(a1), &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits(&AccountScope::Own(a1), &event(Some(a2)), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits(&AccountScope::Own(a1), &event(None), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits(&AccountScope::Subtree(a1), &event(None), &db)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !admits(&AccountScope::Nothing, &event(Some(a1)), &db)
-                .await
-                .unwrap()
-        );
+        let here = Some(local());
+        assert!(admitted(AccountScope::All, &event(Some(a1)), here).await);
+        assert!(admitted(AccountScope::All, &event(None), here).await);
+        assert!(admitted(AccountScope::Own(a1), &event(Some(a1)), here).await);
+        assert!(!admitted(AccountScope::Own(a1), &event(Some(a2)), here).await);
+        assert!(!admitted(AccountScope::Own(a1), &event(None), here).await);
+        assert!(!admitted(AccountScope::Subtree(a1), &event(None), here).await);
+        assert!(!admitted(AccountScope::Nothing, &event(Some(a1)), here).await);
         assert_eq!(STATES, ["pending", "delivered", "failed", "dead"]);
+    }
+
+    #[tokio::test]
+    async fn an_event_of_another_installation_is_admitted_to_an_admin_alone_whatever_its_account_names()
+     {
+        let root = Some(Id::ROOT_ACCOUNT);
+        let relayed = emitted_by(Id::generate(), root);
+        let here = Some(local());
+        assert!(admitted(AccountScope::All, &relayed, here).await);
+        assert!(admitted(AccountScope::Own(Id::ROOT_ACCOUNT), &event(root), here).await);
+        assert!(!admitted(AccountScope::Own(Id::ROOT_ACCOUNT), &relayed, here).await);
+        assert!(!admitted(AccountScope::Subtree(Id::ROOT_ACCOUNT), &relayed, here).await);
+        assert!(!admitted(AccountScope::Nothing, &relayed, here).await);
+        assert!(
+            admitted(AccountScope::Own(Id::ROOT_ACCOUNT), &relayed, None).await,
+            "an installation without an instance id takes every event as its own"
+        );
     }
 }

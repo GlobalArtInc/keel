@@ -206,6 +206,8 @@
         "rate_limited": "Too many requests",
         "read_call_has_no_outbox": "A read call has no outbox",
         "read_call_has_no_transaction": "A read call has no transaction",
+        "relay_local": "The event {id} was emitted here, at {instanceId}, and cannot enter the bus as an event of another installation",
+        "relay_taken": "The event id {id} is already on the bus as an event of the installation {instanceId}",
         "request": "{message} (request {id})",
         "restart_inline": "A restart runs as a task, never inline",
         "restart_pending": "A restart is already on its way: {reason}, requested by {requestedBy}",
@@ -1176,71 +1178,6 @@
         "read_only": "Read-only",
         "valid": "Valid"
       }
-    },
-    "peer": {
-      "action": {
-        "create": "Pair with an installation",
-        "delete": "Unpair",
-        "pair_code": "Pairing code",
-        "rotate": "Rotate tokens"
-      },
-      "code": "Pairing code",
-      "column": {
-        "createdAt": "Paired",
-        "keel": "Version",
-        "lastSeenAt": "Last seen",
-        "products": "Products",
-        "protocol": "Protocol",
-        "status": "Status",
-        "url": "Address"
-      },
-      "create": {
-        "title": "Pair with another installation"
-      },
-      "empty": "No other installation is paired with this one yet",
-      "error": {
-        "answer": "The installation at {url} gave an answer that cannot be read",
-        "code": "The pairing code is unknown, used or expired",
-        "customer": "No customer of the calling installation has the external id {externalId} under {origin}",
-        "entropy": "The system gave no randomness",
-        "handshake": "{url} does not answer as an installation",
-        "header": "The on-behalf header must read origin=name:instance; external_id=id",
-        "instance_key": "The installation {instanceId} presents another instance key than the one pinned at pairing",
-        "level": "The level {level} lies outside the range from service to {ceiling}",
-        "mask": "{mask} is not a mask of names",
-        "no_url": "The installation {instanceId} gave no address, so its tokens are rotated from its side",
-        "not_started": "The peers module has not started",
-        "origin": "The origin {origin} does not name the calling installation",
-        "paired": "The installation {instanceId} is already paired with this one",
-        "principal": "The link {id} names no principal that can be read",
-        "protocol": "The other installation speaks protocol {protocol}, and this one supports {supported} and its neighbours",
-        "scope": "A pairing may not grant more than the token of the caller holds",
-        "self": "The address leads to this installation itself",
-        "stored": "The stored link {id} cannot be read",
-        "token": "The peer token is unknown, retired or malformed",
-        "unreachable": "The installation at {url} did not answer: {reason}",
-        "url": "{url} is not an http or https address without credentials, query or fragment"
-      },
-      "expiresAt": "Expires",
-      "level": "Level ceiling",
-      "list": {
-        "title": "Peers"
-      },
-      "onBehalf": "May act on behalf of customers",
-      "pair_code": {
-        "title": "Issue a pairing code"
-      },
-      "problem": {
-        "instance_key": "The installation at {url} presents another instance key than the one pinned for {instanceId}",
-        "protocol": "The installation at {url} speaks protocol {protocol}, which this one no longer understands with {supported}"
-      },
-      "scopes": "Functions it may call",
-      "status": {
-        "active": "Active"
-      },
-      "subscribe": "Events to receive",
-      "ttl": "Code lifetime, seconds",
-      "url": "Address"
     },
     "settings": {
       "action": {
@@ -2376,8 +2313,10 @@
         "entropy": "The signing secret could not be generated",
         "event_gone": "The event of the delivery is no longer in the outbox",
         "id": "The stored id {id} is not an identifier",
+        "instance": "This installation has no instance id to name itself to a peer",
         "mask": "{mask} is not an event mask; write module.* or a dotted event name",
         "not_retryable": "The delivery {id} is {state}; only a failed or dead delivery can be retried",
+        "peer": "The subscription {id} belongs to the peer link {link} and changes with it",
         "secret": "The signing secret could not be opened",
         "secret_short": "The signing secret is shorter than {min} bytes",
         "send": "The delivery was not sent",
@@ -2421,6 +2360,76 @@
         },
         "url": "URL"
       }
+    },
+    "peer": {
+      "action": {
+        "create": "Pair with an installation",
+        "delete": "Unpair",
+        "pair_code": "Pairing code",
+        "rotate": "Rotate tokens"
+      },
+      "code": "Pairing code",
+      "column": {
+        "createdAt": "Paired",
+        "keel": "Version",
+        "lastSeenAt": "Last seen",
+        "products": "Products",
+        "protocol": "Protocol",
+        "status": "Status",
+        "url": "Address"
+      },
+      "create": {
+        "title": "Pair with another installation"
+      },
+      "empty": "No other installation is paired with this one yet",
+      "error": {
+        "answer": "The installation at {url} gave an answer that cannot be read",
+        "code": "The pairing code is unknown, used or expired",
+        "customer": "No customer of the calling installation has the external id {externalId} under {origin}",
+        "entropy": "The system gave no randomness",
+        "event": "The delivery is not an event of the installation that signed it ({reason})",
+        "feed": "The event feed answers the peer token of a link alone",
+        "handshake": "{url} does not answer as an installation",
+        "header": "The on-behalf header must read origin=name:instance; external_id=id",
+        "instance_key": "The installation {instanceId} presents another instance key than the one pinned at pairing",
+        "level": "The level {level} lies outside the range from service to {ceiling}",
+        "mask": "{mask} is not a mask of names",
+        "no_url": "The installation {instanceId} gave no address, so its tokens are rotated from its side",
+        "not_started": "The peers module has not started",
+        "origin": "The origin {origin} does not name the calling installation",
+        "paired": "The installation {instanceId} is already paired with this one",
+        "principal": "The link {id} names no principal that can be read",
+        "protocol": "The other installation speaks protocol {protocol}, and this one supports {supported} and its neighbours",
+        "query": "The query parameter {name} is malformed",
+        "scope": "A pairing may not grant more than the token of the caller holds",
+        "self": "The address leads to this installation itself",
+        "signature": "The delivery carries no valid signature of a paired installation",
+        "stored": "The stored link {id} cannot be read",
+        "token": "The peer token is unknown, retired or malformed",
+        "unreachable": "The installation at {url} did not answer: {reason}",
+        "url": "{url} is not an http or https address without credentials, query or fragment"
+      },
+      "expiresAt": "Expires",
+      "level": "Level ceiling",
+      "list": {
+        "title": "Peers"
+      },
+      "onBehalf": "May act on behalf of customers",
+      "pair_code": {
+        "title": "Issue a pairing code"
+      },
+      "problem": {
+        "instance_key": "The installation at {url} presents another instance key than the one pinned for {instanceId}",
+        "protocol": "The installation at {url} speaks protocol {protocol}, which this one no longer understands with {supported}"
+      },
+      "pull": "Pull its events from its feed (this installation is behind NAT)",
+      "scopes": "Functions it may call",
+      "status": {
+        "active": "Active"
+      },
+      "subscribe": "Events to receive",
+      "ttl": "Code lifetime, seconds",
+      "url": "Address"
     },
     "product": {
       "demo": {

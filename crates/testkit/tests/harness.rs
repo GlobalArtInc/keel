@@ -5,6 +5,7 @@ use std::sync::{Mutex, PoisonError};
 
 use keel_sdk::Registrar;
 use keel_sdk::prelude::*;
+use keel_sdk::sea_orm::ConnectionTrait;
 use keel_testkit::{ErrorCode, Fixture, Harness, Server, TestDatabase, Who, database};
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -624,4 +625,51 @@ async fn a_harness_reboots_on_a_returned_database_shares_it_with_another_and_kee
     second.finish().await;
     assert!(!database::exists(&name).await.expect("pg_database answers"));
     assert!(dir.path().join("kept.txt").exists());
+}
+
+async fn connections(test: &TestDatabase, storage: &keel_kernel::Storage) -> i64 {
+    test.count(
+        storage,
+        &format!(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = '{}'",
+            test.name()
+        ),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_test_pool_closes_the_connections_a_burst_opened_once_they_idle() {
+    let test = TestDatabase::create().await;
+    let storage = test.storage().await;
+    let mut burst = tokio::task::JoinSet::new();
+    for _ in 0..6 {
+        let db = storage.db().clone();
+        burst.spawn(async move { db.execute_unprepared("SELECT pg_sleep(0.3)").await });
+    }
+    while let Some(slept) = burst.join_next().await {
+        slept.expect("the task joins").expect("the burst sleeps");
+    }
+    assert!(connections(&test, &storage).await >= 6);
+    let idle = database::POOL.idle_timeout.expect("a test pool idles out");
+    tokio::time::sleep(idle * 6).await;
+    assert!(connections(&test, &storage).await <= 2);
+    storage.close().await.expect("the pool closes");
+    test.finish().await;
+}
+
+#[tokio::test]
+async fn more_harnesses_than_boot_at_once_all_boot() {
+    let mut boots = tokio::task::JoinSet::new();
+    for _ in 0..keel_testkit::harness::BOOTS_AT_ONCE + 2 {
+        boots.spawn(Harness::new().boot());
+    }
+    let mut booted = 0;
+    while let Some(harness) = boots.join_next().await {
+        let harness = harness.expect("the boot joins");
+        assert_eq!(harness.principal(Who::Admin).level, Level::Admin);
+        harness.finish().await;
+        booted += 1;
+    }
+    assert_eq!(booted, keel_testkit::harness::BOOTS_AT_ONCE + 2);
 }

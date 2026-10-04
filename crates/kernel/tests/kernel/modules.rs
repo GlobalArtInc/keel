@@ -122,7 +122,7 @@ async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own
     let storage = test.storage().await;
 
     let migrated = migrate(&storage, &[&GAMMA, &ALPHA, &BETA]).await;
-    assert_eq!(migrated.kernel.len(), 2, "{migrated:?}");
+    assert_eq!(migrated.kernel.len(), 3, "{migrated:?}");
     assert_eq!(
         migrated.modules,
         [
@@ -159,7 +159,7 @@ async fn migrations_run_kernel_first_then_modules_in_graph_order_under_their_own
     assert_eq!(
         test.count(&storage, "SELECT count(*) FROM keel_migration")
             .await,
-        2
+        3
     );
     assert_eq!(
         test.count(&storage, "SELECT count(*) FROM keel_migration_beta")
@@ -205,7 +205,7 @@ async fn a_second_start_applies_nothing_and_keeps_every_ledger_as_it_was() {
     assert_eq!(
         test.count(&storage, "SELECT count(*) FROM keel_migration")
             .await,
-        2
+        3
     );
     assert_eq!(
         test.count(&storage, "SELECT count(*) FROM keel_migration_beta")

@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 use keel_kernel::config::{DatabaseUrl, DatabaseUrlError};
-use keel_kernel::{Config, ConfigError, Storage, StorageError};
+use keel_kernel::{Config, ConfigError, Pool, Storage, StorageError};
 use keel_types::Id;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, Statement};
 use testcontainers::runners::AsyncRunner;
@@ -19,6 +19,10 @@ pub const CONTAINER_TAG: &str = "16";
 pub const CONTAINER_NAME: &str = "keel-testkit-postgres";
 pub const CONTAINER_PORT: u16 = 5432;
 pub const CONTAINER_READY_TIMEOUT: Duration = Duration::from_secs(60);
+pub const POOL: Pool = Pool {
+    max_connections: 20,
+    idle_timeout: Some(Duration::from_millis(250)),
+};
 
 const CONTAINER_USER: &str = "postgres";
 const CONTAINER_PASSWORD: &str = "postgres";
@@ -266,7 +270,7 @@ impl DatabaseHandle {
     }
 
     pub async fn try_storage(&self) -> Result<Storage, DatabaseError> {
-        Ok(Storage::connect(&self.try_config()?).await?)
+        Ok(Storage::connect_with(&self.try_config()?, POOL).await?)
     }
 
     pub async fn count(&self, storage: &Storage, sql: &str) -> i64 {

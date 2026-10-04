@@ -6,6 +6,7 @@ mod cipher;
 mod descriptors;
 mod dispatcher;
 mod download;
+mod endpoints;
 mod events;
 mod export;
 mod features;

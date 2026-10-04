@@ -34,9 +34,10 @@ mod tests {
             .into_iter()
             .map(|migration| migration.name)
             .collect();
-        assert_eq!(names.len(), 2, "{names:?}");
+        assert_eq!(names.len(), 3, "{names:?}");
         assert!(names[0].contains("CreateKernelTables"), "{names:?}");
         assert!(names[1].contains("InsertRootAccount"), "{names:?}");
+        assert!(names[2].contains("AddOutboxInstance"), "{names:?}");
     }
 
     #[test]

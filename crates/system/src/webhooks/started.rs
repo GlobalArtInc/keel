@@ -17,6 +17,7 @@ pub struct Seams {
     pub subscriber: Arc<dyn OutboxSubscriber>,
     pub settings: Arc<dyn SettingsSource>,
     pub resolver: Arc<dyn Resolver>,
+    pub instance: Option<Id>,
 }
 
 pub struct Started {
@@ -46,6 +47,10 @@ impl Started {
 
     pub async fn private_targets(&self) -> Result<bool> {
         private_targets(self.seams.settings.as_ref(), &self.seams.db).await
+    }
+
+    pub fn emitted_here(&self, instance: Id) -> bool {
+        self.seams.instance.is_none_or(|local| local == instance)
     }
 }
 

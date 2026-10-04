@@ -4,18 +4,20 @@ use keel_sdk::sea_orm::sea_query::OnConflict;
 use keel_sdk::sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use keel_sdk::serde_json;
 use keel_sdk::system::{
-    Caller, CallerOptions, Features, NewPrincipal, PrincipalSource, SecretCipher,
+    Caller, CallerOptions, Features, NewPrincipal, OutboxSubscriber, PrincipalSource, SecretCipher,
 };
 use keel_sdk::types::{InstanceInfo, PROTOCOL, PeerScope, Scope, is_mask};
 use rand::TryRng;
 use rand::rngs::SysRng;
 
+use super::authenticator::stored_principal;
 use super::codes;
 use super::continuation;
 use super::entity::{pair_code, product};
 use super::functions::{EVENT_CREATED, Peer, STATUS_ACTIVE, by_instance, peer_of};
-use super::remote::{Remote, base_of, checked};
+use super::remote::{HOOK_PATH, Remote, base_of, checked};
 use crate::auth::api::{SETTING_SHELL_URL, is_peer_token, peer_token, token_hash};
+use crate::webhooks::api::{PeerSubscription, is_mask as is_event_mask, subscribe_peer};
 
 pub const PAIR_CODE: &str = "peer.pair_code";
 pub const PAIR: &str = "peer.pair";
@@ -105,6 +107,8 @@ pub(super) struct PairCreate {
     #[schemars(length(max = MAX_MASKS), extend("x-ui" = json!({ "control": "tags" })))]
     subscribe: Vec<String>,
     #[serde(default)]
+    pull: bool,
+    #[serde(default)]
     #[schemars(length(max = MAX_MASKS), extend("x-ui" = json!({ "control": "tags" })))]
     scopes: Vec<String>,
     level: Option<Level>,
@@ -136,6 +140,8 @@ pub(super) struct Link {
     #[serde(default)]
     #[schemars(extend("x-keel" = json!({ "secret": true })))]
     webhook_secret: Option<Secret>,
+    #[serde(default)]
+    pull: bool,
 }
 
 pub fn compatible(protocol: u32) -> bool {
@@ -181,7 +187,7 @@ fn granted_by(caller: &Principal, scope: &PeerScope) -> Result<()> {
 
 fn events(subscribe: &[String]) -> Result<()> {
     for (index, mask) in subscribe.iter().enumerate() {
-        if !is_mask(mask) {
+        if !is_event_mask(mask) {
             return Err(KeelError::validation(ERROR_MASK)
                 .field(format!("subscribe[{index}]"))
                 .param("mask", mask.as_str()));
@@ -220,6 +226,9 @@ struct NewLink<'a> {
     inbound_scopes: &'a PeerScope,
     outbound_token: &'a str,
     webhook_secret: Option<&'a str>,
+    events: &'a [String],
+    pull: bool,
+    feed_seq: u64,
 }
 
 async fn refused_by_existing(tx: &Db, instance: &str, presented: &InstanceInfo) -> Result<()> {
@@ -270,6 +279,9 @@ async fn insert_link<P>(call: &Call<P>, new: NewLink<'_>) -> Result<product::Mod
         last_seen_at: Set(Some(now)),
         created_at: Set(now),
         principal_id: Set(Some(principal.id.to_string())),
+        events: Set(new.events.to_vec()),
+        pull_seq: Set(new.pull.then_some(0)),
+        feed_seq: Set(i64::try_from(new.feed_seq).unwrap_or(i64::MAX)),
     })
     .on_conflict(
         OnConflict::column(product::Column::InstanceId)
@@ -380,18 +392,45 @@ pub(super) fn pair() -> FunctionDef {
                 (Some(_), false) => Some(webhook_secret()?),
                 _ => None,
             };
-            insert_link(
+            let feed_seq = call.require::<dyn OutboxSubscriber>()?.newest().await?;
+            let row = insert_link(
                 &call,
                 NewLink {
                     instance: &params.instance,
-                    url,
+                    url: url.clone(),
                     inbound_token: token.expose(),
                     inbound_scopes: &scopes,
                     outbound_token: params.inbound_token.expose(),
-                    webhook_secret: secret.as_deref(),
+                    webhook_secret: None,
+                    events: &params.subscribe,
+                    pull: false,
+                    feed_seq,
                 },
             )
             .await?;
+            if let (Some(url), Some(secret)) = (&url, &secret) {
+                let link: Id = row.id.parse().map_err(|_| stored_principal(&row))?;
+                let principal: Id = row
+                    .principal_id
+                    .as_deref()
+                    .and_then(|id| id.parse().ok())
+                    .ok_or_else(|| stored_principal(&row))?;
+                subscribe_peer(
+                    call.tx()?,
+                    call.require::<dyn SecretCipher>()?.as_ref(),
+                    PeerSubscription {
+                        link,
+                        principal,
+                        level: scopes.level.min(Level::Admin),
+                        url: &format!("{url}{HOOK_PATH}"),
+                        secret,
+                        events: &params.subscribe,
+                        floor: feed_seq,
+                    },
+                    call.require::<dyn Clock>()?.now(),
+                )
+                .await?;
+            }
             Ok(PairAnswer {
                 peer_id: local.instance_id,
                 token: token.into_inner(),
@@ -409,7 +448,15 @@ pub(super) fn create() -> FunctionDef {
         .unowned()
         .ui(Form::new("peer.create.title").page(
             "main",
-            ["url", "code", "subscribe", "scopes", "level", "onBehalf"],
+            [
+                "url",
+                "code",
+                "subscribe",
+                "pull",
+                "scopes",
+                "level",
+                "onBehalf",
+            ],
         ))
         .handler(|call: Call<PairCreate>| async move {
             let params = call.params();
@@ -443,7 +490,11 @@ pub(super) fn create() -> FunctionDef {
                 return Err(tofu(&existing, &presented));
             }
             let own: String = call.setting(SETTING_SHELL_URL).await?;
-            let own = checked(&own, SETTING_SHELL_URL).ok();
+            let own = if params.pull {
+                None
+            } else {
+                checked(&own, SETTING_SHELL_URL).ok()
+            };
             let inbound = peer_token()?;
             let answer: PairAnswer = remote
                 .call(
@@ -463,6 +514,9 @@ pub(super) fn create() -> FunctionDef {
                     KeelError::peer(super::remote::ERROR_ANSWER).param("url", remote.base())
                 );
             }
+            let pull =
+                !params.subscribe.is_empty() && (params.pull || answer.webhook_secret.is_none());
+            let webhook_secret = answer.webhook_secret.filter(|_| !pull);
             let linked = call
                 .require::<dyn Caller>()?
                 .call(
@@ -474,7 +528,8 @@ pub(super) fn create() -> FunctionDef {
                         "inboundToken": inbound.expose(),
                         "inboundScopes": scopes,
                         "outboundToken": answer.token,
-                        "webhookSecret": answer.webhook_secret,
+                        "webhookSecret": webhook_secret,
+                        "pull": pull,
                     }),
                     CallerOptions {
                         request_id: Some(call.request_id().to_owned()),
@@ -506,6 +561,9 @@ pub(super) fn link() -> FunctionDef {
                     inbound_scopes: &params.inbound_scopes,
                     outbound_token: params.outbound_token.expose(),
                     webhook_secret: params.webhook_secret.as_ref().map(Secret::expose),
+                    events: &[],
+                    pull: params.pull,
+                    feed_seq: 0,
                 },
             )
             .await?;

@@ -44,7 +44,7 @@ async fn a_fresh_database_gets_the_eight_kernel_tables_and_the_ledger() {
     assert!(tables(&storage).await.is_empty());
 
     let applied = storage.migrate().await.unwrap();
-    assert_eq!(applied.len(), 2, "{applied:?}");
+    assert_eq!(applied.len(), 3, "{applied:?}");
     assert_eq!(tables(&storage).await, expected_tables());
     assert_eq!(TABLES.len(), 8);
 
@@ -60,7 +60,7 @@ async fn a_second_migration_run_changes_nothing_and_keeps_the_ledger_row_count()
     let rows = test
         .count(&storage, "SELECT count(*) FROM keel_migration")
         .await;
-    assert_eq!(rows, 2);
+    assert_eq!(rows, 3);
 
     let applied = storage.migrate().await.unwrap();
     assert!(applied.is_empty(), "{applied:?}");
@@ -161,13 +161,13 @@ async fn two_concurrent_migrations_serialise_on_the_advisory_lock_and_leave_one_
 
     let (left, right) = tokio::join!(first.migrate(), second.migrate());
     let (left, right) = (left.unwrap(), right.unwrap());
-    assert_eq!(left.len() + right.len(), 2, "{left:?} {right:?}");
+    assert_eq!(left.len() + right.len(), 3, "{left:?} {right:?}");
     assert!(left.is_empty() || right.is_empty(), "{left:?} {right:?}");
 
     assert_eq!(
         test.count(&first, "SELECT count(*) FROM keel_migration")
             .await,
-        2
+        3
     );
     assert_eq!(
         test.count(&first, "SELECT count(*) FROM keel_account")
@@ -204,7 +204,7 @@ async fn a_migration_waits_while_another_process_holds_the_lock() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(applied.len(), 2);
+    assert_eq!(applied.len(), 3);
     assert_eq!(tables(&holder).await, expected_tables());
 
     waiter.close().await.unwrap();

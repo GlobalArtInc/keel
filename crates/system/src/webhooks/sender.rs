@@ -14,6 +14,7 @@ use reqwest::redirect::Policy;
 use super::super::notify::api::{Problems, Raise, Severity};
 use super::consumer::{STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING};
 use super::entity::{delivery, subscription};
+use super::peer::HEADER as PEER_HEADER;
 use super::signature::{self, EVENT_ID_HEADER, HEADER};
 use super::started::Started;
 use super::targets;
@@ -41,6 +42,7 @@ pub const ERROR_SECRET: &str = "webhook.error.secret";
 pub const ERROR_CLIENT: &str = "webhook.error.client";
 pub const ERROR_SEND: &str = "webhook.error.send";
 pub const ERROR_STATUS: &str = "webhook.error.status";
+pub const ERROR_INSTANCE: &str = "webhook.error.instance";
 
 pub fn next_attempt_at(attempt: i32, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
     if attempt >= MAX_ATTEMPTS {
@@ -295,7 +297,14 @@ async fn post(
         status: None,
         error: describe(&error),
     })?;
-    let allow_private = started.private_targets().await?;
+    let peer = match &subscription.peer_id {
+        Some(_) => Some(started.seams.instance.ok_or_else(|| Failed {
+            status: None,
+            error: ERROR_INSTANCE.to_owned(),
+        })?),
+        None => None,
+    };
+    let allow_private = peer.is_some() || started.private_targets().await?;
     let target = targets::check(
         &subscription.url,
         allow_private,
@@ -326,18 +335,18 @@ async fn post(
         status: None,
         error: format!("{ERROR_CLIENT}: {}", describe(&error)),
     })?;
-    let response = client
+    let mut request = client
         .post(target.url.clone())
         .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
         .header(EVENT_ID_HEADER, event.id.to_string())
-        .header(HEADER, signature)
-        .body(body)
-        .send()
-        .await
-        .map_err(|error| Failed {
-            status: None,
-            error: format!("{ERROR_SEND}: {}", describe(&error)),
-        })?;
+        .header(HEADER, signature);
+    if let Some(instance) = peer {
+        request = request.header(PEER_HEADER, instance.to_string());
+    }
+    let response = request.body(body).send().await.map_err(|error| Failed {
+        status: None,
+        error: format!("{ERROR_SEND}: {}", describe(&error)),
+    })?;
     let status = response.status().as_u16();
     let success = response.status().is_success();
     let snippet = drain(response).await;

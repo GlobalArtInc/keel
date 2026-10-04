@@ -14,6 +14,7 @@ pub struct Seams {
     pub caller: Arc<dyn Caller>,
     pub principals: Arc<dyn PrincipalSource>,
     pub subscriber: Arc<dyn OutboxSubscriber>,
+    pub instance: Option<Id>,
 }
 
 pub struct Started {
@@ -23,6 +24,7 @@ pub struct Started {
     pub caller: Arc<dyn Caller>,
     pub principals: Arc<dyn PrincipalSource>,
     pub subscriber: Arc<dyn OutboxSubscriber>,
+    pub instance: Option<Id>,
     pub templates: Templates,
     wake: Notify,
 }
@@ -40,6 +42,7 @@ impl Started {
             caller: seams.caller,
             principals: seams.principals,
             subscriber: seams.subscriber,
+            instance: seams.instance,
             templates,
             wake: Notify::new(),
         }))

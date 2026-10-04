@@ -1,8 +1,10 @@
+pub mod api;
 mod consumer;
 mod entity;
 mod functions;
 mod lifecycle;
 mod masks;
+mod peer;
 mod sender;
 mod signature;
 mod started;
@@ -10,17 +12,21 @@ mod targets;
 
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
-use keel_sdk::system::{Caller, ContextExt, OutboxSubscriber, PrincipalSource, SecretCipher};
+use keel_sdk::system::{
+    Caller, ContextExt, Installation, OutboxSubscriber, PrincipalSource, SecretCipher,
+};
 
 pub use consumer::{CURSOR, STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING};
 pub use functions::PERMISSION_MANAGE as MANAGE;
 pub use functions::deliveries::{DELIVERY_GET, DELIVERY_LIST, DELIVERY_RETRY, ERROR_NOT_RETRYABLE};
 pub use functions::subscriptions::{
-    ERROR_MASK, ERROR_SECRET_SHORT, SECRET_GENERATED_BYTES, SECRET_MIN_BYTES, SUBSCRIPTION_DELETE,
-    SUBSCRIPTION_GET, SUBSCRIPTION_LIST, SUBSCRIPTION_SET, SUBSCRIPTION_TOGGLE, base64url,
+    ERROR_MASK, ERROR_PEER, ERROR_SECRET_SHORT, SECRET_GENERATED_BYTES, SECRET_MIN_BYTES,
+    SUBSCRIPTION_DELETE, SUBSCRIPTION_GET, SUBSCRIPTION_LIST, SUBSCRIPTION_SET,
+    SUBSCRIPTION_TOGGLE, base64url,
 };
 pub use lifecycle::{Dropped, drop_account};
-pub use sender::{LADDER, MAX_ATTEMPTS, PROBLEM_KEY as DEAD_LETTER};
+pub use peer::HEADER as PEER_HEADER;
+pub use sender::{ERROR_INSTANCE, LADDER, MAX_ATTEMPTS, PROBLEM_KEY as DEAD_LETTER};
 pub use signature::{
     EVENT_ID_HEADER, HEADER as SIGNATURE_HEADER, Rejection, WINDOW_SECONDS, sign, verify,
 };
@@ -88,6 +94,10 @@ fn init(r: &mut Registrar) -> Result<()> {
                 subscriber: ctx.require::<dyn OutboxSubscriber>()?,
                 settings: ctx.require::<dyn SettingsSource>()?,
                 resolver: targets::resolver_or_system(ctx.require::<dyn Resolver>().ok()),
+                instance: ctx
+                    .require::<Installation>()
+                    .ok()
+                    .and_then(|installation| installation.instance),
             });
             ctx.spawn(consumer::run(started.clone()));
             ctx.spawn(sender::run(started));

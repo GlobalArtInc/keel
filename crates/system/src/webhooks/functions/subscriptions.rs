@@ -7,6 +7,7 @@ use rand::rngs::SysRng;
 
 use super::super::entity::subscription;
 use super::super::masks;
+use super::super::peer::owned_by_link;
 use super::super::started::private_targets;
 use super::super::targets::{self, Resolver, resolver_or_system};
 use super::deliveries::DELIVERY_LIST;
@@ -22,6 +23,7 @@ pub const SECRET_GENERATED_BYTES: usize = 32;
 pub const ERROR_SECRET_SHORT: &str = "webhook.error.secret_short";
 pub const ERROR_MASK: &str = "webhook.error.mask";
 pub const ERROR_ENTROPY: &str = "webhook.error.entropy";
+pub const ERROR_PEER: &str = "webhook.error.peer";
 
 const BASE64URL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -223,6 +225,9 @@ pub fn subscription_set() -> FunctionDef {
             .show_if("$principal.level != 'user'"))
         .handler(|call: Call<SubscriptionSet>| async move {
             let params = call.params();
+            if let Some(id) = params.id {
+                owned_by_link(&load_subscription(call.tx()?, id).await?)?;
+            }
             check_masks(&params.events)?;
             let chosen = chosen_secret(params.secret.as_ref())?;
             let settings = call.require::<dyn SettingsSource>()?;
@@ -259,6 +264,7 @@ pub fn subscription_set() -> FunctionDef {
                     active.events = Set(params.events.clone());
                     active.enabled = Set(params.enabled);
                     active.updated_at = Set(now);
+                    active.local_only = Set(call.principal().is_narrowed());
                     active.update(tx).await?
                 }
                 None => {
@@ -274,6 +280,10 @@ pub fn subscription_set() -> FunctionDef {
                         created_at: Set(now),
                         created_by: Set(call.principal().login.clone()),
                         updated_at: Set(now),
+                        peer_id: Set(None),
+                        level: Set(None),
+                        floor_seq: Set(None),
+                        local_only: Set(call.principal().is_narrowed()),
                     }
                     .insert(tx)
                     .await?
@@ -308,6 +318,7 @@ pub fn subscription_toggle() -> FunctionDef {
             let now = call.require::<dyn Clock>()?.now();
             let tx = call.tx()?;
             let row = load_subscription(tx, call.params().id).await?;
+            owned_by_link(&row)?;
             subscription::Entity::update_many()
                 .filter(subscription::Column::Id.eq(row.id.clone()))
                 .col_expr(
@@ -339,6 +350,7 @@ pub fn subscription_delete() -> FunctionDef {
         .handler(|call: Call<Pick>| async move {
             let tx = call.tx()?;
             let row = load_subscription(tx, call.params().id).await?;
+            owned_by_link(&row)?;
             subscription::Entity::delete_by_id(row.id.clone())
                 .exec(tx)
                 .await?;

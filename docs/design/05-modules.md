@@ -157,7 +157,15 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   the full pipeline with its audit event; a free-form raw route a module registers itself,
   `r.raw`, waits for the terminal and VNC of `panel`, which M5 left out: the two custom views of
   `panel`, the file manager and the configuration editor, are served by the `upload` and
-  `download` kinds and ordinary functions.
+  `download` kinds and ordinary functions. The one exception to the guard and the audit event is
+  the hidden `Endpoint` of `keel_sdk::system`, contributed with `r.contribute(Endpoint::get(name,
+  handler))` or `Endpoint::post` and served at `/api/v1/x/<module>/<name>`: the kernel resolves the
+  credential as on any route and hands the handler an `EndpointRequest` with the principal, the raw
+  body, the query and the headers without the credential, and runs neither the guards nor the
+  audit of the pipeline, so the endpoint authenticates and checks access itself and may answer a
+  guest. It exists for traffic between installations that a function cannot carry: the hook of
+  `peers`, which a delivery's HMAC signature authenticates, and its pull feed, which answers the
+  peer token of a link alone ([07-ecosystem.md](07-ecosystem.md)).
 - Custom views, `r.view("hosting.file-manager", ViewSpec { access, menu, needs })`: a screen
   without a descriptor but with access rules for the menu and features; the registrar checks the
   module prefix of the name and refuses a second view or function under it, and `menu`, an
@@ -301,8 +309,9 @@ Hooks needed only by system modules — `Authenticator` with `Client`, `Authenti
 `PreferenceSource`, `LanguageSource`, `PermissionSource` with `PermissionCatalogue`,
 `ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, `TaskRunner`
 with `TaskSpec` and `TaskSink`, `Caller` with `CallerOptions`, `LiveEvents` with `Frame`,
-`AdvisoryLock` with `LockGuard`, `ProblemCounter`, `OutboxSubscriber`, and later
-`TransportRegistry` and `StorageSnapshot` — live in `keel_sdk::system`,
+`AdvisoryLock` with `LockGuard`, `ProblemCounter`, `OutboxSubscriber`, `EventRelay`, `Endpoint`
+with `EndpointRequest`, and later `TransportRegistry` and `StorageSnapshot` — live in
+`keel_sdk::system`,
 marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
 authentication, the transports, backup and the outbox consumers plug in; a product module has no
 reason to touch them. The public `keel-sdk` is frozen at 1.0 (M7); until then only
@@ -336,9 +345,12 @@ entered outside a request with an explicit principal, through which a module run
 function of its own or a job's call, so the outbox and the audit trail see it as any call;
 `LiveEvents { publish }`, the in-memory bus of the frames the event stream carries beside the
 outbox, `task.progress` and `notification` among them; `AdvisoryLock { take }`, the session lock on
-a pinned connection; and `OutboxSubscriber { after, latest }`, the only reader of `keel_outbox`
-([04-storage.md](04-storage.md)). `PrincipalSource` also answers `at_or_above(level)` and
-`of_account(account)`, the recipient lookups of `notify`. A module provides the others: `TaskRunner
+a pinned connection; `OutboxSubscriber { after, newest, latest }`, the only reader of `keel_outbox`
+([04-storage.md](04-storage.md)); and `EventRelay { relay }`, which enters an event of another
+installation into `keel_outbox` under its own id with its `instance_id`, answers a repeat as nothing
+new and refuses an event of this installation and an id the outbox holds for another one.
+`PrincipalSource` also answers `at_or_above(level)` and `of_account(account)`, the recipient lookups
+of `notify`. A module provides the others: `TaskRunner
 { spawn, progress, log, checkpoint, cancel, state }` from `tasks`, behind which the dispatcher turns
 a call into a job; `ProblemCounter { counts }` from `notify`, from which `GET /api/v1/boot` fills
 `problems`; `SecondFactorSource { enrolled }` from `auth`, from which `GET /api/v1/boot` fills
@@ -726,7 +738,11 @@ function attribute ([06-host.md](06-host.md)).
   request, so a rebinding name reaches nothing.
 - Delivery reads the outbox at-least-once with its own cursor, `webhook_cursor`, through
   `OutboxSubscriber`, one delivery per enabled subscription whose masks match the event type and
-  whose scope admits the event's subject ([02-functions.md](02-functions.md)).
+  whose scope admits the event's subject ([02-functions.md](02-functions.md)). An event another
+  installation emitted reaches only a subscription whose scope covers every account and that is not
+  `local_only`, the flag `webhook.subscription.set` records when the credential saving it is
+  narrowed by a scope of functions or a call through a peer, and that a peer's subscription always
+  carries ([07-ecosystem.md](07-ecosystem.md)).
 
 ### license
 
@@ -829,8 +845,8 @@ function attribute ([06-host.md](06-host.md)).
   kernel, the account tree and the outbox and need no pairing ([07-ecosystem.md](07-ecosystem.md)).
 - Pairing with a one-time code; mutual `kpt_` tokens with scopes; trust on first use by the
   instance's Ed25519 key, so a TLS rotation does not break the link.
-- A pull feed `/api/v1/x/peers/feed?after=seq` for instances behind NAT; the inbox deduplicates
-  by event id.
+- A pull feed `/api/v1/x/peer/feed?after=seq` for instances behind NAT and the hook
+  `/api/v1/x/peer/hook` for signed deliveries; the inbox deduplicates by link and event id.
 - On-behalf calls are allowed only for principals whose `origin` is this peer.
 - `keel.account.*` and `keel.principal.*` events from an identity peer are applied by a handler
   in this module. The trust model and delivery are in [07-ecosystem.md](07-ecosystem.md).

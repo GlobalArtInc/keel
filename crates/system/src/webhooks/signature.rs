@@ -33,7 +33,7 @@ pub fn sign(secret: &[u8], t: i64, body: &[u8]) -> Result<String, Rejection> {
 
 pub fn verify(secret: &[u8], header: &str, body: &[u8], now: i64) -> Result<(), Rejection> {
     let (t, digest) = parse(header)?;
-    if (now - t).abs() > WINDOW_SECONDS {
+    if now.abs_diff(t) > WINDOW_SECONDS.unsigned_abs() {
         return Err(Rejection::Stale { t, now });
     }
     mac(secret, t, body)?
@@ -139,6 +139,18 @@ mod tests {
                 verify(SECRET, broken, BODY, 1_757_671_200),
                 Err(Rejection::Format),
                 "{broken}"
+            );
+        }
+        for (t, now) in [
+            (i64::MIN, 1_757_671_200),
+            (i64::MAX, 1_757_671_200),
+            (i64::MIN, i64::MAX),
+            (i64::MAX, i64::MIN),
+        ] {
+            assert_eq!(
+                verify(SECRET, &format!("t={t},v1=00"), BODY, now),
+                Err(Rejection::Stale { t, now }),
+                "{t} at {now}"
             );
         }
         assert_eq!(
