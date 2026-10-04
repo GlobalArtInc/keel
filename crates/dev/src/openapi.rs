@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use keel_types::{Descriptor, ErrorCode, Kind, Level};
+use keel_types::{Descriptor, ErrorCode, IDEMPOTENCY_KEY_MAX_LEN, Idempotency, Kind, Level};
 use serde_json::{Map, Value, json};
 
 use crate::descriptors::{API_PREFIX, BOOT_FILE, FUNCTIONS_DIR, SESSION_COOKIE, unified};
@@ -26,6 +26,7 @@ pub const GENERATED_LABEL: &str = "generated";
 pub const RAW_PREFIX: &str = "/api/v1/x";
 pub const BINARY: &str = "*/*";
 pub const QUERY_PARAMS: &str = "q";
+pub const IDEMPOTENCY_HEADER: &str = "Idempotency-Key";
 const EVENT_STREAM: &str = "text/event-stream";
 const DEFINITIONS: &str = "#/$defs/";
 const ENVELOPE: &str = "Envelope";
@@ -38,6 +39,7 @@ const LINES: &str = "Server-sent events: a line event per line, shaped by the re
 const QUERY_DESCRIPTION: &str =
     "The parameters as one JSON object; bare pairs of the query are accepted instead.";
 const REFUSED: &str = "The call was refused; the status follows error.code";
+const IDEMPOTENCY_DESCRIPTION: &str = "The function requires the key: a repeat with the same key and body answers the recorded response marked by X-Keel-Idempotent-Replay, the same key with another body is refused with idempotency_mismatch.";
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -495,6 +497,25 @@ fn operation(function: &Function, success: &Value) -> Value {
         && let Some(map) = operation.as_object_mut()
     {
         map.insert("security".to_owned(), json!([]));
+    }
+    if descriptor.idempotency == Idempotency::Required
+        && let Some(map) = operation.as_object_mut()
+    {
+        map.insert(
+            "parameters".to_owned(),
+            json!([{
+                "name": IDEMPOTENCY_HEADER,
+                "in": "header",
+                "required": true,
+                "description": IDEMPOTENCY_DESCRIPTION,
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": IDEMPOTENCY_KEY_MAX_LEN,
+                    "pattern": "^[ -~]+$"
+                }
+            }]),
+        );
     }
     operation
 }
@@ -983,6 +1004,42 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
+    }
+
+    #[test]
+    fn a_function_that_requires_an_idempotency_key_declares_the_header_and_the_others_do_not() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut open = descriptor(
+            "box.item.open",
+            "admin",
+            json!({ "title": "Open", "type": "object", "properties": { "size": { "type": "integer" } } }),
+            json!({ "title": "Opened", "type": "object" }),
+        );
+        open["kind"] = json!("action");
+        open["idempotency"] = json!("required");
+        let mut descriptors = fixture();
+        descriptors.push(open);
+        let dump = dump(temporary.path(), &descriptors);
+        let document = document(&dump).unwrap().value;
+        let open = &document["paths"][format!("{API_PREFIX}/call/box.item.open")]["post"];
+        assert_eq!(
+            open["parameters"],
+            json!([{
+                "name": "Idempotency-Key",
+                "in": "header",
+                "required": true,
+                "description": IDEMPOTENCY_DESCRIPTION,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[ -~]+$" }
+            }])
+        );
+        assert_eq!(
+            open["x-keel"],
+            json!({ "kind": "action", "mode": "write", "access": { "level": "admin" } })
+        );
+        for func in ["note.list", "note.edit", "auth.login", "audit.list"] {
+            let operation = &document["paths"][format!("{API_PREFIX}/call/{func}")]["post"];
+            assert!(operation.get("parameters").is_none(), "{func}");
+        }
     }
 
     #[test]

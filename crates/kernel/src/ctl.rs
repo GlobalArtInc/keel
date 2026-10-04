@@ -22,6 +22,7 @@ pub struct Request {
     pub out: Out,
     pub lang: String,
     pub run_as: Option<String>,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,7 +75,10 @@ pub async fn run(socket: &Path, request: &Request) -> Result<Output, CtlError> {
             &request.func,
             request.params.clone(),
             request.run_as.as_deref(),
-            CallOptions::default(),
+            CallOptions {
+                idempotency_key: request.idempotency_key.clone(),
+                ..CallOptions::default()
+            },
         )
         .await?;
     match (&envelope, request.out) {

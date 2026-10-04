@@ -119,6 +119,7 @@ export type Control =
   | 'key_value'
   | 'transfer';
 export type Mode = 'read' | 'write';
+export type Idempotency = 'optional' | 'required';
 export type ScreenResult = 'redirect' | 'task' | 'download';
 export type Layout = 'tree' | 'master-detail';
 export type Envelope =
@@ -354,6 +355,7 @@ export interface Descriptor {
   mode: Mode;
   access: Access;
   key?: string | null;
+  idempotency?: Idempotency;
   params: Record<string, unknown> | boolean;
   result: Record<string, unknown> | boolean;
   ui?: ScreenUi | null;

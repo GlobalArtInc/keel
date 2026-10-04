@@ -754,6 +754,7 @@ async fn ctl_keel_account_create_returns_the_envelope_and_out_table_renders_the_
             out: Out::Json,
             lang: "en".into(),
             run_as: None,
+            idempotency_key: None,
         },
     )
     .await
@@ -771,6 +772,7 @@ async fn ctl_keel_account_create_returns_the_envelope_and_out_table_renders_the_
             out: Out::Table,
             lang: "en".into(),
             run_as: None,
+            idempotency_key: None,
         },
     )
     .await

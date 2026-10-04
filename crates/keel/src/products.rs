@@ -160,6 +160,7 @@ impl Runtime {
             out: Out::Json,
             lang: "en".to_owned(),
             run_as: None,
+            idempotency_key: None,
         };
         let output = match ctl::run(&config.socket, &request).await {
             Ok(output) => output,

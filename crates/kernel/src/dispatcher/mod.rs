@@ -1,7 +1,7 @@
 mod caller;
 mod group;
 pub(crate) mod guards;
-mod idempotency;
+pub(crate) mod idempotency;
 mod list;
 mod live;
 mod masks;
@@ -26,10 +26,12 @@ use keel_sdk::runtime::{
     AfterCommitHook, Before, CallBuilder, CallHandle, Invoked, Invoker, Stored,
 };
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink, Client, SessionChange, TaskRunner};
-use keel_sdk::{AfterContext, Db, Download, FunctionDef, KeelError, Lines, TaskHandle};
+use keel_sdk::{
+    AfterContext, Db, Download, FunctionDef, KeelError, Lines, SettingsSource, TaskHandle,
+};
 use keel_types::{
-    CallError, Envelope, ErrorCode, EventSubject, GroupResult, Id, Kind, Level, Meta,
-    MetaPrincipal, Mode, Principal,
+    CallError, Envelope, ErrorCode, EventSubject, GroupResult, Id, Idempotency, Kind, Level, Meta,
+    MetaPrincipal, Mode, Principal, Via,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde_json::{Map, Value};
@@ -39,6 +41,10 @@ use crate::registry::{Function, Registry};
 
 pub use caller::CallerHandle;
 pub use group::{GROUP_BODY_KEY, MULTI_FIELD_KEY, MULTI_UNMASKED_KEY};
+pub use idempotency::{
+    HOURS_SETTING as IDEMPOTENCY_HOURS_SETTING, KEY_MAX_LEN as IDEMPOTENCY_KEY_MAX_LEN,
+    MALFORMED_KEY as IDEMPOTENCY_MALFORMED_KEY, REQUIRED_KEY as IDEMPOTENCY_REQUIRED_KEY,
+};
 pub use live::{LIVE_CAPACITY, LiveBus};
 pub(crate) use masks::MaskHandle;
 pub use outbox::{MAX_BATCH as OUTBOX_BATCH, OutboxFeed, RELAY_LOCAL_KEY, RELAY_TAKEN_KEY};
@@ -71,6 +77,7 @@ struct Inner {
     audit: Option<Arc<dyn AuditSink>>,
     runner: Option<Arc<dyn TaskRunner>>,
     outbox: Option<Arc<OutboxFeed>>,
+    settings: Option<Arc<dyn SettingsSource>>,
     clock: Arc<dyn Clock>,
     hook_timeout: Duration,
 }
@@ -250,17 +257,6 @@ struct LocalInvoker {
     after: Shared,
 }
 
-enum Failure {
-    Error(KeelError),
-    Race { key: String, hash: String },
-}
-
-impl From<KeelError> for Failure {
-    fn from(error: KeelError) -> Self {
-        Failure::Error(error)
-    }
-}
-
 impl Dispatcher {
     pub fn new(registry: Arc<Registry>, db: DatabaseConnection) -> Result<Self, SchemaError> {
         let mut prepared = BTreeMap::new();
@@ -293,6 +289,7 @@ impl Dispatcher {
         let audit = registry.services().get::<dyn AuditSink>();
         let runner = registry.services().get::<dyn TaskRunner>();
         let outbox = registry.services().get::<OutboxFeed>();
+        let settings = registry.services().get::<dyn SettingsSource>();
         let clock = registry
             .services()
             .get::<dyn Clock>()
@@ -305,6 +302,7 @@ impl Dispatcher {
                 audit,
                 runner,
                 outbox,
+                settings,
                 clock,
                 hook_timeout: HOOK_TIMEOUT,
             }),
@@ -517,17 +515,30 @@ impl Inner {
             None => def.key(),
         };
         let mut idempotency = None;
-        if def.mode() == Mode::Write
-            && principal.level != Level::Guest
-            && let Some(key) = key
-        {
-            let hash = idempotency::hash(&params);
-            if let Some(record) =
-                idempotency::lookup(&self.db, principal.id, key, self.clock.now()).await?
-            {
-                return replay(record, def.name(), &hash);
+        if def.mode() == Mode::Write && principal.level != Level::Guest {
+            match key {
+                Some(key) => {
+                    idempotency::admit(key)?;
+                    let hash = idempotency::hash(&params);
+                    if let Some(record) =
+                        idempotency::lookup(&self.db, principal.id, key, self.clock.now()).await?
+                    {
+                        return replay(record, def.name(), &hash);
+                    }
+                    idempotency = Some(idempotency::Keyed {
+                        key: key.to_owned(),
+                        hash,
+                        ttl: self.idempotency_ttl().await?,
+                    });
+                }
+                None if def.idempotency() == Idempotency::Required
+                    && principal.via != Via::Internal =>
+                {
+                    return Err(KeelError::validation(idempotency::REQUIRED_KEY)
+                        .param("function", def.name()));
+                }
+                None => {}
             }
-            idempotency = Some((key.to_owned(), hash));
         }
         let (params, extra) = split_extra(params, &target.prepared.patched);
         if let Some(task) = &origin.task
@@ -570,6 +581,19 @@ impl Inner {
                     })
                 }
                 Mode::Write => {
+                    let transaction = self.db.begin().await?;
+                    if let Some(keyed) = &idempotency
+                        && let Some(record) = idempotency::claim(
+                            &transaction,
+                            principal.id,
+                            &keyed.key,
+                            self.clock.now(),
+                        )
+                        .await?
+                    {
+                        transaction.rollback().await?;
+                        return replay(record, def.name(), &keyed.hash);
+                    }
                     let handle = CallBuilder::new(principal.clone(), request_id)
                         .services(self.registry.services().clone())
                         .invoker(self.invoker(after.clone()))
@@ -577,7 +601,7 @@ impl Inner {
                         .tz(origin.tz)
                         .task(origin.task)
                         .extra(extra)
-                        .write(self.db.begin().await?);
+                        .write(transaction);
                     let work = match group {
                         Some(group) => Work::Group(group),
                         None => Work::Single(params),
@@ -594,12 +618,28 @@ impl Inner {
         }
     }
 
+    async fn idempotency_ttl(&self) -> Result<chrono::Duration, KeelError> {
+        let setting = match &self.settings {
+            Some(settings) => {
+                settings
+                    .resolve(
+                        idempotency::HOURS_SETTING,
+                        Id::ROOT_ACCOUNT,
+                        &Db::from_connection(self.db.clone()),
+                    )
+                    .await?
+            }
+            None => None,
+        };
+        Ok(idempotency::ttl(setting))
+    }
+
     async fn commit(
         self: &Arc<Self>,
         target: &Target<'_>,
         handle: CallHandle,
         work: Work,
-        idempotency: Option<(String, String)>,
+        idempotency: Option<idempotency::Keyed>,
         after: &Shared,
     ) -> Result<Executed, KeelError> {
         let principal = handle.principal().clone();
@@ -612,24 +652,23 @@ impl Inner {
                 Work::Single(params) => self.perform(target, &handle, params, after).await?,
                 Work::Group(group) => self.perform_group(target, &handle, group, after).await?,
             };
-            if let Some((key, hash)) = idempotency {
+            if let Some(keyed) = idempotency {
                 let mut stored = data.clone();
                 target.prepared.result.mask_once(&mut stored);
                 if let idempotency::Recorded::Taken = idempotency::record(
                     handle.db(),
                     principal.id,
-                    &key,
+                    &keyed,
                     target.function.name(),
-                    &hash,
                     &stored,
                     self.clock.now(),
                 )
                 .await?
                 {
-                    return Err(Failure::Race { key, hash });
+                    return Err(KeelError::conflict(idempotency::RACE_KEY));
                 }
             }
-            Ok::<Performed, Failure>(Performed {
+            Ok::<Performed, KeelError>(Performed {
                 data,
                 download,
                 lines,
@@ -671,21 +710,11 @@ impl Inner {
                     lines,
                 })
             }
-            Err(failure) => {
+            Err(error) => {
                 if let Ok(Some(transaction)) = handle.finish() {
                     transaction.rollback().await?;
                 }
-                match failure {
-                    Failure::Error(error) => Err(error),
-                    Failure::Race { key, hash } => {
-                        match idempotency::lookup(&self.db, principal.id, &key, self.clock.now())
-                            .await?
-                        {
-                            Some(record) => replay(record, target.function.name(), &hash),
-                            None => Err(KeelError::conflict("keel.error.idempotency_race")),
-                        }
-                    }
-                }
+                Err(error)
             }
         };
         take(after);
@@ -1005,9 +1034,7 @@ fn replay(record: idempotency::Record, func: &str, hash: &str) -> Result<Execute
             lines: None,
         })
     } else {
-        Err(KeelError::idempotency_mismatch(
-            "keel.error.idempotency_mismatch",
-        ))
+        Err(KeelError::idempotency_mismatch(idempotency::MISMATCH_KEY))
     }
 }
 

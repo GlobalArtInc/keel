@@ -2,6 +2,7 @@ mod accounts;
 mod acl;
 mod entity;
 mod health;
+mod idempotency;
 mod lifecycle;
 mod limits;
 mod principals;
@@ -18,6 +19,7 @@ use keel_sdk::{ModuleDef, Registrar};
 pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
 use health::DOCTOR_RUN;
 pub use health::LOGS_TAIL;
+pub use idempotency::PRUNE as IDEMPOTENCY_PRUNE;
 pub(crate) use limits::StoredLimits;
 pub use principals::{DEFAULT_LANG, DEFAULT_ROLE};
 pub use restart::RESTART;
@@ -34,13 +36,14 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 24] = [
+pub const FUNCTIONS: [&str; 25] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
     health::LOGS_STREAM,
     RESTART,
     SETUP_ADMIN,
+    idempotency::PRUNE,
     "keel.account.list",
     "keel.account.get",
     "keel.account.create",
@@ -90,6 +93,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(products::enable())
         .function(products::disable())
         .function(restart::restart())
+        .function(idempotency::prune())
         .function(setup::admin())
         .function(crate::export::function())
         .function(health::doctor_run())
@@ -99,6 +103,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(stats::accounts())
         .contribute(stats::principals())
         .contribute(widgets::widget())
+        .contribute(idempotency::hours())
         .permission("keel.account.read", &[Level::User, Level::Reseller])
         .permission("keel.account.manage", &[Level::Reseller])
         .permission("keel.principal.read", &[Level::User, Level::Reseller])
@@ -151,7 +156,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_twenty_four_functions_and_the_accounts_widget_under_the_keel_prefix()
+    fn the_kernel_module_registers_its_twenty_five_functions_the_accounts_widget_and_the_idempotency_setting_under_the_keel_prefix()
      {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
@@ -195,6 +200,31 @@ mod tests {
                 ("keel.principals", 3_600, false)
             ]
         );
+        let settings: Vec<(&str, Option<&Value>, Level)> = registrations
+            .contributions
+            .of::<SettingDef>()
+            .map(|def| (def.key(), def.default_value(), def.level_value()))
+            .collect();
+        assert_eq!(
+            settings,
+            [("keel.idempotency.hours", Some(&json!(24)), Level::Admin)]
+        );
+        let schema = registrations
+            .contributions
+            .of::<SettingDef>()
+            .map(|def| def.schema().as_value().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            schema,
+            [json!({ "type": "integer", "minimum": 1, "maximum": 720 })]
+        );
+        let internal: Vec<&str> = registrations
+            .functions
+            .iter()
+            .filter(|def| def.is_internal())
+            .map(FunctionDef::name)
+            .collect();
+        assert_eq!(internal, [RESTART, IDEMPOTENCY_PRUNE]);
         assert!(
             registrations
                 .menu

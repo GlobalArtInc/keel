@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use keel_sdk::runtime::CallHandle;
 use keel_sdk::system::TaskSpec;
-use keel_sdk::{FunctionDef, KeelError, TaskHandle};
+use keel_sdk::{Db, FunctionDef, KeelError, TaskHandle};
 use keel_types::{ScreenResult, TaskRef};
+use sea_orm::TransactionTrait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::{Executed, Inner, Origin, Target, enrich, idempotency, spawn_after_commit};
+use super::{Executed, Inner, Origin, Target, enrich, idempotency, replay, spawn_after_commit};
 
 pub const BATCH_LOG_PREFIX: &str = "chunk";
 
@@ -54,7 +55,7 @@ impl Inner {
         params: &Value,
         batch_key: Option<&str>,
         extra: &Map<String, Value>,
-        idempotency: Option<&(String, String)>,
+        idempotency: Option<&idempotency::Keyed>,
     ) -> Result<Option<Executed>, KeelError> {
         let Some(runner) = &self.runner else {
             return Ok(None);
@@ -64,35 +65,62 @@ impl Inner {
             return Ok(None);
         }
         let principal = pool.principal();
-        let request_id = pool.request_id();
         let stored = if extra.is_empty() {
             params.clone()
         } else {
             enrich(params.clone(), Value::Object(extra.clone())).unwrap_or_else(|| params.clone())
         };
-        let id = runner
-            .spawn(TaskSpec {
-                function: def.name().to_owned(),
-                params: stored,
-                principal: principal.clone(),
-                class: def.class().to_owned(),
-                resumable: def.is_resumable(),
-                request_id: Some(request_id.to_owned()),
-            })
-            .await?;
-        let data = serde_json::to_value(TaskRef::new(id))?;
-        if let Some((key, hash)) = idempotency {
-            idempotency::record(
-                &self.db,
-                principal.id,
-                key,
-                def.name(),
-                hash,
-                &data,
-                self.clock.now(),
-            )
-            .await?;
-        }
+        let spec = TaskSpec {
+            function: def.name().to_owned(),
+            params: stored,
+            principal: principal.clone(),
+            class: def.class().to_owned(),
+            resumable: def.is_resumable(),
+            request_id: Some(pool.request_id().to_owned()),
+        };
+        let data = match idempotency {
+            None => serde_json::to_value(TaskRef::new(runner.spawn(spec).await?))?,
+            Some(keyed) => {
+                let transaction = self.db.begin().await?;
+                if let Some(record) =
+                    idempotency::claim(&transaction, principal.id, &keyed.key, self.clock.now())
+                        .await?
+                {
+                    transaction.rollback().await?;
+                    return replay(record, def.name(), &keyed.hash).map(Some);
+                }
+                let db = Db::from_transaction(transaction);
+                let id = runner.enqueue(&db, spec).await?;
+                let data = serde_json::to_value(TaskRef::new(id))?;
+                let recorded = idempotency::record(
+                    &db,
+                    principal.id,
+                    keyed,
+                    def.name(),
+                    &data,
+                    self.clock.now(),
+                )
+                .await?;
+                let transaction = db
+                    .into_transaction()
+                    .map_err(|holders| {
+                        KeelError::internal("keel.error.call_still_shared")
+                            .param("holders", holders)
+                    })?
+                    .ok_or_else(|| {
+                        KeelError::internal("keel.error.write_call_without_transaction")
+                    })?;
+                if let idempotency::Recorded::Taken = recorded {
+                    transaction.rollback().await?;
+                    return Err(KeelError::conflict(idempotency::RACE_KEY));
+                }
+                transaction.commit().await?;
+                if let Err(error) = runner.wake(id).await {
+                    tracing::warn!(task = %id, error = %error, "the queued job was not woken; the worker finds it at its next poll");
+                }
+                data
+            }
+        };
         Ok(Some(Executed {
             data,
             replay: false,

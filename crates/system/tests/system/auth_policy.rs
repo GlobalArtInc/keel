@@ -125,7 +125,13 @@ async fn the_policy_refuses_a_short_password_and_one_equal_to_the_login_wherever
 #[tokio::test]
 async fn a_module_reads_the_eight_setting_definitions_of_auth_with_their_defaults() {
     let harness = Harness::new().module(&MODULE).module(&PROBE).boot().await;
-    let seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let seen: Vec<(String, Option<Value>, Level)> = SEEN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(key, ..)| key.starts_with("auth."))
+        .cloned()
+        .collect();
     let expected: Vec<(String, Option<Value>, Level)> = [
         (SETTING_PASSWORD_MIN_LENGTH, 12),
         (SETTING_SESSION_IDLE_MINUTES, 30),

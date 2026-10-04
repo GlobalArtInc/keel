@@ -147,6 +147,7 @@ impl TestSocket {
             out,
             lang: lang.to_owned(),
             run_as: run_as.map(str::to_owned),
+            idempotency_key: None,
         };
         let output = ctl::run(&self.path, &request).await?;
         Ok(CtlOutput {

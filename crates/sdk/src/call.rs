@@ -271,16 +271,19 @@ impl<P> Call<P> {
         if let Value::Object(object) = &mut params {
             object.extend(self.state.extra.clone());
         }
-        let id = runner
-            .spawn(TaskSpec {
-                function: invoked.function,
-                params,
-                principal: self.state.principal.clone(),
-                class: invoked.class,
-                resumable: invoked.resumable,
-                request_id: Some(self.state.request_id.clone()),
-            })
-            .await?;
+        let spec = TaskSpec {
+            function: invoked.function,
+            params,
+            principal: self.state.principal.clone(),
+            class: invoked.class,
+            resumable: invoked.resumable,
+            request_id: Some(self.state.request_id.clone()),
+        };
+        if !self.state.db.is_transaction() {
+            return Ok(TaskRef::new(runner.spawn(spec).await?));
+        }
+        let id = runner.enqueue(&self.state.db, spec).await?;
+        self.after_commit(move |_| async move { runner.wake(id).await });
         Ok(TaskRef::new(id))
     }
 

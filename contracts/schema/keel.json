@@ -974,6 +974,9 @@
             "null"
           ]
         },
+        "idempotency": {
+          "$ref": "#/$defs/Idempotency"
+        },
         "params": {
           "type": [
             "object",
@@ -1576,6 +1579,13 @@
       "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
       "minLength": 26,
       "maxLength": 26
+    },
+    "Idempotency": {
+      "type": "string",
+      "enum": [
+        "optional",
+        "required"
+      ]
     },
     "InlineEdit": {
       "type": "object",

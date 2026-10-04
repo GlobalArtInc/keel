@@ -11,6 +11,7 @@ use crate::level::Level;
 use crate::ui::ScreenUi;
 
 pub const DESCRIPTOR_VERSION: u32 = 1;
+pub const IDEMPOTENCY_KEY_MAX_LEN: usize = 255;
 pub const X_KEEL: &str = "x-keel";
 pub const X_UI: &str = "x-ui";
 
@@ -24,6 +25,8 @@ pub struct Descriptor {
     pub access: Access,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Idempotency::is_optional")]
+    pub idempotency: Idempotency,
     #[schemars(schema_with = "schema_document")]
     pub params: Schema,
     #[schemars(schema_with = "schema_document")]
@@ -56,6 +59,20 @@ pub enum Kind {
 pub enum Mode {
     Read,
     Write,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Idempotency {
+    #[default]
+    Optional,
+    Required,
+}
+
+impl Idempotency {
+    pub fn is_optional(&self) -> bool {
+        *self == Idempotency::Optional
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -353,6 +370,7 @@ mod tests {
                 feature: None,
             },
             key: None,
+            idempotency: Idempotency::Optional,
             params: json_schema!({ "type": "object" }),
             result: json_schema!({ "type": "null" }),
             ui: None,
@@ -364,6 +382,27 @@ mod tests {
                 "access": { "level": "reseller" }, "params": { "type": "object" }, "result": { "type": "null" }
             })
         );
+    }
+
+    #[test]
+    fn a_required_idempotency_key_is_named_on_the_wire_and_an_optional_one_is_not() {
+        let wire = json!({
+            "keel": 1, "name": "svc.dns.zones.open", "module": "svc", "kind": "action", "mode": "write",
+            "access": { "level": "admin" }, "idempotency": "required",
+            "params": { "type": "object" }, "result": { "type": "object" }
+        });
+        let descriptor: Descriptor = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(descriptor.idempotency, Idempotency::Required);
+        assert!(!descriptor.idempotency.is_optional());
+        assert_eq!(serde_json::to_value(&descriptor).unwrap(), wire);
+        let mut bare = wire;
+        bare.as_object_mut().unwrap().remove("idempotency");
+        let descriptor: Descriptor = serde_json::from_value(bare.clone()).unwrap();
+        assert_eq!(descriptor.idempotency, Idempotency::Optional);
+        assert_eq!(serde_json::to_value(&descriptor).unwrap(), bare);
+        let mut unknown = bare;
+        unknown["idempotency"] = json!("always");
+        assert!(serde_json::from_value::<Descriptor>(unknown).is_err());
     }
 
     #[test]

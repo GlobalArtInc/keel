@@ -11,6 +11,7 @@ use keel_system::{auth, settings};
 use keel_testkit::{Answer, ErrorCode, Harness, Reply, TestHttp, Who, tokio};
 
 const GREETING: &str = "probe.greeting";
+const IDEMPOTENCY_HOURS: &str = "keel.idempotency.hours";
 
 static PROBE: ModuleDef = ModuleDef {
     id: "probe",
@@ -140,9 +141,10 @@ async fn the_admin_lists_the_six_auth_definitions_and_a_raised_minimum_makes_the
             SETTING_SESSION_ABSOLUTE_HOURS,
             SETTING_SESSION_IDLE_MINUTES,
             SETTING_SHELL_URL,
+            IDEMPOTENCY_HOURS,
         ]
     );
-    assert_eq!(page["total"], json!(8));
+    assert_eq!(page["total"], json!(9));
     let min_length = &page["data"][2];
     assert_eq!(
         min_length,
@@ -349,7 +351,7 @@ async fn a_value_inherits_from_the_root_down_the_account_path_and_a_composition_
             json!({ "filters": [{ "key": "level", "value": ["admin"] }], "pageSize": 2, "page": 2 }),
         )
         .await;
-    assert_eq!(data(&filtered)["total"], json!(8));
+    assert_eq!(data(&filtered)["total"], json!(9));
     assert_eq!(
         keys(data(&filtered)),
         [SETTING_PASSWORD_MIN_LENGTH, SETTING_RESET_MINUTES]
@@ -375,6 +377,72 @@ async fn a_value_inherits_from_the_root_down_the_account_path_and_a_composition_
         "keel.error.function_not_found",
     );
     bare.finish().await;
+}
+
+#[tokio::test]
+async fn the_idempotency_hours_set_by_the_admin_bound_the_lifetime_of_a_record() {
+    let harness = boot().await;
+    let listed = harness
+        .call(
+            Who::Admin,
+            "settings.get",
+            json!({ "key": IDEMPOTENCY_HOURS }),
+        )
+        .await;
+    assert_eq!(
+        data(&listed),
+        &json!({
+            "key": IDEMPOTENCY_HOURS,
+            "module": "keel",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 720 },
+            "default": 24,
+            "level": "admin",
+            "value": 24,
+            "scope": null
+        })
+    );
+    for refused_value in [json!(0), json!(721), json!("two")] {
+        let refused = set(&harness, Who::Admin, IDEMPOTENCY_HOURS, refused_value).await;
+        assert_eq!(refused.status(), 422, "{:?}", refused.error());
+    }
+    let reseller = set(&harness, Who::Reseller, IDEMPOTENCY_HOURS, json!(2)).await;
+    assert_eq!(reseller.status(), 403, "{:?}", reseller.error());
+    data(&set(&harness, Who::Admin, IDEMPOTENCY_HOURS, json!(2)).await);
+
+    let a1 = harness.principal(Who::A1).clone();
+    let keyed = keel_testkit::CallOptions {
+        idempotency_key: Some("short-lived".to_owned()),
+        ..keel_testkit::CallOptions::default()
+    };
+    let call = || {
+        harness.call_with(
+            &a1,
+            "auth.token.create",
+            json!({ "name": "ci" }),
+            keyed.clone(),
+        )
+    };
+    let first = call().await;
+    assert!(!first.replay, "{:?}", first.error());
+    let expires = harness
+        .database()
+        .rows("SELECT ((expires_at - created_at) = interval '2 hours')::text FROM keel_idempotency")
+        .await;
+    assert_eq!(
+        expires,
+        ["true"],
+        "the record lives the two hours the admin set"
+    );
+    harness
+        .clock()
+        .advance(keel_sdk::chrono::Duration::minutes(119));
+    assert!(call().await.replay);
+    harness
+        .clock()
+        .advance(keel_sdk::chrono::Duration::minutes(1));
+    let again = call().await;
+    assert!(!again.replay, "{:?}", again.error());
+    harness.finish().await;
 }
 
 #[tokio::test]

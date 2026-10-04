@@ -3,6 +3,7 @@ pub mod api;
 mod entity;
 mod functions;
 mod leader;
+mod prune;
 mod schedule;
 mod scheduler;
 
@@ -15,6 +16,9 @@ use keel_sdk::system::{AdvisoryLock, Caller, ContextExt};
 pub use api::{ERROR_NOT_LEADER, ERROR_RUNNING, ERROR_UNKNOWN_JOB, OWNER_LOGIN};
 pub use functions::{JOB_LIST, JOB_RUN, RUN_LIST};
 pub use leader::LOCK_KEY;
+pub use prune::{
+    FUNCTION as IDEMPOTENCY_PRUNE, JOB_ID as IDEMPOTENCY_JOB, SCHEDULE as IDEMPOTENCY_SCHEDULE,
+};
 pub use schedule::ERROR_SCHEDULE;
 pub use scheduler::{ERROR_NOT_RUNNING, OVERRIDES_KEY, TICK};
 
@@ -46,6 +50,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .default(json!({}))
                 .level(Level::Admin),
         )
+        .contribute(prune::job())
         .function(functions::job_list())
         .function(functions::job_run())
         .function(functions::run_list())
@@ -79,7 +84,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_module_provides_the_scheduler_contributes_its_overrides_and_requires_the_seams() {
+    fn the_module_provides_the_scheduler_contributes_its_overrides_and_the_prune_job_and_requires_the_seams()
+     {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let registrations = registrar
@@ -130,6 +136,15 @@ mod tests {
             settings[0].schema().get("additionalProperties"),
             Some(&json!({ "type": "string" }))
         );
+        let jobs: Vec<(&str, &str, &str)> = registrations
+            .contributions
+            .of::<api::CronJob>()
+            .map(|job| (job.id(), job.schedule(), job.module()))
+            .collect();
+        assert_eq!(jobs, [(IDEMPOTENCY_JOB, IDEMPOTENCY_SCHEDULE, MODULE.id)]);
+        assert_eq!(IDEMPOTENCY_JOB, "cron.idempotency.prune");
+        assert_eq!(IDEMPOTENCY_SCHEDULE, "25 * * * *");
+        assert_eq!(IDEMPOTENCY_PRUNE, "keel.idempotency.prune");
         let languages: Vec<&str> = registrations
             .i18n
             .iter()

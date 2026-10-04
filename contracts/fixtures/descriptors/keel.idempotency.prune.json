@@ -1,0 +1,28 @@
+{
+  "keel": 1,
+  "name": "keel.idempotency.prune",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "owner"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Pruned",
+    "type": "object",
+    "properties": {
+      "pruned": {
+        "type": "integer",
+        "format": "uint64",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "pruned"
+    ]
+  }
+}

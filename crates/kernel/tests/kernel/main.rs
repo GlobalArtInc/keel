@@ -13,6 +13,7 @@ mod features;
 mod grants;
 mod group;
 mod http;
+mod idempotency;
 mod instance;
 mod lifecycle;
 mod limits;

@@ -17,7 +17,7 @@ use keel_sdk::{
 };
 use keel_types::descriptor::{Control, KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
-use keel_types::{Access, Descriptor, Kind, Platform, WidgetKind};
+use keel_types::{Access, Descriptor, Idempotency, Kind, Level, Mode, Platform, WidgetKind};
 use schemars::Schema;
 use serde_json::Value;
 
@@ -221,6 +221,11 @@ pub enum FreezeProblem {
     },
     #[error("function {function}: the upload carries no form block to render its fields")]
     UploadWithoutForm { function: String },
+    #[error("function {function}: it requires an idempotency key, which {reason}")]
+    IdempotencyRequired {
+        function: String,
+        reason: &'static str,
+    },
     #[error("function {function}: ui.multi names {field}, which is {problem}")]
     Multi {
         function: String,
@@ -1205,6 +1210,25 @@ impl References<'_> {
             self.problems.push(FreezeProblem::UploadWithoutForm {
                 function: self.function.to_owned(),
             });
+        }
+        if descriptor.idempotency == Idempotency::Required {
+            for (refused, reason) in [
+                (
+                    descriptor.mode == Mode::Read,
+                    "a read function never records",
+                ),
+                (
+                    descriptor.access.level == Level::Guest,
+                    "a guest call cannot carry",
+                ),
+            ] {
+                if refused {
+                    self.problems.push(FreezeProblem::IdempotencyRequired {
+                        function: self.function.to_owned(),
+                        reason,
+                    });
+                }
+            }
         }
     }
 
@@ -2713,7 +2737,15 @@ mod tests {
                 .count(),
             1
         );
-        assert_eq!(frozen.registry().contributions().len(), 6);
+        assert_eq!(
+            frozen
+                .registry()
+                .contributions()
+                .of::<keel_sdk::SettingDef>()
+                .count(),
+            1
+        );
+        assert_eq!(frozen.registry().contributions().len(), 7);
     }
 
     fn twice_init(r: &mut Registrar) -> Result<()> {

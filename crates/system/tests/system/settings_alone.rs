@@ -52,10 +52,13 @@ async fn settings_alone_boots_with_its_tables_and_the_admin_lists_and_sets_a_val
         .await;
     assert_eq!(listed.status, 200, "{}", listed.body);
     let page = &listed.json()["data"];
-    assert_eq!(page["total"], json!(1), "{}", listed.body);
-    assert_eq!(page["data"][0]["key"], json!(GREETING));
-    assert_eq!(page["data"][0]["value"], json!("hello"));
-    assert_eq!(page["data"][0]["scope"], Value::Null);
+    assert_eq!(page["total"], json!(2), "{}", listed.body);
+    assert_eq!(page["data"][0]["key"], json!("keel.idempotency.hours"));
+    assert_eq!(page["data"][0]["module"], json!("keel"));
+    assert_eq!(page["data"][0]["value"], json!(24));
+    assert_eq!(page["data"][1]["key"], json!(GREETING));
+    assert_eq!(page["data"][1]["value"], json!("hello"));
+    assert_eq!(page["data"][1]["scope"], Value::Null);
 
     let set = http
         .post(

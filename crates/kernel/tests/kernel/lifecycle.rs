@@ -144,6 +144,14 @@ impl TaskRunner for RunnerDouble {
         Ok(Id::generate())
     }
 
+    async fn enqueue(&self, _: &Db, spec: TaskSpec) -> Result<Id> {
+        self.spawn(spec).await
+    }
+
+    async fn wake(&self, _: Id) -> Result<()> {
+        Ok(())
+    }
+
     async fn progress(&self, _: Id, _: u64, _: Option<u64>, _: Option<&str>) -> Result<()> {
         Ok(())
     }

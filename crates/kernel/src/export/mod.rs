@@ -101,7 +101,9 @@ fn text_of<'a>(messages: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use keel_types::descriptor::MemberAccess;
-    use keel_types::{Access, Column, ColumnType, DESCRIPTOR_VERSION, Kind, Level, Mode, ScreenUi};
+    use keel_types::{
+        Access, Column, ColumnType, DESCRIPTOR_VERSION, Idempotency, Kind, Level, Mode, ScreenUi,
+    };
     use schemars::json_schema;
     use serde_json::json;
 
@@ -120,6 +122,7 @@ mod tests {
                 feature: None,
             },
             key: None,
+            idempotency: Idempotency::Optional,
             params: json_schema!({}),
             result: json_schema!({}),
             ui: Some(ScreenUi {

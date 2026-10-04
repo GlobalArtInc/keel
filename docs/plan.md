@@ -6738,6 +6738,37 @@ applied to each record of an identity link, which goes with the link, and the co
 on behalf; and they refuse an origin naming an instance to a caller below `admin` other than the
 link to that instance, so a record under the origin of a peer was placed by that peer or by an
 administrator, a rule the pass adds to "External identity" in [design/03-access.md](design/03-access.md).
+Step 3 leaves points for the pass over [design/02-functions.md](design/02-functions.md),
+[design/04-storage.md](design/04-storage.md), [design/05-modules.md](design/05-modules.md) and
+[design/10-contracts.md](design/10-contracts.md). A concurrent repeat waits for the first call: the
+dispatcher takes an advisory lock on the principal and the key for the length of the call's
+transaction, or of the transaction that queues the job of a `result: task` function, reads the
+record again under it and replays or refuses what the first call committed, so the handler runs
+once; the repeat's `before` hooks have run by then. A keyed call of a `result: task` function
+inserts its job through that transaction with `TaskRunner::enqueue(db, spec)`, writes the record in
+it, commits, and only then calls `TaskRunner::wake(id)`, which publishes the job's state and wakes
+the worker; so the job and the record commit together or not at all, a timeout or a failed record
+leaves no job behind for the retry to duplicate, and the call holds one pool connection; an unkeyed
+spawn keeps `TaskRunner::spawn`. `Call::spawn_self_as_task` in a write call enqueues through the
+call's transaction and wakes from an `after_commit` hook, so a job a write call queues for itself
+exists only once the call commits, as the job erasing an account for `keel.account.delete` now
+does; in a read call it spawns as before. The `TaskRunner` of "Hidden hooks" in
+[design/05-modules.md](design/05-modules.md) gains `enqueue` and `wake`. A record lives the hours of
+the kernel's setting `keel.idempotency.hours` (1 to 720, 24 by default) read for the
+root account when it is written; the internal function `keel.idempotency.prune` deletes the
+expired records and the `cron` module runs it hourly as its job `cron.idempotency.prune`, so a
+composition without `cron` keeps expired records, which are never replayed and are taken over by
+the next call with their key. A key is 1 to 255 printable ASCII characters, otherwise the write
+answers `422` with `keel.error.idempotency_key`, and a header value that is not ASCII reaches that
+check instead of being dropped; a read and a guest call still ignore the key. A function declares
+`.idempotent(Idempotency::Required)`, which puts `idempotency: required` in its descriptor and a
+required `Idempotency-Key` header in its OpenAPI operation; a call without a key then answers
+`422 validation` with `keel.error.idempotency_required`, after the parameters were validated,
+except a call through the `Caller` (`via: internal`: a job, a cron job, a module's in-process call);
+the freeze refuses the declaration on a read function and on a guest-level function. `keel ctl`
+takes `--idempotency-key <key>` and sends it as the frame's `idempotencyKey`, so a function that
+requires the key, such as the `svc` open and close of step 4a, is reachable from the CLI; the `keel
+ctl` paragraph of [design/10-contracts.md](design/10-contracts.md) gains the flag.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

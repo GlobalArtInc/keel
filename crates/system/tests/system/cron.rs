@@ -9,10 +9,10 @@ use keel_sdk::prelude::*;
 use keel_sdk::types::Via;
 use keel_system::cron::api::{CronJob, JobRun, Outcome, Scheduler};
 use keel_system::cron::{
-    ERROR_NOT_LEADER, ERROR_RUNNING, ERROR_UNKNOWN_JOB, FUNCTIONS, JOB_LIST, JOB_RUN, LOCK_KEY,
-    MENU_PATH, MODULE, OWNER_LOGIN, RUN_LIST,
+    ERROR_NOT_LEADER, ERROR_RUNNING, ERROR_UNKNOWN_JOB, FUNCTIONS, IDEMPOTENCY_JOB,
+    IDEMPOTENCY_SCHEDULE, JOB_LIST, JOB_RUN, LOCK_KEY, MENU_PATH, MODULE, OWNER_LOGIN, RUN_LIST,
 };
-use keel_testkit::{Harness, Reply, Who, tokio};
+use keel_testkit::{CallOptions, Harness, Reply, Who, tokio};
 
 const START: &str = "2026-09-15T10:00:00Z";
 const FAST: &str = "probe.fast";
@@ -310,7 +310,7 @@ async fn a_job_runs_when_the_clock_passes_its_next_occurrence_and_records_an_ok_
         .iter()
         .map(|row| row["id"].as_str().expect("an id"))
         .collect();
-    assert_eq!(ids, [BROKEN, FAST, INVOKER, SLOW]);
+    assert_eq!(ids, [IDEMPOTENCY_JOB, BROKEN, FAST, INVOKER, SLOW]);
     harness.finish().await;
 }
 
@@ -652,6 +652,67 @@ async fn a_products_job_invokes_a_function_as_the_owner_through_the_run() {
 }
 
 #[tokio::test]
+async fn the_hourly_job_of_cron_prunes_the_expired_idempotency_records() {
+    let harness = boot().await;
+    wait_leader(&harness).await;
+    let job = job_row(&harness, IDEMPOTENCY_JOB).await;
+    assert_eq!(job["module"], json!("cron"));
+    assert_eq!(job["schedule"], json!(IDEMPOTENCY_SCHEDULE));
+    assert_eq!(job["nextRunAt"], json!("2026-09-15T10:25:00Z"));
+    let reseller = harness.principal(Who::Reseller).clone();
+    for key in ["first", "second"] {
+        let created = harness
+            .call_with(
+                &reseller,
+                "keel.account.create",
+                json!({ "kind": "user" }),
+                CallOptions {
+                    idempotency_key: Some(key.to_owned()),
+                    ..CallOptions::default()
+                },
+            )
+            .await;
+        data(&created);
+        harness
+            .clock()
+            .advance(keel_sdk::chrono::Duration::minutes(20));
+    }
+    let keys = || {
+        harness
+            .database()
+            .rows("SELECT key FROM keel_idempotency ORDER BY key")
+    };
+    assert_eq!(keys().await, ["first", "second"]);
+    assert!(runs(&harness, IDEMPOTENCY_JOB).await.is_empty());
+
+    harness.clock().set(at("2026-09-16T10:10:00Z"));
+    let rows = wait_runs(&harness, IDEMPOTENCY_JOB, Outcome::Ok, 1).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        keys().await,
+        ["second"],
+        "the record that expired at 10:00 is gone and the one living until 10:20 stays"
+    );
+
+    harness.clock().set(at("2026-09-16T10:20:00Z"));
+    let started = harness
+        .call(Who::Admin, JOB_RUN, json!({ "id": IDEMPOTENCY_JOB }))
+        .await;
+    let run: Id = data(&started)["run"]
+        .as_str()
+        .expect("a run id")
+        .parse()
+        .expect("a ulid");
+    assert_eq!(
+        scheduler(&harness).wait(run).await.expect("the run ends"),
+        Outcome::Ok
+    );
+    assert!(keys().await.is_empty());
+    assert_eq!(runs(&harness, IDEMPOTENCY_JOB).await.len(), 2);
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn a_schedule_that_does_not_parse_fails_the_start_naming_the_job() {
     let Err(error) = Harness::new()
         .module(&MODULE)
@@ -698,8 +759,9 @@ async fn the_cron_descriptors_match_their_snapshots_and_the_reseller_is_answered
             .await;
         assert_eq!(user.status(), 403, "{func}: {:?}", user.error());
     }
-    let empty = harness.call(Who::Admin, JOB_LIST, json!({})).await;
-    assert_eq!(data(&empty)["total"], json!(0));
+    let alone = harness.call(Who::Admin, JOB_LIST, json!({})).await;
+    assert_eq!(data(&alone)["total"], json!(1));
+    assert_eq!(data(&alone)["data"][0]["id"], json!(IDEMPOTENCY_JOB));
     let owner = harness.call(Who::Owner, RUN_LIST, json!({})).await;
     assert_eq!(data(&owner)["total"], json!(0));
 

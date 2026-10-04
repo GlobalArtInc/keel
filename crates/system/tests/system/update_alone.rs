@@ -34,10 +34,14 @@ async fn update_alone_boots_with_its_table_its_job_and_names_an_unreachable_chan
     let Envelope::Ok { data, .. } = jobs else {
         panic!("the job list answers: {jobs:?}");
     };
-    assert_eq!(data["total"], json!(1));
-    assert_eq!(data["data"][0]["id"], json!(POLL_JOB));
-    assert_eq!(data["data"][0]["module"], json!("update"));
-    assert_eq!(data["data"][0]["schedule"], json!(POLL_SCHEDULE));
+    assert_eq!(data["total"], json!(2));
+    assert_eq!(
+        data["data"][0]["id"],
+        json!(keel_system::cron::IDEMPOTENCY_JOB)
+    );
+    assert_eq!(data["data"][1]["id"], json!(POLL_JOB));
+    assert_eq!(data["data"][1]["module"], json!("update"));
+    assert_eq!(data["data"][1]["schedule"], json!(POLL_SCHEDULE));
     let checked = socket.call(CHECK, json!({})).await;
     let Envelope::Err { error } = checked else {
         panic!("a closed port answers no channel: {checked:?}");

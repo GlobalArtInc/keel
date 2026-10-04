@@ -130,6 +130,38 @@ impl Shared {
         });
     }
 
+    async fn insert(&self, db: &Db, id: Id, spec: TaskSpec) -> Result<job::Model> {
+        let mut masked = spec.params.clone();
+        self.masker.mask(&spec.function, &mut masked)?;
+        let row = job::ActiveModel {
+            id: Set(id.to_string()),
+            class: Set(spec.class),
+            function: Set(spec.function),
+            params_json: Set(spec.params),
+            params_masked_json: Set(masked),
+            principal_id: Set(spec.principal.id.to_string()),
+            principal_json: Set(serde_json::to_value(&spec.principal)?),
+            account_id: Set(spec.principal.account_id.to_string()),
+            state: Set(TaskState::Queued.as_str().to_owned()),
+            resumable: Set(spec.resumable),
+            progress_done: Set(0),
+            progress_total: Set(None),
+            message: Set(None),
+            checkpoint_json: Set(None),
+            result_json: Set(None),
+            error_json: Set(None),
+            request_id: Set(spec.request_id),
+            created_at: Set(self.now()),
+            started_at: Set(None),
+            finished_at: Set(None),
+            file_name: Set(None),
+            file_type: Set(None),
+        }
+        .insert(db)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn load(&self, id: Id) -> Result<job::Model> {
         job::Entity::find_by_id(id.to_string())
             .one(&self.db)
@@ -307,39 +339,30 @@ impl Runner {
 impl TaskRunner for Runner {
     async fn spawn(&self, spec: TaskSpec) -> Result<Id> {
         let shared = self.shared()?;
-        let mut masked = spec.params.clone();
-        shared.masker.mask(&spec.function, &mut masked)?;
         let id = Id::generate();
-        let now = shared.now();
-        let row = job::ActiveModel {
-            id: Set(id.to_string()),
-            class: Set(spec.class),
-            function: Set(spec.function),
-            params_json: Set(spec.params),
-            params_masked_json: Set(masked),
-            principal_id: Set(spec.principal.id.to_string()),
-            principal_json: Set(serde_json::to_value(&spec.principal)?),
-            account_id: Set(spec.principal.account_id.to_string()),
-            state: Set(TaskState::Queued.as_str().to_owned()),
-            resumable: Set(spec.resumable),
-            progress_done: Set(0),
-            progress_total: Set(None),
-            message: Set(None),
-            checkpoint_json: Set(None),
-            result_json: Set(None),
-            error_json: Set(None),
-            request_id: Set(spec.request_id),
-            created_at: Set(now),
-            started_at: Set(None),
-            finished_at: Set(None),
-            file_name: Set(None),
-            file_type: Set(None),
-        }
-        .insert(&shared.db)
-        .await?;
+        let row = shared.insert(&shared.db, id, spec).await?;
         shared.publish(&row, TaskState::Queued);
         shared.wake.notify_one();
         Ok(id)
+    }
+
+    async fn enqueue(&self, db: &Db, spec: TaskSpec) -> Result<Id> {
+        let shared = self.shared()?;
+        let id = Id::generate();
+        shared.insert(db, id, spec).await?;
+        Ok(id)
+    }
+
+    async fn wake(&self, id: Id) -> Result<()> {
+        let shared = self.shared()?;
+        let published = async {
+            let row = shared.load(id).await?;
+            shared.publish(&row, state_of(&row)?);
+            Ok(())
+        }
+        .await;
+        shared.wake.notify_one();
+        published
     }
 
     async fn progress(

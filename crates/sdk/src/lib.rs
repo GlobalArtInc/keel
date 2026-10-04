@@ -63,8 +63,8 @@ pub use guard::Guard;
 pub use host::{AgentOp, AgentOpError, AgentScope, ConfigTemplate};
 pub use instance::InstanceInfoSource;
 pub use keel_types::{
-    Account, Choice, Choices, FileAttrs, GroupResult, Id, Level, ListQuery, OptionsQuery, Page,
-    Principal,
+    Account, Choice, Choices, FileAttrs, GroupResult, Id, Idempotency, Level, ListQuery,
+    OptionsQuery, Page, Principal,
 };
 pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like, fetch_page};
 pub use mail::{MailTemplate, MailText};

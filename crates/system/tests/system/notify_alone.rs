@@ -45,9 +45,13 @@ async fn notify_alone_boots_with_its_tables_its_poll_job_and_answers_its_lists_o
     let Envelope::Ok { data, .. } = jobs else {
         panic!("the job list answers: {jobs:?}");
     };
-    assert_eq!(data["total"], json!(1));
-    assert_eq!(data["data"][0]["id"], json!(POLL_JOB));
-    assert_eq!(data["data"][0]["module"], json!("notify"));
+    assert_eq!(data["total"], json!(2));
+    assert_eq!(
+        data["data"][0]["id"],
+        json!(keel_system::cron::IDEMPOTENCY_JOB)
+    );
+    assert_eq!(data["data"][1]["id"], json!(POLL_JOB));
+    assert_eq!(data["data"][1]["module"], json!("notify"));
     let output = socket.ctl_table(PROBLEM_LIST, &[], "en").await;
     assert!(output.ok, "{}", output.text);
     assert!(output.text.contains("Problem"), "{}", output.text);

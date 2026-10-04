@@ -3,9 +3,9 @@ pub use std::sync::Arc;
 pub use async_trait::async_trait;
 pub use keel_types::{
     Access, ActionRole, Choice, Choices, ColumnType, ConfirmDetails, ConfirmInput, DownloadFile,
-    DownloadRef, EventSubject, ExportFormat, FileAttrs, GroupResult, Id, Kind, Level, ListQuery,
-    LogLevel, LogLine, Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir, TaskRef, Tone,
-    Total, WidgetKind,
+    DownloadRef, EventSubject, ExportFormat, FileAttrs, GroupResult, Id, Idempotency, Kind, Level,
+    ListQuery, LogLevel, LogLine, Mode, OptionsQuery, Page, Principal, ScreenResult, SortDir,
+    TaskRef, Tone, Total, WidgetKind,
 };
 pub use schemars::JsonSchema;
 pub use serde::{Deserialize, Serialize};

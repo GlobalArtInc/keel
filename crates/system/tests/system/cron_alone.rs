@@ -1,6 +1,8 @@
 use keel_sdk::prelude::*;
 use keel_system::cron::api::Scheduler;
-use keel_system::cron::{JOB_LIST, LOCK_KEY, MODULE, RUN_LIST};
+use keel_system::cron::{
+    IDEMPOTENCY_JOB, IDEMPOTENCY_SCHEDULE, JOB_LIST, LOCK_KEY, MODULE, RUN_LIST,
+};
 use keel_testkit::{Harness, tokio};
 
 #[tokio::test]
@@ -38,19 +40,22 @@ async fn cron_alone_boots_with_its_table_holds_its_lock_and_answers_cron_job_lis
     }
     assert_eq!(held, ["1"], "the leader holds the keelcron lock");
     assert!(scheduler.is_leader());
-    assert!(scheduler.jobs().is_empty());
+    assert_eq!(scheduler.jobs(), [IDEMPOTENCY_JOB]);
     assert!(scheduler.running().is_empty());
 
     let socket = harness.socket().await;
-    for func in [JOB_LIST, RUN_LIST] {
-        let listed = socket.call(func, json!({})).await;
-        let page = match listed {
-            keel_sdk::types::Envelope::Ok { data, .. } => data,
-            keel_sdk::types::Envelope::Err { error } => panic!("{func}: {error:?}"),
-        };
-        assert_eq!(page["total"], json!(0), "{func}");
-        assert_eq!(page["data"], json!([]), "{func}");
-    }
+    let page = |listed| match listed {
+        keel_sdk::types::Envelope::Ok { data, .. } => data,
+        keel_sdk::types::Envelope::Err { error } => panic!("{error:?}"),
+    };
+    let jobs = page(socket.call(JOB_LIST, json!({})).await);
+    assert_eq!(jobs["total"], json!(1));
+    assert_eq!(jobs["data"][0]["id"], json!(IDEMPOTENCY_JOB));
+    assert_eq!(jobs["data"][0]["module"], json!("cron"));
+    assert_eq!(jobs["data"][0]["schedule"], json!(IDEMPOTENCY_SCHEDULE));
+    let runs = page(socket.call(RUN_LIST, json!({})).await);
+    assert_eq!(runs["total"], json!(0));
+    assert_eq!(runs["data"], json!([]));
     let output = socket.ctl_table(JOB_LIST, &[], "en").await;
     assert!(output.ok, "{}", output.text);
     assert!(output.text.contains("Job"), "{}", output.text);

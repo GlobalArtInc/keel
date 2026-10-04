@@ -308,6 +308,8 @@ pub struct TaskSpec {
 #[async_trait]
 pub trait TaskRunner: Send + Sync {
     async fn spawn(&self, spec: TaskSpec) -> Result<Id>;
+    async fn enqueue(&self, db: &Db, spec: TaskSpec) -> Result<Id>;
+    async fn wake(&self, id: Id) -> Result<()>;
     async fn progress(
         &self,
         id: Id,

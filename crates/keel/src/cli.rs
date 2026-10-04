@@ -410,6 +410,8 @@ pub(crate) struct CtlArgs {
     pub(crate) lang: String,
     #[arg(long = "as", value_name = "LOGIN")]
     pub(crate) run_as: Option<String>,
+    #[arg(long, value_name = "KEY")]
+    pub(crate) idempotency_key: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
@@ -554,6 +556,7 @@ impl Runtime {
                         out: args.out.into(),
                         lang: args.lang,
                         run_as: args.run_as,
+                        idempotency_key: args.idempotency_key,
                     };
                     Ok(print(ctl::run(&socket, &request).await?))
                 }
@@ -583,6 +586,7 @@ impl Runtime {
                         out: args.out.into(),
                         lang: args.lang.clone(),
                         run_as: None,
+                        idempotency_key: None,
                     };
                     Ok(print(ctl::run(&socket, &request).await?))
                 }
@@ -807,6 +811,7 @@ async fn follow_update(socket: &Path, args: &UpdateCommand) -> Result<ExitCode, 
         out,
         lang: args.lang.clone(),
         run_as: None,
+        idempotency_key: None,
     };
     let func = args.step.function();
     if !args.step.waits() {
@@ -1089,6 +1094,8 @@ mod tests {
             "ru",
             "--as",
             "alice",
+            "--idempotency-key",
+            "edit-9912",
         ])
         .unwrap();
         let Command::Ctl(args) = cli.command else {
@@ -1101,6 +1108,7 @@ mod tests {
         assert_eq!(args.socket, Some(PathBuf::from("/tmp/core.sock")));
         assert_eq!(args.lang, "ru");
         assert_eq!(args.run_as.as_deref(), Some("alice"));
+        assert_eq!(args.idempotency_key.as_deref(), Some("edit-9912"));
         let cli = Cli::try_parse_from(["keel", "ctl", "keel.account.list"]).unwrap();
         let Command::Ctl(args) = cli.command else {
             panic!("expected ctl");
@@ -1110,6 +1118,7 @@ mod tests {
         assert!(args.socket.is_none());
         assert_eq!(args.lang, "en");
         assert!(args.run_as.is_none());
+        assert!(args.idempotency_key.is_none());
         assert!(Cli::try_parse_from(["keel", "ctl"]).is_err());
         assert!(Cli::try_parse_from(["keel", "ctl", "a.b", "--out", "yaml"]).is_err());
         assert!(Cli::try_parse_from(["keel"]).is_err());

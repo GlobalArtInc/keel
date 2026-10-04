@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use keel_types::descriptor::{Access, DESCRIPTOR_VERSION, Descriptor, Kind, Mode};
+use keel_types::descriptor::{Access, DESCRIPTOR_VERSION, Descriptor, Idempotency, Kind, Mode};
 use keel_types::{DownloadFile, Level, ListQuery, LogLine, Page, Sort, SortDir};
 use schemars::{JsonSchema, Schema, json_schema, schema_for};
 use sea_orm::{IdenStatic, Iterable, PrimaryKeyToColumn};
@@ -77,6 +77,7 @@ struct Definition {
     resumable: bool,
     internal: bool,
     exempt_from_read_only: bool,
+    idempotency: Idempotency,
 }
 
 pub struct FunctionBuilder<P, R> {
@@ -103,6 +104,7 @@ pub fn function<P, R>(name: &str) -> FunctionBuilder<P, R> {
             resumable: false,
             internal: false,
             exempt_from_read_only: false,
+            idempotency: Idempotency::Optional,
         },
         types: PhantomData,
     }
@@ -215,6 +217,11 @@ where
         self
     }
 
+    pub fn idempotent(mut self, idempotency: Idempotency) -> Self {
+        self.def.idempotency = idempotency;
+        self
+    }
+
     pub fn upload<F, Fut>(mut self, handler: F) -> FunctionDef
     where
         F: Fn(Call<P>) -> Fut + Send + Sync + 'static,
@@ -267,6 +274,7 @@ where
             resumable: def.resumable,
             internal: def.internal,
             exempt_from_read_only: def.exempt_from_read_only,
+            idempotency: def.idempotency,
             list,
             handler,
         }
@@ -391,6 +399,7 @@ pub struct FunctionDef {
     resumable: bool,
     internal: bool,
     exempt_from_read_only: bool,
+    idempotency: Idempotency,
     list: Option<Arc<ListSpec>>,
     handler: ErasedHandler,
 }
@@ -467,6 +476,10 @@ impl FunctionDef {
         self.exempt_from_read_only
     }
 
+    pub fn idempotency(&self) -> Idempotency {
+        self.idempotency
+    }
+
     pub fn handler(&self) -> &ErasedHandler {
         &self.handler
     }
@@ -503,6 +516,7 @@ impl FunctionDef {
             mode: self.mode,
             access: self.access.clone(),
             key: self.key.clone(),
+            idempotency: self.idempotency,
             params: self.params.clone(),
             result: self.result.clone(),
             ui,
@@ -537,6 +551,7 @@ impl fmt::Debug for FunctionDef {
             .field("resumable", &self.resumable)
             .field("internal", &self.internal)
             .field("exempt_from_read_only", &self.exempt_from_read_only)
+            .field("idempotency", &self.idempotency)
             .finish()
     }
 }
@@ -717,6 +732,34 @@ mod tests {
         assert!(session.is_exempt_from_read_only());
         let descriptor = serde_json::to_value(session.descriptor().unwrap()).unwrap();
         assert!(descriptor.get("exempt_from_read_only").is_none());
+    }
+
+    #[test]
+    fn a_function_may_require_an_idempotency_key_which_its_descriptor_names() {
+        let plain = function::<Ping, Pong>("m.e.open")
+            .kind(Kind::Action)
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert_eq!(plain.idempotency(), Idempotency::Optional);
+        let descriptor = serde_json::to_value(plain.descriptor().unwrap()).unwrap();
+        assert!(descriptor.get("idempotency").is_none());
+        let keyed = function::<Ping, Pong>("m.e.open")
+            .kind(Kind::Action)
+            .idempotent(Idempotency::Required)
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert_eq!(keyed.idempotency(), Idempotency::Required);
+        assert_eq!(
+            keyed.descriptor().unwrap().idempotency,
+            Idempotency::Required
+        );
+        let descriptor = serde_json::to_value(keyed.descriptor().unwrap()).unwrap();
+        assert_eq!(descriptor["idempotency"], json!("required"));
+        assert!(format!("{keyed:?}").contains("idempotency: Required"));
+        let relaxed = function::<Ping, Pong>("m.e.open")
+            .kind(Kind::Action)
+            .idempotent(Idempotency::Required)
+            .idempotent(Idempotency::Optional)
+            .handler(|_: Call<Ping>| async { Ok(Pong { text: "x".into() }) });
+        assert_eq!(relaxed.idempotency(), Idempotency::Optional);
     }
 
     #[test]

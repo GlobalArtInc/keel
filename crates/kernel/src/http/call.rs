@@ -112,10 +112,8 @@ pub(super) fn options(
         request_id: Some(request_id.to_owned()),
         idempotency_key: headers
             .get(IDEMPOTENCY_KEY)
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-            .map(str::to_owned),
+            .map(|value| String::from_utf8_lossy(value.as_bytes()).trim().to_owned())
+            .filter(|key| !key.is_empty()),
         client: Some(client),
         tz: zone.0,
         task: None,
@@ -235,5 +233,24 @@ mod tests {
         assert_eq!(error.key(), "keel.error.query_not_object");
         let error = from_query(pairs(&[("q", "{not json")])).unwrap_err();
         assert_eq!(error.key(), "keel.error.query_not_json");
+    }
+
+    #[test]
+    fn the_idempotency_key_is_trimmed_an_empty_one_is_absent_and_a_malformed_one_reaches_the_dispatcher()
+     {
+        let key = |value: Option<&[u8]>| {
+            let mut headers = HeaderMap::new();
+            if let Some(value) = value {
+                headers.insert(
+                    IDEMPOTENCY_KEY,
+                    HeaderValue::from_bytes(value).expect("a header value"),
+                );
+            }
+            options(&headers, "req-1", Client::default(), Zone(None)).idempotency_key
+        };
+        assert_eq!(key(None), None);
+        assert_eq!(key(Some(b"  open-1  ")), Some("open-1".to_owned()));
+        assert_eq!(key(Some(b"   ")), None);
+        assert_eq!(key(Some(b"k\xe9y")), Some("k\u{fffd}y".to_owned()));
     }
 }
