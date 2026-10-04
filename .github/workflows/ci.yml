@@ -37,6 +37,7 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 120s
       mailpit:
         image: axllent/mailpit:v1.31.1
         ports: ['1025', '8025']
@@ -45,6 +46,7 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 120s
       pebble:
         image: ghcr.io/letsencrypt/pebble:2.10.1
         ports: ['14000', '15000']
@@ -293,6 +295,7 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 120s
       mailpit:
         image: axllent/mailpit:v1.31.1
         ports: ['1025', '8025']
@@ -301,6 +304,7 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 120s
 
     steps:
       - name: Checkout
@@ -470,6 +474,7 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+          --health-start-period 120s
 
     steps:
       - name: Checkout

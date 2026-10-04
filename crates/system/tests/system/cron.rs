@@ -19,7 +19,6 @@ const FAST: &str = "probe.fast";
 const SLOW: &str = "probe.slow";
 const INVOKER: &str = "probe.invoker";
 const BROKEN: &str = "probe.broken";
-const SLOW_RUN: Duration = Duration::from_secs(3);
 const PATIENCE: Duration = Duration::from_secs(15);
 const QUIET: Duration = Duration::from_millis(2500);
 
@@ -41,6 +40,7 @@ struct Identity {
 
 static RUNS: Mutex<Vec<(String, Id, DateTime<Utc>)>> = Mutex::new(Vec::new());
 static ANSWERS: Mutex<BTreeMap<Id, Value>> = Mutex::new(BTreeMap::new());
+static LET_GO: Mutex<Vec<Id>> = Mutex::new(Vec::new());
 
 fn record(run: &JobRun) {
     RUNS.lock().unwrap_or_else(PoisonError::into_inner).push((
@@ -56,6 +56,26 @@ fn recorded(run: Id) -> Option<(String, DateTime<Utc>)> {
         .iter()
         .find(|(_, id, _)| *id == run)
         .map(|(job, _, at)| (job.clone(), *at))
+}
+
+fn let_go(run: Id) {
+    LET_GO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push(run);
+}
+
+fn let_go_of(run: Id) -> bool {
+    LET_GO
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&run)
+}
+
+async fn hold(run: Id) {
+    while !let_go_of(run) {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
 fn answer(run: Id) -> Option<Value> {
@@ -82,7 +102,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     }))
     .contribute(CronJob::new(SLOW, "0 * * * *", |run| async move {
         record(&run);
-        tokio::time::sleep(SLOW_RUN).await;
+        hold(run.id()).await;
         Ok(())
     }))
     .contribute(CronJob::new(INVOKER, "*/10 * * * *", |run| async move {
@@ -236,6 +256,15 @@ fn id_of(row: &str) -> Id {
         .expect("a run id")
 }
 
+fn the_running(rows: &[String]) -> Id {
+    let running: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.contains(" running "))
+        .collect();
+    assert_eq!(running.len(), 1, "{rows:?}");
+    id_of(running[0])
+}
+
 async fn job_row(harness: &Harness, job: &str) -> Value {
     let listed = harness.call(Who::Admin, JOB_LIST, json!({})).await;
     data(&listed)["data"]
@@ -319,7 +348,7 @@ async fn a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded
     let harness = boot().await;
     wait_leader(&harness).await;
     harness.clock().set(at("2026-09-15T11:00:00Z"));
-    wait_runs(&harness, SLOW, Outcome::Running, 1).await;
+    let first = the_running(&wait_runs(&harness, SLOW, Outcome::Running, 1).await);
     let running = scheduler(&harness);
     wait_until("the quick jobs of the minute finish", || {
         let running = running.clone();
@@ -333,6 +362,7 @@ async fn a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded
 
     harness.clock().set(at("2026-09-15T12:00:00Z"));
     wait_runs(&harness, SLOW, Outcome::Skipped, 1).await;
+    let_go(first);
     let rows = wait_runs(&harness, SLOW, Outcome::Ok, 1).await;
     let outcomes: Vec<&str> = rows.iter().map(|row| without_id(row)).collect();
     assert_eq!(
@@ -354,6 +384,9 @@ async fn a_job_still_running_is_not_started_again_and_the_occurrence_is_recorded
     assert_eq!(recorded(id_of(&rows[1])), None);
 
     harness.clock().set(at("2026-09-15T13:00:00Z"));
+    let_go(the_running(
+        &wait_runs(&harness, SLOW, Outcome::Running, 1).await,
+    ));
     wait_runs(&harness, SLOW, Outcome::Ok, 2).await;
     assert_eq!(runs(&harness, SLOW).await.len(), 3);
     harness.finish().await;
@@ -542,6 +575,7 @@ async fn cron_job_run_starts_a_job_now_and_answers_conflict_while_it_runs() {
     refused(&again, 409, ERROR_RUNNING);
     assert_eq!(again.error().expect("an error").params["id"], json!(SLOW));
     assert_eq!(scheduler(&harness).running(), [SLOW]);
+    let_go(run);
     assert_eq!(
         scheduler(&harness).wait(run).await.expect("the run ends"),
         Outcome::Ok

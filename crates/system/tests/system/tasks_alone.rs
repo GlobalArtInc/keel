@@ -22,7 +22,7 @@ async fn tasks_alone_boots_with_its_tables_holds_its_lock_and_answers_task_list_
         held = harness
             .database()
             .rows(&format!(
-                "SELECT count(*)::text FROM pg_locks WHERE locktype = 'advisory' AND granted AND ((classid::bigint << 32) | objid::bigint) = {LOCK_KEY}"
+                "SELECT count(*)::text FROM pg_locks WHERE locktype = 'advisory' AND granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) AND ((classid::bigint << 32) | objid::bigint) = {LOCK_KEY}"
             ))
             .await;
         if held == ["1"] {

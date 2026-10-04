@@ -533,17 +533,23 @@ async fn a_message_becomes_a_delivery_per_channel_within_a_second_and_the_cursor
         deliveries(&again).await.len() >= 4
     })
     .await;
-    let cursor = again
-        .database()
-        .rows(&format!(
-            "SELECT seq::text FROM notify_cursor WHERE consumer = '{CURSOR}'"
-        ))
-        .await;
     let newest = again
         .database()
         .rows("SELECT max(seq)::text FROM keel_outbox")
         .await;
-    assert_eq!(cursor, newest);
+    wait_until(
+        "the cursor reaches the newest event after the restart",
+        || async {
+            again
+                .database()
+                .rows(&format!(
+                    "SELECT seq::text FROM notify_cursor WHERE consumer = '{CURSOR}'"
+                ))
+                .await
+                == newest
+        },
+    )
+    .await;
     let listed = again
         .call(Who::Admin, DELIVERY_LIST, json!({ "search": "first" }))
         .await;
