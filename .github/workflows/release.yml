@@ -55,16 +55,6 @@ jobs:
           rustup show
           rustup target add x86_64-unknown-linux-musl
 
-      - name: Cache the cargo download directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-musl-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-musl-
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -76,8 +66,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install the frontend dependencies
         working-directory: frontend

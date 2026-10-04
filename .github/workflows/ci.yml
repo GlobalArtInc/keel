@@ -76,16 +76,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Cache the cargo download directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Find the IPv4 port of Postgres
         run: |
@@ -149,8 +139,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install the frontend dependencies
         working-directory: frontend
@@ -258,13 +246,12 @@ jobs:
 
   system:
     name: keel-system with ${{ matrix.features }}
-    needs: check
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         features:
           - auth
@@ -330,16 +317,6 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show
 
-      - name: Cache the cargo download directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Find the IPv4 port of Postgres
         run: |
@@ -384,7 +361,6 @@ jobs:
 
   frontend:
     name: frontend lint, format, test, build, storybook
-    needs: check
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
 
@@ -417,8 +393,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
         env:
@@ -473,7 +447,6 @@ jobs:
 
   rehearsal:
     name: dependency rehearsal
-    needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
@@ -515,16 +488,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Cache the cargo download directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Find the IPv4 port of Postgres
         run: |
@@ -551,8 +514,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install the frontend dependencies
         working-directory: frontend
