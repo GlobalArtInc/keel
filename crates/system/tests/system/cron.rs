@@ -660,7 +660,12 @@ async fn the_hourly_job_of_cron_prunes_the_expired_idempotency_records() {
     assert_eq!(job["schedule"], json!(IDEMPOTENCY_SCHEDULE));
     assert_eq!(job["nextRunAt"], json!("2026-09-15T10:25:00Z"));
     let reseller = harness.principal(Who::Reseller).clone();
-    for key in ["first", "second"] {
+    for (index, key) in ["first", "second"].into_iter().enumerate() {
+        if index > 0 {
+            harness
+                .clock()
+                .advance(keel_sdk::chrono::Duration::minutes(20));
+        }
         let created = harness
             .call_with(
                 &reseller,
@@ -673,9 +678,6 @@ async fn the_hourly_job_of_cron_prunes_the_expired_idempotency_records() {
             )
             .await;
         data(&created);
-        harness
-            .clock()
-            .advance(keel_sdk::chrono::Duration::minutes(20));
     }
     let keys = || {
         harness

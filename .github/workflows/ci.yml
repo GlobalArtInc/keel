@@ -129,16 +129,19 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: frontend/package.json
-          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install node
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - name: Enable pnpm through corepack
+        working-directory: frontend
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Install the frontend dependencies
         working-directory: frontend
@@ -383,16 +386,19 @@ jobs:
           ln -sfn "$dir" target
           echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: frontend/package.json
-          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install node
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - name: Enable pnpm through corepack
+        working-directory: frontend
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Install dependencies
         env:
@@ -504,16 +510,19 @@ jobs:
           echo "postgres did not come up" >&2
           exit 1
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          package_json_file: frontend/package.json
-          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install node
         uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      - name: Enable pnpm through corepack
+        working-directory: frontend
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Install the frontend dependencies
         working-directory: frontend
