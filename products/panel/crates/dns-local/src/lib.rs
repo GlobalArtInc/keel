@@ -1,6 +1,6 @@
 use keel::prelude::*;
 use keel::types::FieldError;
-use keel_hosting_web::api::{DnsProvider, Invoke, SiteZone, ZoneRecord};
+use keel_hosting_web::api::{AfterCommit, DnsProvider, Invoke, SiteZone, ZoneRecord};
 
 const CREATE: &str = "dns.zone.create";
 const LIST: &str = "dns.zone.list";
@@ -29,7 +29,13 @@ struct Local;
 
 #[async_trait]
 impl DnsProvider for Local {
-    async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()> {
+    async fn add_zone(
+        &self,
+        invoke: &Invoke<'_>,
+        _: &AfterCommit<'_>,
+        _: &Id,
+        zone: &SiteZone,
+    ) -> Result<()> {
         let account = (!zone.own_account).then_some(zone.account);
         invoke(CREATE, json!({ "name": zone.name, "account": account }))
             .await

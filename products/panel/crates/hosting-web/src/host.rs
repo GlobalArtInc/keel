@@ -3,14 +3,14 @@ use std::sync::OnceLock;
 
 use keel::prelude::*;
 use keel::sdk::sea_orm::sea_query::Expr;
-use keel::sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use keel::sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use keel::sdk::tokio::sync::Mutex;
 use keel::types::ErrorCode;
 use keel_host::api::{Dest, Host, HostExecutor, Origin};
 use keel_hosting_users::api::HostingUsers;
 
-use crate::api::{DocumentRoot, SiteCertificates, SiteTls, Sites};
-use crate::{PRODUCT, names, overrides, site};
+use crate::api::{DocumentRoot, SiteCertificates, SiteTls, Sites, ZoneFailure};
+use crate::{PRODUCT, functions, names, overrides, site};
 
 pub(crate) const SERVER_TEMPLATE: &str = "panel/nginx-site.conf.j2";
 pub(crate) const POOL_TEMPLATE: &str = "panel/php-fpm-pool.conf.j2";
@@ -357,6 +357,49 @@ impl Sites for Renderer {
             root: names::root(&row.root)?,
             home,
         }))
+    }
+
+    async fn taken(&self, db: &Db, names: &[String]) -> Result<Option<String>> {
+        functions::held(db, None, names).await
+    }
+
+    async fn zone_failed(&self, db: &Db, site: &Id, error: Option<&str>) -> Result<()> {
+        let effects = self
+            .effects
+            .get()
+            .ok_or_else(|| KeelError::internal(DETACHED))?;
+        site::Entity::update_many()
+            .col_expr(
+                site::Column::ZoneError,
+                Expr::value(error.map(str::to_owned)),
+            )
+            .col_expr(site::Column::UpdatedAt, Expr::value(effects.clock.now()))
+            .filter(site::Column::Id.eq(site.to_string()))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    async fn zone_failures(&self, db: &Db) -> Result<Vec<ZoneFailure>> {
+        let rows = site::Entity::find()
+            .filter(site::Column::ZoneError.is_not_null())
+            .order_by_asc(site::Column::Domain)
+            .all(db)
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                let parsed = |id: &str| {
+                    id.parse::<Id>()
+                        .map_err(|_| KeelError::internal(SITE_ID).param("site", row.id.as_str()))
+                };
+                Ok(ZoneFailure {
+                    site: parsed(&row.id)?,
+                    account: parsed(&row.account_id)?,
+                    error: row.zone_error.clone().unwrap_or_default(),
+                    domain: row.domain,
+                })
+            })
+            .collect()
     }
 }
 

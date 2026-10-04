@@ -105,6 +105,12 @@
           "null"
         ]
       },
+      "zoneError": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
       "createdAt": {
         "type": "string",
         "format": "date-time"

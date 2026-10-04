@@ -1,7 +1,18 @@
 {
   "dns_peer": {
     "error": {
-      "unpaired": "No neighbouring installation with DNS is paired yet, so the zone {zone} cannot be created"
+      "answer": "The neighbouring installation {url} answered outside the contract: {reason}",
+      "client": "The call to the neighbouring installation could not be sent: {reason}",
+      "exists": "The zone {name} already exists on the neighbouring installation",
+      "instance": "This installation has no instance id, so it cannot name its customers to the neighbouring installation",
+      "not_started": "The dns-peer module has not started yet",
+      "site": "The site {site} could not be read",
+      "template": "The {type} record {name} of the default template on the neighbouring installation does not hold for this zone",
+      "unpaired": "No neighbouring installation with DNS is paired yet, so the zone {zone} cannot be created",
+      "unreachable": "The neighbouring installation {url} could not be reached: {reason}"
+    },
+    "zone": {
+      "failed": "The DNS zone {zone} of the site was not created on the neighbouring installation: {error}"
     }
   }
 }

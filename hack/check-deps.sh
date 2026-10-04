@@ -253,12 +253,12 @@ for product in $products; do
   modules=$(sed -n 1p <<<"$rules")
   expected_dependants=$(sed -n 2p <<<"$rules")
   siblings=$(sed -n 3p <<<"$rules")
-  direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | { grep -vx keel-host || true; } | sort -u | tr '\n' ' ')
+  direct=$(cargo tree -p "$product" --all-features -e normal --prefix none --depth 1 | awk 'NR > 1 {print $1}' | { grep -E '^keel(-|$)' || true; } | { grep -vx -e keel-host -e keel-client || true; } | sort -u | tr '\n' ' ')
   for module in $modules $siblings; do
     direct=$(tr ' ' '\n' <<<"$direct" | { grep -vx "$module" || true; } | { grep -v '^$' || true; } | tr '\n' ' ')
   done
   if [ "$direct" != "keel " ] && [ "$direct" != "keel keel-system " ]; then
-    echo "$product depends on more than the facade keel, keel-host, the api modules of keel-system, its own module crates and the other module crates of its bundle: $direct" >&2
+    echo "$product depends on more than the facade keel, the libraries keel-host and keel-client, the api modules of keel-system, its own module crates and the other module crates of its bundle: $direct" >&2
     fail=1
   fi
   dependants=$(cargo tree -i "$product" -e normal --prefix none | awk 'NR > 1 {print $1}' | sort -u | tr '\n' ' ')

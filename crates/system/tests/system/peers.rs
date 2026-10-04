@@ -3,7 +3,7 @@ use std::time::Duration;
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ConnectionTrait, TransactionTrait};
 use keel_sdk::serde_json;
-use keel_sdk::system::{Caller, SecretCipher};
+use keel_sdk::system::{Caller, PeerLink, PeerLinks, SecretCipher};
 use keel_sdk::types::{ErrorCode, InstanceInfo, PROTOCOL};
 use keel_system::auth::api::token_hash;
 use keel_system::cron::api::{Outcome, Scheduler};
@@ -694,6 +694,100 @@ async fn a_peer_presenting_another_instance_key_is_refused() {
     impostor_http.stop().await.unwrap();
     impostor_of_b.finish().await;
     impostor_of_a.finish().await;
+    two.finish().await;
+}
+
+async fn offered(harness: &Harness, product: &str) -> Option<PeerLink> {
+    harness
+        .registry()
+        .services()
+        .get::<dyn PeerLinks>()
+        .expect("the peers module answers which link offers a product")
+        .offering(product, &Db::from_connection(harness.db().clone()))
+        .await
+        .expect("the links are read")
+}
+
+async fn publish(harness: &Harness, link: &str, products: &str) {
+    harness
+        .db()
+        .execute_unprepared(&format!(
+            "UPDATE peer_product SET products_json = '{products}'::jsonb WHERE id = '{link}'"
+        ))
+        .await
+        .expect("the products of the link are set");
+}
+
+#[tokio::test]
+async fn the_link_offering_a_product_hands_over_its_address_and_outbound_token() {
+    let two = Two::start().await;
+    let linked = two
+        .pair(
+            json!({ "scopes": ["keel.account.list"], "level": "admin" }),
+            json!({}),
+        )
+        .await;
+    assert!(offered(&two.a, "dns").await.is_none());
+
+    publish(&two.a, &linked.a_link, r#"["dns", "panel"]"#).await;
+    let link = offered(&two.a, "dns").await.expect("the link offers dns");
+    assert_eq!(link.id.to_string(), linked.a_link);
+    assert_eq!(link.instance, two.b.instance());
+    assert_eq!(link.url, two.b_url());
+    assert_eq!(link.token.expose(), outbound(&two.a, &linked.a_link).await);
+    assert!(link.token.expose().starts_with("kpt_"));
+    assert!(offered(&two.a, "panel").await.is_some());
+    assert!(offered(&two.a, "bill").await.is_none());
+
+    publish(&two.b, &linked.b_link, r#"["dns"]"#).await;
+    assert!(
+        offered(&two.b, "dns").await.is_none(),
+        "a link without the address of its peer offers nothing to call"
+    );
+
+    let third = installation().await;
+    let third_http = third.http().await;
+    let code = code(
+        &third,
+        json!({ "scopes": ["keel.account.list"], "level": "admin" }),
+    )
+    .await;
+    let created = two
+        .a
+        .call(
+            Who::Admin,
+            CREATE,
+            json!({ "url": third_http.url(""), "code": code }),
+        )
+        .await;
+    let newer = data(&created)["id"].as_str().unwrap().to_owned();
+    publish(&two.a, &newer, r#"["dns"]"#).await;
+    assert_eq!(
+        offered(&two.a, "dns").await.map(|link| link.id.to_string()),
+        Some(linked.a_link.clone()),
+        "the oldest link offering the product wins"
+    );
+    assert_eq!(
+        offered(&two.a, "panel")
+            .await
+            .map(|link| link.id.to_string()),
+        Some(linked.a_link.clone())
+    );
+
+    let deleted = two
+        .a
+        .call(Who::Admin, DELETE, json!({ "id": linked.a_link }))
+        .await;
+    assert_eq!(deleted.status(), 200, "{deleted:?}");
+    let left = offered(&two.a, "dns")
+        .await
+        .expect("the newer link remains");
+    assert_eq!(left.id.to_string(), newer);
+    assert_eq!(left.url, third_http.url(""));
+    assert_eq!(left.instance, third.instance());
+    assert!(offered(&two.a, "panel").await.is_none());
+    third_http.stop().await.unwrap();
+    third.finish().await;
     two.finish().await;
 }
 

@@ -180,6 +180,73 @@ async fn a_zone_over_the_account_limit_is_refused_before_the_transaction() {
 }
 
 #[tokio::test]
+async fn check_answers_the_refusals_of_create_for_the_caller_and_creates_nothing() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let a1 = harness.fixtures().accounts.a1;
+    let a2 = harness.fixtures().accounts.a2;
+    let check = async |who: Who, params: Value| harness.call(who, "dns.zone.check", params).await;
+
+    let free = check(Who::A1, json!({ "name": "Free.Example" })).await;
+    assert_eq!(data(&free), &json!({ "name": "free.example" }));
+
+    let theirs = create(&harness, Who::A2, "taken.example").await;
+    state_becomes(&harness, &theirs, "active").await;
+    let taken = check(Who::A1, json!({ "name": "Taken.Example" })).await;
+    let error = taken.error().expect("the name is taken");
+    assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+    assert_eq!(error.fields.len(), 1, "{error:?}");
+    assert_eq!(error.fields[0].path, "name");
+    assert_eq!(
+        error.fields[0].key.as_deref(),
+        Some("dns.zone.error.exists")
+    );
+    assert_eq!(error.fields[0].params["name"], json!("taken.example"));
+
+    let malformed = check(Who::A1, json!({ "name": "not a domain" })).await;
+    let error = malformed.error().expect("the name is no domain");
+    assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+    assert_eq!(error.fields[0].path, "name");
+    assert_eq!(error.fields[0].key.as_deref(), Some("keel.check.domain"));
+
+    harness
+        .db()
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO keel_limit (account_id, key, value) VALUES ($1, 'dns.zones', '1'::jsonb)",
+            [a1.to_string().into()],
+        ))
+        .await
+        .expect("the limit of one zone");
+    data(&check(Who::A1, json!({ "name": "first.example" })).await);
+    let first = create(&harness, Who::A1, "first.example").await;
+    state_becomes(&harness, &first, "active").await;
+    let over = check(Who::A1, json!({ "name": "second.example" })).await;
+    let error = over.error().expect("the account is at its limit");
+    assert_eq!(error.code, ErrorCode::LimitExceeded, "{error:?}");
+    assert_eq!(error.params["limit"], json!("dns.zones"));
+    assert_eq!(error.params["max"], json!(1));
+    let for_a2 = check(
+        Who::Admin,
+        json!({ "name": "second.example", "account": a2.to_string() }),
+    )
+    .await;
+    assert_eq!(data(&for_a2), &json!({ "name": "second.example" }));
+    let foreign_account = check(
+        Who::A1,
+        json!({ "name": "second.example", "account": a2.to_string() }),
+    )
+    .await;
+    assert!(foreign_account.error().is_some(), "{foreign_account:?}");
+
+    assert_eq!(
+        rows(&harness, "SELECT name FROM dns_zone ORDER BY name").await,
+        ["first.example", "taken.example"]
+    );
+    harness.finish().await;
+}
+
+#[tokio::test]
 async fn a_failing_check_leaves_the_row_but_marks_the_zone_with_the_error_and_the_problem() {
     let site = Site::new();
     let harness = dns(&site).await;

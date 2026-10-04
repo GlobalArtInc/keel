@@ -44,6 +44,7 @@ pub struct Model {
     pub pool_config: String,
     pub state: String,
     pub error: Option<String>,
+    pub zone_error: Option<String>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

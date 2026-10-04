@@ -1,0 +1,49 @@
+{
+  "keel": 1,
+  "name": "dns.zone.check",
+  "module": "dns",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "dns.zone.manage",
+    "feature": "dns.zones"
+  },
+  "params": {
+    "title": "ZoneCheck",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 253,
+        "x-keel": {
+          "check": "domain"
+        }
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "ZoneChecked",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ]
+  }
+}

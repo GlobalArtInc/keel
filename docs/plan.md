@@ -6965,6 +6965,75 @@ that does not fit is reported by the category and position of the error, not its
 conformance suite's `--cacert` pins the certificates of its PEM instead of trusting them as roots,
 which leaves its checks unchanged since `hack/conformance.sh` passes the installation's own
 certificate, and its envelope checks go through `Response::answer`.
+Step 6a leaves points for the pass over [design/01-overview.md](design/01-overview.md),
+[design/05-modules.md](design/05-modules.md) and [design/07-ecosystem.md](design/07-ecosystem.md).
+A product module crate may depend on `keel-client`, a library of L4 like `keel-host`, which
+`hack/check-deps.sh` admits; `dns-peer` does, and on the `api` of `hosting-users` and the `notify`
+api of `keel-system`, and requires `hosting_site`, `hosting`, `task` and `notify`. The bridge still
+picks its side at start by whether `dns` is enabled; `dns-peer` finds its neighbour on every call
+through the hidden `PeerLinks::offering(product, db)`, which `peers` answers, when it provides it,
+with the oldest active link by creation whose peer published the product in its handshake (the
+products the daily check refreshes) and which carries an address, as `PeerLink { id, instance, url,
+token }` with the outbound token opened; without one a zone answers `503 dns_peer.error.unpaired`
+as before, a link paired after start serves without a restart, and of several neighbours the
+oldest wins. The customer of a site is its account: before each call on its behalf `dns-peer` calls
+`keel.principal.upsert` on the neighbour as the link itself, with the origin `panel:<instance id>`
+of the installation and the account's id as the external id of both the account and one
+principal, the login `panel-<instance id>-<account id>` in lower case (unique across panels, the
+nil root account included) and the level `user`, then calls with `X-Keel-On-Behalf-Of` naming that
+principal, so the zone lands in the customer's own account on the neighbour whoever created the
+site; a pair code for a panel therefore grants `keel.principal.upsert`, `dns.zone.check` and
+`dns.zone.create`, a level of `reseller` or above and `onBehalf`. `dns-zones` adds `dns.zone.check
+{ name, account? }`, a read action with the access of `dns.zone.create` that answers `{ name }` in
+lower case or the refusals the creation would answer for that name and account (the schema and the
+`domain` check, `dns.zone.error.exists` on `name`, the `dns.zones` limit) and creates nothing. The
+pre-check is a `before` hook of `dns-peer` on `hosting.site.create`, the stage outside the
+transaction that may wait on the network: when `dnsZone` is set and the caller sees the hosting
+user, it syncs the customer and calls `dns.zone.check` on behalf, unless the handler is certain to
+refuse anyway, for a hosting user still pending or a domain or alias a site already holds, which
+the new `Sites::taken(db, names)` answers with the handler's own query, so those refusals answer
+without a call to the neighbour; the handler's other refusals, an alias named twice and the
+`hosting.sites` limit of its within hook, come after the check, so with `dnsZone` set a refusal or
+an outage of the neighbour answers before them, and a name freed between the hook and the handler
+skips the check and leaves the zone to the task. A refusal of the neighbour answers `peer` (502)
+with its params and its field errors moved onto the site form, `name` on `domain` and any other on
+`dnsZone` as `dns-local` moves them, so no site commits. Its keys travel as they come, but for the
+two of `dns` a customer meets, which a panel-only installation, where `dns` is not loaded, has no
+text for: `dns.zone.error.exists` and `dns.zone.error.template` become `dns_peer.error.exists` and
+`dns_peer.error.template` with the same params, and a field keeps the neighbour's key as its
+`code`; the keys of the kernel and of the system modules, which both installations carry, pass
+unchanged, and any other key of `dns`, an internal fault of the neighbour, reaches the panel as the
+key itself, which the shell prints as it prints any key it does not know. A transport failure
+answers `502 dns_peer.error.unreachable { url, reason }`, an answer outside the contract
+`502 dns_peer.error.answer { url, status, reason }` and a request the client refuses `500
+dns_peer.error.client`; the hook's client makes one attempt with 2 seconds to connect and 4 for the
+whole check, inside the kernel's 5 seconds for a hook, so a silent neighbour answers `peer` rather
+than `keel.error.hook_timeout`. `DnsProvider::add_zone` gains the site's id and `after:
+&AfterCommit`, through which a provider registers an after-commit hook, and `hosting-web` now
+generates the site's id before the insert; `dns-peer` registers one that spawns its internal read
+task `dns_peer.zone.create { site }` (class `dns_peer.zone`, not resumable) as the caller with its
+scope widened to full, since the task continues a call its credential was admitted to, as `peers`
+treats its continuations, so a token narrowed to `hosting.site.create` still gets its zone. The task
+reads the site through `hosting.site.get` under that principal, ends without a zone when the site is
+gone, syncs the customer and calls `dns.zone.create { name }` on behalf with the key
+`dns_peer.zone.create:<site>:<request id of the task>`, so the client's retries create one zone. The
+job is spawned after commit, as the certificates of `hosting-ssl` are, so a stop between the commit
+and the spawn leaves the site without its zone. A failure after commit is reported three ways: the
+task fails with the mapped error; the site row's new column `zone_error`, `zoneError` in the site's
+answers and a column of `hosting.site.list`, holds the key of the error as relayed (its first
+field's key, else its own), written through the new `Sites::zone_failed(db, site, error)` and
+cleared by a success, apart from `state` and `error`, which the apply of nginx owns and rewrites;
+and `dns-peer` contributes the problem source `dns_peer.zone.failed`, critical, about the site, for
+its account, with the zone and the error, over the new `Sites::zone_failures(db)`, so the problem
+stands while the row carries the error and clears with the site or its account. The column and the
+problem's `{error}` show that key as text, as the column `error` of M5 shows the detail or the key
+of a failed apply, since neither a `Text` column nor a param is translated; translating a key held
+in a column or a param is the shell's, not this step's. No function retries a zone; recreating the
+site or creating the zone on the neighbour are the remedies. Through a peer `foreign` and
+`add_records` keep their answers of M5, so the zones of the neighbour stand behind neither the
+foreign-zone rule of sites and mail domains nor the MX and SPF records of a mail domain. For 8b:
+`PeerLinks` hands the outbound token of a link to any module compiled in, the pre-check writes the
+customer on the neighbour before the local transaction decides, and the widened scope of the task.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

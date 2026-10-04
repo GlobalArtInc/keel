@@ -6,6 +6,7 @@ mod entity;
 mod functions;
 mod identity;
 mod inbox;
+mod links;
 mod on_behalf;
 mod pairing;
 mod pull;
@@ -18,12 +19,13 @@ use keel_sdk::InstanceInfoSource;
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
     AccountSource, Authenticator, Caller, ContextExt, Degradation, EventRelay, Features,
-    Installation, OnBehalf, OutboxSubscriber, PeerReach, PrincipalSource, SecretCipher,
+    Installation, OnBehalf, OutboxSubscriber, PeerLinks, PeerReach, PrincipalSource, SecretCipher,
 };
 use keel_sdk::types::Scope;
 
 use authenticator::PeerAuthenticator;
 use delivery::Delivery;
+use links::Links;
 
 pub use authenticator::ERROR_PRINCIPAL;
 pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, SCHEDULE, SOURCE};
@@ -107,6 +109,8 @@ fn init(r: &mut Registrar) -> Result<()> {
     let contributed: Arc<dyn Authenticator> = authenticator.clone();
     let delegate: Arc<dyn OnBehalf> = authenticator.clone();
     let reach: Arc<dyn PeerReach> = authenticator.clone();
+    let links = Arc::new(Links::default());
+    let offered: Arc<dyn PeerLinks> = links.clone();
     let delivery = Arc::new(Delivery::default());
     let [hook, feed] = delivery::endpoints(&delivery);
     r.require::<dyn Caller>()
@@ -121,6 +125,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(contributed)
         .contribute(delegate)
         .provide(reach)
+        .provide(offered)
         .contribute(check::job())
         .within(UPSERTS[0], identity::bound)
         .within(UPSERTS[1], identity::bound)
@@ -143,6 +148,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                 ctx.require::<dyn PrincipalSource>()?,
                 ctx.require::<dyn AccountSource>()?,
             );
+            links.attach(ctx.require::<dyn SecretCipher>()?);
             delivery.attach(delivery::Seams {
                 db: ctx.db(),
                 clock: ctx.require::<dyn Clock>()?,
@@ -233,6 +239,7 @@ mod tests {
             1
         );
         assert!(registrations.provides.get::<dyn PeerReach>().is_some());
+        assert!(registrations.provides.get::<dyn PeerLinks>().is_some());
         let endpoints: Vec<(&str, &str, &str)> = registrations
             .contributions
             .of::<keel_sdk::system::Endpoint>()

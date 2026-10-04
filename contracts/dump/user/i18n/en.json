@@ -1705,7 +1705,8 @@
           "php": "PHP",
           "root": "Document root",
           "state": "State",
-          "suspended": "Suspended"
+          "suspended": "Suspended",
+          "zoneError": "DNS zone error"
         },
         "config-editor": {
           "noPool": "The site runs no PHP, so no pool is rendered",

@@ -25,7 +25,7 @@ keel-hosting-web = { workspace = true }
 [dev-dependencies]
 keel-dns = { workspace = true }
 keel-kernel = { workspace = true }
-keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "license", "stats", "svc"] }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "stats", "peers", "svc"] }
 keel-testkit = { workspace = true }
 rcgen = { workspace = true }
 rustls = { workspace = true }

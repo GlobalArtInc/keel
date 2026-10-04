@@ -2384,7 +2384,10 @@ name = "keel-dns-peer"
 version = "0.3.0"
 dependencies = [
  "keel",
+ "keel-client",
+ "keel-hosting-users",
  "keel-hosting-web",
+ "keel-system",
 ]
 
 [[package]]

@@ -4,6 +4,10 @@ use keel_host::api::Origin;
 
 pub type Invoke<'a> = dyn Fn(&str, Value) -> BoxFuture<'static, Result<Value>> + Send + Sync + 'a;
 
+pub type Deferred = Box<dyn FnOnce(AfterContext) -> BoxFuture<'static, Result<()>> + Send>;
+
+pub type AfterCommit<'a> = dyn Fn(Deferred) + Send + Sync + 'a;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SiteZone {
     pub name: String,
@@ -19,9 +23,23 @@ pub struct ZoneRecord {
     pub priority: Option<u16>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZoneFailure {
+    pub site: Id,
+    pub account: Id,
+    pub domain: String,
+    pub error: String,
+}
+
 #[async_trait]
 pub trait DnsProvider: Send + Sync {
-    async fn add_zone(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<()>;
+    async fn add_zone(
+        &self,
+        invoke: &Invoke<'_>,
+        after: &AfterCommit<'_>,
+        site: &Id,
+        zone: &SiteZone,
+    ) -> Result<()>;
     async fn foreign(&self, invoke: &Invoke<'_>, zone: &SiteZone) -> Result<bool>;
     async fn add_records(
         &self,
@@ -61,4 +79,7 @@ pub struct DocumentRoot {
 pub trait Sites: Send + Sync {
     async fn render(&self, db: &Db, origin: Origin, site: &Id) -> Result<()>;
     async fn document_root(&self, db: &Db, site: &Id) -> Result<Option<DocumentRoot>>;
+    async fn taken(&self, db: &Db, names: &[String]) -> Result<Option<String>>;
+    async fn zone_failed(&self, db: &Db, site: &Id, error: Option<&str>) -> Result<()>;
+    async fn zone_failures(&self, db: &Db) -> Result<Vec<ZoneFailure>>;
 }

@@ -7,7 +7,7 @@ use keel::sdk::serde_json;
 use keel::sdk::system::AccountSource;
 use keel_hosting_users::api::{HostingUser, HostingUsers};
 
-use crate::api::{DnsProvider, SiteCertificates, SiteZone};
+use crate::api::{Deferred, DnsProvider, SiteCertificates, SiteZone};
 use crate::host::{Effects, Gone, Turn};
 use crate::names::{self, ALIASES_MAX, PHP_PATTERN, ROOT_MAX, ROOT_PATTERN};
 use crate::{FEATURE, lifecycle, site};
@@ -116,6 +116,7 @@ pub(crate) fn list() -> FunctionDef {
             .column(Column::new("php", ColumnType::Text))
             .column(Column::new("root", ColumnType::Text))
             .column(Column::new("error", ColumnType::Text))
+            .column(Column::new("zoneError", ColumnType::Text))
             .column(
                 Column::new("accountId", ColumnType::Text)
                     .level(Level::Reseller)
@@ -179,8 +180,9 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 let accounts = call.require::<dyn AccountSource>()?;
                 let suspended = lifecycle::off(tx, accounts.as_ref(), tx, account).await?;
                 let now = call.require::<dyn Clock>()?.now();
+                let id = Id::generate();
                 let row = site::ActiveModel {
-                    id: Set(Id::generate().to_string()),
+                    id: Set(id.to_string()),
                     account_id: Set(account.to_string()),
                     user_id: Set(owner.id.to_string()),
                     domain: Set(domain.clone()),
@@ -193,6 +195,7 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                     pool_config: Set(String::new()),
                     state: Set(site::STATE_PENDING.to_owned()),
                     error: Set(None),
+                    zone_error: Set(None),
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
@@ -201,8 +204,11 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 let invoke = |func: &str, params: Value| call.invoke(func, params);
                 if params.dns_zone {
                     let dns = call.require::<dyn DnsProvider>()?;
+                    let after = |hook: Deferred| call.after_commit(hook);
                     dns.add_zone(
                         &invoke,
+                        &after,
+                        &id,
                         &SiteZone {
                             name: domain,
                             account,
@@ -212,12 +218,8 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                     .await?;
                 }
                 if params.lets_encrypt {
-                    let site: Id = row
-                        .id
-                        .parse()
-                        .map_err(|_| KeelError::internal(SITE_ID).param("site", row.id.as_str()))?;
                     call.require::<dyn SiteCertificates>()?
-                        .request(&invoke, &site)
+                        .request(&invoke, &id)
                         .await?;
                 }
                 apply_after_commit(&call, &turn, vec![row.id.clone()])?;
@@ -395,22 +397,32 @@ async fn refuse_taken<C: ConnectionTrait>(
         .await?;
     let mut names = vec![domain.to_owned()];
     names.extend(aliases.iter().cloned());
+    let Some(name) = held(db, except, &names).await? else {
+        return Ok(());
+    };
+    let field = if name == domain { "domain" } else { "aliases" };
+    Err(KeelError::conflict(EXISTS).field(field).param("name", name))
+}
+
+pub(crate) async fn held<C: ConnectionTrait>(
+    db: &C,
+    except: Option<&str>,
+    names: &[String],
+) -> Result<Option<String>> {
     let taken = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
             TAKEN,
             [
                 except.unwrap_or_default().into(),
-                serde_json::to_string(&names)?.into(),
+                serde_json::to_string(names)?.into(),
             ],
         ))
         .await?;
-    let Some(taken) = taken else {
-        return Ok(());
-    };
-    let name: String = taken.try_get("", "n")?;
-    let field = if name == domain { "domain" } else { "aliases" };
-    Err(KeelError::conflict(EXISTS).field(field).param("name", name))
+    taken
+        .map(|row| row.try_get("", "n"))
+        .transpose()
+        .map_err(KeelError::from)
 }
 
 pub(crate) async fn load<C: ConnectionTrait>(db: &C, id: &Id) -> Result<site::Model> {

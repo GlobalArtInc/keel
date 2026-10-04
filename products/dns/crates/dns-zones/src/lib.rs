@@ -61,6 +61,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::list())
         .function(functions::get())
         .function(functions::claim())
+        .function(functions::check())
         .function(functions::dnssec())
         .function(functions::create())
         .function(functions::edit())

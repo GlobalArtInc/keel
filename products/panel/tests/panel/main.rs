@@ -2,6 +2,7 @@ mod backup;
 mod bridge;
 mod config;
 mod db;
+mod dns_peer;
 mod files;
 mod ftp;
 mod license;

@@ -1,7 +1,7 @@
 use keel::prelude::*;
 use keel::sdk::sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set,
-    Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait,
+    QueryFilter, Set, Statement,
 };
 use keel::sdk::system::AccountSource;
 use keel::types::ErrorCode;
@@ -10,7 +10,7 @@ use crate::api::{Expansion, RecordSeed, ZoneTemplates};
 use crate::changes::{bump, first_serial};
 use crate::history::LOG;
 use crate::provider::DnsProvider;
-use crate::{EXISTS, account, switch, zone};
+use crate::{EXISTS, LIMIT, account, switch, zone};
 
 const READ: &str = "dns.zone.read";
 const MANAGE: &str = "dns.zone.manage";
@@ -25,6 +25,7 @@ const TEMPLATES: &str = "dns.template.options";
 const TEMPLATE_RECORD: &str = "dns.zone.error.template";
 const TEMPLATE_STORED: &str = "dns.account.error.template";
 const CLAIM: &str = "dns.zone.claim";
+const CHECK: &str = "dns.zone.check";
 const NAME_MAX: u32 = 253;
 const OWNERS: &str = "SELECT DISTINCT account_id FROM dns_zone WHERE name = ANY($1)";
 
@@ -251,6 +252,44 @@ pub(crate) fn claim() -> FunctionDef {
                 foreign |= owner != account;
             }
             Ok(Claimed { foreign })
+        })
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct ZoneCheck {
+    #[schemars(length(min = 3, max = 253), extend("x-keel" = json!({ "check": "domain" })))]
+    name: String,
+    #[schemars(extend("x-keel" = json!({ "level": "reseller", "options": "keel.account.options" })))]
+    account: Option<Id>,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct ZoneChecked {
+    name: String,
+}
+
+pub(crate) fn check() -> FunctionDef {
+    function::<ZoneCheck, ZoneChecked>(CHECK)
+        .kind(Kind::Action)
+        .mode(Mode::Read)
+        .access(Level::User, MANAGE)
+        .feature(FEATURE)
+        .unowned()
+        .handler(|call: Call<ZoneCheck>| async move {
+            let params = call.params();
+            let account = call.resolve_account(params.account).await?;
+            let name = params.name.to_ascii_lowercase();
+            refuse_taken(call.db(), &name).await?;
+            let kept = zone::Entity::find()
+                .filter(zone::Column::AccountId.eq(account.to_string()))
+                .count(call.db())
+                .await?;
+            call.check_limit(LIMIT, kept).await?;
+            Ok(ZoneChecked { name })
         })
 }
 

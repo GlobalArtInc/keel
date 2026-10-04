@@ -4784,6 +4784,101 @@
         }
       }
     },
+    "/api/v1/call/dns.zone.check": {
+      "post": {
+        "operationId": "dns.zone.check",
+        "tags": [
+          "dns"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.zone.manage",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ZoneCheck",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 253,
+                    "x-keel": {
+                      "check": "domain"
+                    }
+                  },
+                  "account": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "reseller",
+                      "options": "keel.account.options"
+                    }
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ZoneChecked",
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/dns.zone.claim": {
       "post": {
         "operationId": "dns.zone.claim",
@@ -11422,6 +11517,12 @@
                             "null"
                           ]
                         },
+                        "zoneError": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -11665,6 +11766,12 @@
                             "null"
                           ]
                         },
+                        "zoneError": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -11789,6 +11896,12 @@
                           "type": "string"
                         },
                         "error": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "zoneError": {
                           "type": [
                             "string",
                             "null"
@@ -23808,6 +23921,12 @@
             "type": "string"
           },
           "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zoneError": {
             "type": [
               "string",
               "null"

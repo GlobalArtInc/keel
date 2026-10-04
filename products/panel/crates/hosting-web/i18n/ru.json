@@ -14,7 +14,8 @@
         "php": "PHP",
         "root": "Корень сайта",
         "state": "Состояние",
-        "suspended": "Приостановлен"
+        "suspended": "Приостановлен",
+        "zoneError": "Ошибка зоны DNS"
       },
       "config-editor": {
         "noPool": "Сайт работает без PHP, пул не формируется",

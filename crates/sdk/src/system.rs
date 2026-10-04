@@ -74,6 +74,19 @@ pub trait PeerReach: Send + Sync {
     async fn admits(&self, principal: &Principal, origin: Option<&str>, db: &Db) -> Result<bool>;
 }
 
+#[derive(Clone, Debug)]
+pub struct PeerLink {
+    pub id: Id,
+    pub instance: Id,
+    pub url: String,
+    pub token: Secret,
+}
+
+#[async_trait]
+pub trait PeerLinks: Send + Sync {
+    async fn offering(&self, product: &str, db: &Db) -> Result<Option<PeerLink>>;
+}
+
 pub async fn peer_sees(
     reach: Option<&dyn PeerReach>,
     accounts: &dyn AccountSource,
@@ -740,6 +753,20 @@ mod tests {
         let mut bare = about(crate::svc::SUBJECT, foreign);
         bare.subject = None;
         assert!(seen(alpha, bare).await);
+    }
+
+    #[test]
+    fn a_peer_link_prints_its_address_and_never_its_token() {
+        let link = PeerLink {
+            id: Id::generate(),
+            instance: Id::generate(),
+            url: "https://dns.example:8443".into(),
+            token: Secret::new("kpt_01J9B.never-printed"),
+        };
+        let printed = format!("{link:?}");
+        assert!(printed.contains("https://dns.example:8443"), "{printed}");
+        assert!(!printed.contains("never-printed"), "{printed}");
+        assert_eq!(link.token.expose(), "kpt_01J9B.never-printed");
     }
 
     #[test]
