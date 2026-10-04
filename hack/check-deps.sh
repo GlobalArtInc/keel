@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 fail=0
-for forbidden in keel-system keel-host keel-host-agent; do
+for forbidden in keel-system keel-host keel-host-agent keel-client; do
   if cargo metadata --format-version 1 --no-deps | python3 -c '
 import json, sys
 meta = json.load(sys.stdin)
@@ -41,7 +41,7 @@ for forbidden in tokio async-std smol sqlx sea-orm axum hyper http reqwest; do
 done
 echo "keel-types graph checked"
 
-for forbidden in axum cookie cookie_store hyper http reqwest tower tower-http keel-kernel keel-system keel-host; do
+for forbidden in axum cookie cookie_store hyper http reqwest tower tower-http keel-kernel keel-system keel-host keel-client; do
   if cargo tree -p keel-sdk -e normal --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
     echo "keel-sdk depends on $forbidden" >&2
     fail=1
@@ -93,9 +93,22 @@ for forbidden in keel-kernel keel-system keel-host-agent keel-testkit keel; do
 done
 echo "keel-host graph checked"
 
+client=$(cargo tree -p keel-client -e normal,build --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
+if [ "$client" != "keel-types " ]; then
+  echo "keel-client depends on workspace crates other than keel-types: $client" >&2
+  fail=1
+fi
+for forbidden in keel-kernel keel-sdk keel-system keel-testkit keel keel-host keel-host-agent; do
+  if cargo tree -p keel-client -e normal,build --prefix none | awk '{print $1}' | grep -qx "$forbidden"; then
+    echo "keel-client reaches $forbidden through its dependencies" >&2
+    fail=1
+  fi
+done
+echo "keel-client graph checked"
+
 conformance=$(cargo tree -p keel-conformance -e normal,build,dev --prefix none --depth 1 | awk 'NR > 1 {print $1}' | grep '^keel' | sort -u | tr '\n' ' ')
-if [ "$conformance" != "keel-types " ]; then
-  echo "keel-conformance depends on workspace crates other than keel-types: $conformance" >&2
+if [ "$conformance" != "keel-client keel-types " ]; then
+  echo "keel-conformance depends on workspace crates other than keel-client and keel-types: $conformance" >&2
   fail=1
 fi
 for forbidden in keel-kernel keel-sdk keel-system keel-testkit keel; do

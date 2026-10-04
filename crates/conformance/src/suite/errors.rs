@@ -1,5 +1,5 @@
+use keel_client::http::header::ORIGIN;
 use keel_types::{ErrorCode, Id};
-use reqwest::header::ORIGIN;
 use serde_json::json;
 
 use super::Suite;

@@ -6901,6 +6901,70 @@ oldest principal of the account carrying the account's origin, landing on `/f/dn
 `/f/hosting.site.list` and absolute through a peer, and `409 svc.error.no_principal` when there is
 none; a malformed answer of `auth.key.issue` or `stats.series` is `svc.error.answer`. Deleting the
 account drops its rows of `dns_account`, `dns_service` and `hosting_site_service`.
+Step 5 corrects the sentence of [design/05-modules.md](design/05-modules.md) that typed the
+conformance suite with `keel-types` and nothing else of the workspace, and leaves points for the
+pass over [design/01-overview.md](design/01-overview.md),
+[design/07-ecosystem.md](design/07-ecosystem.md) and
+[design/10-contracts.md](design/10-contracts.md). `keel-client` depends on `keel-types` alone among
+the workspace crates, neither the kernel nor the SDK depends on it, and `keel-conformance` depends
+on it and on `keel-types`, so the suite is a client on `keel-client` typed with `keel-types`;
+`hack/check-deps.sh` holds the three rules. A `Client` is built from the installation's base address
+with a trust, a credential, an optional customer, timeouts (30 seconds, 10 to connect), the number
+of attempts (3), the first pause between them (250 ms, doubling up to 5 s) and the largest answer it
+reads (8 MiB), and is cheap to clone with another credential or customer. `call::<T>(func, params)`
+awaits to `Answer<T> { data, meta, replayed, meta_version, session }`, takes `.idempotency_key()`,
+`.on_behalf()` and `.credential()`, and refuses a function name that is not dot-separated segments
+of ASCII letters, digits, `_` and `-`, so no name leaves `/api/v1/call/`. An ok envelope is accepted
+under `200` alone and an error envelope under the status of its code alone, which is
+`Error::Refused` with the `CallError` and accessors for its code, key, params, field paths and
+request id; a status disagreeing with the envelope, a body that is not an envelope or does not fit
+`T` and a redirect, which the client never follows so a credential never reaches another address,
+are `Error::Answer`, as is any answer above the limit; a failure to connect, a timeout or a
+connection lost before the whole answer is `Error::Transport` with the number of attempts; what the
+client refuses to send is `Error::Invalid`. A call is retried only when it carries a key given
+through `idempotency_key`, on `Error::Transport` or any status of 500 and above, never on a refusal
+below 500; the handshake, the feed and a stream carry no key and are never retried. A timeout is
+retried while the first attempt may still run on the installation: the retry waits on the key's lock
+until the first attempt commits and is then answered from the idempotency store, which the
+acceptance test proves by holding `keel_account` until the retry waits behind the first attempt.
+`Credential::token`, `peer` and `session` take a `kat_`, `kpt_` or `ks_` value of visible characters
+without `"`, `,`, `;` and `\`; the first two travel as `Bearer`, the session as the cookie
+`__Host-keel_session`, which the cross-site check admits since the client sends neither `Origin` nor
+`Sec-Fetch-Site`, and the session a login sets is read from its `Set-Cookie` into `Answer::session`.
+`OnBehalf::new(origin, external_id)` admits an origin of a name, a lowercase ASCII letter followed
+by up to 63 lowercase letters, digits and `_`, then `:` and a canonical instance id, and an external
+id of 1 to 256 characters of the alphabet of `EXTERNAL_PATTERN`: the grammar by which the
+installation reads `X-Keel-On-Behalf-Of`, so a header it would answer with `422 peer.error.header`
+is refused before it is sent, a test holds the client's grammar to the installation's character by
+character, and the installation alone judges whether the origin names the calling peer; it is set on
+a client or on one call, and the handshake and the feed go without it, since the feed answers the
+link itself. A key is 1 to 255 printable ASCII characters as the kernel admits it and, since the
+kernel trims, without surrounding spaces. `Trust::System` verifies the certificate by the roots of
+the operating system; `Trust::Pinned(pins)` admits a server whose end-entity certificate has a
+pinned SHA-256 and which proves its key in the handshake, whatever the certificate's names, chain
+and dates, so an installation's self-signed certificate is trusted under any address it is reached
+by and a renewed certificate needs a new pin; a pin reads the fingerprint the installer prints, hex
+with or without colons, or every certificate of a PEM, and an empty list is refused. The base is an
+`http` or `https` address without credentials, query or fragment, kept as the URL parser normalises
+it, so `HTTPS://Host/` is `https://host` and gets its trust. A `Trust::Pinned` on an `http` base is
+refused rather than ignored, since such a base presents no certificate and a client meant to pin
+would send its credential in clear; `Trust::System`, the default, means nothing there and is
+accepted, so a caller that never chose a trust can still reach a plain base. The client configures
+the ring provider itself and installs no process-wide provider, and offers `http/1.1` alone.
+`feed(after)` with `.types()` and `.limit()` is a stream of the events of `GET /api/v1/x/peer/feed`
+that pages from its cursor and ends when a page brings no event and `next` does not move; `cursor()`
+is the `seq` to resume after, the `next` of a page once its events are yielded, so the events the
+masks leave out are passed; a page going back, or an event out of order or outside the cursor
+exclusive to `next` inclusive, ends the stream with `Error::Answer`; it does not poll, and a
+consumer opens a new feed from the cursor. The raw `send(Request) → Response` and `open(Request) →
+Streaming` serve the routes outside the envelope, the conformance suite among their callers: they
+answer a redirect as the response it is, still without following it, and an explicit header of a raw
+request overrides the one the client derives, so the suite can still send what the typed values
+refuse. The `Debug` of a request or a response prints neither a body nor a header value, and a body
+that does not fit is reported by the category and position of the error, not its values. The
+conformance suite's `--cacert` pins the certificates of its PEM instead of trusting them as roots,
+which leaves its checks unchanged since `hack/conformance.sh` passes the installation's own
+certificate, and its envelope checks go through `Response::answer`.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

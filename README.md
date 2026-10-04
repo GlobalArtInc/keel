@@ -32,7 +32,8 @@ built; the milestones after them are designed, not yet built.
 crates/      keel-types, keel-sdk, keel-kernel, keel-system, keel-testkit, keel-conformance,
              keel (the facade), keel-dev (crates/dev: types, descriptors, views share, openapi,
              and crates/dev/src/i18n with extract, missing and pull), keel-host, keel-host-agent,
-             keel-release (the release manifest, its signature and the keys)
+             keel-release (the release manifest, its signature and the keys), keel-client (the
+             Rust client of the wire contract)
 products/    demo, dns (KeelDNS), panel (KeelPanel) — one bundle (lib crate) each
 bin/keel/    keel-bin — the binary keel: the composition of every module and every bundle of
              the workspace; the only crate that depends on product crates. Its cargo feature
@@ -201,10 +202,11 @@ installer leaves to later milestones.
 
 `hack/conformance.sh target/debug/keel` prepares a fresh database and `data_dir` the same way,
 enables `demo`, creates an admin and a user in a second account over `ctl`, starts `serve` and
-runs `keel-conformance`, the contract suite: a black-box client of the started binary, typed
-with `keel-types` alone, that prints one line per check and exits non-zero on any failure. It
-takes `--url`, `--admin-login`, `--admin-password` (or `KEEL_CONFORMANCE_ADMIN_PASSWORD`) and
-`--user-login`, the login of a user in another account.
+runs `keel-conformance`, the contract suite: a black-box client of the started binary on
+`keel-client`, typed with `keel-types`, that prints one line per check and exits non-zero on any
+failure. It takes `--url`, `--admin-login`, `--admin-password` (or
+`KEEL_CONFORMANCE_ADMIN_PASSWORD`), `--user-login`, the login of a user in another account, and
+`--cacert`, a PEM whose certificates are pinned: the one the installation presents.
 
 `keel --config <path>` (or `KEEL_CONFIG`) points at another configuration file; `keel ctl
 --socket <path>` at another control socket than `/run/keel/core.sock`. The descriptor snapshots

@@ -2283,15 +2283,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "keel-client"
+version = "0.3.0"
+dependencies = [
+ "axum",
+ "axum-server",
+ "futures",
+ "http",
+ "keel-sdk",
+ "keel-system",
+ "keel-testkit",
+ "keel-types",
+ "rcgen",
+ "reqwest",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "keel-conformance"
 version = "0.3.0"
 dependencies = [
  "axum",
  "clap",
  "hmac 0.13.0",
+ "keel-client",
  "keel-types",
- "reqwest",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.0",

@@ -1,7 +1,8 @@
 use std::time::Duration;
 
+use keel_client::Streaming;
+use keel_client::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderName};
 use keel_types::{ErrorCode, Event, Id};
-use reqwest::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderName};
 use serde_json::{Value, json};
 use tokio::time::Instant;
 
@@ -230,7 +231,7 @@ enum Read {
 }
 
 struct Stream {
-    response: reqwest::Response,
+    response: Streaming,
     buffer: Vec<u8>,
     closed: bool,
 }
@@ -244,7 +245,7 @@ impl Stream {
             .client
             .stream(PATH, Credential::Session, &extra)
             .await?;
-        let status = response.status().as_u16();
+        let status = response.status();
         ensure(status == 200, || format!("GET {PATH} answered {status}"))?;
         let header = |name: HeaderName| {
             response

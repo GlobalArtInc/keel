@@ -10,6 +10,7 @@ repository = "https://github.com/GlobalArtInc/keel"
 
 [workspace.dependencies]
 keel = { path = "crates/keel" }
+keel-client = { path = "crates/client" }
 keel-demo = { path = "products/demo" }
 keel-dns = { path = "products/dns" }
 keel-dns-local = { path = "products/panel/crates/dns-local" }
@@ -72,6 +73,7 @@ roxmltree = "0.21"
 rust-embed = { version = "8", features = ["debug-embed"] }
 rustix = { version = "1", features = ["fs"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
 schemars = { version = "1", features = ["chrono04"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "postgres-array", "with-chrono", "with-json"] }
 semver = { version = "1", features = ["serde"] }

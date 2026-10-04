@@ -434,9 +434,10 @@ settings from the registry.
 
 `keel-conformance` runs against the started `keel` binary with any set of products enabled: boot,
 auth, the list contract, errors, idempotency, webhooks and `svc.*`, plus the check that a field
-shown by the descriptor is accepted by the server. It is a black-box client typed with
-`keel-types` and nothing else of the workspace, takes `--url`, the admin's credentials and the
-login of a user in another account, prints one line per check and exits non-zero on any failure.
+shown by the descriptor is accepted by the server. It is a black-box client on `keel-client`,
+typed with `keel-types`, and nothing else of the workspace, takes `--url`, the admin's
+credentials and the login of a user in another account, prints one line per check and exits
+non-zero on any failure.
 The skeleton — the health routes, boot as a guest, the auth cycle with `su`, a token scoped to
 one function, the list contract on `keel.account.list` and `note.list`, and the error shapes —
 exists from M1 as the mandatory CI job `hack/conformance.sh`, run against the built binary with

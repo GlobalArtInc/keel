@@ -1,0 +1,28 @@
+[package]
+name = "keel-client"
+description = "The Rust client of the wire contract: typed calls and errors, the token and session credentials, on-behalf calls, keyed retries, the handshake, the pull feed as a stream and TLS pinned to the peer's certificate or verified by the system roots"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+http = { workspace = true }
+keel-types = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+rustls-platform-verifier = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }
+axum-server = { workspace = true }
+keel-sdk = { workspace = true }
+keel-system = { workspace = true, features = ["auth", "peers"] }
+keel-testkit = { workspace = true }
+rcgen = { workspace = true }

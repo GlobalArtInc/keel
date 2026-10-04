@@ -1,22 +1,21 @@
 use std::path::Path;
 use std::time::Duration;
 
-use keel_types::{CallError, Envelope, ErrorCode, Meta};
-use reqwest::header::{
-    AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, ETAG, HeaderMap, HeaderName, HeaderValue,
-    SET_COOKIE,
-};
-use reqwest::{Method, RequestBuilder};
+use keel_client::http::header::{CACHE_CONTROL, ETAG, SET_COOKIE};
+use keel_client::http::{HeaderMap, HeaderName, HeaderValue, Method};
+use keel_client::{Pin, Request, Response, Streaming, Trust};
+use keel_types::{CallError, ErrorCode, Meta};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::report::{Failure, ensure, fail};
 
-pub const SESSION_COOKIE: &str = "__Host-keel_session";
-pub const SESSION_PREFIX: &str = "ks_";
+pub const SESSION_COOKIE: &str = keel_client::SESSION_COOKIE;
+pub const SESSION_PREFIX: &str = keel_client::SESSION_PREFIX;
 pub const REQUEST_ID: &str = "x-keel-request-id";
 pub const META_VERSION: &str = "x-keel-meta-version";
-pub const API_PREFIX: &str = "/api/v1";
+pub const API_PREFIX: &str = keel_client::API_PREFIX;
 pub const CACHE_PRIVATE: &str = "private, no-store";
 pub const MASK: &str = "***";
 
@@ -39,11 +38,11 @@ pub struct Answer {
     pub headers: HeaderMap,
     pub body: String,
     pub confidential: bool,
+    response: Response,
 }
 
 pub struct Client {
-    http: reqwest::Client,
-    base: String,
+    keel: keel_client::Client,
     session: Option<String>,
     responses: u64,
     without_request_id: Vec<String>,
@@ -51,8 +50,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(url: &str, cacert: Option<&Path>) -> Result<Self, Failure> {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let mut builder = reqwest::Client::builder().no_proxy().timeout(TIMEOUT);
+        let mut builder = keel_client::Client::builder(url).timeout(TIMEOUT);
         if let Some(path) = cacert {
             let pem = std::fs::read(path).map_err(|error| {
                 fail(format!(
@@ -60,26 +58,15 @@ impl Client {
                     path.display()
                 ))
             })?;
-            let certificates = reqwest::Certificate::from_pem_bundle(&pem).map_err(|error| {
-                fail(format!(
-                    "--cacert {} is not a PEM certificate: {error}",
-                    path.display()
-                ))
-            })?;
-            if certificates.is_empty() {
-                return Err(fail(format!(
-                    "--cacert {} holds no CERTIFICATE block",
-                    path.display()
-                )));
-            }
-            builder = builder.tls_certs_only(certificates);
+            let pins = Pin::from_pem(&pem)
+                .map_err(|error| fail(format!("--cacert {}: {error}", path.display())))?;
+            builder = builder.trust(Trust::Pinned(pins));
         }
-        let http = builder
+        let keel = builder
             .build()
-            .map_err(|error| fail(format!("the HTTP client could not be built: {error}")))?;
+            .map_err(|error| fail(format!("the client could not be built: {error}")))?;
         Ok(Self {
-            http,
-            base: url.trim_end_matches('/').to_owned(),
+            keel,
             session: None,
             responses: 0,
             without_request_id: Vec::new(),
@@ -104,8 +91,7 @@ impl Client {
         credential: Credential,
         extra: &[(HeaderName, &str)],
     ) -> Result<Answer, Failure> {
-        let request = self.http.get(format!("{}{path}", self.base));
-        self.send(Method::GET, path, request, credential, extra)
+        self.send(Method::GET, path, Request::get(path), credential, extra)
             .await
     }
 
@@ -128,15 +114,11 @@ impl Client {
     pub async fn post(
         &mut self,
         path: &str,
-        params: Value,
+        params: impl Serialize,
         credential: Credential,
         extra: &[(HeaderName, &str)],
     ) -> Result<Answer, Failure> {
-        let request = self
-            .http
-            .post(format!("{}{path}", self.base))
-            .header(CONTENT_TYPE, "application/json")
-            .body(params.to_string());
+        let request = Request::post(path, &params);
         self.send(Method::POST, path, request, credential, extra)
             .await
     }
@@ -146,43 +128,47 @@ impl Client {
         path: &str,
         credential: Credential,
         extra: &[(HeaderName, &str)],
-    ) -> Result<reqwest::Response, Failure> {
-        let request = self
-            .http
-            .get(format!("{}{path}", self.base))
-            .timeout(STREAM_TIMEOUT);
-        let response = self.authorize(request, credential, extra)?.send().await?;
-        self.counted(
-            &Method::GET,
-            path,
-            response.status().as_u16(),
-            response.headers(),
-        );
-        Ok(response)
+    ) -> Result<Streaming, Failure> {
+        let request = self.authorize(
+            Request::get(path).timeout(STREAM_TIMEOUT),
+            credential,
+            extra,
+        )?;
+        let streaming = self.keel.open(request).await?;
+        let status = streaming.status();
+        let headers = streaming.headers().clone();
+        self.counted(&Method::GET, path, status, &headers);
+        Ok(streaming)
     }
 
     fn authorize(
         &self,
-        mut request: RequestBuilder,
+        mut request: Request,
         credential: Credential,
         extra: &[(HeaderName, &str)],
-    ) -> Result<RequestBuilder, Failure> {
-        match credential {
-            Credential::Guest => {}
+    ) -> Result<Request, Failure> {
+        let credential = match credential {
+            Credential::Guest => keel_client::Credential::guest(),
             Credential::Session => {
                 let session = self
                     .session
                     .as_deref()
                     .ok_or_else(|| fail("no session cookie is held"))?;
-                request = request.header(COOKIE, session);
+                cookie(session)?
             }
-            Credential::Cookie(cookie) => request = request.header(COOKIE, cookie),
+            Credential::Cookie(pair) => cookie(&pair)?,
             Credential::Bearer(token) => {
-                request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+                let bearer = if token.starts_with(keel_client::PEER_PREFIX) {
+                    keel_client::Credential::peer(token)
+                } else {
+                    keel_client::Credential::token(token)
+                };
+                bearer.map_err(|error| fail(format!("the Bearer token is refused: {error}")))?
             }
-        }
+        };
+        request = request.credential(credential);
         for (name, value) in extra {
-            request = request.header(name.clone(), *value);
+            request = request.header(name.clone(), value);
         }
         Ok(request)
     }
@@ -199,24 +185,15 @@ impl Client {
         &mut self,
         method: Method,
         path: &str,
-        request: RequestBuilder,
+        request: Request,
         credential: Credential,
         extra: &[(HeaderName, &str)],
     ) -> Result<Answer, Failure> {
         let stored = matches!(credential, Credential::Guest | Credential::Session);
-        let response = self.authorize(request, credential, extra)?.send().await?;
-        let status = response.status().as_u16();
-        let headers = response.headers().clone();
-        let body = response.text().await?;
-        self.counted(&method, path, status, &headers);
-        let answer = Answer {
-            method,
-            path: path.to_owned(),
-            status,
-            headers,
-            body,
-            confidential: false,
-        };
+        let request = self.authorize(request, credential, extra)?;
+        let response = self.keel.send(request).await?;
+        self.counted(&method, path, response.status, &response.headers);
+        let answer = Answer::new(method, path, response);
         if stored && let Some(change) = answer.session_change() {
             self.session = change;
         }
@@ -224,7 +201,28 @@ impl Client {
     }
 }
 
+fn cookie(pair: &str) -> Result<keel_client::Credential, Failure> {
+    let value = pair
+        .strip_prefix(SESSION_COOKIE)
+        .and_then(|rest| rest.strip_prefix('='))
+        .ok_or_else(|| fail(format!("the cookie is not {SESSION_COOKIE}")))?;
+    keel_client::Credential::session(value)
+        .map_err(|error| fail(format!("the session cookie is refused: {error}")))
+}
+
 impl Answer {
+    pub fn new(method: Method, path: &str, response: Response) -> Self {
+        Self {
+            method,
+            path: path.to_owned(),
+            status: response.status,
+            headers: response.headers.clone(),
+            body: response.text(),
+            confidential: false,
+            response,
+        }
+    }
+
     pub fn confidential(mut self) -> Self {
         self.confidential = true;
         self
@@ -277,25 +275,27 @@ impl Answer {
 
     pub fn data<T: DeserializeOwned>(&self) -> Result<(T, Meta), Failure> {
         self.status_is(200)?;
-        match self.body_as::<Envelope<T>>()? {
-            Envelope::Ok { data, meta } => {
-                ensure(meta.request_id == self.request_id()?, || {
+        match self.response.answer::<T>() {
+            Ok(answer) => {
+                ensure(answer.meta.request_id == self.request_id()?, || {
                     self.failure("meta.requestId differs from the header").0
                 })?;
-                Ok((data, meta))
+                Ok((answer.data, answer.meta))
             }
-            Envelope::Err { error } => Err(self.failure(format!(
+            Err(keel_client::Error::Refused(refusal)) => Err(self.failure(format!(
                 "an error envelope {} {}",
-                error.code.as_str(),
-                error.key
+                refusal.code().as_str(),
+                refusal.key()
             ))),
+            Err(error) => Err(self.failure(error.to_string())),
         }
     }
 
     pub fn error(&self, status: u16, code: ErrorCode, key: &str) -> Result<CallError, Failure> {
         self.status_is(status)?;
-        match self.body_as::<Envelope<Value>>()? {
-            Envelope::Err { error } => {
+        match self.response.answer::<Value>() {
+            Err(keel_client::Error::Refused(refusal)) => {
+                let error = refusal.error;
                 ensure(error.code == code, || {
                     self.failure(format!("error.code is {}", error.code.as_str()))
                         .0
@@ -309,7 +309,8 @@ impl Answer {
                 )?;
                 Ok(error)
             }
-            Envelope::Ok { .. } => Err(self.failure("an ok envelope")),
+            Ok(_) => Err(self.failure("an ok envelope")),
+            Err(error) => Err(self.failure(error.to_string())),
         }
     }
 
@@ -405,6 +406,10 @@ mod tests {
     use super::*;
 
     fn answer(headers: &[(&'static str, &str)], body: &str) -> Answer {
+        answer_with(200, headers, body)
+    }
+
+    fn answer_with(status: u16, headers: &[(&'static str, &str)], body: &str) -> Answer {
         let mut map = HeaderMap::new();
         for (name, value) in headers {
             map.append(
@@ -412,14 +417,13 @@ mod tests {
                 HeaderValue::from_str(value).unwrap(),
             );
         }
-        Answer {
-            method: Method::POST,
-            path: "/api/v1/call/x".into(),
-            status: 200,
+        let response = Response {
+            url: "https://127.0.0.1:1500/api/v1/call/x".into(),
+            status,
             headers: map,
-            body: body.into(),
-            confidential: false,
-        }
+            body: body.as_bytes().to_vec(),
+        };
+        Answer::new(Method::POST, "/api/v1/call/x", response)
     }
 
     #[test]
@@ -510,11 +514,11 @@ mod tests {
             r#"{"ok":true,"data":{"a":1},"meta":{"requestId":"req-1"}}"#,
         );
         assert!(mismatched.data::<Value>().is_err());
-        let mut refused = answer(
+        let refused = answer_with(
+            404,
             &[("x-keel-request-id", "req-3")],
             r#"{"ok":false,"error":{"code":"not_found","key":"keel.error.function_not_found","requestId":"req-3"}}"#,
         );
-        refused.status = 404;
         assert!(
             refused
                 .error(404, ErrorCode::NotFound, "keel.error.function_not_found")

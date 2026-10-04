@@ -1,6 +1,6 @@
 [package]
 name = "keel-conformance"
-description = "The contract suite: a black-box client of a started keel binary, typed with keel-types alone, one line per check"
+description = "The contract suite: a black-box client of a started keel binary on keel-client, typed with keel-types, one line per check"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
@@ -14,9 +14,8 @@ path = "src/main.rs"
 axum = { workspace = true }
 clap = { workspace = true }
 hmac = { workspace = true }
+keel-client = { workspace = true }
 keel-types = { workspace = true }
-reqwest = { workspace = true }
-rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

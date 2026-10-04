@@ -1,5 +1,5 @@
+use keel_client::http::header::IF_NONE_MATCH;
 use keel_types::{Boot, PROTOCOL};
-use reqwest::header::IF_NONE_MATCH;
 
 use super::Suite;
 use crate::client::{API_PREFIX, Answer, Credential};

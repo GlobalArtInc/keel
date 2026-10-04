@@ -4,8 +4,8 @@ use std::fmt;
 #[error("{0}")]
 pub struct Failure(pub String);
 
-impl From<reqwest::Error> for Failure {
-    fn from(error: reqwest::Error) -> Self {
+impl From<keel_client::Error> for Failure {
+    fn from(error: keel_client::Error) -> Self {
         Failure(format!("the request failed: {error}"))
     }
 }
