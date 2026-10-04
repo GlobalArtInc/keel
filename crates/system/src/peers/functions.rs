@@ -8,7 +8,7 @@ use keel_sdk::types::PeerScope;
 use super::authenticator::stored_principal;
 use super::check;
 use super::entity::product;
-use super::inbox;
+use super::{identity, inbox};
 use crate::auth::api::retire_credentials;
 use crate::webhooks::api::unsubscribe_peer;
 
@@ -43,6 +43,7 @@ pub struct Peer {
     pub status: String,
     pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub identity: bool,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -79,6 +80,7 @@ pub(super) fn peer_of(row: product::Model) -> Result<Peer> {
         status: row.status,
         last_seen_at: row.last_seen_at,
         created_at: row.created_at,
+        identity: row.identity,
     })
 }
 
@@ -130,6 +132,7 @@ pub(super) fn list() -> FunctionDef {
                     .sortable()
                     .map([(STATUS_ACTIVE, Tone::Success)]),
             )
+            .column(Column::new("identity", ColumnType::Boolean))
             .column(Column::new("lastSeenAt", ColumnType::Datetime).sortable())
             .column(Column::new("createdAt", ColumnType::Datetime).sortable())
             .action(
@@ -192,6 +195,7 @@ pub(super) fn delete() -> FunctionDef {
                 .await?;
             unsubscribe_peer(call.tx()?, call.params().id).await?;
             inbox::forget(call.tx()?, &row.id).await?;
+            identity::forget(call.tx()?, &row.id).await?;
             retire(&call, &row).await?;
             let caller = call.require::<dyn Caller>()?;
             let link = row.id.clone();

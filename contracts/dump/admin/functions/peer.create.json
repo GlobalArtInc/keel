@@ -38,6 +38,10 @@
         "type": "boolean",
         "default": false
       },
+      "identity": {
+        "type": "boolean",
+        "default": false
+      },
       "scopes": {
         "type": "array",
         "items": {
@@ -135,6 +139,9 @@
         "type": "string",
         "format": "date-time"
       },
+      "identity": {
+        "type": "boolean"
+      },
       "granted": {
         "$ref": "#/$defs/PeerScope"
       }
@@ -149,6 +156,7 @@
       "scopes",
       "status",
       "createdAt",
+      "identity",
       "granted"
     ],
     "$defs": {
@@ -197,6 +205,7 @@
           "code",
           "subscribe",
           "pull",
+          "identity",
           "scopes",
           "level",
           "onBehalf"

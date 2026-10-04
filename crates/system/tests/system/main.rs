@@ -51,6 +51,8 @@ mod peers;
 #[cfg(feature = "peers")]
 mod peers_delivery;
 #[cfg(feature = "peers")]
+mod peers_identity;
+#[cfg(feature = "peers")]
 mod peers_on_behalf;
 #[cfg(all(feature = "auth", feature = "settings"))]
 mod settings;

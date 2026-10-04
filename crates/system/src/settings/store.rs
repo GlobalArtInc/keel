@@ -245,6 +245,10 @@ mod tests {
         async fn by_id(&self, _: Id, _: &Db) -> Result<Option<keel_sdk::Account>> {
             Ok(None)
         }
+
+        async fn of_external_id(&self, _: &str, _: &Db) -> Result<Vec<keel_sdk::Account>> {
+            Ok(Vec::new())
+        }
     }
 
     fn store() -> Store {

@@ -5,7 +5,10 @@ use keel_sdk::chrono::Datelike;
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::EntityTrait;
 use keel_sdk::serde_json;
-use keel_sdk::system::{Endpoint, EndpointRequest, EventRelay, OutboxSubscriber, SecretCipher};
+use keel_sdk::system::{
+    AccountSource, Caller, Endpoint, EndpointRequest, EventRelay, OutboxSubscriber,
+    PrincipalSource, SecretCipher,
+};
 use keel_sdk::types::{Event, Scope, Via};
 use tokio::sync::Notify;
 
@@ -39,6 +42,9 @@ pub(super) struct Seams {
     pub(super) cipher: Arc<dyn SecretCipher>,
     pub(super) subscriber: Arc<dyn OutboxSubscriber>,
     pub(super) relay: Arc<dyn EventRelay>,
+    pub(super) caller: Arc<dyn Caller>,
+    pub(super) principals: Arc<dyn PrincipalSource>,
+    pub(super) accounts: Arc<dyn AccountSource>,
     pub(super) instance: Option<Id>,
 }
 

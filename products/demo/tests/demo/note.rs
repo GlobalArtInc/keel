@@ -96,7 +96,7 @@ async fn counts(harness: &Harness) -> (String, String) {
         .await;
     let events = harness
         .database()
-        .rows("SELECT count(*)::text FROM keel_outbox")
+        .rows("SELECT count(*)::text FROM keel_outbox WHERE module = 'note'")
         .await;
     (notes[0].clone(), events[0].clone())
 }
@@ -226,7 +226,7 @@ async fn note_saved_names_the_notes_account_as_its_subject() {
     assert_eq!(id_of(&renamed), id);
     let subjects: Vec<Value> = harness
         .database()
-        .rows("SELECT json_build_object('type', type, 'subject', subject_json)::text FROM keel_outbox ORDER BY seq")
+        .rows("SELECT json_build_object('type', type, 'subject', subject_json)::text FROM keel_outbox WHERE module = 'note' ORDER BY seq")
         .await
         .iter()
         .map(|row| serde_json::from_str(row).expect("json"))

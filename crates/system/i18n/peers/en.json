@@ -9,6 +9,7 @@
     "code": "Pairing code",
     "column": {
       "createdAt": "Paired",
+      "identity": "Identity source",
       "keel": "Version",
       "lastSeenAt": "Last seen",
       "products": "Products",
@@ -48,6 +49,7 @@
       "url": "{url} is not an http or https address without credentials, query or fragment"
     },
     "expiresAt": "Expires",
+    "identity": "Source of identity: apply its account and principal changes to the customers it synced here",
     "level": "Level ceiling",
     "list": {
       "title": "Peers"

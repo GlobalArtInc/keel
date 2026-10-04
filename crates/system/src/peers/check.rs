@@ -155,6 +155,7 @@ mod tests {
             events: Vec::new(),
             pull_seq: None,
             feed_seq: 0,
+            identity: false,
         }
     }
 

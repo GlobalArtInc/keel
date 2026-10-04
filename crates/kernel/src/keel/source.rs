@@ -40,6 +40,17 @@ impl AccountSource for StoredAccounts {
             .map(account_of)
             .transpose()
     }
+
+    async fn of_external_id(&self, external_id: &str, db: &Db) -> Result<Vec<Account>> {
+        account::Entity::find()
+            .filter(account::Column::ExternalId.eq(external_id))
+            .order_by_asc(account::Column::Id)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(account_of)
+            .collect()
+    }
 }
 
 fn ancestry_of(path: &str) -> Result<Vec<Id>> {

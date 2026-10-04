@@ -1,7 +1,7 @@
 use keel_sdk::lifecycle::AccountChange;
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::extension::postgres::PgExpr;
-use keel_sdk::sea_orm::sea_query::{Condition, Expr};
+use keel_sdk::sea_orm::sea_query::{Condition, Expr, OnConflict};
 use keel_sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, DbErr, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, SqlErr, Statement,
@@ -9,21 +9,26 @@ use keel_sdk::sea_orm::{
 use keel_sdk::types::AccountState;
 use keel_sdk::{TaskHandle, escape_like};
 
-use super::entity::account;
+use super::entity::{account, principal};
 use super::lifecycle::{self, STATE_CHANGED};
-use super::{Pick, Saved, acl};
+use super::{Pick, Saved, acl, principals};
 use crate::clock::Clock;
 
 pub const SYSTEM_KIND: &str = "system";
 pub const RESELLER_KIND: &str = "reseller";
+pub const USER_KIND: &str = "user";
 const MAX_OPTIONS: u32 = 100;
+pub(super) const UPSERT: &str = "keel.account.upsert";
 pub(super) const SUSPEND: &str = "keel.account.suspend";
 pub(super) const RESUME: &str = "keel.account.resume";
 pub(super) const DELETE: &str = "keel.account.delete";
+const CREATED: &str = "keel.account.created";
 const SUSPENDED: &str = "keel.account.suspended";
 const RESUMED: &str = "keel.account.resumed";
 const DELETED: &str = "keel.account.deleted";
 const SUBJECT: &str = "keel.account";
+const EXTERNAL_TAKEN: &str = "keel.account.error.external_taken";
+const EXTERNAL_ID: &str = "externalId";
 const ROOT_IMMUTABLE: &str = "keel.account.error.root_immutable";
 const OWN_ACCOUNT: &str = "keel.account.error.own_account";
 const HAS_CHILDREN: &str = "keel.account.error.has_children";
@@ -68,6 +73,33 @@ struct Deleted {
 struct Changed<'a> {
     id: Id,
     state: &'a str,
+}
+
+#[derive(Serialize)]
+struct Created<'a> {
+    id: Id,
+    kind: &'a str,
+    state: &'a str,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(rename_all = "camelCase")]
+pub struct AccountUpsert {
+    #[schemars(length(min = 1, max = 256), regex(pattern = principals::EXTERNAL_PATTERN))]
+    pub origin: String,
+    #[schemars(length(min = 1, max = 256), regex(pattern = principals::EXTERNAL_PATTERN))]
+    pub external_id: String,
+    #[schemars(extend("x-keel" = json!({ "check": "name" })))]
+    pub kind: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "level": "reseller", "options": "keel.account.options" })))]
+    pub parent: Option<Id>,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+pub struct Upserted {
+    pub id: Id,
+    pub created: bool,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -224,8 +256,121 @@ pub fn create() -> FunctionDef {
             }
             .insert(tx)
             .await?;
+            emit_created(&call, id, &params.kind)?;
             Ok(Saved { id })
         })
+}
+
+pub fn upsert() -> FunctionDef {
+    function::<AccountUpsert, Upserted>(UPSERT)
+        .kind(Kind::Action)
+        .access(Level::Reseller, "keel.account.manage")
+        .unowned()
+        .handler(|call: Call<AccountUpsert>| async move { upsert_external(&call).await })
+}
+
+async fn upsert_external(call: &Call<AccountUpsert>) -> Result<Upserted> {
+    let params = call.params();
+    if let Some(kind) = &params.kind {
+        check_kind(kind)?;
+    }
+    let tx = call.tx()?;
+    if let Some(current) = by_external(tx, &params.origin, &params.external_id).await? {
+        return reconcile(call, current).await;
+    }
+    let parent = resolve_parent(call, params.parent).await?;
+    let parent = load(tx, &parent.to_string())
+        .await
+        .map_err(|error| on_field(error, "parent"))?;
+    let id = Id::generate();
+    let kind = params.kind.as_deref().unwrap_or(USER_KIND);
+    let now = call.require::<dyn Clock>()?.now();
+    let inserted = account::Entity::insert(account::ActiveModel {
+        id: Set(id.to_string()),
+        kind: Set(kind.to_owned()),
+        parent_id: Set(Some(parent.id.clone())),
+        path: Set(acl::child_path(&parent.path, &id.to_string())),
+        state: Set(state_name(AccountState::Active).to_owned()),
+        external_id: Set(Some(params.external_id.clone())),
+        origin: Set(Some(params.origin.clone())),
+        created_at: Set(now),
+        updated_at: Set(now),
+    })
+    .on_conflict(
+        OnConflict::columns([account::Column::Origin, account::Column::ExternalId])
+            .do_nothing()
+            .to_owned(),
+    )
+    .exec_without_returning(tx)
+    .await?;
+    if inserted == 0 {
+        let current = by_external(tx, &params.origin, &params.external_id)
+            .await?
+            .ok_or_else(|| KeelError::not_found("keel.error.account_not_found"))?;
+        return reconcile(call, current).await;
+    }
+    emit_created(call, id, kind)?;
+    Ok(Upserted { id, created: true })
+}
+
+async fn by_external(tx: &Db, origin: &str, external_id: &str) -> Result<Option<account::Model>> {
+    Ok(account::Entity::find()
+        .filter(account::Column::Origin.eq(origin))
+        .filter(account::Column::ExternalId.eq(external_id))
+        .lock_exclusive()
+        .one(tx)
+        .await?)
+}
+
+async fn reconcile(call: &Call<AccountUpsert>, current: account::Model) -> Result<Upserted> {
+    let params = call.params();
+    let tx = call.tx()?;
+    let id: Id = current.id.parse().map_err(|_| {
+        KeelError::internal("keel.account.error.row_unknown")
+            .param("id", current.id.as_str())
+            .param("member", "id")
+    })?;
+    if !call.account_scope().includes(tx, id).await? {
+        return Err(KeelError::conflict(EXTERNAL_TAKEN)
+            .field(EXTERNAL_ID)
+            .param("origin", params.origin.as_str())
+            .param(EXTERNAL_ID, params.external_id.as_str()));
+    }
+    if current.state == state_name(AccountState::Deleting) {
+        return Err(KeelError::conflict(DELETING).param("id", current.id.as_str()));
+    }
+    if let Some(kind) = params.kind.as_deref().filter(|kind| *kind != current.kind) {
+        account::ActiveModel {
+            id: Set(current.id.clone()),
+            kind: Set(kind.to_owned()),
+            updated_at: Set(call.require::<dyn Clock>()?.now()),
+            ..Default::default()
+        }
+        .update(tx)
+        .await?;
+        acl::bump_subtree(tx, &current.path).await?;
+    }
+    Ok(Upserted { id, created: false })
+}
+
+fn emit_created<P>(call: &Call<P>, id: Id, kind: &str) -> Result<()> {
+    call.emit_about(
+        CREATED,
+        subject(id),
+        &Created {
+            id,
+            kind,
+            state: state_name(AccountState::Active),
+        },
+    )
+}
+
+fn subject(id: Id) -> EventSubject {
+    EventSubject {
+        kind: SUBJECT.to_owned(),
+        id,
+        account_id: Some(id),
+    }
 }
 
 pub fn update() -> FunctionDef {
@@ -385,6 +530,11 @@ async fn erase(call: &Call<Pick>, task: &TaskHandle) -> Result<Deletion> {
             .param("state", current.state)
             .param("expected", deleting));
     }
+    let members = principal::Entity::find()
+        .filter(principal::Column::AccountId.eq(current.id.as_str()))
+        .order_by_asc(principal::Column::Id)
+        .all(tx)
+        .await?;
     for sql in [REMOVE_LIMITS, REMOVE_PRINCIPALS, REMOVE_ACCOUNT] {
         tx.execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -393,6 +543,9 @@ async fn erase(call: &Call<Pick>, task: &TaskHandle) -> Result<Deletion> {
         ))
         .await
         .map_err(rows_remain)?;
+    }
+    for member in &members {
+        principals::emit_deleted(call, member)?;
     }
     emit(call, DELETED, id, "deleted")?;
     task.log("deleted the account row").await?;
@@ -445,15 +598,7 @@ async fn set_state<P>(
 }
 
 fn emit<P>(call: &Call<P>, kind: &str, id: Id, state: &str) -> Result<()> {
-    call.emit_about(
-        kind,
-        EventSubject {
-            kind: SUBJECT.to_owned(),
-            id,
-            account_id: Some(id),
-        },
-        &Changed { id, state },
-    )
+    call.emit_about(kind, subject(id), &Changed { id, state })
 }
 
 pub fn options() -> FunctionDef {

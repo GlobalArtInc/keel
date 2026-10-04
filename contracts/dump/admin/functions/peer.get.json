@@ -75,6 +75,9 @@
       "createdAt": {
         "type": "string",
         "format": "date-time"
+      },
+      "identity": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -86,7 +89,8 @@
       "publicKey",
       "scopes",
       "status",
-      "createdAt"
+      "createdAt",
+      "identity"
     ],
     "$defs": {
       "PeerScope": {

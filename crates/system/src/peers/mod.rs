@@ -4,6 +4,7 @@ mod codes;
 mod delivery;
 mod entity;
 mod functions;
+mod identity;
 mod inbox;
 mod on_behalf;
 mod pairing;
@@ -34,6 +35,7 @@ pub use delivery::{
 pub use functions::{
     DELETE, ERROR_STORED, EVENT_CREATED, EVENT_DELETED, EVENT_ROTATED, GET, LIST, STATUS_ACTIVE,
 };
+pub use identity::{MASKS as IDENTITY_MASKS, UPSERTS};
 pub use inbox::{
     BATCH as INBOX_BATCH, MAX_ATTEMPTS as INBOX_MAX_ATTEMPTS, POLL as INBOX_POLL,
     RETENTION_DAYS as INBOX_RETENTION_DAYS,
@@ -43,8 +45,8 @@ pub use on_behalf::{
 };
 pub use pairing::{
     CREATE, ERROR_CODE, ERROR_INSTANCE_KEY, ERROR_LEVEL, ERROR_MASK, ERROR_PAIRED, ERROR_PROTOCOL,
-    ERROR_SCOPE, ERROR_SELF, ERROR_TOKEN, LINK, LOGIN_PREFIX, PAIR, PAIR_CODE, ROLE, TTL_DEFAULT,
-    TTL_MAX, TTL_MIN, WEBHOOK_SECRET_PREFIX, compatible,
+    ERROR_SCOPE, ERROR_SELF, ERROR_TOKEN, LINK, LOGIN_PREFIX, MAX_MASKS, PAIR, PAIR_CODE, ROLE,
+    TTL_DEFAULT, TTL_MAX, TTL_MIN, WEBHOOK_SECRET_PREFIX, compatible,
 };
 pub use pull::{LIMIT as PULL_LIMIT, PAUSE as PULL_PAUSE, ROUNDS as PULL_ROUNDS};
 pub use remote::{
@@ -120,6 +122,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(delegate)
         .provide(reach)
         .contribute(check::job())
+        .within(UPSERTS[0], identity::bound)
+        .within(UPSERTS[1], identity::bound)
         .function(functions::list())
         .function(functions::get())
         .function(pairing::pair_code())
@@ -145,6 +149,9 @@ fn init(r: &mut Registrar) -> Result<()> {
                 cipher: ctx.require::<dyn SecretCipher>()?,
                 subscriber: ctx.require::<dyn OutboxSubscriber>()?,
                 relay: ctx.require::<dyn EventRelay>()?,
+                caller: ctx.require::<dyn Caller>()?,
+                principals: ctx.require::<dyn PrincipalSource>()?,
+                accounts: ctx.require::<dyn AccountSource>()?,
                 instance: ctx
                     .require::<Installation>()
                     .ok()
@@ -243,6 +250,13 @@ mod tests {
             .map(|job| (job.id(), job.schedule()))
             .collect();
         assert_eq!(jobs, [(JOB_ID, SCHEDULE)]);
+        let hooked: Vec<&str> = registrations
+            .within
+            .iter()
+            .map(|hook| hook.function.as_str())
+            .collect();
+        assert_eq!(hooked, UPSERTS);
+        assert!(registrations.before.is_empty());
         assert!(registrations.permissions.is_empty());
         let menu: Vec<(&str, &str, Option<&str>)> = registrations
             .menu

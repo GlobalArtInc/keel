@@ -1,0 +1,88 @@
+{
+  "keel": 1,
+  "name": "keel.account.upsert",
+  "module": "keel",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "reseller",
+    "permission": "keel.account.manage"
+  },
+  "params": {
+    "title": "AccountUpsert",
+    "type": "object",
+    "properties": {
+      "origin": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      },
+      "externalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      },
+      "kind": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-keel": {
+          "check": "name"
+        }
+      },
+      "parent": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Id"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "x-keel": {
+          "level": "reseller",
+          "options": "keel.account.options"
+        }
+      }
+    },
+    "required": [
+      "origin",
+      "externalId"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Upserted",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "created": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "created"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

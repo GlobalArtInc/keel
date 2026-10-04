@@ -60,6 +60,10 @@ pub fn names_peer(origin: &str, instance: &str) -> bool {
     origin_parts(origin).is_some_and(|(_, id)| id.to_string() == instance)
 }
 
+pub fn names_an_instance(origin: &str) -> bool {
+    origin_parts(origin).is_some()
+}
+
 pub fn is_external_id(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= MAX_EXTERNAL_ID
@@ -155,6 +159,32 @@ mod tests {
         assert!(!names_peer(INSTANCE, INSTANCE));
         assert!(!names_peer(&format!("Bill:{INSTANCE}"), INSTANCE));
         assert!(!names_peer("", INSTANCE));
+    }
+
+    #[test]
+    fn an_origin_names_an_instance_exactly_when_it_could_name_a_peer() {
+        for origin in [
+            format!("bill:{INSTANCE}"),
+            format!("crm_2:{INSTANCE}"),
+            format!("{}:{INSTANCE}", "b".repeat(MAX_ORIGIN_NAME)),
+        ] {
+            assert!(names_an_instance(&origin), "{origin}");
+            assert!(names_peer(&origin, INSTANCE), "{origin}");
+        }
+        for origin in [
+            String::new(),
+            "erp".to_owned(),
+            "erp:7".to_owned(),
+            INSTANCE.to_owned(),
+            format!(":{INSTANCE}"),
+            format!("Bill:{INSTANCE}"),
+            format!("bill:{}", INSTANCE.to_lowercase()),
+            format!("bill:{INSTANCE}:x"),
+            format!("{}:{INSTANCE}", "b".repeat(MAX_ORIGIN_NAME + 1)),
+        ] {
+            assert!(!names_an_instance(&origin), "{origin}");
+            assert!(!names_peer(&origin, INSTANCE), "{origin}");
+        }
     }
 
     #[test]

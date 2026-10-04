@@ -15,6 +15,7 @@ use super::codes;
 use super::continuation;
 use super::entity::{pair_code, product};
 use super::functions::{EVENT_CREATED, Peer, STATUS_ACTIVE, by_instance, peer_of};
+use super::identity::subscribed;
 use super::remote::{HOOK_PATH, Remote, base_of, checked};
 use crate::auth::api::{SETTING_SHELL_URL, is_peer_token, peer_token, token_hash};
 use crate::webhooks::api::{PeerSubscription, is_mask as is_event_mask, subscribe_peer};
@@ -41,6 +42,7 @@ pub const ERROR_INSTANCE_KEY: &str = "peer.error.instance_key";
 pub const ERROR_PAIRED: &str = "peer.error.paired";
 pub const ERROR_TOKEN: &str = "peer.error.token";
 const SECRET_BYTES: usize = 32;
+const TOO_MANY: &str = "keel.schema.maxItems";
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde", rename_all = "camelCase")]
@@ -109,6 +111,8 @@ pub(super) struct PairCreate {
     #[serde(default)]
     pull: bool,
     #[serde(default)]
+    identity: bool,
+    #[serde(default)]
     #[schemars(length(max = MAX_MASKS), extend("x-ui" = json!({ "control": "tags" })))]
     scopes: Vec<String>,
     level: Option<Level>,
@@ -142,6 +146,8 @@ pub(super) struct Link {
     webhook_secret: Option<Secret>,
     #[serde(default)]
     pull: bool,
+    #[serde(default)]
+    identity: bool,
 }
 
 pub fn compatible(protocol: u32) -> bool {
@@ -228,6 +234,7 @@ struct NewLink<'a> {
     webhook_secret: Option<&'a str>,
     events: &'a [String],
     pull: bool,
+    identity: bool,
     feed_seq: u64,
 }
 
@@ -282,6 +289,7 @@ async fn insert_link<P>(call: &Call<P>, new: NewLink<'_>) -> Result<product::Mod
         events: Set(new.events.to_vec()),
         pull_seq: Set(new.pull.then_some(0)),
         feed_seq: Set(i64::try_from(new.feed_seq).unwrap_or(i64::MAX)),
+        identity: Set(new.identity),
     })
     .on_conflict(
         OnConflict::column(product::Column::InstanceId)
@@ -404,6 +412,7 @@ pub(super) fn pair() -> FunctionDef {
                     webhook_secret: None,
                     events: &params.subscribe,
                     pull: false,
+                    identity: false,
                     feed_seq,
                 },
             )
@@ -453,6 +462,7 @@ pub(super) fn create() -> FunctionDef {
                 "code",
                 "subscribe",
                 "pull",
+                "identity",
                 "scopes",
                 "level",
                 "onBehalf",
@@ -474,7 +484,13 @@ pub(super) fn create() -> FunctionDef {
                 ("scopes", "level"),
             )?;
             granted_by(caller, &scopes)?;
-            events(&params.subscribe)?;
+            let subscribe = subscribed(&params.subscribe, params.identity);
+            if subscribe.len() > MAX_MASKS {
+                return Err(KeelError::validation(TOO_MANY)
+                    .field("subscribe")
+                    .param("max", MAX_MASKS));
+            }
+            events(&subscribe)?;
             let local = call.require::<InstanceInfo>()?;
             let remote = Remote::new(&checked(&params.url, "url")?)?;
             let presented = remote.handshake().await?;
@@ -505,7 +521,7 @@ pub(super) fn create() -> FunctionDef {
                         "url": own,
                         "inboundToken": inbound.expose(),
                         "inboundScopes": scopes,
-                        "subscribe": params.subscribe,
+                        "subscribe": subscribe,
                     }),
                 )
                 .await?;
@@ -514,8 +530,7 @@ pub(super) fn create() -> FunctionDef {
                     KeelError::peer(super::remote::ERROR_ANSWER).param("url", remote.base())
                 );
             }
-            let pull =
-                !params.subscribe.is_empty() && (params.pull || answer.webhook_secret.is_none());
+            let pull = !subscribe.is_empty() && (params.pull || answer.webhook_secret.is_none());
             let webhook_secret = answer.webhook_secret.filter(|_| !pull);
             let linked = call
                 .require::<dyn Caller>()?
@@ -530,6 +545,7 @@ pub(super) fn create() -> FunctionDef {
                         "outboundToken": answer.token,
                         "webhookSecret": webhook_secret,
                         "pull": pull,
+                        "identity": params.identity,
                     }),
                     CallerOptions {
                         request_id: Some(call.request_id().to_owned()),
@@ -563,6 +579,7 @@ pub(super) fn link() -> FunctionDef {
                     webhook_secret: params.webhook_secret.as_ref().map(Secret::expose),
                     events: &[],
                     pull: params.pull,
+                    identity: params.identity,
                     feed_seq: 0,
                 },
             )

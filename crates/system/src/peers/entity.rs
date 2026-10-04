@@ -24,6 +24,7 @@ pub mod product {
         pub events: Vec<String>,
         pub pull_seq: Option<i64>,
         pub feed_seq: i64,
+        pub identity: bool,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -69,6 +70,29 @@ pub mod inbox {
         pub received_at: DateTimeUtc,
         pub processed_at: Option<DateTimeUtc>,
         pub attempts: i32,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod identity {
+    use keel_sdk::sea_orm;
+    use keel_sdk::sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "peer_identity")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub peer_id: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub subject_kind: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub subject_id: String,
+        pub seq: i64,
+        pub applied_at: DateTimeUtc,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

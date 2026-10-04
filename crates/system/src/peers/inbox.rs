@@ -12,6 +12,7 @@ use keel_sdk::types::{ErrorCode, Event};
 
 use super::delivery::{Delivery, RETRY_PAUSE, Seams};
 use super::entity::{inbox, product};
+use super::identity;
 
 pub const BATCH: u64 = 100;
 pub const POLL: Duration = Duration::from_secs(5);
@@ -99,7 +100,28 @@ enum Outcome {
     Postponed,
 }
 
-async fn relay(seams: &Seams, row: &inbox::Model) -> Outcome {
+fn retried(row: &inbox::Model, error: &KeelError, what: &str) -> Outcome {
+    if row.attempts.saturating_add(1) >= MAX_ATTEMPTS {
+        tracing::error!(event = row.event_id, peer = row.peer_id, attempts = MAX_ATTEMPTS, error = %error, "an event of a peer did not {what} after its last attempt; it is dropped");
+        Outcome::Dropped
+    } else {
+        tracing::warn!(event = row.event_id, peer = row.peer_id, attempt = row.attempts.saturating_add(1), error = %error, "an event of a peer did not {what}; it is tried again");
+        Outcome::Postponed
+    }
+}
+
+async fn relay(seams: &Seams, row: &inbox::Model, event: &Event) -> Outcome {
+    match seams.relay.relay(event).await {
+        Ok(_) => Outcome::Relayed,
+        Err(error) if error.code() == ErrorCode::Validation => {
+            tracing::error!(event = row.event_id, peer = row.peer_id, error = %error, "an event of a peer cannot enter the bus; it is dropped");
+            Outcome::Dropped
+        }
+        Err(error) => retried(row, &error, "enter the bus"),
+    }
+}
+
+async fn process(seams: &Seams, row: &inbox::Model, identities: &[product::Model]) -> Outcome {
     let event = match serde_json::from_value::<Event>(row.event_json.clone()) {
         Ok(event) => event,
         Err(error) => {
@@ -107,20 +129,16 @@ async fn relay(seams: &Seams, row: &inbox::Model) -> Outcome {
             return Outcome::Dropped;
         }
     };
-    match seams.relay.relay(&event).await {
-        Ok(_) => Outcome::Relayed,
-        Err(error) if error.code() == ErrorCode::Validation => {
-            tracing::error!(event = row.event_id, peer = row.peer_id, error = %error, "an event of a peer cannot enter the bus; it is dropped");
-            Outcome::Dropped
-        }
-        Err(error) if row.attempts.saturating_add(1) >= MAX_ATTEMPTS => {
-            tracing::error!(event = row.event_id, peer = row.peer_id, attempts = MAX_ATTEMPTS, error = %error, "an event of a peer did not enter the bus after its last attempt; it is dropped");
-            Outcome::Dropped
-        }
-        Err(error) => {
-            tracing::warn!(event = row.event_id, peer = row.peer_id, attempt = row.attempts.saturating_add(1), error = %error, "an event of a peer did not enter the bus; it is tried again");
-            Outcome::Postponed
-        }
+    let relayed = relay(seams, row, &event).await;
+    if relayed != Outcome::Relayed {
+        return relayed;
+    }
+    let Some(link) = identities.iter().find(|link| link.id == row.peer_id) else {
+        return relayed;
+    };
+    match identity::apply(seams, link, &event).await {
+        Ok(()) => Outcome::Relayed,
+        Err(error) => retried(row, &error, "apply to the identity it changes"),
     }
 }
 
@@ -132,6 +150,10 @@ struct Drained {
 
 async fn drain(delivery: &Delivery) -> Result<Drained> {
     let seams = delivery.seams()?;
+    let identities = product::Entity::find()
+        .filter(product::Column::Identity.eq(true))
+        .all(&seams.db)
+        .await?;
     let rows = inbox::Entity::find()
         .filter(inbox::Column::ProcessedAt.is_null())
         .filter(inbox::Column::PeerId.in_subquery(linked()))
@@ -146,7 +168,7 @@ async fn drain(delivery: &Delivery) -> Result<Drained> {
         postponed: 0,
     };
     for row in rows {
-        match relay(seams, &row).await {
+        match process(seams, &row, &identities).await {
             Outcome::Postponed => {
                 postpone(&seams.db, &row).await?;
                 drained.postponed += 1;

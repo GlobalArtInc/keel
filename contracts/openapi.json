@@ -13385,6 +13385,118 @@
         }
       }
     },
+    "/api/v1/call/keel.account.upsert": {
+      "post": {
+        "operationId": "keel.account.upsert",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "reseller",
+            "permission": "keel.account.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "AccountUpsert",
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "kind": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "x-keel": {
+                      "check": "name"
+                    }
+                  },
+                  "parent": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "x-keel": {
+                      "level": "reseller",
+                      "options": "keel.account.options"
+                    }
+                  }
+                },
+                "required": [
+                  "origin",
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Upserted",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "created": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "created"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/keel.doctor.run": {
       "post": {
         "operationId": "keel.doctor.run",
@@ -14259,6 +14371,125 @@
                       },
                       "required": [
                         "id"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/keel.principal.upsert": {
+      "post": {
+        "operationId": "keel.principal.upsert",
+        "tags": [
+          "keel"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "reseller",
+            "permission": "keel.principal.manage"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "PrincipalUpsert",
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "login": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "level": {
+                    "$ref": "#/components/schemas/Level"
+                  },
+                  "role": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lang": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "account": {
+                    "$ref": "#/components/schemas/AccountUpsert"
+                  }
+                },
+                "required": [
+                  "origin",
+                  "externalId",
+                  "login",
+                  "level",
+                  "account"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "PrincipalUpserted",
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "created": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "accountId",
+                        "created"
                       ]
                     },
                     "meta": {
@@ -17083,6 +17314,10 @@
                     "type": "boolean",
                     "default": false
                   },
+                  "identity": {
+                    "type": "boolean",
+                    "default": false
+                  },
                   "scopes": {
                     "type": "array",
                     "items": {
@@ -17177,6 +17412,9 @@
                           "type": "string",
                           "format": "date-time"
                         },
+                        "identity": {
+                          "type": "boolean"
+                        },
                         "granted": {
                           "$ref": "#/components/schemas/PeerScope"
                         }
@@ -17191,6 +17429,7 @@
                         "scopes",
                         "status",
                         "createdAt",
+                        "identity",
                         "granted"
                       ]
                     },
@@ -17378,6 +17617,9 @@
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
+                        },
+                        "identity": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -17389,7 +17631,8 @@
                         "publicKey",
                         "scopes",
                         "status",
-                        "createdAt"
+                        "createdAt",
+                        "identity"
                       ]
                     },
                     "meta": {
@@ -20884,6 +21127,50 @@
           "deleting"
         ]
       },
+      "AccountUpsert": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+          },
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "check": "name"
+            }
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-keel": {
+              "level": "reseller",
+              "options": "keel.account.options"
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "externalId"
+        ]
+      },
       "AccountZones": {
         "type": "object",
         "properties": {
@@ -22458,6 +22745,9 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "identity": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -22469,7 +22759,8 @@
           "publicKey",
           "scopes",
           "status",
-          "createdAt"
+          "createdAt",
+          "identity"
         ]
       },
       "PeerScope": {

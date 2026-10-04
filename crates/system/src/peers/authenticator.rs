@@ -12,6 +12,7 @@ use keel_sdk::{Clock, Db, Id, KeelError, Level, Principal, Result};
 
 use super::entity::product;
 use super::functions::scopes_of;
+use super::identity::reached;
 use super::on_behalf::{foreign_origin, names_peer, not_reached, parse};
 use crate::auth::api::{PEER_TOKEN_PREFIX, token_hash};
 
@@ -49,21 +50,7 @@ impl PeerAuthenticator {
     }
 
     async fn reached(&self, instance: &str, principal: &Principal, db: &Db) -> Result<bool> {
-        if !principal
-            .origin
-            .as_deref()
-            .is_some_and(|origin| names_peer(origin, instance))
-        {
-            return Ok(false);
-        }
-        let account = self
-            .started()?
-            .accounts
-            .by_id(principal.account_id, db)
-            .await?;
-        Ok(account
-            .and_then(|account| account.origin)
-            .is_some_and(|origin| names_peer(&origin, instance)))
+        reached(self.started()?.accounts.as_ref(), instance, principal, db).await
     }
 
     async fn peer(&self, secret: &str, db: &Db) -> Result<Authenticated> {

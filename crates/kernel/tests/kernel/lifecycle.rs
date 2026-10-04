@@ -589,6 +589,15 @@ async fn delete_runs_as_a_task_walking_on_delete_in_requires_order_and_removes_t
         Some("0")
     );
     assert_eq!(bench.events(customer).await, ["keel.account.deleted"]);
+    assert_eq!(
+        bench
+            .scalar(&format!(
+                "SELECT string_agg(type || ' ' || (subject_json->>'kind') || ' ' || (subject_json->>'id' = data_json->>'id')::text, ',' ORDER BY seq) FROM keel_outbox WHERE subject_json->>'accountId' = '{customer}'"
+            ))
+            .await
+            .as_deref(),
+        Some("keel.principal.deleted keel.principal true,keel.account.deleted keel.account true")
+    );
     assert_eq!(bench.state(bench.reseller).await.as_deref(), Some("active"));
 
     let last = Id::generate();

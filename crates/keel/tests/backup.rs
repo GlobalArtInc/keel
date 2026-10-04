@@ -436,6 +436,12 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
         ExitCode::SUCCESS
     );
     running.stop().await.expect("the source stops");
+    let source_seq: u64 = source
+        .database
+        .rows("SELECT max(seq)::text FROM keel_outbox")
+        .await[0]
+        .parse()
+        .expect("the source emitted events");
     let (entries, manifest) = entries_of(&archive);
     assert!(manifest.secret_key, "{manifest:?}");
     assert_eq!(manifest.keel, keel::VERSION);
@@ -584,8 +590,8 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
         .await;
     assert_eq!(
         before,
-        ["2"],
-        "the two events of the source came back with their sequence"
+        [source_seq.to_string()],
+        "the events of the source came back with their sequence"
     );
     owner_call(
         &restored,
@@ -599,7 +605,7 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
             .database
             .rows("SELECT max(seq)::text FROM keel_outbox")
             .await,
-        ["3"],
+        [(source_seq + 1).to_string()],
         "the identity sequence continues after the restored rows"
     );
     assert_eq!(titles_of(&target).await, ["alpha", "beta", "gamma"]);

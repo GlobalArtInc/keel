@@ -1390,7 +1390,8 @@ async fn peer_list_and_get_answer_the_stored_links_without_their_secrets() {
             "scopes": { "functions": ["svc.*"], "level": "admin", "onBehalf": true },
             "status": STATUS_ACTIVE,
             "lastSeenAt": null,
-            "createdAt": "2026-09-21T10:00:00Z"
+            "createdAt": "2026-09-21T10:00:00Z",
+            "identity": false
         })
     );
     let text = serde_json::to_string(data).unwrap();

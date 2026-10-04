@@ -34,7 +34,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     init,
 };
 
-pub const FUNCTIONS: [&str; 22] = [
+pub const FUNCTIONS: [&str; 24] = [
     "keel.export",
     DOCTOR_RUN,
     LOGS_TAIL,
@@ -46,6 +46,7 @@ pub const FUNCTIONS: [&str; 22] = [
     "keel.account.create",
     "keel.account.update",
     "keel.account.options",
+    accounts::UPSERT,
     accounts::SUSPEND,
     accounts::RESUME,
     accounts::DELETE,
@@ -53,6 +54,7 @@ pub const FUNCTIONS: [&str; 22] = [
     "keel.principal.get",
     "keel.principal.create",
     "keel.principal.update",
+    principals::UPSERT,
     "keel.product.list",
     "keel.product.enable",
     "keel.product.disable",
@@ -75,6 +77,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(accounts::create())
         .function(accounts::update())
         .function(accounts::options())
+        .function(accounts::upsert())
         .function(accounts::suspend())
         .function(accounts::resume())
         .function(accounts::delete())
@@ -82,6 +85,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(principals::get())
         .function(principals::create())
         .function(principals::update())
+        .function(principals::upsert())
         .function(products::list())
         .function(products::enable())
         .function(products::disable())
@@ -147,7 +151,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_kernel_module_registers_its_twenty_two_functions_and_the_accounts_widget_under_the_keel_prefix()
+    fn the_kernel_module_registers_its_twenty_four_functions_and_the_accounts_widget_under_the_keel_prefix()
      {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");

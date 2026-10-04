@@ -28,6 +28,7 @@
       "empty": "No accounts yet",
       "error": {
         "deleting": "The account {id} is being deleted",
+        "external_taken": "The external id {externalId} of {origin} belongs to an account outside your reach",
         "has_children": "The account {id} has accounts of its own; delete them first",
         "kind_reserved": "The kind {kind} is reserved for the root account",
         "own_account": "You cannot suspend, resume or delete the account you belong to",
@@ -287,6 +288,7 @@
       "empty": "No principals yet",
       "error": {
         "account_unknown": "The stored account {account} of principal {id} is not a ULID",
+        "external_taken": "The external id {externalId} of {origin} belongs to a principal outside your reach",
         "id_unknown": "The stored id {id} of a principal is not a ULID",
         "level_above_caller": "The level {level} is above your own",
         "level_account": "A principal of level {level} cannot belong to an account of kind {kind}",

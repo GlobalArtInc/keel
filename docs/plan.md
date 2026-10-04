@@ -6681,6 +6681,16 @@ make it do so. The webhook subscription a link carries delivers to the address t
 pairing without the `webhook.private_targets` guard, as pairing itself does not filter private
 networks. The pull feed and that subscription serve the masks the peer asked for at pairing within
 the account scope of the level its token was granted; the receiving admin approves no masks.
+Step 2b leaves two points. A link the initiator marks `identity` applies the account and principal
+events of its peer through the Caller as the principal of the link raised to `admin`, bounded to the
+records whose origin names the peer, so the peer may suspend, resume and delete every account it
+synced and rename every principal in them; the receiving admin approves no list of records. The
+upsert functions refuse an origin naming an instance, `<name>:<instance id>`, to every caller below
+`admin` but the principal of the link to that instance, whether it calls through its peer token, a
+token minted under it or on behalf of a customer, so neither a local reseller nor a customer's own
+credential the peer minted places a record under a peer's origin; an administrator still may, and
+the peer's later upsert adopts that record wherever the administrator put it, bounded only by the
+account scope of the link.
 
 **Touches.** the modules named.
 
@@ -6705,6 +6715,29 @@ login" gains the rule `auth.key.issue` applies to a peer, as its link or for a c
 is a principal whose origin and whose account's origin name the peer, or the answer is
 `not_found`, and an `externalId` the link sends as itself is resolved against every origin naming
 the peer's instance and refused when two principals match.
+Step 2b leaves points for the pass over [design/03-access.md](design/03-access.md) and
+[design/07-ecosystem.md](design/07-ecosystem.md). An account carries no name, so
+`keel.account.renamed` is not emitted and `on_rename` keeps no caller; no function suspends a
+principal (the table's `keel.principal.suspend` does not exist), so `keel.principal.suspended` and
+`resumed` are not emitted either: the events are `keel.account.created`, `suspended`, `resumed`,
+`deleted` and `keel.principal.created`, `renamed` (a change of the login) and `deleted` (with its
+account). An identity event names its record by its id on the identity peer, and the receiver finds
+the record whose `external_id` is that id under an origin naming the peer; `created` events are not
+applied, since records arrive through the upserts. The initiator chooses the role at
+`peer.create { identity: true }`, which adds `keel.account.*` and `keel.principal.*` to its
+subscription. The pairing example of [design/07-ecosystem.md](design/07-ecosystem.md) cannot carry
+the role as it stands: only the initiator receives the events of a link (step 2a) and one link joins
+two installations, so for billing to be the identity source of a DNS installation the DNS side, the
+one receiving the customers, is the initiator with `identity: true` and grants
+`keel.account.upsert` and `keel.principal.upsert` to billing through the `scopes` of `peer.create`;
+the example is reversed for an identity link. The data sketch of the same document gains the table
+`peer_identity(peer_id, subject_kind, subject_id, seq, applied_at)`, the sequence of the last event
+applied to each record of an identity link, which goes with the link, and the column `identity` of
+`peer_product`. Both upserts accept an `origin` and an `externalId` of visible ASCII without `"`,
+`,`, `;` and `\`, the alphabet of the on-behalf header, so every synced customer stays addressable
+on behalf; and they refuse an origin naming an instance to a caller below `admin` other than the
+link to that instance, so a record under the origin of a peer was placed by that peer or by an
+administrator, a rule the pass adds to "External identity" in [design/03-access.md](design/03-access.md).
 
 **Touches.** `docs/`, `README.md`, the versions.
 

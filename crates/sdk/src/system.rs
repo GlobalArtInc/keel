@@ -162,6 +162,7 @@ pub struct Installation {
 pub trait AccountSource: Send + Sync {
     async fn ancestry(&self, account: Id, db: &Db) -> Result<Vec<Id>>;
     async fn by_id(&self, account: Id, db: &Db) -> Result<Option<Account>>;
+    async fn of_external_id(&self, external_id: &str, db: &Db) -> Result<Vec<Account>>;
 }
 
 #[async_trait]

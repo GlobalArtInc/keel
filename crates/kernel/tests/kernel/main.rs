@@ -27,4 +27,5 @@ mod streams;
 mod tasks;
 mod tls;
 mod upload;
+mod upsert;
 mod views;

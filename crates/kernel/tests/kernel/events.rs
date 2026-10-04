@@ -322,7 +322,13 @@ async fn a_user_receives_data_invalidate_for_its_own_objects_alone_while_an_admi
     let second = touch(&harness, Who::A2, "second").await;
     assert!(first < second);
     let events = outbox(&harness).await;
-    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.module == "stream")
+            .count(),
+        2
+    );
     let a1_account = harness.fixtures().accounts.a1;
     let a2_account = harness.fixtures().accounts.a2;
 
