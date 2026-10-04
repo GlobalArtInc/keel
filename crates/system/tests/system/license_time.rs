@@ -6,6 +6,7 @@ use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue}
 use keel_sdk::serde_json::Map;
 use keel_sdk::system::{Client, Features};
 use keel_sdk::types::LicenseState;
+use keel_system::cron::ERROR_RUNNING;
 use keel_system::cron::api::{Outcome, Scheduler};
 use keel_system::license::{CLOCK_JOB, EXPIRED, EXPIRING, GET, INSTALL, KV_CLOCK, MODULE};
 use keel_testkit::license::Issuer;
@@ -233,7 +234,19 @@ async fn run(harness: &Harness, job: &str) {
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    let started = scheduler.run_now(job).await.expect("the job starts");
+    let started = loop {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{job} did not start in time"
+        );
+        match scheduler.run_now(job).await {
+            Ok(started) => break started,
+            Err(error) if error.key() == ERROR_RUNNING => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(error) => panic!("{job} did not start: {error:?}"),
+        }
+    };
     let outcome = tokio::time::timeout(PATIENCE, scheduler.wait(started.run))
         .await
         .expect("the run ends in time")

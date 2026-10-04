@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use keel::prelude::*;
+use keel_system::cron::ERROR_RUNNING;
 use keel_system::cron::api::{Outcome, Scheduler};
 use keel_system::notify::POLL_JOB;
 use keel_testkit::{Builder, Harness, Reply, Who, tokio};
@@ -179,7 +180,15 @@ pub(crate) async fn run_job(harness: &Harness, job: &str) {
         .get::<Scheduler>()
         .expect("the cron module provides the scheduler");
     eventually("the leader takes the lock", async || scheduler.is_leader()).await;
-    let started = scheduler.run_now(job).await.expect("the job starts");
+    let started = loop {
+        match scheduler.run_now(job).await {
+            Ok(started) => break started,
+            Err(error) if error.key() == ERROR_RUNNING => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            Err(error) => panic!("{job} did not start: {error:?}"),
+        }
+    };
     let outcome = tokio::time::timeout(PATIENCE, scheduler.wait(started.run))
         .await
         .expect("the job ends in time")
