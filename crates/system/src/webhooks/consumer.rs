@@ -9,6 +9,7 @@ use keel_sdk::sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set, Statement,
     TryInsertResult, Value as DbValue,
 };
+use keel_sdk::system::peer_sees;
 use keel_sdk::types::Event;
 
 use super::entity::{cursor, delivery, subscription};
@@ -101,30 +102,36 @@ pub async fn enqueue(
     Ok(matches!(outcome, TryInsertResult::Inserted(_)).then_some(id))
 }
 
+#[derive(Clone)]
+struct Subscriber {
+    scope: AccountScope,
+    principal: Option<Principal>,
+}
+
 struct Scopes<'a> {
     started: &'a Started,
-    known: HashMap<(String, String, Option<String>), Option<AccountScope>>,
+    known: HashMap<(String, String, Option<String>), Option<Subscriber>>,
 }
 
 impl Scopes<'_> {
-    async fn of(&mut self, subscription: &subscription::Model) -> Result<Option<AccountScope>> {
+    async fn of(&mut self, subscription: &subscription::Model) -> Result<Option<Subscriber>> {
         let key = (
             subscription.principal_id.clone(),
             subscription.account_id.clone(),
             subscription.level.clone(),
         );
-        if let Some(scope) = self.known.get(&key) {
-            return Ok(*scope);
+        if let Some(subscriber) = self.known.get(&key) {
+            return Ok(subscriber.clone());
         }
-        let scope = self.derive(subscription).await?;
-        self.known.insert(key, scope);
-        Ok(scope)
+        let subscriber = self.derive(subscription).await?;
+        self.known.insert(key, subscriber.clone());
+        Ok(subscriber)
     }
 
-    async fn derive(&self, subscription: &subscription::Model) -> Result<Option<AccountScope>> {
+    async fn derive(&self, subscription: &subscription::Model) -> Result<Option<Subscriber>> {
         let db = self.started.db();
         let subscriber = match subscription.principal_id.parse::<Id>() {
-            Ok(id) if id == OWNER_ID => Some((Id::ROOT_ACCOUNT, AccountScope::All)),
+            Ok(id) if id == OWNER_ID => Some((Id::ROOT_ACCOUNT, AccountScope::All, None)),
             Ok(id) => self
                 .started
                 .seams
@@ -135,11 +142,15 @@ impl Scopes<'_> {
                     if let Some(level) = scope_level(subscription) {
                         principal.level = level;
                     }
-                    (principal.account_id, AccountScope::of(&principal))
+                    (
+                        principal.account_id,
+                        AccountScope::of(&principal),
+                        Some(principal),
+                    )
                 }),
             Err(_) => None,
         };
-        let Some((home, scope)) = subscriber else {
+        let Some((home, scope, principal)) = subscriber else {
             tracing::warn!(
                 subscription = subscription.id,
                 principal = subscription.principal_id,
@@ -148,7 +159,7 @@ impl Scopes<'_> {
             return Ok(None);
         };
         let placed = match subscription.account_id.parse::<Id>() {
-            Ok(account) if account == home => return Ok(Some(scope)),
+            Ok(account) if account == home => Some(scope),
             Ok(account) if scope.includes(db, account).await? => Some(AccountScope::Own(account)),
             Ok(_) | Err(_) => None,
         };
@@ -160,7 +171,7 @@ impl Scopes<'_> {
                 "the subscriber does not reach the subscription's account; the subscription receives nothing"
             );
         }
-        Ok(placed)
+        Ok(placed.map(|scope| Subscriber { scope, principal }))
     }
 }
 
@@ -192,10 +203,29 @@ async fn step(started: &Started, seq: &mut u64) -> Result<usize> {
             if below_floor(subscription, event.seq) {
                 continue;
             }
-            let Some(scope) = scopes.of(subscription).await? else {
+            let Some(subscriber) = scopes.of(subscription).await? else {
                 continue;
             };
-            if !admits(&scope, event, started.seams.instance, started.db()).await? {
+            if !admits(
+                &subscriber.scope,
+                event,
+                started.seams.instance,
+                started.db(),
+            )
+            .await?
+            {
+                continue;
+            }
+            if let Some(principal) = &subscriber.principal
+                && !peer_sees(
+                    started.seams.reach.as_deref(),
+                    started.seams.accounts.as_ref(),
+                    principal,
+                    event,
+                    started.db(),
+                )
+                .await?
+            {
                 continue;
             }
             if enqueue(started.db(), subscription, event, now)

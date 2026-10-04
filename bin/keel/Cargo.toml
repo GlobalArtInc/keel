@@ -22,7 +22,7 @@ keel = { workspace = true }
 keel-demo = { workspace = true, optional = true }
 keel-dns = { workspace = true, optional = true }
 keel-panel = { workspace = true, optional = true }
-keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup", "peers", "stats"] }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup", "peers", "svc", "stats"] }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }

@@ -152,6 +152,7 @@ fn init(r: &mut Registrar) -> Result<()> {
                 caller: ctx.require::<dyn Caller>()?,
                 principals: ctx.require::<dyn PrincipalSource>()?,
                 accounts: ctx.require::<dyn AccountSource>()?,
+                reach: ctx.require::<dyn PeerReach>()?,
                 instance: ctx
                     .require::<Installation>()
                     .ok()

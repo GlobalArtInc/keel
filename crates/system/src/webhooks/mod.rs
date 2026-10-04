@@ -13,7 +13,8 @@ mod targets;
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::schema_for;
 use keel_sdk::system::{
-    Caller, ContextExt, Installation, OutboxSubscriber, PrincipalSource, SecretCipher,
+    AccountSource, Caller, ContextExt, Installation, OutboxSubscriber, PeerReach, PrincipalSource,
+    SecretCipher,
 };
 
 pub use consumer::{CURSOR, STATE_DEAD, STATE_DELIVERED, STATE_FAILED, STATE_PENDING};
@@ -60,6 +61,7 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     r.require::<dyn Caller>()
         .require::<dyn PrincipalSource>()
+        .require::<dyn AccountSource>()
         .require::<dyn SecretCipher>()
         .require::<dyn OutboxSubscriber>()
         .require::<dyn SettingsSource>()
@@ -91,6 +93,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 cipher: ctx.require::<dyn SecretCipher>()?,
                 caller: ctx.require::<dyn Caller>()?,
                 principals: ctx.require::<dyn PrincipalSource>()?,
+                accounts: ctx.require::<dyn AccountSource>()?,
+                reach: ctx.require::<dyn PeerReach>().ok(),
                 subscriber: ctx.require::<dyn OutboxSubscriber>()?,
                 settings: ctx.require::<dyn SettingsSource>()?,
                 resolver: targets::resolver_or_system(ctx.require::<dyn Resolver>().ok()),
@@ -180,10 +184,11 @@ mod tests {
             .iter()
             .map(|key| key.name())
             .collect();
-        assert_eq!(required.len(), 5);
+        assert_eq!(required.len(), 6);
         for seam in [
             "Caller",
             "PrincipalSource",
+            "AccountSource",
             "SecretCipher",
             "OutboxSubscriber",
             "SettingsSource",

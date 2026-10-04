@@ -12,8 +12,9 @@ pub use crate::function::{
 pub use crate::guard::Guard;
 pub use crate::list::ListSpec;
 pub use crate::registrar::{
-    AddedField, Before, BeforeHook, Contributions, HookDef, I18nBundle, PermissionDef,
-    RegistrationError, Registrations, StartHook, StopHook, StoreHook, Stored, ViewDef, WithinHook,
+    AddedField, Before, BeforeHook, Contributions, DeriveHook, Derived, HookDef, I18nBundle,
+    PermissionDef, RegistrationError, Registrations, StartHook, StopHook, StoreHook, Stored,
+    ViewDef, WithinHook,
 };
 pub use crate::services::{ServiceKey, Services};
 pub use crate::ui::{ConditionSource, ConditionTarget, FieldCondition, UiDef, UiError, variables};

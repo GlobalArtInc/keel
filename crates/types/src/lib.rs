@@ -36,7 +36,8 @@ pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
 pub use log::{LogLevel, LogLine};
 pub use options::{Choice, Choices, OptionsQuery};
 pub use principal::{
-    Account, AccountState, ActorVia, NotDelegated, PeerScope, Principal, Scope, Via, is_mask,
+    Account, AccountState, ActorVia, EXTERNAL_MAX_LEN, EXTERNAL_PATTERN, NotDelegated, PeerScope,
+    Principal, Scope, Via, is_mask,
 };
 pub use task::{
     DOWNLOAD_FUNCTION, DownloadFile, DownloadLink, DownloadRef, GroupResult, TaskLink,

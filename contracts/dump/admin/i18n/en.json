@@ -2055,6 +2055,16 @@
         }
       }
     },
+    "svc": {
+      "error": {
+        "closed": "The service {externalId} of the kind {kind} is closed",
+        "exists": "The service {externalId} of the kind {kind} is already open",
+        "kind": "The service kind {kind} cannot be offered: {reason}",
+        "not_found": "There is no service {externalId} of the kind {kind}",
+        "period": "The period must end after it starts",
+        "stored": "The stored service {id} cannot be read ({member})"
+      }
+    },
     "task": {
       "action": {
         "cancel": "Cancel",

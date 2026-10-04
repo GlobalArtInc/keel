@@ -452,6 +452,18 @@ impl FunctionDef {
         &self.result
     }
 
+    #[doc(hidden)]
+    pub fn with_params(mut self, schema: Schema) -> Self {
+        self.params = embedded(schema);
+        self
+    }
+
+    #[doc(hidden)]
+    pub fn with_result(mut self, schema: Schema) -> Self {
+        self.result = embedded(schema);
+        self
+    }
+
     pub fn ui(&self) -> Option<&UiDef> {
         self.ui.as_ref()
     }
@@ -661,6 +673,28 @@ mod tests {
             json!("string")
         );
         assert_eq!(descriptor.get("ui"), None);
+        assert_eq!(def.known_fields(), BTreeSet::from(["text".to_owned()]));
+    }
+
+    #[test]
+    fn a_function_over_values_carries_the_schemas_it_is_given_without_their_dialect() {
+        let def = function::<Value, Value>("m.e.open")
+            .kind(Kind::Action)
+            .handler(|call: Call<Value>| async move { Ok(call.params().clone()) })
+            .with_params(schema_for!(Ping))
+            .with_result(schema_for!(Pong));
+        let descriptor = serde_json::to_value(def.descriptor().unwrap()).unwrap();
+        assert_eq!(
+            descriptor["params"]["properties"]["text"]["type"],
+            json!("string")
+        );
+        assert_eq!(descriptor["params"]["required"], json!(["text"]));
+        assert_eq!(
+            descriptor["result"]["properties"]["text"]["type"],
+            json!("string")
+        );
+        assert_eq!(descriptor["params"].get("$schema"), None);
+        assert_eq!(descriptor["result"].get("$schema"), None);
         assert_eq!(def.known_fields(), BTreeSet::from(["text".to_owned()]));
     }
 

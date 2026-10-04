@@ -309,6 +309,10 @@ impl<P> Call<P> {
         Ok(resolved)
     }
 
+    pub(crate) fn unit(&self) -> Call<()> {
+        Call::from_parts(self.state.clone(), ())
+    }
+
     pub(crate) fn client_slot(&self) -> Option<&Client> {
         self.state.client.as_ref()
     }

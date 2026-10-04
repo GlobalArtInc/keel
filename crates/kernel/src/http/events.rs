@@ -11,7 +11,9 @@ use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{IntoResponse, Response};
 use futures::stream;
 use keel_sdk::runtime::Db;
-use keel_sdk::system::{Client, Credential, Frame, OutboxSubscriber};
+use keel_sdk::system::{
+    AccountSource, Client, Credential, Frame, OutboxSubscriber, PeerReach, peer_sees,
+};
 use keel_sdk::{AccountScope, KeelError};
 use keel_types::{Event, Id, Level, Principal};
 use sea_orm::DatabaseConnection;
@@ -412,6 +414,7 @@ impl Connection {
             for event in events {
                 self.cursor = self.cursor.max(event.seq);
                 if admits_event(&self.principal, &self.scope, &event, self.local, &self.db).await?
+                    && self.sees(&event).await?
                     && !self.send(invalidate(&event)?).await
                 {
                     return Ok(false);
@@ -421,6 +424,21 @@ impl Connection {
                 return Ok(true);
             }
         }
+    }
+
+    async fn sees(&self, event: &Event) -> Result<bool, KeelError> {
+        let services = self.registry.services();
+        let Some(accounts) = services.get::<dyn AccountSource>() else {
+            return Ok(true);
+        };
+        peer_sees(
+            services.get::<dyn PeerReach>().as_deref(),
+            accounts.as_ref(),
+            &self.principal,
+            event,
+            &Db::from_connection(self.db.clone()),
+        )
+        .await
     }
 
     async fn forward(&mut self, frame: Frame) -> Result<bool, KeelError> {

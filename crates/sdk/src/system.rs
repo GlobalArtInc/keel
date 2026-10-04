@@ -71,6 +71,30 @@ pub trait OnBehalf: Send + Sync {
 pub trait PeerReach: Send + Sync {
     async fn reaches(&self, link: Id, principal: &Principal, db: &Db) -> Result<bool>;
     async fn customer(&self, link: Id, external_id: &str, db: &Db) -> Result<Option<Principal>>;
+    async fn admits(&self, principal: &Principal, origin: Option<&str>, db: &Db) -> Result<bool>;
+}
+
+pub async fn peer_sees(
+    reach: Option<&dyn PeerReach>,
+    accounts: &dyn AccountSource,
+    principal: &Principal,
+    event: &Event,
+    db: &Db,
+) -> Result<bool> {
+    let (Some(reach), Some(subject)) = (reach, event.subject.as_ref()) else {
+        return Ok(true);
+    };
+    if subject.kind != crate::svc::SUBJECT {
+        return Ok(true);
+    }
+    let origin = match subject.account_id {
+        Some(account) => accounts
+            .by_id(account, db)
+            .await?
+            .and_then(|account| account.origin),
+        None => None,
+    };
+    reach.admits(principal, origin.as_deref(), db).await
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -623,6 +647,98 @@ mod tests {
             format!("{endpoint:?}"),
             "Endpoint { module: \"\", name: \"hook\", method: Post }"
         );
+    }
+
+    struct Origins;
+
+    #[async_trait]
+    impl AccountSource for Origins {
+        async fn ancestry(&self, account: Id, _: &Db) -> Result<Vec<Id>> {
+            Ok(vec![account])
+        }
+
+        async fn by_id(&self, account: Id, _: &Db) -> Result<Option<Account>> {
+            let origin = match account.to_string().as_str() {
+                "01J8A0000000000000000000A1" => Some("bill:alpha"),
+                "01J8B0000000000000000000B1" => Some("bill:beta"),
+                "01J8C0000000000000000000C1" => None,
+                _ => return Ok(None),
+            };
+            Ok(Some(Account {
+                id: account,
+                kind: "user".into(),
+                parent_id: Some(Id::ROOT_ACCOUNT),
+                path: format!("/{account}"),
+                state: keel_types::AccountState::Active,
+                external_id: origin.map(|_| "acc-7".to_owned()),
+                origin: origin.map(str::to_owned),
+            }))
+        }
+
+        async fn of_external_id(&self, _: &str, _: &Db) -> Result<Vec<Account>> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct Alpha;
+
+    #[async_trait]
+    impl PeerReach for Alpha {
+        async fn reaches(&self, _: Id, _: &Principal, _: &Db) -> Result<bool> {
+            unreachable!("only admits is asked")
+        }
+
+        async fn customer(&self, _: Id, _: &str, _: &Db) -> Result<Option<Principal>> {
+            unreachable!("only admits is asked")
+        }
+
+        async fn admits(&self, _: &Principal, origin: Option<&str>, _: &Db) -> Result<bool> {
+            Ok(origin == Some("bill:alpha"))
+        }
+    }
+
+    fn about(kind: &str, account: Option<&str>) -> Event {
+        serde_json::from_value(serde_json::json!({
+            "id": Id::generate(),
+            "seq": 7,
+            "type": "svc.service.opened",
+            "at": "2026-10-04T12:00:00Z",
+            "instanceId": Id::generate(),
+            "module": "svc",
+            "subject": { "kind": kind, "id": Id::generate(), "accountId": account },
+            "data": {}
+        }))
+        .expect("an event")
+    }
+
+    #[tokio::test]
+    async fn a_service_event_is_seen_through_a_link_only_when_its_account_belongs_to_the_peer() {
+        let db = Db::from_connection(sea_orm::DatabaseConnection::Disconnected);
+        let principal = crate::tests::principal(Level::Admin);
+        let seen = |reach: Option<&'static dyn PeerReach>, event: Event| {
+            let principal = principal.clone();
+            let db = db.clone();
+            async move {
+                peer_sees(reach, &Origins, &principal, &event, &db)
+                    .await
+                    .expect("no database is needed")
+            }
+        };
+        let alpha: Option<&'static dyn PeerReach> = Some(&Alpha);
+        let owned = Some("01J8A0000000000000000000A1");
+        let foreign = Some("01J8B0000000000000000000B1");
+        let local = Some("01J8C0000000000000000000C1");
+        let gone = Some("01J8D0000000000000000000D1");
+        assert!(seen(alpha, about(crate::svc::SUBJECT, owned)).await);
+        assert!(!seen(alpha, about(crate::svc::SUBJECT, foreign)).await);
+        assert!(!seen(alpha, about(crate::svc::SUBJECT, local)).await);
+        assert!(!seen(alpha, about(crate::svc::SUBJECT, gone)).await);
+        assert!(!seen(alpha, about(crate::svc::SUBJECT, None)).await);
+        assert!(seen(alpha, about("dns.zone", foreign)).await);
+        assert!(seen(None, about(crate::svc::SUBJECT, foreign)).await);
+        let mut bare = about(crate::svc::SUBJECT, foreign);
+        bare.subject = None;
+        assert!(seen(alpha, bare).await);
     }
 
     #[test]

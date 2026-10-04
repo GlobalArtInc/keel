@@ -1,0 +1,97 @@
+{
+  "keel": 1,
+  "name": "svc.kinds",
+  "module": "svc",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "Nothing",
+    "type": "object"
+  },
+  "result": {
+    "title": "Catalogue",
+    "type": "object",
+    "properties": {
+      "data": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Entry"
+        }
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "$defs": {
+      "Entry": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "account": true,
+          "params": true,
+          "state": true,
+          "functions": {
+            "$ref": "#/$defs/Functions"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "title",
+          "account",
+          "params",
+          "state",
+          "functions"
+        ]
+      },
+      "Functions": {
+        "type": "object",
+        "properties": {
+          "open": {
+            "type": "string"
+          },
+          "suspend": {
+            "type": "string"
+          },
+          "resume": {
+            "type": "string"
+          },
+          "close": {
+            "type": "string"
+          },
+          "setParams": {
+            "type": "string"
+          },
+          "stat": {
+            "type": "string"
+          },
+          "login": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "open",
+          "suspend",
+          "resume",
+          "close",
+          "setParams",
+          "stat",
+          "login"
+        ]
+      }
+    }
+  }
+}

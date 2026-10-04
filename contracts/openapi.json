@@ -13907,7 +13907,7 @@
                         "entries": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/Entry"
+                            "$ref": "#/components/schemas/keel.logs.tail.result.Entry"
                           }
                         },
                         "total": {
@@ -19301,6 +19301,75 @@
         }
       }
     },
+    "/api/v1/call/svc.kinds": {
+      "post": {
+        "operationId": "svc.kinds",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Nothing",
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Catalogue",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/svc.kinds.result.Entry"
+                          }
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/task.cancel": {
       "post": {
         "operationId": "task.cancel",
@@ -21613,40 +21682,6 @@
           "to"
         ]
       },
-      "Entry": {
-        "type": "object",
-        "properties": {
-          "seq": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "level": {
-            "$ref": "#/components/schemas/LogLevel"
-          },
-          "target": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "fields": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        },
-        "required": [
-          "seq",
-          "at",
-          "level",
-          "target",
-          "message"
-        ]
-      },
       "ErrorCode": {
         "type": "string",
         "enum": [
@@ -21739,6 +21774,41 @@
               "type": "string"
             }
           }
+        ]
+      },
+      "Functions": {
+        "type": "object",
+        "properties": {
+          "open": {
+            "type": "string"
+          },
+          "suspend": {
+            "type": "string"
+          },
+          "resume": {
+            "type": "string"
+          },
+          "close": {
+            "type": "string"
+          },
+          "setParams": {
+            "type": "string"
+          },
+          "stat": {
+            "type": "string"
+          },
+          "login": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "open",
+          "suspend",
+          "resume",
+          "close",
+          "setParams",
+          "stat",
+          "login"
         ]
       },
       "Grant": {
@@ -23915,6 +23985,40 @@
           }
         ]
       },
+      "keel.logs.tail.result.Entry": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevel"
+          },
+          "target": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "level",
+          "target",
+          "message"
+        ]
+      },
       "note.list.result.Note": {
         "type": "object",
         "properties": {
@@ -24200,6 +24304,37 @@
           "max",
           "sum",
           "count"
+        ]
+      },
+      "svc.kinds.result.Entry": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "account": true,
+          "params": true,
+          "state": true,
+          "functions": {
+            "$ref": "#/components/schemas/Functions"
+          }
+        },
+        "required": [
+          "kind",
+          "schemaVersion",
+          "title",
+          "account",
+          "params",
+          "state",
+          "functions"
         ]
       },
       "update.apply.result.Channel": {

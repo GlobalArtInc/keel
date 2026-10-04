@@ -43,6 +43,9 @@ pub struct PeerScope {
     pub on_behalf: bool,
 }
 
+pub const EXTERNAL_PATTERN: &str = r"^[!#-+\--:<-\[\]-~]+$";
+pub const EXTERNAL_MAX_LEN: usize = 256;
+
 const MASK_SUFFIX: &str = ".*";
 
 impl Scope {

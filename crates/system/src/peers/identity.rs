@@ -37,6 +37,15 @@ pub fn subscribed(subscribe: &[String], identity: bool) -> Vec<String> {
     masks
 }
 
+pub(super) async fn link_behind(principal: &Principal, db: &Db) -> Result<Option<product::Model>> {
+    let mut ids = vec![principal.id.to_string()];
+    ids.extend(principal.actor.iter().map(|actor| actor.id.to_string()));
+    Ok(product::Entity::find()
+        .filter(product::Column::PrincipalId.is_in(ids))
+        .one(db)
+        .await?)
+}
+
 pub(super) async fn bound(call: Call<Value>) -> Result<()> {
     let principal = call.principal();
     let origin = call
@@ -44,13 +53,7 @@ pub(super) async fn bound(call: Call<Value>) -> Result<()> {
         .get(ORIGIN)
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let mut ids = vec![principal.id.to_string()];
-    ids.extend(principal.actor.iter().map(|actor| actor.id.to_string()));
-    let link = product::Entity::find()
-        .filter(product::Column::PrincipalId.is_in(ids))
-        .one(call.db())
-        .await?;
-    let allowed = match link {
+    let allowed = match link_behind(principal, call.db()).await? {
         Some(link) => names_peer(origin, &link.instance_id),
         None => principal.level >= Level::Admin || !names_an_instance(origin),
     };

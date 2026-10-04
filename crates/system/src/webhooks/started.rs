@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use keel_sdk::prelude::*;
-use keel_sdk::system::{Caller, OutboxSubscriber, PrincipalSource, SecretCipher};
+use keel_sdk::system::{
+    AccountSource, Caller, OutboxSubscriber, PeerReach, PrincipalSource, SecretCipher,
+};
 use tokio::sync::Notify;
 
 use super::targets::Resolver;
@@ -14,6 +16,8 @@ pub struct Seams {
     pub cipher: Arc<dyn SecretCipher>,
     pub caller: Arc<dyn Caller>,
     pub principals: Arc<dyn PrincipalSource>,
+    pub accounts: Arc<dyn AccountSource>,
+    pub reach: Option<Arc<dyn PeerReach>>,
     pub subscriber: Arc<dyn OutboxSubscriber>,
     pub settings: Arc<dyn SettingsSource>,
     pub resolver: Arc<dyn Resolver>,

@@ -16,6 +16,7 @@
         "crates/system/i18n/peers": ["peer"],
         "crates/system/i18n/settings": ["settings"],
         "crates/system/i18n/stats": ["stats"],
+        "crates/system/i18n/svc": ["svc"],
         "crates/system/i18n/tasks": ["task"],
         "crates/system/i18n/update": ["update"],
         "crates/system/i18n/webhooks": ["webhook"]

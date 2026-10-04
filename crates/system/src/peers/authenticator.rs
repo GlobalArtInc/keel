@@ -12,7 +12,7 @@ use keel_sdk::{Clock, Db, Id, KeelError, Level, Principal, Result};
 
 use super::entity::product;
 use super::functions::scopes_of;
-use super::identity::reached;
+use super::identity::{link_behind, reached};
 use super::on_behalf::{foreign_origin, names_peer, not_reached, parse};
 use crate::auth::api::{PEER_TOKEN_PREFIX, token_hash};
 
@@ -171,6 +171,13 @@ impl PeerReach for PeerAuthenticator {
         Ok(match <[Principal; 1]>::try_from(reached) {
             Ok([principal]) => Some(principal),
             Err(_) => None,
+        })
+    }
+
+    async fn admits(&self, principal: &Principal, origin: Option<&str>, db: &Db) -> Result<bool> {
+        Ok(match link_behind(principal, db).await? {
+            None => true,
+            Some(link) => origin.is_some_and(|origin| names_peer(origin, &link.instance_id)),
         })
     }
 }

@@ -121,6 +121,8 @@ pub type StoreHook =
     Arc<dyn Fn(Call<Value>, Stored) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 pub type StartHook = Box<dyn FnOnce(Context) -> BoxFuture<'static, Result<()>> + Send>;
 pub type StopHook = Box<dyn FnOnce() -> BoxFuture<'static, Result<()>> + Send>;
+pub type DeriveHook = Box<dyn FnOnce(&[&Contributions]) -> Derived + Send>;
+pub type Derived = Box<dyn FnOnce(&mut Registrar) -> Result<()> + Send>;
 
 #[derive(Clone)]
 pub struct HookDef<H> {
@@ -334,6 +336,7 @@ pub struct Registrar {
     start: Option<StartHook>,
     stop: Option<StopHook>,
     invoker: Option<Arc<dyn Invoker>>,
+    derive: Option<DeriveHook>,
     errors: Vec<RegistrationError>,
 }
 
@@ -397,6 +400,7 @@ impl Registrar {
             start: None,
             stop: None,
             invoker: None,
+            derive: None,
             errors: Vec::new(),
         }
     }
@@ -650,6 +654,36 @@ impl Registrar {
         self
     }
 
+    #[doc(hidden)]
+    pub fn derive<T, F>(&mut self, hook: F) -> &mut Self
+    where
+        T: Any + Clone + Send + Sync,
+        F: FnOnce(Vec<T>, &mut Registrar) -> Result<()> + Send + 'static,
+    {
+        if self.derive.is_some() {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "derive hook",
+                name: "derive".to_owned(),
+            });
+        }
+        self.derive = Some(Box::new(move |bags: &[&Contributions]| -> Derived {
+            let found: Vec<T> = bags.iter().flat_map(|bag| bag.of::<T>()).cloned().collect();
+            Box::new(move |registrar: &mut Registrar| hook(found, registrar))
+        }));
+        self
+    }
+
+    #[doc(hidden)]
+    pub fn take_derive(&mut self) -> Option<DeriveHook> {
+        self.derive.take()
+    }
+
+    #[doc(hidden)]
+    pub fn contributions(&self) -> &Contributions {
+        &self.contributions
+    }
+
     pub fn errors(&self) -> &[RegistrationError] {
         &self.errors
     }
@@ -718,6 +752,7 @@ impl fmt::Debug for Registrar {
             .field("views", &self.views)
             .field("menu", &self.menu)
             .field("permissions", &self.permissions)
+            .field("derive", &self.derive.is_some())
             .field("errors", &self.errors)
             .finish()
     }
@@ -1107,6 +1142,70 @@ mod tests {
         assert_eq!(
             listed,
             ["module relay: endpoint \"POST hook\" is registered twice"]
+        );
+    }
+
+    #[derive(Clone)]
+    struct Offered(&'static str);
+
+    #[test]
+    fn a_derive_hook_registers_from_the_contributions_of_every_bag_under_its_module() {
+        let mut own = Registrar::new("svc");
+        own.contribute(Offered("own"));
+        let mut other = Contributions::default();
+        other.add(Offered("dns.zones"));
+        other.add(Widget("ignored"));
+        own.derive(|kinds: Vec<Offered>, r: &mut Registrar| {
+            for kind in kinds {
+                r.function(noop(&format!("svc.{}.open", kind.0)));
+            }
+            Ok(())
+        });
+        assert!(format!("{own:?}").contains("derive: true"));
+        let hook = own.take_derive().expect("the hook is kept until taken");
+        assert!(own.take_derive().is_none());
+        let derived = hook(&[own.contributions(), &other]);
+        derived(&mut own).expect("the hook registers");
+        let registrations = own
+            .into_registrations()
+            .expect("the names carry the prefix");
+        let names: Vec<&str> = registrations
+            .functions
+            .iter()
+            .map(FunctionDef::name)
+            .collect();
+        assert_eq!(names, ["svc.own.open", "svc.dns.zones.open"]);
+        assert!(
+            registrations
+                .functions
+                .iter()
+                .all(|def| def.module() == "svc")
+        );
+    }
+
+    #[test]
+    fn a_second_derive_hook_and_a_derived_name_outside_the_prefix_are_refused() {
+        let mut r = Registrar::new("svc");
+        r.derive(|_: Vec<Offered>, _: &mut Registrar| Ok(()))
+            .derive(|_: Vec<Offered>, _: &mut Registrar| Ok(()));
+        let errors = r.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            ["module svc: derive hook \"derive\" is registered twice"]
+        );
+        let mut r = Registrar::new("svc");
+        r.derive(|_: Vec<Offered>, r: &mut Registrar| {
+            r.function(noop("dns.zone.open"));
+            Ok(())
+        });
+        let hook = r.take_derive().unwrap();
+        hook(&[])(&mut r).unwrap();
+        let errors = r.into_registrations().unwrap_err();
+        let listed: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            listed,
+            ["module svc: function \"dns.zone.open\" does not carry the module prefix"]
         );
     }
 

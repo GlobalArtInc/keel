@@ -13,7 +13,7 @@ use crate::clock::Clock;
 
 pub const DEFAULT_ROLE: &str = "owner";
 pub const DEFAULT_LANG: &str = "en";
-pub const EXTERNAL_PATTERN: &str = r"^[!#-+\--:<-\[\]-~]+$";
+pub const EXTERNAL_PATTERN: &str = keel_types::EXTERNAL_PATTERN;
 pub(super) const UPSERT: &str = "keel.principal.upsert";
 const CREATED: &str = "keel.principal.created";
 const RENAMED: &str = "keel.principal.renamed";

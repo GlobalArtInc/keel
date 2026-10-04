@@ -2055,6 +2055,16 @@
         }
       }
     },
+    "svc": {
+      "error": {
+        "closed": "Услуга {externalId} вида {kind} закрыта",
+        "exists": "Услуга {externalId} вида {kind} уже открыта",
+        "kind": "Вид услуг {kind} нельзя предложить: {reason}",
+        "not_found": "Услуги {externalId} вида {kind} нет",
+        "period": "Период должен заканчиваться позже, чем начинается",
+        "stored": "Сохранённую услугу {id} не удаётся прочитать ({member})"
+      }
+    },
     "task": {
       "action": {
         "cancel": "Отменить",

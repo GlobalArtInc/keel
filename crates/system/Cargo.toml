@@ -20,6 +20,7 @@ default = [
   "backup",
   "stats",
   "peers",
+  "svc",
 ]
 audit = ["dep:tokio", "dep:tracing"]
 backup = ["tasks", "dep:tokio", "dep:tracing"]
@@ -57,6 +58,7 @@ webhooks = [
   "dep:tracing",
 ]
 settings = ["dep:jsonschema", "dep:roxmltree"]
+svc = []
 stats = ["cron", "dep:tracing"]
 auth = [
   "dep:argon2",

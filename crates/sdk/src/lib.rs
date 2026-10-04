@@ -20,6 +20,7 @@ pub mod product;
 pub mod registrar;
 pub mod secret;
 pub mod settings;
+pub mod svc;
 pub mod task;
 pub mod ui;
 
@@ -75,6 +76,7 @@ pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
 pub use stat::StatCollector;
 pub use stream::Lines;
+pub use svc::{ServiceKind, ServiceKindDef};
 pub use task::{TaskHandle, TaskOutput};
 pub use ui::{Action, ActionScreen, Column, Form, List, ObjectScreen, ViewSpec};
 

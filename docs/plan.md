@@ -6769,6 +6769,68 @@ the freeze refuses the declaration on a read function and on a guest-level funct
 takes `--idempotency-key <key>` and sends it as the frame's `idempotencyKey`, so a function that
 requires the key, such as the `svc` open and close of step 4a, is reachable from the CLI; the `keel
 ctl` paragraph of [design/10-contracts.md](design/10-contracts.md) gains the flag.
+Step 4a leaves points for the pass over [design/05-modules.md](design/05-modules.md) and
+[design/07-ecosystem.md](design/07-ecosystem.md). A module's `init` runs before the contributions of
+the modules after it are known, and functions are fixed at the freeze, so the registrar gains the
+hidden `derive::<T>(hook)`: after every `init` the loader hands the hook the contributions of type
+`T` of every module, as `init` left them, and the hook registers into its own module's registrar, so
+the prefix and duplicate checks apply; the `svc` module derives its functions, the catalogue and
+its `serviceKinds` that way, and a failing hook fails the start. `ServiceKind` lives in
+`keel_sdk::svc` as sketched, with `TITLE`, the key of the kind's title, beside `KIND` and
+`SCHEMA_VERSION`; what a module contributes is `ServiceKindDef::new(kind)`, which erases the kind and
+computes the schemas of its functions, and the start refuses a kind whose name is not lowercase
+segments joined by dots, whose version is not 1 or more, whose `Account` does not require `origin`
+and `externalId`, or which two modules contribute. The account object is the SDK's `ServiceAccount
+{ origin, externalId, kind? }` or a type that requires both identity members; `login` and `email`
+leave the open example, since a customer's principal is synced by `keel.principal.upsert`, which
+the pairing example grants. Every function but `open` names its service by `externalId` within the
+kind; the answers are `{ serviceId, accountId, status, state, retainUntil? }`, `stat { externalId,
+from, to }` answers `{ serviceId, from, to, usage }` and `login` answers `{ url }`. The functions are
+`admin`-level without a permission key, `open` and `close` require the key, `stat` is a read and
+the others are writes. `open` upserts the account through `call.invoke` of `keel.account.upsert`,
+so its guards and hooks, the origin binding of `peers` among them, apply and its field errors land
+under `account`; a second `open` of one external id under another key answers `409
+svc.error.exists`, which tells any caller that the id is taken within the kind, since the external
+id is unique per kind across peers, and nothing more. The statuses are `active`, `suspended` and
+`closed`: a suspend of a suspended service or a resume of an active one answers it unchanged without
+calling the kind, a closed service refuses every function but `stat` with `409 svc.error.closed`,
+and an unknown external id answers `404 svc.error.not_found`. `close` keeps the service for
+`svc.retention_days` (1 to 3650, 30 by default) as `retainUntil`, which nothing acts on, and
+suspends the account through `keel.account.suspend` only when no other service of it remains open,
+so closing one of two services keeps the other working; when that suspend changed the account's
+state, the closed row carries `suspended_account`. `open` undoes that suspension and no other: it
+resumes the account through `keel.account.resume` when the account is suspended and one of its
+services carries the mark, so a customer who buys again within the retention period gets an
+account that works. `svc` hooks `keel.account.suspend` and `keel.account.resume` inside their
+transaction and drops the account's marks on every call, its own included, before the kernel
+switches the state, so the suspension an administrator or an identity peer makes, before the last
+close or after it, and a resume followed by a new suspension, all take the suspension from `svc`:
+the account stays suspended and the new service answers `active` on it, and a peer whose token
+lacks `keel.account.resume` cannot lift such a suspension by closing the last service and opening
+another. `open` and `close` hold a transaction lock keyed by the account's `(origin, externalId)`,
+`open` before the upsert and `close`, which reads the pair through `AccountSource`, before anything
+touches the account, and the hook takes the same lock before it touches the marks, so the three take
+the lock and then the rows in one order: an `open` and a `close` cannot both miss the last open
+service, and a suspend or resume of the account waits for them instead of deadlocking. A call that
+comes through a peer link, its principal or its actor being the principal of a link, reaches only
+the services whose account's origin names that link's instance; any other answers `404
+svc.error.not_found`, as an unknown one does, so one billing peer can neither act on nor read
+another's services. The hidden `PeerReach` gains `admits(principal, origin, db)`, which `peers`
+answers by the rule of its origin binding and which `svc` asks only when `peers` provides it. The
+account's deletion forgets its services. The module emits `svc.service.opened`, `suspended`,
+`resumed`, `closed` and `updated` about `{ svc.service, id, accountId }`, and the same rule holds
+where those events leave the installation: the hidden `peer_sees` of the SDK lets an event about
+`keel_sdk::svc::SUBJECT` through to a principal only when `PeerReach::admits` that principal for
+the origin of the event's account, and the pull feed, the webhook consumer for every subscription
+with a principal and the kernel's event stream ask it after their account scope, so the feed, the
+hook and the stream of a link carry no event about a service of another peer's customer or of an
+account no peer owns, and an event whose account is deleted before it is delivered reaches no link;
+events about other subjects keep the scope step 2a records. The catalogue is the function
+`svc.kinds` rather than a raw route, so it keeps the guards, the audit and the descriptor; its
+entries are those of the sketch. The handshake names the feature `svc`, not `services`. The table of
+the sketch gains `retain_until`, `suspended_account`, `created_at` and `updated_at`, and `peer_id`
+is the link a call came through, set for a peer token and an on-behalf call and not for a token
+minted under a link.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

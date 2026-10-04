@@ -64,6 +64,8 @@ mod settings_brand;
 mod settings_pref;
 #[cfg(feature = "stats")]
 mod stats;
+#[cfg(feature = "svc")]
+mod svc;
 #[cfg(feature = "tasks")]
 mod tasks;
 #[cfg(feature = "tasks")]

@@ -16,6 +16,8 @@ pub mod peers;
 pub mod settings;
 #[cfg(feature = "stats")]
 pub mod stats;
+#[cfg(feature = "svc")]
+pub mod svc;
 #[cfg(feature = "tasks")]
 pub mod tasks;
 #[cfg(feature = "update")]
