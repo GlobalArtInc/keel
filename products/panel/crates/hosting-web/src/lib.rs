@@ -6,10 +6,14 @@ mod lifecycle;
 mod limit;
 mod names;
 mod overrides;
+mod service;
 mod site;
+mod stats;
+mod svc;
 
 use keel::prelude::*;
 use keel::sdk::limit::Unit;
+use keel::sdk::system::AccountSource;
 use keel::sdk::tokio::sync::Mutex;
 use keel_host::api::HostExecutor;
 use keel_hosting_users::api::HostingUsers;
@@ -20,6 +24,7 @@ const PRODUCT: &str = "panel";
 const FEATURE: &str = "panel.web";
 const LIMIT: &str = "hosting.site.max";
 const LIMIT_DEFAULT: u64 = 10;
+const COUNT: &str = "hosting.site.count";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations").table("keel_migration_hosting_site");
@@ -28,7 +33,7 @@ pub static MODULE: ModuleDef = ModuleDef {
     id: "hosting_site",
     version: env!("CARGO_PKG_VERSION"),
     sdk: VERSION,
-    requires: &["host", "hosting"],
+    requires: &["host", "hosting", "stats"],
     migrations: Some(&MIGRATIONS),
     init,
 };
@@ -39,6 +44,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let started = Arc::clone(&renderer);
     r.require::<dyn HostExecutor>()
         .require::<dyn HostingUsers>()
+        .require::<dyn AccountSource>()
         .require::<dyn api::DnsProvider>()
         .provide::<dyn api::Sites>(renderer)
         .function(functions::list())
@@ -78,6 +84,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 .default(LIMIT_DEFAULT)
                 .unlimited(true),
         )
+        .contribute(stats::sites(COUNT))
+        .contribute(svc::kind(Arc::clone(&turn)))
         .contribute(lifecycle::contribution(turn))
         .contribute(
             ConfigTemplate::new(

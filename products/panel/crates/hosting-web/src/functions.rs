@@ -4,12 +4,13 @@ use keel::sdk::sea_orm::{
     Statement,
 };
 use keel::sdk::serde_json;
+use keel::sdk::system::AccountSource;
 use keel_hosting_users::api::{HostingUser, HostingUsers};
 
 use crate::api::{DnsProvider, SiteCertificates, SiteZone};
 use crate::host::{Effects, Gone, Turn};
 use crate::names::{self, ALIASES_MAX, PHP_PATTERN, ROOT_MAX, ROOT_PATTERN};
-use crate::{FEATURE, site};
+use crate::{FEATURE, lifecycle, site};
 
 const READ: &str = "hosting.site.read";
 const MANAGE: &str = "hosting.site.manage";
@@ -175,6 +176,8 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                 let php = names::php(params.php.as_deref())?;
                 refuse_taken(tx, None, &domain, &aliases).await?;
                 refuse_foreign(&call, account, Some(&domain), &aliases).await?;
+                let accounts = call.require::<dyn AccountSource>()?;
+                let suspended = lifecycle::off(tx, accounts.as_ref(), tx, account).await?;
                 let now = call.require::<dyn Clock>()?.now();
                 let row = site::ActiveModel {
                     id: Set(Id::generate().to_string()),
@@ -185,7 +188,7 @@ pub(crate) fn create(turn: Turn) -> FunctionDef {
                     root: Set(root),
                     php: Set(php),
                     php_applied: Set(None),
-                    suspended: Set(false),
+                    suspended: Set(suspended),
                     server_config: Set(String::new()),
                     pool_config: Set(String::new()),
                     state: Set(site::STATE_PENDING.to_owned()),

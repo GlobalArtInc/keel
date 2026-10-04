@@ -5051,6 +5051,9 @@
                         "served": {
                           "type": "boolean"
                         },
+                        "suspended": {
+                          "type": "boolean"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -5072,6 +5075,7 @@
                         "minimum",
                         "state",
                         "served",
+                        "suspended",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -5304,6 +5308,9 @@
                         "served": {
                           "type": "boolean"
                         },
+                        "suspended": {
+                          "type": "boolean"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -5325,6 +5332,7 @@
                         "minimum",
                         "state",
                         "served",
+                        "suspended",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -5447,6 +5455,9 @@
                         "served": {
                           "type": "boolean"
                         },
+                        "suspended": {
+                          "type": "boolean"
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -5468,6 +5479,7 @@
                         "minimum",
                         "state",
                         "served",
+                        "suspended",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -19301,6 +19313,1404 @@
         }
       }
     },
+    "/api/v1/call/svc.dns.zones.close": {
+      "post": {
+        "operationId": "svc.dns.zones.close",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/DnsZonesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "The function requires the key: a repeat with the same key and body answers the recorded response marked by X-Keel-Idempotent-Replay, the same key with another body is refused with idempotency_mismatch.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[ -~]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/call/svc.dns.zones.login": {
+      "post": {
+        "operationId": "svc.dns.zones.login",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "LoginTarget",
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.dns.zones.open": {
+      "post": {
+        "operationId": "svc.dns.zones.open",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OpenParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "account": {
+                    "$ref": "#/components/schemas/ServiceAccount"
+                  },
+                  "params": {
+                    "$ref": "#/components/schemas/DnsZonesParams"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "account",
+                  "params"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/DnsZonesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "The function requires the key: a repeat with the same key and body answers the recorded response marked by X-Keel-Idempotent-Replay, the same key with another body is refused with idempotency_mismatch.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[ -~]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/call/svc.dns.zones.resume": {
+      "post": {
+        "operationId": "svc.dns.zones.resume",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/DnsZonesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.dns.zones.set_params": {
+      "post": {
+        "operationId": "svc.dns.zones.set_params",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SetParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "params": {
+                    "$ref": "#/components/schemas/DnsZonesParams"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "params"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/DnsZonesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.dns.zones.stat": {
+      "post": {
+        "operationId": "svc.dns.zones.stat",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "StatParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "StatAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "from": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "to": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "usage": true
+                      },
+                      "required": [
+                        "serviceId",
+                        "from",
+                        "to",
+                        "usage"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.dns.zones.suspend": {
+      "post": {
+        "operationId": "svc.dns.zones.suspend",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SuspendParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "reason": {
+                    "default": null
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/DnsZonesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.close": {
+      "post": {
+        "operationId": "svc.hosting.sites.close",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/HostingSitesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "The function requires the key: a repeat with the same key and body answers the recorded response marked by X-Keel-Idempotent-Replay, the same key with another body is refused with idempotency_mismatch.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[ -~]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.login": {
+      "post": {
+        "operationId": "svc.hosting.sites.login",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "LoginTarget",
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.open": {
+      "post": {
+        "operationId": "svc.hosting.sites.open",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OpenParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "account": {
+                    "$ref": "#/components/schemas/ServiceAccount"
+                  },
+                  "params": {
+                    "$ref": "#/components/schemas/HostingSitesParams"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "account",
+                  "params"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/HostingSitesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "The function requires the key: a repeat with the same key and body answers the recorded response marked by X-Keel-Idempotent-Replay, the same key with another body is refused with idempotency_mismatch.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[ -~]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.resume": {
+      "post": {
+        "operationId": "svc.hosting.sites.resume",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "ServiceRef",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/HostingSitesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.set_params": {
+      "post": {
+        "operationId": "svc.hosting.sites.set_params",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SetParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "params": {
+                    "$ref": "#/components/schemas/HostingSitesParams"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "params"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/HostingSitesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.stat": {
+      "post": {
+        "operationId": "svc.hosting.sites.stat",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "get",
+          "mode": "read",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "StatParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "from": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "externalId",
+                  "from",
+                  "to"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "StatAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "from": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "to": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "usage": true
+                      },
+                      "required": [
+                        "serviceId",
+                        "from",
+                        "to",
+                        "usage"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/svc.hosting.sites.suspend": {
+      "post": {
+        "operationId": "svc.hosting.sites.suspend",
+        "tags": [
+          "svc"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "admin"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "SuspendParams",
+                "type": "object",
+                "properties": {
+                  "externalId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+                  },
+                  "reason": {
+                    "default": null
+                  }
+                },
+                "required": [
+                  "externalId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "ServiceAnswer",
+                      "type": "object",
+                      "properties": {
+                        "serviceId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "accountId": {
+                          "$ref": "#/components/schemas/Id"
+                        },
+                        "status": {
+                          "$ref": "#/components/schemas/ServiceStatus"
+                        },
+                        "state": {
+                          "$ref": "#/components/schemas/HostingSitesState"
+                        },
+                        "retainUntil": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "serviceId",
+                        "accountId",
+                        "status",
+                        "state"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/svc.kinds": {
       "post": {
         "operationId": "svc.kinds",
@@ -21576,6 +22986,56 @@
           "modules"
         ]
       },
+      "DnsZonesParams": {
+        "type": "object",
+        "properties": {
+          "zoneLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "maximum": 100000,
+            "x-ui": {
+              "control": "slider"
+            }
+          },
+          "template": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "x-keel": {
+              "options": "dns.template.options"
+            },
+            "x-ui": {
+              "control": "select"
+            }
+          }
+        },
+        "required": [
+          "zoneLimit"
+        ]
+      },
+      "DnsZonesState": {
+        "type": "object",
+        "properties": {
+          "zonesUsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "zonesUsed"
+        ]
+      },
       "EmailInput": {
         "type": "object",
         "properties": {
@@ -22373,6 +23833,39 @@
           "state",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "HostingSitesParams": {
+        "type": "object",
+        "properties": {
+          "siteLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "maximum": 100000,
+            "x-ui": {
+              "control": "slider"
+            }
+          }
+        },
+        "required": [
+          "siteLimit"
+        ]
+      },
+      "HostingSitesState": {
+        "type": "object",
+        "properties": {
+          "sitesUsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sitesUsed"
         ]
       },
       "HostingUser": {
@@ -23285,6 +24778,36 @@
           "to"
         ]
       },
+      "ServiceAccount": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+          },
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-keel": {
+              "check": "name"
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "externalId"
+        ]
+      },
       "ServiceRow": {
         "type": "object",
         "properties": {
@@ -23317,6 +24840,14 @@
           "name",
           "state",
           "installed"
+        ]
+      },
+      "ServiceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "closed"
         ]
       },
       "SessionRow": {
@@ -23909,6 +25440,9 @@
           "served": {
             "type": "boolean"
           },
+          "suspended": {
+            "type": "boolean"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -23930,6 +25464,7 @@
           "minimum",
           "state",
           "served",
+          "suspended",
           "createdAt",
           "updatedAt"
         ]

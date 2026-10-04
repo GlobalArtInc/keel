@@ -4,12 +4,14 @@ use std::time::Duration;
 use keel_sdk::Registrar;
 use keel_sdk::limit::Unit;
 use keel_sdk::prelude::*;
+use keel_sdk::system::LimitSource;
 use keel_testkit::{Harness, Reply, Who, tokio};
 use keel_types::ErrorCode;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde_json::json;
 
 const ITEMS: &str = "quota.items";
+const SEATS: &str = "quota.seats";
 
 static STAMPED: LazyLock<Mutex<Vec<String>>> = LazyLock::new(Mutex::default);
 
@@ -32,6 +34,7 @@ static QUOTA: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     r.contribute(LimitDef::new(ITEMS, Unit::Count).default(3).unlimited(true))
+        .contribute(LimitDef::new(SEATS, Unit::Count).default(2))
         .function(
             function::<Check, Nothing>("quota.check")
                 .kind(Kind::Action)
@@ -152,5 +155,71 @@ async fn an_after_commit_hook_reads_through_the_pool_of_its_context() {
         .rows("SELECT count(*)::text FROM keel_account")
         .await;
     assert_eq!(stamped, [format!("{login} {}", accounts[0])]);
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_module_stores_an_account_limit_and_null_only_where_the_limit_admits_unlimited() {
+    let harness = Harness::new().module(&QUOTA).boot().await;
+    let accounts = harness.fixtures().accounts.clone();
+    let limits = harness
+        .registry()
+        .services()
+        .get::<dyn LimitSource>()
+        .expect("the kernel provides the limits");
+    let db = Db::from_connection(harness.db().clone());
+    let stored = || async {
+        harness
+            .database()
+            .rows("SELECT account_id || ' ' || key || ' ' || value::text FROM keel_limit ORDER BY account_id, key")
+            .await
+    };
+
+    limits
+        .store(ITEMS, accounts.a1, Some(1), &db)
+        .await
+        .expect("a value is stored");
+    assert_eq!(stored().await, [format!("{} {ITEMS} 1", accounts.a1)]);
+    assert_eq!(check(&harness, Who::A1, 0).await, None);
+    assert_eq!(
+        check(&harness, Who::A1, 1).await,
+        Some(ErrorCode::LimitExceeded)
+    );
+    assert_eq!(check(&harness, Who::Unrelated, 2).await, None);
+
+    limits
+        .store(ITEMS, accounts.a1, None, &db)
+        .await
+        .expect("null replaces the value");
+    assert_eq!(stored().await, [format!("{} {ITEMS} null", accounts.a1)]);
+    assert_eq!(check(&harness, Who::A1, 1_000).await, None);
+    assert_eq!(
+        limits.effective(ITEMS, accounts.a1, &db).await.unwrap(),
+        None
+    );
+
+    limits
+        .store(SEATS, accounts.a1, Some(7), &db)
+        .await
+        .expect("a value of a limit without unlimited is stored");
+    assert_eq!(
+        limits.effective(SEATS, accounts.a1, &db).await.unwrap(),
+        Some(7)
+    );
+    for (key, value) in [(SEATS, None), ("quota.unknown", Some(1))] {
+        let refused = limits
+            .store(key, accounts.a2, value, &db)
+            .await
+            .expect_err("the value is refused");
+        assert_eq!(refused.code(), ErrorCode::Internal);
+        assert_eq!(refused.params()["limit"], json!(key));
+    }
+    assert_eq!(
+        stored().await,
+        [
+            format!("{} {ITEMS} null", accounts.a1),
+            format!("{} {SEATS} 7", accounts.a1),
+        ]
+    );
     harness.finish().await;
 }

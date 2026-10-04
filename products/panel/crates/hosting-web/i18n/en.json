@@ -86,6 +86,9 @@
       },
       "php": "PHP version",
       "root": "Document root, inside the user's home directory",
+      "service": {
+        "title": "Sites"
+      },
       "state": {
         "active": "Active",
         "error": "Error",

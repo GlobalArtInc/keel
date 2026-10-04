@@ -34,6 +34,15 @@ impl ZoneTemplates for Expander {
             .filter_map(|record| record.expand(expansion))
             .collect())
     }
+
+    async fn exists(&self, db: &Db, scope: &AccountScope, template: &Id) -> Result<bool> {
+        Ok(
+            visible(template::Entity::find_by_id(template.to_string()), scope)
+                .one(db)
+                .await?
+                .is_some(),
+        )
+    }
 }
 
 pub(crate) fn visible(

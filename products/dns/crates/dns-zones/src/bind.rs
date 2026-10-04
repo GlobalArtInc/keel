@@ -64,7 +64,7 @@ impl BindProvider {
 
     pub(crate) async fn copy_zone_files(&self, dir: &BackupDir) -> Result<()> {
         let config = &self.attached()?.config;
-        for name in served_names(dir.db(), None).await? {
+        for name in served_names(dir.db(), None, true).await? {
             let file = zone::file_of(&name);
             let source = Path::new(&config.zones_dir).join(&file);
             let copied = match tokio::fs::symlink_metadata(&source).await {
@@ -94,7 +94,7 @@ impl DnsProvider for BindProvider {
         let Some(current) = zone::Entity::find_by_id(zone).one(db).await? else {
             return Ok(());
         };
-        if current.state != zone::STATE_PENDING {
+        if current.suspended || current.state != zone::STATE_PENDING {
             return Ok(());
         }
         let host = attached.host.on(origin(ctx));
@@ -137,6 +137,13 @@ impl DnsProvider for BindProvider {
                 .await?;
         }
         Ok(())
+    }
+
+    async fn reindex(&self, ctx: &AfterContext) -> Result<()> {
+        let _turn = self.turn.lock().await;
+        let attached = self.attached()?;
+        let host = attached.host.on(origin(ctx));
+        index(&host, &attached.config, ctx.db()?, None).await
     }
 }
 
@@ -193,7 +200,7 @@ async fn publish(
 }
 
 async fn index(host: &Host<'_>, config: &DnsConfig, db: &Db, current: Option<&str>) -> Result<()> {
-    let includes: Vec<String> = served_names(db, current)
+    let includes: Vec<String> = served_names(db, current, false)
         .await?
         .iter()
         .map(|name| config.include_path(&zone::include_of(name)))
@@ -209,15 +216,19 @@ async fn index(host: &Host<'_>, config: &DnsConfig, db: &Db, current: Option<&st
     Ok(())
 }
 
-async fn served_names(db: &Db, current: Option<&str>) -> Result<Vec<String>> {
+async fn served_names(db: &Db, current: Option<&str>, with_suspended: bool) -> Result<Vec<String>> {
     let mut served = Condition::any().add(zone::Column::Served.eq(true));
     if let Some(id) = current {
         served = served.add(zone::Column::Id.eq(id));
     }
-    Ok(zone::Entity::find()
+    let mut names = zone::Entity::find()
         .select_only()
         .column(zone::Column::Name)
-        .filter(served)
+        .filter(served);
+    if !with_suspended {
+        names = names.filter(zone::Column::Suspended.eq(false));
+    }
+    Ok(names
         .order_by_asc(zone::Column::Name)
         .into_tuple()
         .all(db)
@@ -296,6 +307,7 @@ mod tests {
             state: zone::STATE_PENDING.to_owned(),
             error: None,
             served: false,
+            suspended: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

@@ -1278,6 +1278,11 @@
       }
     },
     "dns": {
+      "account": {
+        "error": {
+          "template": "The stored default template {template} of the account {account} is not an identifier"
+        }
+      },
       "report": {
         "account": "Account",
         "band": {
@@ -1298,6 +1303,14 @@
         "to": "Last day",
         "zones": {
           "title": "Zone report"
+        }
+      },
+      "service": {
+        "error": {
+          "template": "The template {template} is not available to the account"
+        },
+        "zones": {
+          "title": "DNS zones"
         }
       },
       "widget": {
@@ -1321,6 +1334,7 @@
           "name": "Name",
           "serial": "Serial",
           "state": "State",
+          "suspended": "Suspended",
           "updatedAt": "Updated"
         },
         "create": {
@@ -1763,6 +1777,9 @@
         },
         "php": "PHP version",
         "root": "Document root, inside the user's home directory",
+        "service": {
+          "title": "Sites"
+        },
         "state": {
           "active": "Active",
           "error": "Error",
@@ -2057,9 +2074,11 @@
     },
     "svc": {
       "error": {
+        "answer": "The function {function} answered without {member}",
         "closed": "The service {externalId} of the kind {kind} is closed",
         "exists": "The service {externalId} of the kind {kind} is already open",
         "kind": "The service kind {kind} cannot be offered: {reason}",
+        "no_principal": "The account {accountId} of the service holds no principal to sign in as",
         "not_found": "There is no service {externalId} of the kind {kind}",
         "period": "The period must end after it starts",
         "stored": "The stored service {id} cannot be read ({member})"

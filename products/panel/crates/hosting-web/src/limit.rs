@@ -22,17 +22,22 @@ pub(crate) async fn enforce(call: Call<Value>) -> Result<()> {
         return Ok(());
     }
     let account = call.resolve_account(Some(owner.account)).await?.to_string();
-    tx.execute(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        SERIALISE,
-        [account.as_str().into()],
-    ))
-    .await?;
+    serialise(tx, &account).await?;
     let kept = site::Entity::find()
         .filter(site::Column::AccountId.eq(account))
         .count(tx)
         .await?;
     call.check_limit(LIMIT, kept).await
+}
+
+pub(crate) async fn serialise<C: ConnectionTrait>(tx: &C, account: &str) -> Result<()> {
+    tx.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        SERIALISE,
+        [account.into()],
+    ))
+    .await?;
+    Ok(())
 }
 
 pub(crate) async fn refuse_busy_users(call: Call<Value>) -> Result<()> {

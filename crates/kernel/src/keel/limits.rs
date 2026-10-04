@@ -12,6 +12,8 @@ use serde_json::Value;
 use super::StoredAccounts;
 
 const VALUES: &str = "SELECT value FROM keel_limit WHERE key = $1 AND account_id = ANY($2)";
+const STORE: &str = "INSERT INTO keel_limit (account_id, key, value) VALUES ($1, $2, $3) \
+     ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value";
 
 #[derive(Clone, Copy, Debug)]
 struct Declared {
@@ -25,6 +27,13 @@ pub struct StoredLimits {
 }
 
 impl StoredLimits {
+    fn declared(&self, key: &str) -> Result<Declared> {
+        self.declared
+            .get(key)
+            .copied()
+            .ok_or_else(|| KeelError::internal("keel.error.internal").param("limit", key))
+    }
+
     pub fn new(contributions: &Contributions) -> Self {
         Self {
             declared: contributions
@@ -46,10 +55,7 @@ impl StoredLimits {
 #[async_trait]
 impl LimitSource for StoredLimits {
     async fn effective(&self, key: &str, account: Id, db: &Db) -> Result<Option<u64>> {
-        let declared = self
-            .declared
-            .get(key)
-            .ok_or_else(|| KeelError::internal("keel.error.internal").param("limit", key))?;
+        let declared = self.declared(key)?;
         let chain: Vec<String> = StoredAccounts
             .ancestry(account, db)
             .await?
@@ -67,7 +73,27 @@ impl LimitSource for StoredLimits {
         for row in rows {
             stored.push(row.try_get::<Value>("", "value")?);
         }
-        Ok(resolve(*declared, &stored))
+        Ok(resolve(declared, &stored))
+    }
+
+    async fn store(&self, key: &str, account: Id, value: Option<u64>, db: &Db) -> Result<()> {
+        let declared = self.declared(key)?;
+        if value.is_none() && !declared.unlimited {
+            return Err(KeelError::internal("keel.error.internal")
+                .param("limit", key)
+                .param("reason", "the limit does not admit unlimited"));
+        }
+        db.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            STORE,
+            [
+                account.to_string().into(),
+                key.into(),
+                serde_json::json!(value).into(),
+            ],
+        ))
+        .await?;
+        Ok(())
     }
 }
 

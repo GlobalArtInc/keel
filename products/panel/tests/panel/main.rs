@@ -10,4 +10,5 @@ mod services;
 mod sites;
 mod ssl;
 mod support;
+mod svc;
 mod users;

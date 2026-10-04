@@ -1,3 +1,4 @@
+mod account;
 pub mod api;
 mod bind;
 mod changes;
@@ -9,12 +10,16 @@ mod lifecycle;
 mod problems;
 mod provider;
 mod report;
+mod service;
 mod stats;
+mod svc;
+mod switch;
 mod widget;
 mod zone;
 
 use keel::prelude::*;
 use keel::sdk::limit::Unit;
+use keel::sdk::system::AccountSource;
 use keel_host::api::HostExecutor;
 
 use api::{ZoneRecords, Zones};
@@ -50,6 +55,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let backed_up = Arc::clone(&bind);
     let changes = ZoneChanges::new(Arc::clone(&bind));
     r.require::<dyn HostExecutor>()
+        .require::<dyn AccountSource>()
         .provide::<dyn DnsProvider>(bind)
         .provide::<dyn Zones>(Arc::new(changes))
         .function(functions::list())
@@ -85,6 +91,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(stats::total(TOTAL))
         .contribute(widget::widget())
         .contribute(lifecycle::contribution())
+        .contribute(svc::kind())
         .contribute(problems::source())
         .contribute(
             ConfigTemplate::new(

@@ -32,6 +32,7 @@ pub struct Model {
     pub state: String,
     pub error: Option<String>,
     pub served: bool,
+    pub suspended: bool,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

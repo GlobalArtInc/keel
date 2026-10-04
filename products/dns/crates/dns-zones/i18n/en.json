@@ -1,5 +1,10 @@
 {
   "dns": {
+    "account": {
+      "error": {
+        "template": "The stored default template {template} of the account {account} is not an identifier"
+      }
+    },
     "report": {
       "account": "Account",
       "band": {
@@ -20,6 +25,14 @@
       "to": "Last day",
       "zones": {
         "title": "Zone report"
+      }
+    },
+    "service": {
+      "error": {
+        "template": "The template {template} is not available to the account"
+      },
+      "zones": {
+        "title": "DNS zones"
       }
     },
     "widget": {
@@ -43,6 +56,7 @@
         "name": "Name",
         "serial": "Serial",
         "state": "State",
+        "suspended": "Suspended",
         "updatedAt": "Updated"
       },
       "create": {

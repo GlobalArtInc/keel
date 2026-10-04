@@ -4,6 +4,7 @@ mod records;
 mod report;
 mod stats;
 mod support;
+mod svc;
 mod templates;
 mod widget;
 mod zones;

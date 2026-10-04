@@ -95,6 +95,10 @@ mod tests {
                 _ => None,
             })
         }
+
+        async fn store(&self, _: &str, _: Id, _: Option<u64>, _: &Db) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[tokio::test]

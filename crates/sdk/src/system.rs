@@ -192,6 +192,7 @@ pub trait AccountSource: Send + Sync {
 #[async_trait]
 pub trait LimitSource: Send + Sync {
     async fn effective(&self, key: &str, account: Id, db: &Db) -> Result<Option<u64>>;
+    async fn store(&self, key: &str, account: Id, value: Option<u64>, db: &Db) -> Result<()>;
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

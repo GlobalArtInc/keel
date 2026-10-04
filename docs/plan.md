@@ -6831,6 +6831,76 @@ entries are those of the sketch. The handshake names the feature `svc`, not `ser
 the sketch gains `retain_until`, `suspended_account`, `created_at` and `updated_at`, and `peer_id`
 is the link a call came through, set for a peer token and an on-behalf call and not for a token
 minted under a link.
+Step 4b leaves points for the pass over [design/03-access.md](design/03-access.md),
+[design/05-modules.md](design/05-modules.md) and [design/07-ecosystem.md](design/07-ecosystem.md).
+`dns-zones` contributes `dns.zones` (title `dns.service.zones.title`, version 1, account
+`ServiceAccount`) with `Params { zoneLimit, template }` and `State { zonesUsed }`, and `hosting-web`
+contributes `hosting.sites` (title `hosting.site.service.title`) with `Params { siteLimit }` and
+`State { sitesUsed }`. A limit member is required and nullable, an integer from 0 to 100000 or
+`null` for unlimited, with `x-ui.control: slider`, whose unlimited switch the forms library reads
+from the nullability rather than from the sketch's `x-ui.unlimited`; `template` is the id of a
+template of `dns.template.options`, not the sketch's `"default"`, and leaving it out clears the
+default, since `set_params` replaces the parameters whole. The hidden `LimitSource` gains
+`store(key, account, value, db)`, which the kernel answers by writing the account's row of
+`keel_limit` and refuses for an undeclared key or for `null` where the definition admits no
+unlimited; the kinds store `dns.zones` or `hosting.site.max` for the service's account, the
+effective limit staying the tightest along the path, and "a function that edits the stored values"
+of [design/03-access.md](design/03-access.md) now has these two writers. `dns-zones` keeps
+`dns_account(account_id, template, updated_at)`: the default template, which `dns.zone.create`
+applies to a zone created without one, an explicit template winning; `open` and `set_params` accept
+a template only when the account itself sees it, a platform template or one of its own, through
+the new `ZoneTemplates::exists`, otherwise answering `422 dns.service.error.template` on
+`params.template`; a default deleted later fails a zone creation on `template` like a chosen one.
+The form of `dns.zone.create` offers `ip` and `ip6` whether or not a template is picked, since the
+account's default may apply to a zone created without one, and a record of the applied template
+whose placeholder has no value is left out as it is for a chosen template.
+Each service keeps a row of its kind, since `svc` lets one account hold several services of a kind
+and keeps the account active while one of them stays open: `dns-zones` keeps
+`dns_service(service_id, account_id, seq, zone_limit, template, held, closed, updated_at)` and
+`hosting-web` `hosting_site_service(service_id, account_id, seq, site_limit, held, closed,
+updated_at)`, `seq` numbering the rows in the order the services were opened. `open` inserts the
+row unheld with the service's parameters, `set_params` replaces them, `suspend` holds the row,
+`resume` releases it and `close` holds it and marks it closed. After writing its row each of the
+five settles the account from the rows: the account's limit and default template are those of its
+newest active service, or, while none is active, of its newest suspended one, and when every
+service of the kind is closed the account keeps what it last had. Closing or suspending the newer of
+two services thus gives the account back the terms of the older, `set_params` on an older service
+changes only its own row while a newer one is active, and a change of package that opens the new
+service before it closes the old one moves to the new terms at once. A row is written and the
+account settled under a lock per account of the kind's own, `dns_service:` or
+`hosting_site_service:`, so calls on two services of one account settle one after the other; the
+lock of the limit hook would deadlock there as the switch below explains. The sum or the maximum of
+the limits were the other choices; they would count an old package alongside the one replacing it
+and leave the template without a rule. An account's zones and sites are switched off while the
+account is not active or while it has rows of the kind and every one of them is held, so suspending
+or closing one of two services keeps the objects of the other on, resuming one service brings them back whatever another
+holds, and an account no service was ever sold to stays on. The `on_suspend` and `on_resume` of both
+modules apply the same rule, so resuming the account keeps the objects of a suspended service off and
+resuming the service keeps those of a suspended account off, and a zone or site created meanwhile
+starts off. Refusing a second open service of a kind on one account was the other choice; it would
+break a change of package that opens the new service before it closes the old one. A zone gains
+`suspended`, shown as a column of `dns.zone.list`: a
+suspended zone leaves the index of named while its zone file and include stay, in the backup too,
+`apply` skips it, and switching it on marks it `pending` and applies it again. A kind's switch runs
+after the `svc` call commits, in a transaction of its own as the lifecycle handlers do, under the
+lock per account that the limit hook of `dns.zone.create` or `hosting.site.create` takes, reading
+the account's state and the holds under it; inside the call it would deadlock with a creation
+waiting for the account row that `open` holds for update, and with a lifecycle handler holding that
+row for share while `close` goes on to suspend the account. `stat` answers `{ zonesUsed }` or `{
+sitesUsed }`, the highest sample `stats` holds for the account in the period, 0 without one, through
+`keel_sdk::svc::peak`, which counts no bucket reaching outside the period: it reads the day buckets
+lying wholly inside it, the hour buckets lying wholly inside the edges the days leave and the raw
+samples of what remains, and reads the time after the last bucket an answer holds at the next finer
+resolution, since `stats` aggregates a key incrementally from its last bucket and the newest hours
+and days are not aggregated yet; a window `stats.series` refuses for holding more than its maximum
+of points is halved until it answers, so no period is too long, and the edges of a period older than
+the raw retention are read from the aggregates that fit inside them; `hosting-web` contributes the hourly
+per-account collector `hosting.site.count` and requires `stats`. `login` answers, through
+`keel_sdk::svc::login`, the URL of a one-time key that `auth.key.issue` issues for 60 seconds to the
+oldest principal of the account carrying the account's origin, landing on `/f/dns.zone.list` or
+`/f/hosting.site.list` and absolute through a peer, and `409 svc.error.no_principal` when there is
+none; a malformed answer of `auth.key.issue` or `stats.series` is `svc.error.answer`. Deleting the
+account drops its rows of `dns_account`, `dns_service` and `hosting_site_service`.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

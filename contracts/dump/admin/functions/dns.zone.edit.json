@@ -112,6 +112,9 @@
       "served": {
         "type": "boolean"
       },
+      "suspended": {
+        "type": "boolean"
+      },
       "createdAt": {
         "type": "string",
         "format": "date-time"
@@ -133,6 +136,7 @@
       "minimum",
       "state",
       "served",
+      "suspended",
       "createdAt",
       "updatedAt"
     ]

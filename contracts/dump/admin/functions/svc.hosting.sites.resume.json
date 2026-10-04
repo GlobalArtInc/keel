@@ -1,0 +1,85 @@
+{
+  "keel": 1,
+  "name": "svc.hosting.sites.resume",
+  "module": "svc",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "ServiceRef",
+    "type": "object",
+    "properties": {
+      "externalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      }
+    },
+    "required": [
+      "externalId"
+    ]
+  },
+  "result": {
+    "title": "ServiceAnswer",
+    "type": "object",
+    "properties": {
+      "serviceId": {
+        "$ref": "#/$defs/Id"
+      },
+      "accountId": {
+        "$ref": "#/$defs/Id"
+      },
+      "status": {
+        "$ref": "#/$defs/ServiceStatus"
+      },
+      "state": {
+        "$ref": "#/$defs/HostingSitesState"
+      },
+      "retainUntil": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "serviceId",
+      "accountId",
+      "status",
+      "state"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ServiceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "closed"
+        ]
+      },
+      "HostingSitesState": {
+        "type": "object",
+        "properties": {
+          "sitesUsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "sitesUsed"
+        ]
+      }
+    }
+  }
+}

@@ -165,6 +165,9 @@
       "served": {
         "type": "boolean"
       },
+      "suspended": {
+        "type": "boolean"
+      },
       "createdAt": {
         "type": "string",
         "format": "date-time"
@@ -186,6 +189,7 @@
       "minimum",
       "state",
       "served",
+      "suspended",
       "createdAt",
       "updatedAt"
     ]
@@ -218,18 +222,6 @@
           ]
         }
       }
-    ],
-    "fields": {
-      "ip": {
-        "show_if": {
-          "truthy": "template"
-        }
-      },
-      "ip6": {
-        "show_if": {
-          "truthy": "template"
-        }
-      }
-    }
+    ]
   }
 }

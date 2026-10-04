@@ -3,13 +3,14 @@ use keel::sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Set,
     Statement,
 };
+use keel::sdk::system::AccountSource;
 use keel::types::ErrorCode;
 
 use crate::api::{Expansion, RecordSeed, ZoneTemplates};
 use crate::changes::{bump, first_serial};
 use crate::history::LOG;
 use crate::provider::DnsProvider;
-use crate::{EXISTS, zone};
+use crate::{EXISTS, account, switch, zone};
 
 const READ: &str = "dns.zone.read";
 const MANAGE: &str = "dns.zone.manage";
@@ -22,6 +23,7 @@ const RECORDS_PARENT: &str = "zone_id";
 const RECORD_CREATE: &str = "dns.record.create";
 const TEMPLATES: &str = "dns.template.options";
 const TEMPLATE_RECORD: &str = "dns.zone.error.template";
+const TEMPLATE_STORED: &str = "dns.account.error.template";
 const CLAIM: &str = "dns.zone.claim";
 const NAME_MAX: u32 = 253;
 const OWNERS: &str = "SELECT DISTINCT account_id FROM dns_zone WHERE name = ANY($1)";
@@ -149,6 +151,7 @@ pub(crate) fn list() -> FunctionDef {
                     ])
                     .filter_options([zone::STATE_PENDING, zone::STATE_ACTIVE, zone::STATE_ERROR]),
             )
+            .column(Column::new("suspended", ColumnType::Boolean))
             .column(Column::new("serial", ColumnType::Number))
             .column(Column::new("error", ColumnType::Text))
             .column(Column::new("updatedAt", ColumnType::Datetime).sortable())
@@ -289,17 +292,19 @@ pub(crate) fn create() -> FunctionDef {
                 ],
             )
             .page("owner", ["account"])
-            .show_if("$principal.level != 'user'")
-            .field("ip")
-            .show_if("template")
-            .field("ip6")
-            .show_if("template"))
+            .show_if("$principal.level != 'user'"))
         .handler(|call: Call<ZoneCreate>| async move {
             let params = call.params();
             let tx = call.tx()?;
             let account = call.resolve_account(params.account).await?;
             let name = params.name.to_ascii_lowercase();
             refuse_taken(tx, &name).await?;
+            let template = match params.template {
+                Some(template) => Some(template),
+                None => default_template(tx, account).await?,
+            };
+            let accounts = call.require::<dyn AccountSource>()?;
+            let suspended = switch::off(tx, accounts.as_ref(), tx, account).await?;
             let now = call.require::<dyn Clock>()?.now();
             let row = zone::ActiveModel {
                 id: Set(Id::generate().to_string()),
@@ -311,17 +316,18 @@ pub(crate) fn create() -> FunctionDef {
                 retry: Set(seconds(params.retry)),
                 expire: Set(seconds(params.expire)),
                 minimum: Set(seconds(params.minimum)),
-                template: Set(params.template.as_ref().map(ToString::to_string)),
+                template: Set(template.as_ref().map(ToString::to_string)),
                 state: Set(zone::STATE_PENDING.to_owned()),
                 error: Set(None),
                 served: Set(false),
+                suspended: Set(suspended),
                 created_at: Set(now),
                 updated_at: Set(now),
             }
             .insert(tx)
             .await?;
             announce(&call, "dns.zone.created", &row)?;
-            let row = match &params.template {
+            let row = match &template {
                 Some(template) => {
                     expand(&call, template, &row).await?;
                     zone::Entity::find_by_id(row.id.clone())
@@ -355,6 +361,21 @@ async fn expand(call: &Call<ZoneCreate>, template: &Id, row: &zone::Model) -> Re
             .map_err(|error| refused_record(error, &seed))?;
     }
     Ok(())
+}
+
+async fn default_template(tx: &Db, account: Id) -> Result<Option<Id>> {
+    let Some(template) = account::Entity::find_by_id(account.to_string())
+        .one(tx)
+        .await?
+        .and_then(|row| row.template)
+    else {
+        return Ok(None);
+    };
+    template.parse().map(Some).map_err(|_| {
+        KeelError::internal(TEMPLATE_STORED)
+            .param("account", account.to_string())
+            .param("template", template)
+    })
 }
 
 fn refused_record(error: KeelError, seed: &RecordSeed) -> KeelError {

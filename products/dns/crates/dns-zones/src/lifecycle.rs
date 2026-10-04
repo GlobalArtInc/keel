@@ -2,10 +2,17 @@ use keel::prelude::*;
 use keel::sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::functions::remove_after_commit;
-use crate::zone;
+use crate::{account, service, switch, zone};
 
 pub(crate) fn contribution() -> AccountLifecycle {
-    AccountLifecycle::new().on_delete(drop_zones)
+    AccountLifecycle::new()
+        .on_suspend(switch_zones)
+        .on_resume(switch_zones)
+        .on_delete(drop_zones)
+}
+
+async fn switch_zones(call: Call<Id>) -> Result<()> {
+    switch::switch(&call, *call.params()).await
 }
 
 async fn drop_zones(call: Call<Id>) -> Result<()> {
@@ -17,6 +24,13 @@ async fn drop_zones(call: Call<Id>) -> Result<()> {
         .await?;
     zone::Entity::delete_many()
         .filter(zone::Column::AccountId.eq(account.as_str()))
+        .exec(tx)
+        .await?;
+    service::Entity::delete_many()
+        .filter(service::Column::AccountId.eq(account.as_str()))
+        .exec(tx)
+        .await?;
+    account::Entity::delete_by_id(account.as_str())
         .exec(tx)
         .await?;
     if let Some(task) = call.task() {

@@ -1,0 +1,88 @@
+{
+  "keel": 1,
+  "name": "svc.dns.zones.suspend",
+  "module": "svc",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "SuspendParams",
+    "type": "object",
+    "properties": {
+      "externalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      },
+      "reason": {
+        "default": null
+      }
+    },
+    "required": [
+      "externalId"
+    ]
+  },
+  "result": {
+    "title": "ServiceAnswer",
+    "type": "object",
+    "properties": {
+      "serviceId": {
+        "$ref": "#/$defs/Id"
+      },
+      "accountId": {
+        "$ref": "#/$defs/Id"
+      },
+      "status": {
+        "$ref": "#/$defs/ServiceStatus"
+      },
+      "state": {
+        "$ref": "#/$defs/DnsZonesState"
+      },
+      "retainUntil": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "serviceId",
+      "accountId",
+      "status",
+      "state"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ServiceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "closed"
+        ]
+      },
+      "DnsZonesState": {
+        "type": "object",
+        "properties": {
+          "zonesUsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "zonesUsed"
+        ]
+      }
+    }
+  }
+}

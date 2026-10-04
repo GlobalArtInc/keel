@@ -1,23 +1,15 @@
 use keel::prelude::*;
-use keel::sdk::sea_orm::{
-    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
-};
+use keel::sdk::sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use keel::sdk::serde_json;
 
+use crate::switch::serialise;
 use crate::{LIMIT, zone};
-
-const SERIALISE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('dns_zone:' || $1, 0))";
 
 pub(crate) async fn enforce_limit(call: Call<Value>) -> Result<()> {
     let requested: Option<Id> = serde_json::from_value(call.params()["account"].clone())?;
     let account = call.resolve_account(requested).await?.to_string();
     let tx = call.tx()?;
-    tx.execute(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        SERIALISE,
-        [account.as_str().into()],
-    ))
-    .await?;
+    serialise(tx, &account).await?;
     let kept = zone::Entity::find()
         .filter(zone::Column::AccountId.eq(account))
         .count(tx)

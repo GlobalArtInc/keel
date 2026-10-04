@@ -1,5 +1,10 @@
 {
   "dns": {
+    "account": {
+      "error": {
+        "template": "Сохранённый шаблон по умолчанию {template} аккаунта {account} не является идентификатором"
+      }
+    },
     "report": {
       "account": "Аккаунт",
       "band": {
@@ -20,6 +25,14 @@
       "to": "Последний день",
       "zones": {
         "title": "Отчёт по зонам"
+      }
+    },
+    "service": {
+      "error": {
+        "template": "Шаблон {template} недоступен аккаунту"
+      },
+      "zones": {
+        "title": "DNS-зоны"
       }
     },
     "widget": {
@@ -43,6 +56,7 @@
         "name": "Имя",
         "serial": "Серийный номер",
         "state": "Состояние",
+        "suspended": "Приостановлена",
         "updatedAt": "Изменена"
       },
       "create": {

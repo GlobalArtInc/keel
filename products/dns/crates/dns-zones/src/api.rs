@@ -67,4 +67,6 @@ pub trait ZoneTemplates: Send + Sync {
         template: &Id,
         expansion: &Expansion,
     ) -> Result<Vec<RecordSeed>>;
+
+    async fn exists(&self, db: &Db, scope: &AccountScope, template: &Id) -> Result<bool>;
 }

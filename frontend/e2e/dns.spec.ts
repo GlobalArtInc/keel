@@ -90,7 +90,8 @@ keelTest.describe('dns', () => {
       const form = page.locator('keel-form[data-form="dns.zone.create"][data-mode="create"]');
       await expect(form).toBeVisible();
       await expect(page.locator('keel-page[data-page="owner"]')).toHaveCount(0);
-      await expect(field(form, 'IPv4 address the template points to')).toHaveCount(0);
+      await expect(field(form, 'IPv4 address the template points to')).toBeVisible();
+      await expect(field(form, 'IPv6 address the template points to')).toBeVisible();
       await field(form, 'Name').getByRole('textbox').fill(BROWSER_ZONE);
       await saved(page, 'dns.zone.create', () => form.locator('button.save').click());
 

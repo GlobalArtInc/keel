@@ -1,0 +1,134 @@
+{
+  "keel": 1,
+  "name": "svc.dns.zones.set_params",
+  "module": "svc",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "SetParams",
+    "type": "object",
+    "properties": {
+      "externalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      },
+      "params": {
+        "$ref": "#/$defs/DnsZonesParams"
+      }
+    },
+    "required": [
+      "externalId",
+      "params"
+    ],
+    "$defs": {
+      "DnsZonesParams": {
+        "type": "object",
+        "properties": {
+          "zoneLimit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "maximum": 100000,
+            "x-ui": {
+              "control": "slider"
+            }
+          },
+          "template": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Id"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "x-keel": {
+              "options": "dns.template.options"
+            },
+            "x-ui": {
+              "control": "select"
+            }
+          }
+        },
+        "required": [
+          "zoneLimit"
+        ]
+      },
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "ServiceAnswer",
+    "type": "object",
+    "properties": {
+      "serviceId": {
+        "$ref": "#/$defs/Id"
+      },
+      "accountId": {
+        "$ref": "#/$defs/Id"
+      },
+      "status": {
+        "$ref": "#/$defs/ServiceStatus"
+      },
+      "state": {
+        "$ref": "#/$defs/DnsZonesState"
+      },
+      "retainUntil": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "serviceId",
+      "accountId",
+      "status",
+      "state"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      },
+      "ServiceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended",
+          "closed"
+        ]
+      },
+      "DnsZonesState": {
+        "type": "object",
+        "properties": {
+          "zonesUsed": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "zonesUsed"
+        ]
+      }
+    }
+  }
+}

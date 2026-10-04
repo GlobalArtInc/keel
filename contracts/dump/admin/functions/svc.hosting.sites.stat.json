@@ -1,0 +1,67 @@
+{
+  "keel": 1,
+  "name": "svc.hosting.sites.stat",
+  "module": "svc",
+  "kind": "get",
+  "mode": "read",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "StatParams",
+    "type": "object",
+    "properties": {
+      "externalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[!#-+\\--:<-\\[\\]-~]+$"
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "required": [
+      "externalId",
+      "from",
+      "to"
+    ]
+  },
+  "result": {
+    "title": "StatAnswer",
+    "type": "object",
+    "properties": {
+      "serviceId": {
+        "$ref": "#/$defs/Id"
+      },
+      "from": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "to": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "usage": true
+    },
+    "required": [
+      "serviceId",
+      "from",
+      "to",
+      "usage"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  }
+}

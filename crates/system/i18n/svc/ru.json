@@ -1,9 +1,11 @@
 {
   "svc": {
     "error": {
+      "answer": "Функция {function} ответила без {member}",
       "closed": "Услуга {externalId} вида {kind} закрыта",
       "exists": "Услуга {externalId} вида {kind} уже открыта",
       "kind": "Вид услуг {kind} нельзя предложить: {reason}",
+      "no_principal": "В аккаунте {accountId} услуги нет пользователя, от имени которого можно войти",
       "not_found": "Услуги {externalId} вида {kind} нет",
       "period": "Период должен заканчиваться позже, чем начинается",
       "stored": "Сохранённую услугу {id} не удаётся прочитать ({member})"
