@@ -2,16 +2,19 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
 import type { Action, Boot, Descriptor, Envelope } from '@globalart/keel/meta';
 import {
+  KEEL_OPEN_EXTERNAL,
   KeelActionRunner,
   KeelScreenComponent,
   bodyOf,
+  isLocalPath,
   routeAction,
   substitute,
+  targetOf,
   type ActionOutcome,
   type Row,
 } from '@globalart/keel/renderer';
@@ -44,6 +47,7 @@ const MESSAGES = {
     error: {
       forbidden: 'You are not allowed to do this',
       request: '{message} (request {id})',
+      target: 'The action answered no address to open',
       unavailable: 'Temporarily unavailable',
     },
     product: {
@@ -53,7 +57,7 @@ const MESSAGES = {
       column: { id: 'Product', state: 'State' },
     },
   },
-  dns: { zone: { action: { suspend: 'Suspend' } } },
+  dns: { zone: { action: { suspend: 'Suspend', open: 'Open in KeelDNS' } } },
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -402,6 +406,134 @@ describe('the action runner', () => {
       ['keel.product.changed', 'keel.value.true'],
       ['keel.product.restart', 'keel.value.false'],
     ]);
+  });
+});
+
+describe('an action of role external', () => {
+  const OPEN: Action = {
+    id: 'open',
+    role: 'external',
+    function: 'dns.zone.open',
+    params: { id: '$id' },
+  };
+
+  async function external(answer: Envelope): Promise<{
+    run: KeelActionRunner;
+    client: KeelMockClient;
+    opened: string[];
+  }> {
+    const client = new KeelMockClient({
+      boot: BOOT,
+      catalogue: { lang: 'en', messages: MESSAGES },
+      answers: { 'dns.zone.open': answer },
+    });
+    const opened: string[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        providePhoenixIcons(),
+        provideRouter([]),
+        { provide: KeelClient, useValue: client },
+        { provide: KEEL_OPEN_EXTERNAL, useValue: (url: string) => opened.push(url) },
+      ],
+    });
+    await TestBed.inject(KeelBoot).load();
+    await TestBed.inject(KeelI18n).load('en');
+    return { run: TestBed.inject(KeelActionRunner), client, opened };
+  }
+
+  afterEach(() => {
+    TestBed.inject(PhxToastService).closeAll();
+    TestBed.resetTestingModule();
+  });
+
+  it('leaves for the address its function answers', async () => {
+    const url = 'https://dns.example:8443/login?key=kok_1';
+    const { run, client, opened } = await external(ok({ url }));
+    const navigate = jest.spyOn(TestBed.inject(Router), 'navigateByUrl');
+    const outcome = await run.run({ descriptor: LIST, action: OPEN, rows: [ZONES[1]] });
+    expect(outcome?.ok).toBe(true);
+    expect(client.calls.map((call) => [call.func, call.params])).toEqual([
+      ['dns.zone.open', { id: 'z2' }],
+    ]);
+    expect(opened).toEqual([url]);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(dialogs()).toHaveLength(0);
+    expect(TestBed.inject(PhxToastService).toasts()).toHaveLength(0);
+  });
+
+  it('navigates inside the shell to a path its function answers', async () => {
+    const path = '/f/dns.zone.list?search=b.org';
+    const { run, opened } = await external(ok({ url: path }));
+    const router = TestBed.inject(Router);
+    const navigate = jest.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    const outcome = await run.run({ descriptor: LIST, action: OPEN, rows: [ZONES[1]] });
+    expect(outcome?.ok).toBe(true);
+    expect(navigate).toHaveBeenCalledWith(path);
+    expect(opened).toEqual([]);
+  });
+
+  it('opens nothing and says so when the answer names no usable address', async () => {
+    for (const answer of [
+      { url: 'javascript:alert(1)' },
+      { url: '//evil.example/login' },
+      { url: 'https://dns.example/login?key=kok 1' },
+      { url: 42 },
+      {},
+    ]) {
+      const { run, opened } = await external(ok(answer));
+      const navigate = jest.spyOn(TestBed.inject(Router), 'navigateByUrl');
+      const outcome = await run.run({ descriptor: LIST, action: OPEN, rows: [ZONES[0]] });
+      expect(outcome?.ok).toBe(true);
+      expect(opened).toEqual([]);
+      expect(navigate).not.toHaveBeenCalled();
+      const toasts = TestBed.inject(PhxToastService).toasts();
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].status).toBe('danger');
+      expect(toasts[0].title).toBe('Open in KeelDNS');
+      expect(toasts[0].text).toBe('The action answered no address to open');
+      TestBed.inject(PhxToastService).closeAll();
+      TestBed.resetTestingModule();
+    }
+  });
+
+  it('a refusal shows its toast and opens nothing', async () => {
+    const { run, opened } = await external({
+      ok: false,
+      error: { code: 'peer', key: 'keel.error.forbidden', requestId: 'req-7' },
+    });
+    const outcome = await run.run({ descriptor: LIST, action: OPEN, rows: [ZONES[0]] });
+    expect(outcome?.ok).toBe(false);
+    expect(opened).toEqual([]);
+    const toasts = TestBed.inject(PhxToastService).toasts();
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].text).toBe('You are not allowed to do this (request req-7)');
+  });
+
+  it('a target is an http or https address or a path inside the installation', () => {
+    for (const url of [
+      'https://dns.example/login?key=kok_1',
+      'HTTP://dns.example:8080/',
+      '/f/dns.zone.list?search=a.org',
+    ]) {
+      expect(targetOf({ url })).toBe(url);
+    }
+    for (const data of [
+      { url: 'javascript:alert(1)' },
+      { url: 'ftp://dns.example/' },
+      { url: '//dns.example/' },
+      { url: '/\\dns.example' },
+      { url: 'login?key=kok_1' },
+      { url: '/a\nb' },
+      { url: '' },
+      { url: null },
+      null,
+      'https://dns.example/',
+    ]) {
+      expect(targetOf(data)).toBeNull();
+    }
+    expect(isLocalPath('/f/x')).toBe(true);
+    expect(isLocalPath('//x')).toBe(false);
+    expect(isLocalPath('https://x/')).toBe(false);
   });
 });
 

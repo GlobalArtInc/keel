@@ -23,6 +23,7 @@ export {
   REQUEST_KEY,
   RETRY_KEY,
   SCREEN_UNSUPPORTED_KEY,
+  TARGET_KEY,
   TRUE_KEY,
   VIEW_MISSING_KEY,
   describeError,
@@ -39,15 +40,18 @@ export { KeelReportComponent } from './report/report.component';
 export { KeelStreamComponent } from './stream/stream.component';
 export {
   DEFAULT_KEY,
+  KEEL_OPEN_EXTERNAL,
   KeelActionRunner,
   ROW_PLACEHOLDER,
   bodyOf,
   idsOf,
+  isLocalPath,
   keyOf,
   labelKeyOf,
   substitute,
+  targetOf,
 } from './action/runner';
-export type { ActionOutcome, ActionRequest, Row } from './action/runner';
+export type { ActionOutcome, ActionRequest, OpenExternal, Row } from './action/runner';
 export { KeelActionComponent, routeAction } from './action/action.component';
 export type { ActionState } from './action/action.component';
 export { KeelFormScreenComponent } from './form/form-screen.component';

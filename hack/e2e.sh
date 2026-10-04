@@ -36,6 +36,16 @@ guest_per_minute=120
 setup_link=""
 dns_zone=cli.e2e.test
 dns_zones=(browser.e2e.test "$dns_zone" token.e2e.test)
+peers_tag=@peers
+peer_site=peer.e2e.test
+peer_scopes='["dns.zone.*","keel.principal.upsert","auth.key.handover"]'
+neighbour=""
+neighbour_database=""
+neighbour_port=""
+neighbour_pid=""
+neighbour_log=""
+relay_pid=""
+relay_port=""
 
 usage() {
   echo "usage: hack/e2e.sh [path/to/keel] [playwright arguments...]" >&2
@@ -61,17 +71,30 @@ cleanup() {
       code=1
     fi
   fi
-  if ! stop_agent; then
-    code=1
+  if [ -n "$relay_pid" ]; then
+    kill -TERM "$relay_pid" 2>/dev/null || true
+    wait "$relay_pid" 2>/dev/null || true
+    relay_pid=""
+    echo "stopped the relay to the neighbour"
   fi
-  if [ -n "$database" ]; then
-    if psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$database\" WITH (FORCE)" >/dev/null; then
-      echo "dropped database $database"
-    else
-      echo "could not drop database $database" >&2
+  if [ -n "$neighbour_pid" ]; then
+    echo "stopping the neighbour ($neighbour_pid)"
+    if ! stop_neighbour; then
       code=1
     fi
   fi
+  if ! stop_agent; then
+    code=1
+  fi
+  for name in "$database" "$neighbour_database"; do
+    [ -n "$name" ] || continue
+    if psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"$name\" WITH (FORCE)" >/dev/null; then
+      echo "dropped database $name"
+    else
+      echo "could not drop database $name" >&2
+      code=1
+    fi
+  done
   if [ -n "$catcher" ]; then
     if "$runtime" rm -f "$catcher" >/dev/null 2>&1; then
       echo "removed the mail catcher $catcher"
@@ -313,6 +336,61 @@ ready() {
   [ "$(curl_tls -s -o /dev/null -w '%{http_code}' "$scheme://127.0.0.1:$port/readyz" 2>/dev/null)" = "200" ]
 }
 
+neighbour_ready() {
+  local certificate="$neighbour/lib/tls/cert.pem"
+  [ -f "$certificate" ] \
+    && [ "$(curl --cacert "$certificate" -s -o /dev/null -w '%{http_code}' "https://127.0.0.1:$neighbour_port/readyz" 2>/dev/null)" = "200" ]
+}
+
+relay_ready() {
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$relay_port/readyz" 2>/dev/null)" = "200" ]
+}
+
+await_ready() {
+  local pid=$1 log=$2 name=$3 probe=$4
+  local waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      sed 's/^/  /' "$log" >&2
+      fail "$name exited before it was ready"
+    fi
+    if "$probe"; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  sed 's/^/  /' "$log" >&2
+  fail "$name did not answer /readyz within ${timeout}s"
+}
+
+stop_process() {
+  local pid=$1 log=$2 name=$3
+  if ! kill -0 "$pid" 2>/dev/null; then
+    wait "$pid" 2>/dev/null || true
+    return 0
+  fi
+  kill -TERM "$pid" 2>/dev/null || true
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$((timeout * 10))" ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "$name did not stop on SIGTERM within ${timeout}s; sending SIGKILL" >&2
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    return 1
+  fi
+  local status=0
+  wait "$pid" || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "$name exited with $status" >&2
+    [ -n "$log" ] && sed 's/^/  /' "$log" >&2
+    return 1
+  fi
+}
+
 spki_of() {
   node -e '
 const { readFileSync } = require("node:fs");
@@ -327,22 +405,8 @@ start_serve() {
   serve_log="$site/serve.log"
   "$keel" --config "$site/config.yaml" serve >"$serve_log" 2>&1 &
   serve_pid=$!
-  local waited=0
-  while [ "$waited" -lt "$((timeout * 10))" ]; do
-    if ! kill -0 "$serve_pid" 2>/dev/null; then
-      sed 's/^/  /' "$serve_log" >&2
-      serve_pid=""
-      fail "keel serve exited before it was ready"
-    fi
-    if ready; then
-      echo "keel serve is ready on $scheme://127.0.0.1:$port"
-      return 0
-    fi
-    sleep 0.1
-    waited=$((waited + 1))
-  done
-  sed 's/^/  /' "$serve_log" >&2
-  fail "keel serve did not answer /readyz within ${timeout}s"
+  await_ready "$serve_pid" "$serve_log" "keel serve" ready
+  echo "keel serve is ready on $scheme://127.0.0.1:$port"
 }
 
 stop_serve() {
@@ -351,29 +415,100 @@ stop_serve() {
   fi
   local pid=$serve_pid
   serve_pid=""
-  if ! kill -0 "$pid" 2>/dev/null; then
-    wait "$pid" 2>/dev/null || true
+  stop_process "$pid" "$serve_log" "keel serve"
+}
+
+start_neighbour() {
+  neighbour_log="$neighbour/serve.log"
+  "$keel" --config "$neighbour/config.yaml" serve >"$neighbour_log" 2>&1 &
+  neighbour_pid=$!
+  await_ready "$neighbour_pid" "$neighbour_log" "the neighbour" neighbour_ready
+  echo "the neighbour is ready on https://127.0.0.1:$neighbour_port"
+}
+
+stop_neighbour() {
+  if [ -z "$neighbour_pid" ]; then
     return 0
   fi
-  kill -TERM "$pid" 2>/dev/null || true
+  local pid=$neighbour_pid
+  neighbour_pid=""
+  stop_process "$pid" "$neighbour_log" "the neighbour"
+}
+
+start_relay() {
+  relay_port=$(free_port)
+  node -e '
+const http = require("node:http");
+const https = require("node:https");
+const { readFileSync } = require("node:fs");
+const [listen, target, certificate] = process.argv.slice(1);
+const ca = readFileSync(certificate);
+http
+  .createServer((request, response) => {
+    const headers = { ...request.headers, host: `127.0.0.1:${target}` };
+    const upstream = https.request(
+      { host: "127.0.0.1", port: Number(target), path: request.url, method: request.method, headers, ca },
+      (answer) => {
+        response.writeHead(answer.statusCode ?? 502, answer.headers);
+        answer.pipe(response);
+      },
+    );
+    upstream.on("error", (error) => {
+      response.writeHead(502, { "content-type": "text/plain" });
+      response.end(String(error));
+    });
+    request.pipe(upstream);
+  })
+  .listen(Number(listen), "127.0.0.1");
+' "$relay_port" "$neighbour_port" "$neighbour/lib/tls/cert.pem" >"$neighbour/relay.log" 2>&1 &
+  relay_pid=$!
+  await_ready "$relay_pid" "$neighbour/relay.log" "the relay to the neighbour" relay_ready
+  echo "the relay to the neighbour listens on http://127.0.0.1:$relay_port"
+}
+
+run_neighbour() {
+  "$keel" --config "$neighbour/config.yaml" "$@"
+}
+
+neighbour_ok() {
+  local out=$1
+  shift
+  if ! run_neighbour "$@" >"$out" 2>"$neighbour/stderr"; then
+    cat "$neighbour/stderr" >&2
+    return 1
+  fi
+}
+
+neighbour_sql() {
+  psql "$(database_url "$admin_url" "$neighbour_database")" -qAt -v ON_ERROR_STOP=1 -c "$1"
+}
+
+peer_zone_served() {
   local waited=0
-  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$((timeout * 10))" ]; do
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if neighbour_ok "$neighbour/zones.json" ctl dns.zone.list "search=$peer_site" --out json \
+      && json_is "$neighbour/zones.json" "doc['ok'] is True and [row['name'] for row in doc['data']['data']] == ['$peer_site']" 2>/dev/null; then
+      test "$(neighbour_sql "SELECT a.origin || ' ' || a.external_id FROM keel.dns_zone z JOIN keel.keel_account a ON a.id = z.account_id WHERE z.name = '$peer_site'")" = "panel:$instance $user_account"
+      return
+    fi
     sleep 0.1
     waited=$((waited + 1))
   done
-  if kill -0 "$pid" 2>/dev/null; then
-    echo "keel serve did not stop on SIGTERM within ${timeout}s; sending SIGKILL" >&2
-    kill -KILL "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    return 1
-  fi
-  local status=0
-  wait "$pid" || status=$?
-  if [ "$status" -ne 0 ]; then
-    echo "keel serve exited with $status" >&2
-    [ -n "$serve_log" ] && sed 's/^/  /' "$serve_log" >&2
-    return 1
-  fi
+  cat "$neighbour/zones.json" >&2
+  return 1
+}
+
+handover_audited() {
+  local expected=$1 waited=0
+  while [ "$waited" -lt "$((timeout * 10))" ]; do
+    if [ "$(neighbour_sql "SELECT principal_login || ' ' || coalesce(actor_login, '-') || ' ' || via || ' ' || status FROM keel.audit_call WHERE function = 'auth.key.handover'")" = "$expected" ]; then
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  neighbour_sql "SELECT function, principal_login, actor_login, via, status FROM keel.audit_call WHERE function LIKE 'auth.key.%'" >&2
+  return 1
 }
 
 http_status_is() {
@@ -522,7 +657,7 @@ e2e_env+=("KEEL_E2E_DNS_ZONE=$dns_zone")
 echo "--- pnpm e2e"
 (
   cd "$frontend"
-  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag|$mail_tag|$panel_tag" "$@"
+  env "${e2e_env[@]}" pnpm e2e --grep-invert "$polled_tag|$setup_tag|$mail_tag|$panel_tag|$peers_tag" "$@"
 )
 
 echo "--- the zones of the browser, the CLI and the token"
@@ -583,5 +718,47 @@ check "ctl hosting.site.config.get answers the saved override of $config_domain"
 check "the saved override is the directive alone" json_is "$site/config-get.json" "doc['data']['server'] == '$config_directive'"
 check "every file operation ran the worker through agent-exec under the uid of hp_$hosting_user" files_ran_as "$(awk -F: -v k="hp_$hosting_user" '$1 == k {print $3}' "$site/agent/passwd")"
 check "no staged upload or download is left in the transfer root" test -z "$(ls -A "$site/agent/transfer")"
+
+echo "--- pnpm e2e $peers_tag"
+stop_serve || fail "keel serve did not stop cleanly before dns moved to a neighbour"
+check "product disable dns --switch-remote moves panel to dns-peer" keel_ok "$site/disable-dns.out" product disable dns --switch-remote
+neighbour="$site/neighbour"
+neighbour_database="keel_test_e2e_neighbour_$(date +%s)_$$"
+neighbour_port=$(free_port)
+psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$neighbour_database\" TEMPLATE template1" >/dev/null
+echo "created database $neighbour_database"
+mkdir -p "$neighbour/run" "$neighbour/lib"
+cat >"$neighbour/config.yaml" <<EOF
+listen: 127.0.0.1:$neighbour_port
+socket: $neighbour/run/core.sock
+data_dir: $neighbour/lib
+database: $(database_url "$admin_url" "$neighbour_database")
+log: { level: info, format: text }
+host: { socket: $site/agent/agent.sock }
+dns: { zones_dir: $site/agent/zones, include_dir: $site/agent/named }
+EOF
+check "the neighbour enables dns alone" neighbour_ok "$neighbour/enable-dns.out" product enable dns
+start_neighbour
+neighbour_url="https://localhost:$neighbour_port"
+check "ctl settings.set gives the neighbour its public address $neighbour_url" neighbour_ok "$neighbour/shell-url.json" ctl settings.set key=auth.shell_url "value=$neighbour_url"
+start_relay
+start_serve
+check "ctl peer.pair_code on the neighbour grants the zones, the customer and the handover" neighbour_ok "$neighbour/code.json" ctl peer.pair_code "scopes=$peer_scopes" level=reseller onBehalf=true --out json
+pair_code=$(json_get "$neighbour/code.json" 'doc["data"]["code"]')
+check "ctl peer.create pairs the panel installation with the neighbour" keel_ok "$site/peer.json" ctl peer.create "url=http://127.0.0.1:$relay_port" "code=$pair_code" --out json
+link=$(neighbour_sql "SELECT id FROM keel.peer_product")
+peer_principal=$(neighbour_sql "SELECT principal_id FROM keel.peer_product")
+instance=$(curl_tls -s "$scheme://127.0.0.1:$port/api/v1/instance" | python3 -c 'import json, sys; print(json.load(sys.stdin)["instanceId"])')
+peer_login=$(echo "panel-$instance-$user_account" | tr '[:upper:]' '[:lower:]')
+check "ctl hosting.site.create --as alice creates $peer_site with its zone on the neighbour" keel_ok "$site/peer-site.json" ctl hosting.site.create --as "$user_login" "user=$hosting_user_id" "domain=$peer_site" dnsZone=true
+check "the zone $peer_site lands on the neighbour in the account of alice's customer" peer_zone_served
+neighbour_spki=$(spki_of "$neighbour/lib/tls/cert.pem")
+(
+  cd "$frontend"
+  env "${e2e_env[@]}" "KEEL_E2E_SPKI=$spki,$neighbour_spki" "KEEL_E2E_PEER_URL=$neighbour_url" \
+    "KEEL_E2E_PEER_SITE=$peer_site" "KEEL_E2E_PEER_LOGIN=$peer_login" pnpm e2e --grep "$peers_tag"
+)
+check "the neighbour audits the key as $peer_login with its peer as actor" handover_audited "$peer_login peer-$(echo "$link" | tr '[:upper:]' '[:lower:]') peer:$link committed"
+check "the key was issued by the principal of the link and is spent" test "$(neighbour_sql "SELECT issued_by || ' ' || (used_at IS NOT NULL)::text FROM keel.auth_login_key")" = "$peer_principal true"
 
 stop_serve || fail "keel serve did not stop cleanly"

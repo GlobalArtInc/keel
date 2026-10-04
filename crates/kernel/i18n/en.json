@@ -219,6 +219,7 @@
       "setting_value": "The setting {key} has no usable value",
       "spawn_inside_task": "A task cannot spawn itself again",
       "stream_route": "The function {function} is a stream; open it at {route}",
+      "target": "The action answered no address to open",
       "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
       "task_output": "The task output at {path} could not be opened",
       "tasks_unavailable": "Background tasks are not available on this installation",

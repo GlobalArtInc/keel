@@ -15,6 +15,7 @@ const SITE_LIST = '/f/hosting.site.list';
 const ZONE_LIST = '/f/dns.zone.list';
 const SITE_CREATE = 'hosting.site.create';
 const ZONE_TOGGLE = 'Create a DNS zone for the domain';
+const OPEN_ZONE = 'Open in KeelDNS';
 
 function variable(name: string): string {
   const value = process.env[name];
@@ -103,6 +104,25 @@ keelTest.describe('panel beside dns', { tag: TAG }, () => {
       ).toHaveCount(1);
       await page.goto(ZONE_LIST);
       await expect(cells(page, 'dns.zone.list', 'name').filter({ hasText: domain })).toHaveCount(1);
+    },
+  );
+
+  keelTest(
+    'Open in KeelDNS on a site lands on the zone list of this installation narrowed to its domain',
+    async ({ page, keel }) => {
+      const domain = variable(WIZARD_SITE_VARIABLE);
+      await keel.asUser();
+      await page.goto(SITE_LIST);
+      const site = page
+        .locator('keel-list[data-list="hosting.site.list"] phx-list-table .body [role="row"]')
+        .filter({ has: page.locator('[data-column="domain"]', { hasText: domain }) });
+      await expect(site).toHaveCount(1);
+      await site.locator('.cell_actions button').click();
+      await page.getByRole('menuitem', { name: OPEN_ZONE, exact: true }).click();
+      await expect(page).toHaveURL(
+        `${new URL(page.url()).origin}${ZONE_LIST}?search=${encodeURIComponent(domain)}`,
+      );
+      await expect(cells(page, 'dns.zone.list', 'name')).toHaveText([domain]);
     },
   );
 

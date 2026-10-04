@@ -2,8 +2,10 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::ConnectionTrait;
+use keel_sdk::serde_json;
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
 use keel_sdk::types::Via;
+use keel_system::auth::{KEY_HANDOVER, KEY_HANDOVER_REFUSED, LOGIN_KEY_PREFIX};
 use keel_system::peers::{ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, LOGIN_PREFIX};
 use keel_testkit::{Answer, Harness, TestHttp, Who, tokio};
 
@@ -758,7 +760,7 @@ async fn the_public_address_makes_the_login_url_of_a_peer_absolute() {
     .await;
     let linking = Linking::new(
         two,
-        json!({ "scopes": ["auth.key.issue"], "level": "admin", "onBehalf": true }),
+        json!({ "scopes": ["auth.key.issue", "auth.key.handover"], "level": "admin", "onBehalf": true }),
     )
     .await;
     let b = linking.b();
@@ -801,6 +803,19 @@ async fn the_public_address_makes_the_login_url_of_a_peer_absolute() {
         direct.json()["data"]["url"],
         json!(format!("{public}/login?key={direct_key}"))
     );
+    let handed = linking
+        .as_customer(
+            "client-42",
+            KEY_HANDOVER,
+            json!({ "ttl": 60, "redirect": REDIRECT }),
+        )
+        .await;
+    assert_eq!(handed.status, 200, "{}", handed.body);
+    let handed_key = handed.json()["data"]["key"].as_str().unwrap().to_owned();
+    assert_eq!(
+        handed.json()["data"]["url"],
+        json!(format!("{public}/login?key={handed_key}"))
+    );
     let local = b
         .call(
             Who::Admin,
@@ -833,6 +848,202 @@ async fn the_public_address_makes_the_login_url_of_a_peer_absolute() {
     assert_eq!(
         fallback.json()["data"]["url"],
         json!(format!("/login?key={fallback_key}"))
+    );
+
+    linking.finish().await;
+}
+
+async fn redeem(http: &TestHttp, key: &str) -> Answer {
+    http.request(
+        "POST",
+        "/api/v1/call/auth.key.redeem",
+        &[("content-type", "application/json")],
+        Some(&json!({ "key": key }).to_string()),
+    )
+    .await
+}
+
+async fn handover(linking: &Linking, customer: &str, params: Value) -> Answer {
+    linking.as_customer(customer, KEY_HANDOVER, params).await
+}
+
+#[tokio::test]
+async fn a_peer_hands_its_customer_over_with_a_one_time_key_and_the_peer_as_actor() {
+    let two = Two::of(
+        installation().await,
+        composed(Harness::new().module(&AUDITED)).boot().await,
+    )
+    .await;
+    let linking = Linking::new(
+        two,
+        json!({ "scopes": [KEY_HANDOVER], "level": "reseller", "onBehalf": true }),
+    )
+    .await;
+    let b = linking.b();
+    let a1 = b.principal(Who::A1).clone();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let peer = link_principal(b, &linking.linked.b_link).await;
+    let link: Id = linking.linked.b_link.parse().unwrap();
+
+    let handed = handover(
+        &linking,
+        "client-42",
+        json!({ "ttl": 60, "redirect": REDIRECT }),
+    )
+    .await;
+    assert_eq!(handed.status, 200, "{}", handed.body);
+    let key = handed.json()["data"]["key"].as_str().unwrap().to_owned();
+    assert!(key.starts_with(LOGIN_KEY_PREFIX), "{key}");
+    assert_eq!(
+        handed.json()["data"]["url"],
+        json!(format!("/login?key={key}"))
+    );
+    assert_eq!(
+        b.database()
+            .rows("SELECT principal_id || ' ' || issued_by || ' ' || redirect || ' ' || (used_at IS NULL)::text FROM auth_login_key")
+            .await,
+        [format!("{} {peer} {REDIRECT} true", a1.id)]
+    );
+    let request_id = handed
+        .header("x-keel-request-id")
+        .expect("the request id")
+        .to_owned();
+    let audited = RECORDER.of_request(&request_id);
+    assert_eq!(audited.len(), 1, "{audited:?}");
+    let event = &audited[0];
+    assert_eq!(event.function, KEY_HANDOVER);
+    assert_eq!(event.outcome, AuditOutcome::Committed);
+    assert_eq!(event.principal.id, a1.id);
+    assert_eq!(event.principal.via, Via::Peer(link));
+    let actor = event.principal.actor.as_deref().expect("the peer acts");
+    assert_eq!(actor.id.to_string(), peer);
+    assert_eq!(actor.login, linking.peer_login());
+    assert_eq!(actor.via, Via::Peer(link));
+    assert_eq!(event.result, None);
+    assert!(!serde_json::to_string(&audited).unwrap().contains(&key));
+
+    let redeemed = redeem(linking.http(), &key).await;
+    assert_eq!(redeemed.status, 200, "{}", redeemed.body);
+    let answer = &redeemed.json()["data"];
+    assert_eq!(answer["redirect"], json!(REDIRECT));
+    assert_eq!(answer["issuedBy"], json!(peer));
+    assert_eq!(answer["principal"]["id"], json!(a1.id));
+    assert_eq!(answer["principal"]["login"], json!("a1"));
+    assert_eq!(answer["principal"]["actor"], Value::Null);
+    assert!(redeemed.session_cookie().is_some(), "{}", redeemed.body);
+    let again = redeem(linking.http(), &key).await;
+    refused(&again, 401, "auth.error.key");
+
+    linking.finish().await;
+}
+
+#[tokio::test]
+async fn a_handover_outside_a_call_for_a_customer_is_refused() {
+    let linking = Linking::start(json!({
+        "scopes": [KEY_HANDOVER, "auth.token.create"], "level": "reseller", "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let params = json!({ "ttl": 60, "redirect": REDIRECT });
+
+    for who in [Who::A1, Who::Reseller, Who::Admin] {
+        let local = b.call(who, KEY_HANDOVER, params.clone()).await;
+        let error = local.error().unwrap_or_else(|| panic!("{who}: {local:?}"));
+        assert_eq!(error.key, KEY_HANDOVER_REFUSED, "{who}: {local:?}");
+        assert_eq!(local.status(), 403, "{who}: {local:?}");
+    }
+    let minted = mint(linking.http(), &linking.token).await;
+    for (token, key) in [
+        (linking.token.as_str(), KEY_HANDOVER_REFUSED),
+        (minted.as_str(), "keel.error.level"),
+    ] {
+        let direct = call_with(linking.http(), token, KEY_HANDOVER, params.clone()).await;
+        refused(&direct, 403, key);
+    }
+    assert!(
+        b.database()
+            .rows("SELECT key_hash FROM auth_login_key")
+            .await
+            .is_empty()
+    );
+
+    let narrow = Linking::start(json!({
+        "scopes": ["keel.account.list"], "level": "reseller", "onBehalf": true
+    }))
+    .await;
+    sync(narrow.b(), Who::A1, &narrow.origin, "client-42").await;
+    let masked = handover(&narrow, "client-42", params.clone()).await;
+    refused(&masked, 403, "keel.error.token_scope");
+    narrow.finish().await;
+
+    let handed = handover(&linking, "client-42", params).await;
+    assert_eq!(handed.status, 200, "{}", handed.body);
+    linking.finish().await;
+}
+
+#[tokio::test]
+async fn a_customer_handed_over_lies_below_its_link_and_lands_inside_the_installation() {
+    let linking = Linking::start(json!({
+        "scopes": [KEY_HANDOVER], "level": "reseller", "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    sync(b, Who::Reseller, &linking.origin, "client-r").await;
+
+    let level = handover(
+        &linking,
+        "client-r",
+        json!({ "ttl": 60, "redirect": REDIRECT }),
+    )
+    .await;
+    refused(&level, 403, "auth.error.not_below");
+    let params = &level.json()["error"]["params"];
+    assert_eq!(params["level"], json!("reseller"));
+    assert_eq!(params["caller"], json!("reseller"));
+    for redirect in ["//evil.example", "https://evil.example", "/a\\b"] {
+        let foreign = handover(
+            &linking,
+            "client-42",
+            json!({ "ttl": 60, "redirect": redirect }),
+        )
+        .await;
+        field_refused(&foreign, "redirect", "auth.error.redirect");
+    }
+    for ttl in [0, 301] {
+        let out_of_range = handover(
+            &linking,
+            "client-42",
+            json!({ "ttl": ttl, "redirect": REDIRECT }),
+        )
+        .await;
+        assert_eq!(out_of_range.status, 422, "{}", out_of_range.body);
+        assert_eq!(
+            out_of_range.json()["error"]["fields"][0]["path"],
+            json!("ttl"),
+            "{}",
+            out_of_range.body
+        );
+    }
+    assert!(
+        b.database()
+            .rows("SELECT key_hash FROM auth_login_key")
+            .await
+            .is_empty()
+    );
+    let within = handover(
+        &linking,
+        "client-42",
+        json!({ "ttl": 300, "redirect": "/f/dns.zone.list?search=a.example" }),
+    )
+    .await;
+    assert_eq!(within.status, 200, "{}", within.body);
+    assert_eq!(
+        b.database()
+            .rows("SELECT redirect FROM auth_login_key")
+            .await,
+        ["/f/dns.zone.list?search=a.example"]
     );
 
     linking.finish().await;

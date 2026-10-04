@@ -12,12 +12,16 @@ use keel_hosting_web::api::{AfterCommit, DnsProvider, Invoke, SiteZone, Sites, Z
 
 use neighbour::{Customer, Neighbour};
 
-pub use neighbour::{ANSWER, CHECK_TIMEOUT, CLIENT, EXISTS, ORIGIN_NAME, TEMPLATE, UNREACHABLE};
+pub use neighbour::{
+    ANSWER, CHECK_TIMEOUT, CLIENT, EXISTS, HANDOVER_TTL, ORIGIN_NAME, TEMPLATE, UNREACHABLE,
+};
 pub use problems::FAILED;
 pub use zone::{CLASS, CREATE};
 
 pub const PRODUCT: &str = "dns";
 pub const UNPAIRED: &str = "dns_peer.error.unpaired";
+pub const UNPAIRED_OPEN: &str = "dns_peer.error.unpaired_open";
+pub const ZONE_LIST: &str = "/f/dns.zone.list";
 pub const INSTANCE: &str = "dns_peer.error.instance";
 const SITE_CREATE: &str = "hosting.site.create";
 const NOT_STARTED: &str = "dns_peer.error.not_started";
@@ -87,12 +91,15 @@ impl Peer {
     }
 
     async fn neighbour(&self, db: &Db, zone: &str, quick: bool) -> Result<Neighbour> {
+        self.linked(db, quick).await?.ok_or_else(|| unpaired(zone))
+    }
+
+    async fn linked(&self, db: &Db, quick: bool) -> Result<Option<Neighbour>> {
         let link = match &self.started()?.links {
             Some(links) => links.offering(PRODUCT, db).await?,
             None => None,
         };
-        let link = link.ok_or_else(|| unpaired(zone))?;
-        Neighbour::of(&link, quick)
+        link.map(|link| Neighbour::of(&link, quick)).transpose()
     }
 
     fn customer(&self, account: Id) -> Result<Customer> {
@@ -106,6 +113,10 @@ impl Peer {
 
 fn unpaired(zone: &str) -> KeelError {
     KeelError::unavailable(UNPAIRED).param("zone", zone)
+}
+
+fn unopened(zone: &str) -> KeelError {
+    KeelError::unavailable(UNPAIRED_OPEN).param("zone", zone)
 }
 
 #[async_trait]
@@ -132,6 +143,19 @@ impl DnsProvider for Peer {
     async fn add_records(&self, _: &Invoke<'_>, _: &SiteZone, _: &[ZoneRecord]) -> Result<bool> {
         Ok(false)
     }
+
+    async fn open(&self, db: &Db, zone: &SiteZone) -> Result<String> {
+        let neighbour = self
+            .linked(db, false)
+            .await?
+            .ok_or_else(|| unopened(&zone.name))?;
+        let customer = self.customer(zone.account)?;
+        neighbour.hand_over(&customer, &landing(&zone.name)).await
+    }
+}
+
+fn landing(name: &str) -> String {
+    format!("{ZONE_LIST}?search={name}")
 }
 
 #[cfg(test)]
@@ -195,10 +219,22 @@ mod tests {
     }
 
     #[test]
+    fn a_zone_opens_on_the_zone_list_of_the_neighbour_narrowed_to_its_name() {
+        assert_eq!(
+            landing("zone.example"),
+            "/f/dns.zone.list?search=zone.example"
+        );
+    }
+
+    #[test]
     fn without_a_link_the_zone_is_unpaired_and_names_itself() {
         let error = unpaired("zone.example");
         assert_eq!(error.code(), ErrorCode::Unavailable);
         assert_eq!(error.key(), UNPAIRED);
+        assert_eq!(error.params()["zone"], "zone.example");
+        let error = unopened("zone.example");
+        assert_eq!(error.code(), ErrorCode::Unavailable);
+        assert_eq!(error.key(), UNPAIRED_OPEN);
         assert_eq!(error.params()["zone"], "zone.example");
     }
 }

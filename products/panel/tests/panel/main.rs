@@ -7,6 +7,7 @@ mod files;
 mod ftp;
 mod license;
 mod mail;
+mod open_neighbour;
 mod services;
 mod sites;
 mod ssl;

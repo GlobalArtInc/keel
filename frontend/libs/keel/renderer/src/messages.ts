@@ -16,6 +16,7 @@ export const NEXT_KEY = 'keel.action.next';
 export const FINISH_KEY = 'keel.action.finish';
 export const REQUEST_KEY = 'keel.error.request';
 export const NOT_FOUND_KEY = 'keel.error.not_found';
+export const TARGET_KEY = 'keel.error.target';
 export const VIEW_MISSING_KEY = 'keel.view.missing';
 export const SCREEN_UNSUPPORTED_KEY = 'keel.screen.unsupported';
 export const CONFIRM_ONE_KEY = 'keel.confirm.one';

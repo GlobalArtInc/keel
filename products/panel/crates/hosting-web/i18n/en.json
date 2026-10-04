@@ -4,7 +4,8 @@
       "action": {
         "create": "New site",
         "delete": "Delete",
-        "edit": "Edit"
+        "edit": "Edit",
+        "open_zone": "Open in KeelDNS"
       },
       "aliases": "Aliases",
       "column": {

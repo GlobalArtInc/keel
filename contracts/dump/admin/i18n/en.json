@@ -221,6 +221,7 @@
         "setting_value": "The setting {key} has no usable value",
         "spawn_inside_task": "A task cannot spawn itself again",
         "stream_route": "The function {function} is a stream; open it at {route}",
+        "target": "The action answered no address to open",
         "task_checkpoint": "The checkpoint of task {task} does not fit the expected shape",
         "task_output": "The task output at {path} could not be opened",
         "tasks_unavailable": "Background tasks are not available on this installation",
@@ -731,6 +732,7 @@
         "grant_id": "The stored id {id} of a grant is not a ULID",
         "grant_not_held": "You cannot grant {key}: you do not hold it yourself",
         "grant_principal": "The grant {id} names a principal {principal} that cannot be read",
+        "handover": "Only a neighbouring installation acting for its customer hands that customer over with a login key",
         "hashing": "The password could not be processed",
         "http_only": "Signing in is possible over HTTP only",
         "ip_denied": "Access from your address is not allowed",
@@ -1695,7 +1697,8 @@
         "action": {
           "create": "New site",
           "delete": "Delete",
-          "edit": "Edit"
+          "edit": "Edit",
+          "open_zone": "Open in KeelDNS"
         },
         "aliases": "Aliases",
         "column": {

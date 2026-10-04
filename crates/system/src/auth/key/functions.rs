@@ -10,8 +10,10 @@ use super::{
 };
 
 pub const PERMISSION_ISSUE: &str = "auth.key.issue";
+pub const HANDOVER: &str = "auth.key.handover";
 pub const ERROR_TARGET: &str = "auth.error.key_target";
 pub const ERROR_EXTERNAL_ID: &str = "auth.error.external_id";
+pub const ERROR_HANDOVER: &str = "auth.error.handover";
 pub const MAX_EXTERNAL_ID: usize = 256;
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -23,6 +25,16 @@ pub struct Issue {
     #[serde(default)]
     #[schemars(length(min = 1, max = MAX_EXTERNAL_ID))]
     pub external_id: Option<String>,
+    #[schemars(range(min = 1, max = MAX_TTL_SECONDS))]
+    pub ttl: u32,
+    #[schemars(length(min = 1, max = 2048))]
+    pub redirect: String,
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel_sdk::serde")]
+#[schemars(crate = "keel_sdk::schemars")]
+pub struct Handover {
     #[schemars(range(min = 1, max = MAX_TTL_SECONDS))]
     pub ttl: u32,
     #[schemars(length(min = 1, max = 2048))]
@@ -128,7 +140,7 @@ async fn reached(call: &Call<Issue>, link: Id, found: Option<Principal>) -> Resu
         .then_some(principal.id))
 }
 
-async fn login_url(call: &Call<Issue>, key: &str) -> Result<String> {
+async fn login_url<P>(call: &Call<P>, key: &str) -> Result<String> {
     let url = url_of(key);
     if !through_peer(call.principal()) {
         return Ok(url);
@@ -160,6 +172,49 @@ pub fn issue() -> FunctionDef {
                 call.tx()?,
                 target,
                 call.principal().id,
+                &params.redirect,
+                params.ttl,
+                now,
+            )
+            .await?;
+            Ok(Issued {
+                url: login_url(&call, key.expose()).await?,
+                key: key.expose().to_owned(),
+            })
+        })
+}
+
+fn delegating_peer(principal: &Principal) -> Result<&Principal> {
+    principal
+        .actor
+        .as_deref()
+        .filter(|actor| through_peer(actor))
+        .ok_or_else(|| KeelError::forbidden(ERROR_HANDOVER))
+}
+
+pub fn handover() -> FunctionDef {
+    function::<Handover, Issued>(HANDOVER)
+        .kind(Kind::Action)
+        .mode(Mode::Write)
+        .level(Level::User)
+        .unowned()
+        .handler(|call: Call<Handover>| async move {
+            let params = call.params();
+            let customer = call.principal();
+            let peer = delegating_peer(customer)?;
+            if customer.level >= peer.level {
+                return Err(KeelError::forbidden("auth.error.not_below")
+                    .param("level", customer.level.as_str())
+                    .param("caller", peer.level.as_str()));
+            }
+            if !is_local_path(&params.redirect) {
+                return Err(KeelError::validation("auth.error.redirect").field("redirect"));
+            }
+            let now = call.require::<dyn Clock>()?.now();
+            let key = issue_row(
+                call.tx()?,
+                customer.id,
+                peer.id,
                 &params.redirect,
                 params.ttl,
                 now,

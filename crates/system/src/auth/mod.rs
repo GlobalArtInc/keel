@@ -37,7 +37,9 @@ use reset::ResetLimit;
 use totp::challenge::Attempts;
 
 pub use address::functions::SET as ADDRESS_SET;
-pub use key::functions::PERMISSION_ISSUE as KEY_ISSUE;
+pub use key::functions::{
+    ERROR_HANDOVER as KEY_HANDOVER_REFUSED, HANDOVER as KEY_HANDOVER, PERMISSION_ISSUE as KEY_ISSUE,
+};
 pub use key::{KEY_PREFIX as LOGIN_KEY_PREFIX, LOGIN_PATH, MAX_TTL_SECONDS as LOGIN_KEY_MAX_TTL};
 pub use limits::{GUEST_PER_MINUTE, LOCKOUT_MINUTES, LOCKOUT_THRESHOLD};
 pub use mail::{RESET_PREFIX, SETTING_SHELL_URL};
@@ -154,6 +156,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(su::su())
         .function(su::exit())
         .function(key::functions::issue())
+        .function(key::functions::handover())
         .function(key::functions::redeem())
         .function(ip_rule::functions::list())
         .function(ip_rule::functions::create(ip_rules.clone()))
@@ -234,7 +237,7 @@ mod tests {
 
     use super::*;
 
-    const FUNCTIONS: [&str; 28] = [
+    const FUNCTIONS: [&str; 29] = [
         "auth.password.set",
         "auth.login",
         "auth.logout",
@@ -249,6 +252,7 @@ mod tests {
         "auth.su",
         "auth.su.exit",
         "auth.key.issue",
+        KEY_HANDOVER,
         "auth.key.redeem",
         "auth.ip_rule.list",
         "auth.ip_rule.create",
@@ -294,6 +298,7 @@ mod tests {
                 ("auth.su", Kind::Action, Mode::Write, Level::Reseller),
                 ("auth.su.exit", Kind::Action, Mode::Write, Level::Service),
                 ("auth.key.issue", Kind::Form, Mode::Write, Level::Reseller),
+                (KEY_HANDOVER, Kind::Action, Mode::Write, Level::User),
                 ("auth.key.redeem", Kind::Form, Mode::Write, Level::Guest),
                 ("auth.ip_rule.list", Kind::List, Mode::Read, Level::Admin),
                 ("auth.ip_rule.create", Kind::Form, Mode::Write, Level::Admin),

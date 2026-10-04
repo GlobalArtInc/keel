@@ -1081,6 +1081,99 @@
         }
       }
     },
+    "/api/v1/call/auth.key.handover": {
+      "post": {
+        "operationId": "auth.key.handover",
+        "tags": [
+          "auth"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "write",
+          "access": {
+            "level": "user"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Handover",
+                "type": "object",
+                "properties": {
+                  "ttl": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 1,
+                    "maximum": 300
+                  },
+                  "redirect": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "ttl",
+                  "redirect"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Issued",
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        },
+                        "url": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "url"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/call/auth.key.issue": {
       "post": {
         "operationId": "auth.key.issue",
@@ -12010,6 +12103,85 @@
                       "required": [
                         "data",
                         "total"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/hosting.site.open_zone": {
+      "post": {
+        "operationId": "hosting.site.open_zone",
+        "tags": [
+          "hosting_site"
+        ],
+        "x-keel": {
+          "kind": "action",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "hosting.site.read",
+            "feature": "panel.web"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Pick",
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Opened",
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "x-keel": {
+                            "once": true
+                          }
+                        }
+                      },
+                      "required": [
+                        "url"
                       ]
                     },
                     "meta": {

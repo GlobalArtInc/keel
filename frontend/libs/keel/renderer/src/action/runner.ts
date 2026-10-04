@@ -1,10 +1,18 @@
-import { Injectable, inject } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { KeelClient, KeelI18n, isTaskRef } from '@globalart/keel/client';
 import { newIdempotencyKey, unreachable } from '@globalart/keel/forms';
 import { entityPrefix, type Action, type Descriptor, type Envelope } from '@globalart/keel/meta';
 import { PhxConfirmService, PhxToastService, type PhxConfirmOptions } from '@globalart/phoenix-ui';
 import { firstValueFrom } from 'rxjs';
-import { CONFIRM_COUNT_KEY, CONFIRM_MANY_KEY, CONFIRM_ONE_KEY, describeError } from '../messages';
+import {
+  CONFIRM_COUNT_KEY,
+  CONFIRM_MANY_KEY,
+  CONFIRM_ONE_KEY,
+  TARGET_KEY,
+  describeError,
+} from '../messages';
 import { KeelDownloads } from '../tasks/download';
 import { KeelTasks } from '../tasks/follow';
 
@@ -20,6 +28,40 @@ export interface ActionRequest {
 }
 
 export type ActionOutcome<T = unknown> = Envelope<T> | null;
+
+export type OpenExternal = (url: string) => void;
+
+export const KEEL_OPEN_EXTERNAL = new InjectionToken<OpenExternal>('KEEL_OPEN_EXTERNAL', {
+  providedIn: 'root',
+  factory: () => {
+    const view = inject(DOCUMENT).defaultView;
+    return (url: string) => view?.location.assign(url);
+  },
+});
+
+const ADDRESS = /^https?:\/\//i;
+
+export function isLocalPath(url: string): boolean {
+  return url.startsWith('/') && !url.startsWith('//') && !url.includes('\\');
+}
+
+function plain(url: string): boolean {
+  return [...url].every((char) => {
+    const code = char.charCodeAt(0);
+    return code > 0x20 && code !== 0x7f;
+  });
+}
+
+export function targetOf(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null) {
+    return null;
+  }
+  const url = (data as { url?: unknown }).url;
+  if (typeof url !== 'string' || !plain(url)) {
+    return null;
+  }
+  return isLocalPath(url) || ADDRESS.test(url) ? url : null;
+}
 
 export function keyOf(descriptor: Descriptor): string {
   return descriptor.key ?? DEFAULT_KEY;
@@ -67,6 +109,8 @@ export class KeelActionRunner {
   private readonly toasts = inject(PhxToastService);
   private readonly tasks = inject(KeelTasks);
   private readonly downloads = inject(KeelDownloads);
+  private readonly router = inject(Router);
+  private readonly openExternal = inject(KEEL_OPEN_EXTERNAL);
 
   label(request: ActionRequest): string {
     return this.i18n.t(labelKeyOf(request.descriptor, request.action));
@@ -95,7 +139,23 @@ export class KeelActionRunner {
     if (isTaskRef(envelope.data)) {
       return this.tasks.follow<T>(envelope.data, { title: label });
     }
+    if (request.action.role === 'external') {
+      await this.open(envelope.data, label);
+    }
     return envelope;
+  }
+
+  private async open(data: unknown, label: string): Promise<void> {
+    const target = targetOf(data);
+    if (target === null) {
+      this.toasts.danger(this.i18n.t(TARGET_KEY), { title: label });
+      return;
+    }
+    if (isLocalPath(target)) {
+      await this.router.navigateByUrl(target);
+      return;
+    }
+    this.openExternal(target);
   }
 
   private async confirmed(request: ActionRequest, label: string): Promise<boolean> {

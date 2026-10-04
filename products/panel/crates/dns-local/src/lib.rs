@@ -6,6 +6,7 @@ const CREATE: &str = "dns.zone.create";
 const LIST: &str = "dns.zone.list";
 const CLAIM: &str = "dns.zone.claim";
 const RECORD_CREATE: &str = "dns.record.create";
+const ZONE_LIST: &str = "/f/dns.zone.list";
 const PAGE: u32 = 100;
 const ZONE_NAME: &str = "name";
 const SITE_DOMAIN: &str = "domain";
@@ -74,6 +75,14 @@ impl DnsProvider for Local {
         }
         Ok(true)
     }
+
+    async fn open(&self, _: &Db, zone: &SiteZone) -> Result<String> {
+        Ok(landing(&zone.name))
+    }
+}
+
+fn landing(name: &str) -> String {
+    format!("{ZONE_LIST}?search={name}")
 }
 
 fn zone_id(page: &Value, zone: &SiteZone) -> Option<String> {
@@ -143,6 +152,14 @@ mod tests {
         assert_eq!(
             onto_the_site(other).to_call_error().fields[0].path,
             "dnsZone"
+        );
+    }
+
+    #[test]
+    fn a_zone_opens_on_the_zone_list_of_this_installation_narrowed_to_its_name() {
+        assert_eq!(
+            landing("zone.example"),
+            "/f/dns.zone.list?search=zone.example"
         );
     }
 

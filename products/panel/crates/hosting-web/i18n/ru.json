@@ -4,7 +4,8 @@
       "action": {
         "create": "Новый сайт",
         "delete": "Удалить",
-        "edit": "Изменить"
+        "edit": "Изменить",
+        "open_zone": "Открыть в KeelDNS"
       },
       "aliases": "Псевдонимы",
       "column": {

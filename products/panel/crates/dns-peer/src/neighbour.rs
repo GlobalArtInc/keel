@@ -13,9 +13,16 @@ pub const ANSWER: &str = "dns_peer.error.answer";
 pub const CLIENT: &str = "dns_peer.error.client";
 pub const EXISTS: &str = "dns_peer.error.exists";
 pub const TEMPLATE: &str = "dns_peer.error.template";
+pub const HANDOVER_TTL: u32 = 60;
 const PRINCIPAL_UPSERT: &str = "keel.principal.upsert";
 const ZONE_CHECK: &str = "dns.zone.check";
 const ZONE_CREATE: &str = "dns.zone.create";
+const HANDOVER: &str = "auth.key.handover";
+const HTTP: &str = "http://";
+const HTTPS: &str = "https://";
+const OK: u16 = 200;
+const NO_URL: &str = "the login key came without a url";
+const NOT_A_URL: &str = "the login url is neither an http or https address nor a path";
 const CUSTOMER_LEVEL: &str = "user";
 const ZONE_NAME: &str = "name";
 const SITE_DOMAIN: &str = "domain";
@@ -105,6 +112,23 @@ impl Neighbour {
             .map_err(|error| self.refused(error))
     }
 
+    pub(crate) async fn hand_over(&self, customer: &Customer, redirect: &str) -> Result<String> {
+        self.sync(customer).await?;
+        let answer = self
+            .client
+            .call::<Value>(
+                HANDOVER,
+                json!({ "ttl": HANDOVER_TTL, "redirect": redirect }),
+            )
+            .on_behalf(customer.on_behalf()?)
+            .await
+            .map_err(|error| self.refused(error))?;
+        let url = answer.data["url"]
+            .as_str()
+            .ok_or_else(|| outside(self.client.base(), NO_URL))?;
+        absolute(self.client.base(), url)
+    }
+
     pub(crate) fn timed_out(&self) -> KeelError {
         KeelError::peer(UNREACHABLE)
             .param("url", self.client.base())
@@ -150,6 +174,27 @@ pub(crate) fn mapped(base: &str, error: Error) -> KeelError {
             .param("reason", truncate(&reason)),
         other => invalid(other),
     }
+}
+
+pub(crate) fn absolute(base: &str, url: &str) -> Result<String> {
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err(outside(base, NOT_A_URL));
+    }
+    let scheme = url.get(..HTTPS.len()).unwrap_or(url).to_ascii_lowercase();
+    if scheme.starts_with(HTTP) || scheme.starts_with(HTTPS) {
+        return Ok(url.to_owned());
+    }
+    if url.starts_with('/') && !url.starts_with("//") {
+        return Ok(format!("{base}{url}"));
+    }
+    Err(outside(base, NOT_A_URL))
+}
+
+fn outside(base: &str, reason: &str) -> KeelError {
+    KeelError::peer(ANSWER)
+        .param("url", base)
+        .param("status", OK)
+        .param("reason", reason)
 }
 
 fn onto_the_site(field: FieldError) -> FieldError {
@@ -422,6 +467,39 @@ mod tests {
         );
         assert_eq!(refused.code(), ErrorCode::Internal);
         assert_eq!(refused.key(), CLIENT);
+    }
+
+    #[test]
+    fn a_login_url_opens_as_an_address_or_as_a_path_under_the_link_and_nothing_else() {
+        let base = "https://dns.example:8443";
+        let key = "kok_0123";
+        for kept in [
+            format!("https://public.example/login?key={key}"),
+            format!("HTTPS://public.example/login?key={key}"),
+            format!("http://public.example:8080/login?key={key}"),
+        ] {
+            assert_eq!(absolute(base, &kept).unwrap(), kept);
+        }
+        assert_eq!(
+            absolute(base, &format!("/login?key={key}")).unwrap(),
+            format!("{base}/login?key={key}")
+        );
+        for refused in [
+            "javascript:alert(1)",
+            "//evil.example/login",
+            "login?key=kok_0123",
+            "ftp://dns.example/login",
+            "https://public.example/login?key=kok 0123",
+            "/login?key=kok_0123\n",
+            "",
+        ] {
+            let error = absolute(base, refused).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::Peer, "{refused}");
+            assert_eq!(error.key(), ANSWER, "{refused}");
+            assert_eq!(error.params()["url"], base, "{refused}");
+            assert_eq!(error.params()["status"], 200, "{refused}");
+            assert_eq!(error.params()["reason"], NOT_A_URL, "{refused}");
+        }
     }
 
     #[test]

@@ -9,6 +9,7 @@
       "site": "The site {site} could not be read",
       "template": "The {type} record {name} of the default template on the neighbouring installation does not hold for this zone",
       "unpaired": "No neighbouring installation with DNS is paired yet, so the zone {zone} cannot be created",
+      "unpaired_open": "No neighbouring installation with DNS is paired yet, so the zone {zone} cannot be opened there",
       "unreachable": "The neighbouring installation {url} could not be reached: {reason}"
     },
     "zone": {

@@ -6610,12 +6610,13 @@ when `dns` is not enabled locally and a link to an installation offering `dns` e
 
 **Goal.** A row action "Open in KeelDNS" on a site whose zone lives on a neighbour: `panel` calls
 `auth.key.issue` on the neighbour on behalf of the customer, receives the absolute URL and opens
-it; the neighbour's audit records the issuing peer as the actor of the key and the session.
-Step 1c lets a peer name the target of `auth.key.issue` by `externalId` and keeps the rule that the
-target lies below the caller. A peer acting for a `user`-level customer cannot issue that
-customer's own key. Calling as the principal of its link it can: the key's `issued_by` is then that
-principal, not the customer. This step keeps that call or decides an issue on behalf for the
-customer itself.
+it; the neighbour's audit records the issuing peer as the actor of the key, and the session the
+key opens reaches the peer through the key's `issued_by`, the trace
+[design/07-ecosystem.md](design/07-ecosystem.md) gives an ordinary `ks_` session. Step 1c lets a
+peer name the target of `auth.key.issue` by `externalId` and keeps the rule that the target lies
+below the caller. A peer acting for a `user`-level customer cannot issue that customer's own key.
+Calling as the principal of its link it can: the key's `issued_by` is then that principal, not the
+customer. This step keeps that call or decides an issue on behalf for the customer itself.
 
 **Touches.** `products/panel/crates/dns-peer/`, `frontend/products/panel/`, `contracts/`.
 
@@ -7034,6 +7035,61 @@ site or creating the zone on the neighbour are the remedies. Through a peer `for
 foreign-zone rule of sites and mail domains nor the MX and SPF records of a mail domain. For 8b:
 `PeerLinks` hands the outbound token of a link to any module compiled in, the pre-check writes the
 customer on the neighbour before the local transaction decides, and the widened scope of the task.
+Step 6b leaves points for the pass over [design/03-access.md](design/03-access.md),
+[design/05-modules.md](design/05-modules.md), [design/07-ecosystem.md](design/07-ecosystem.md),
+[design/08-frontend.md](design/08-frontend.md) and [design/10-contracts.md](design/10-contracts.md).
+The panel opens the neighbour as its customer rather than as its link: `auth` adds
+`auth.key.handover { ttl, redirect }`, a write action at the `user` level without a permission that
+issues a one-time key for the caller itself and answers `{ key, url }` as `auth.key.issue` does,
+absolute under the public address; it answers a call on behalf of a customer alone, whose actor is
+the principal of a link, and `403 auth.error.handover` any other caller, the link itself and a token
+it minted included; the customer lies below the level of that link or the answer is `403
+auth.error.not_below`; and the key's `issued_by` is the principal of the link. The trail of the
+neighbour therefore records the customer as the principal and the link as the actor of the key, the
+redeem answers that principal as `issuedBy`, and the session is an ordinary one of the customer
+without an actor. The redeem is a guest call, so its audit row names no principal and records no
+result, as for any one-click login: the session reaches the link through the `issued_by` of its key
+and the key's audit row alone, which is what the Goal's actor of the session amounts to and what
+"One-click login" says of an ordinary `ks_` session. Keeping the call as the link was the other
+choice: its trail names the link alone without an actor, and the link would need `auth.key.issue`
+over every customer of the peer. A pair code for a panel therefore grants `auth.key.handover` beside
+the functions step 6a names.
+`hosting-web` adds `DnsProvider::open(db, zone)`, answering the address the zone of a site opens at,
+and the function `hosting.site.open_zone { id }`, a read action with the access of
+`hosting.site.get` that answers `{ url }` as a `once` member and stands behind the row action
+`open_zone` of `hosting.site.list`, of the role `external` and labelled
+`hosting.site.action.open_zone`. The action stands on every site whichever side the bridge picked:
+`dns-local` answers the path `/f/dns.zone.list?search=<domain>` of the installation; `dns-peer`
+syncs the customer as for a zone, calls `auth.key.handover` on its behalf for 60 seconds with that
+path as the landing and answers the absolute `url` of the neighbour, joins a path the neighbour
+answers without a public address to the address of the link, refuses any other answer with `502
+dns_peer.error.answer`, and answers `503 dns_peer.error.unpaired_open` without a link offering
+`dns`, a refusal of the neighbour as `peer` (502) with its key and an outage as `502
+dns_peer.error.unreachable`. The function is a read, so the panel waits on the network inside no
+transaction, and its own trail does not record which of its principals opened the neighbour. The
+kernel refuses a read-only token only a write and a token scoped to functions only a function
+outside its masks, yet the answer may be a full browser session on the neighbour, which no scope
+short of full grants, so the function opens for full scope only — a session, a token of full
+scope, the CLI. Before it loads the site and whichever side the bridge picked, the handler answers
+a read-only token `403 keel.error.token_read_only`, and a token scoped to functions, a mask such as
+`hosting.site.*` included, or the principal of a link, on behalf of a customer or not, `403
+keel.error.token_scope`, both with the function in `params`, and nothing is written on the
+neighbour. A lease degraded to read-only does not refuse it: the lease bounds the writes of this
+installation, the lease of the neighbour bounds the key and the session there, and a login keeps
+working on a degraded installation. The role `external`, named in the vocabulary since M2 without a
+meaning, is an action whose function answers `{ url }`: the shell navigates inside itself to a path
+starting with a single `/`, leaves for an `http` or `https` address in the same tab through the
+token `KEEL_OPEN_EXTERNAL`, and on any other answer opens nothing and shows `keel.error.target`.
+`hack/e2e.sh` gains the stage `@peers`: after the panel stage it moves `dns` of its installation to
+a neighbour with `product disable dns --switch-remote`, starts a second kernel with `dns` alone on
+its own database and the public address `https://localhost:<port>`, pairs the two by code over the
+CLI, creates a site whose zone lands on the neighbour, and `frontend/e2e/peers.spec.ts` follows
+"Open in KeelDNS" onto the neighbour as the customer, after which the script reads the trail of the
+neighbour. For 8a: the stage reaches the neighbour through a relay on plain HTTP, since nothing yet
+lets one installation trust the self-signed certificate of another. For 8b: `auth.key.handover`
+turns a call on behalf into a full browser session of the customer whatever else the mask of the
+link holds, and any principal of the panel who sees a site, a reseller or an administrator above its
+account included, opens the neighbour as the customer of that site.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

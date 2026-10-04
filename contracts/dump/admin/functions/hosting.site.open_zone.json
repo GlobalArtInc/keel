@@ -1,0 +1,48 @@
+{
+  "keel": 1,
+  "name": "hosting.site.open_zone",
+  "module": "hosting_site",
+  "kind": "action",
+  "mode": "read",
+  "access": {
+    "level": "user",
+    "permission": "hosting.site.read",
+    "feature": "panel.web"
+  },
+  "key": "id",
+  "params": {
+    "title": "Pick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "$defs": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+        "minLength": 26,
+        "maxLength": 26
+      }
+    }
+  },
+  "result": {
+    "title": "Opened",
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "x-keel": {
+          "once": true
+        }
+      }
+    },
+    "required": [
+      "url"
+    ]
+  }
+}

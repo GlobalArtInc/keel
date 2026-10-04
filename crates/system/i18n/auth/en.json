@@ -23,6 +23,7 @@
       "grant_id": "The stored id {id} of a grant is not a ULID",
       "grant_not_held": "You cannot grant {key}: you do not hold it yourself",
       "grant_principal": "The grant {id} names a principal {principal} that cannot be read",
+      "handover": "Only a neighbouring installation acting for its customer hands that customer over with a login key",
       "hashing": "The password could not be processed",
       "http_only": "Signing in is possible over HTTP only",
       "ip_denied": "Access from your address is not allowed",

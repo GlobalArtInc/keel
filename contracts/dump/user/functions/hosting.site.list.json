@@ -182,6 +182,14 @@
         "default": true
       },
       {
+        "id": "open_zone",
+        "role": "external",
+        "function": "hosting.site.open_zone",
+        "params": {
+          "id": "$id"
+        }
+      },
+      {
         "id": "delete",
         "role": "delete",
         "function": "hosting.site.delete",
@@ -194,6 +202,7 @@
     ],
     "row_actions": [
       "edit",
+      "open_zone",
       "delete"
     ],
     "empty": {

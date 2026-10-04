@@ -15,8 +15,8 @@ use crate::support::{Site, composed, create, data, eventually, rows, run_job, st
 const SITE_CREATE: &str = "hosting.site.create";
 const SITE_DELETE: &str = "hosting.site.delete";
 const ZONE_CREATE: &str = "dns.zone.create";
-const PAIR_CODE: &str = "peer.pair_code";
-const PEER_CREATE: &str = "peer.create";
+pub(crate) const PAIR_CODE: &str = "peer.pair_code";
+pub(crate) const PEER_CREATE: &str = "peer.create";
 const REFUSED_ZONE: &str = "refused.example";
 const PROBE_REFUSED: &str = "probe.error.refused";
 
@@ -39,7 +39,7 @@ fn probe(r: &mut Registrar) -> Result<()> {
     Ok(())
 }
 
-fn peered(builder: Builder) -> Builder {
+pub(crate) fn peered(builder: Builder) -> Builder {
     builder
         .module(&keel_system::auth::MODULE)
         .module(&keel_system::audit::MODULE)
@@ -47,7 +47,7 @@ fn peered(builder: Builder) -> Builder {
         .module(&keel_system::peers::MODULE)
 }
 
-fn panel_side(site: &Site) -> Builder {
+pub(crate) fn panel_side(site: &Site) -> Builder {
     peered(
         composed(site)
             .product(&keel_dns::MANIFEST)
@@ -55,7 +55,7 @@ fn panel_side(site: &Site) -> Builder {
     )
 }
 
-fn dns_side(site: &Site) -> Builder {
+pub(crate) fn dns_side(site: &Site) -> Builder {
     peered(with_dns(site).enabled(["dns"]))
 }
 
@@ -128,13 +128,13 @@ async fn pair(panel: &Harness, other: &Harness, http: &TestHttp) {
     data(&created);
 }
 
-async fn user(harness: &Harness, who: Who, name: &str) -> String {
+pub(crate) async fn user(harness: &Harness, who: Who, name: &str) -> String {
     let id = create(harness, who, name).await;
     state_becomes(harness, &id, "active").await;
     id
 }
 
-async fn one(harness: &Harness, sql: &str) -> String {
+pub(crate) async fn one(harness: &Harness, sql: &str) -> String {
     let found = rows(harness, sql).await;
     assert_eq!(found.len(), 1, "{sql}: {found:?}");
     found[0].clone()
@@ -150,11 +150,11 @@ async fn site(harness: &Harness, user: &str, domain: &str) -> Reply {
         .await
 }
 
-fn origin(panel: &Harness) -> String {
+pub(crate) fn origin(panel: &Harness) -> String {
     format!("{ORIGIN_NAME}:{}", panel.instance())
 }
 
-fn customer_login(panel: &Harness, account: &str) -> String {
+pub(crate) fn customer_login(panel: &Harness, account: &str) -> String {
     format!(
         "{ORIGIN_NAME}-{}-{}",
         panel.instance().to_string().to_ascii_lowercase(),
@@ -181,7 +181,7 @@ async fn synced(dns: &Harness, panel: &Harness) -> Vec<String> {
     .await
 }
 
-async fn zone_owner(dns: &Harness, name: &str) -> Vec<String> {
+pub(crate) async fn zone_owner(dns: &Harness, name: &str) -> Vec<String> {
     rows(
         dns,
         &format!(

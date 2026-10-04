@@ -5,6 +5,7 @@ use keel::sdk::sea_orm::{
 };
 use keel::sdk::serde_json;
 use keel::sdk::system::AccountSource;
+use keel::types::Scope;
 use keel_hosting_users::api::{HostingUser, HostingUsers};
 
 use crate::api::{Deferred, DnsProvider, SiteCertificates, SiteZone};
@@ -19,12 +20,15 @@ const GET: &str = "hosting.site.get";
 const CREATE: &str = "hosting.site.create";
 const EDIT: &str = "hosting.site.edit";
 const DELETE: &str = "hosting.site.delete";
+const OPEN_ZONE: &str = "hosting.site.open_zone";
 const PHP: &str = "hosting.site.php";
 const EXISTS: &str = "hosting.site.error.exists";
 const USER: &str = "hosting.site.error.user";
 const USER_PENDING: &str = "hosting.site.error.user_pending";
 const SITE_ID: &str = "hosting.site.error.site_id";
 const FOREIGN_ZONE: &str = "hosting.site.error.foreign_zone";
+const TOKEN_READ_ONLY: &str = "keel.error.token_read_only";
+const TOKEN_SCOPE: &str = "keel.error.token_scope";
 const VERSIONS: [&str; 3] = ["8.2", "8.3", "8.4"];
 const SERIALISE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('hosting_site:names', 0))";
 const TAKEN: &str = "SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n WHERE EXISTS (SELECT 1 FROM hosting_site s WHERE s.id <> $1 AND (s.domain = n OR s.aliases @> to_jsonb(n))) LIMIT 1";
@@ -89,6 +93,14 @@ struct Deleted {
     deleted: u64,
 }
 
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(crate = "keel::sdk::serde")]
+#[schemars(crate = "keel::sdk::schemars")]
+struct Opened {
+    #[schemars(extend("x-keel" = json!({ "once": true })))]
+    url: String,
+}
+
 pub(crate) fn list() -> FunctionDef {
     function::<ListQuery, Page<site::Model>>(LIST)
         .kind(Kind::List)
@@ -129,6 +141,11 @@ pub(crate) fn list() -> FunctionDef {
             )
             .action(Action::new("edit", ActionRole::Edit).screen(EDIT).default())
             .action(
+                Action::new("open_zone", ActionRole::External)
+                    .function(OPEN_ZONE)
+                    .params([("id", "$id")]),
+            )
+            .action(
                 Action::new("delete", ActionRole::Delete)
                     .function(DELETE)
                     .confirm_with(ConfirmDetails {
@@ -137,7 +154,7 @@ pub(crate) fn list() -> FunctionDef {
                         input: Some(ConfirmInput::Count),
                     }),
             )
-            .row_actions(["edit", "delete"])
+            .row_actions(["edit", "open_zone", "delete"])
             .empty("hosting.site.empty", Some("create"))
             .invalidate_on(["hosting.site.*"]))
         .default_sort("domain", SortDir::Asc)
@@ -151,6 +168,40 @@ pub(crate) fn get() -> FunctionDef {
         .feature(FEATURE)
         .owned::<site::Entity>()
         .handler(|call: Call<Pick>| async move { load(call.db(), &call.params().id).await })
+}
+
+pub(crate) fn open_zone() -> FunctionDef {
+    function::<Pick, Opened>(OPEN_ZONE)
+        .kind(Kind::Action)
+        .mode(Mode::Read)
+        .access(Level::User, READ)
+        .feature(FEATURE)
+        .owned::<site::Entity>()
+        .handler(|call: Call<Pick>| async move {
+            full_scope(&call.principal().scope)?;
+            let db = call.db();
+            let site = load(db, &call.params().id).await?;
+            let account: Id = site
+                .account_id
+                .parse()
+                .map_err(|_| KeelError::internal(SITE_ID).param("site", site.id.as_str()))?;
+            let zone = SiteZone {
+                name: site.domain,
+                account,
+                own_account: account == call.principal().account_id,
+            };
+            let url = call.require::<dyn DnsProvider>()?.open(db, &zone).await?;
+            Ok(Opened { url })
+        })
+}
+
+fn full_scope(scope: &Scope) -> Result<()> {
+    let refusal = match scope {
+        Scope::Full => return Ok(()),
+        Scope::ReadOnly => TOKEN_READ_ONLY,
+        Scope::Functions(_) | Scope::Peer(_) => TOKEN_SCOPE,
+    };
+    Err(KeelError::forbidden(refusal).param("function", OPEN_ZONE))
 }
 
 pub(crate) fn create(turn: Turn) -> FunctionDef {

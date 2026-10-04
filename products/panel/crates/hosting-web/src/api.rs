@@ -47,6 +47,7 @@ pub trait DnsProvider: Send + Sync {
         zone: &SiteZone,
         records: &[ZoneRecord],
     ) -> Result<bool>;
+    async fn open(&self, db: &Db, zone: &SiteZone) -> Result<String>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

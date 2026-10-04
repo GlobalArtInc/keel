@@ -52,6 +52,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::create(Arc::clone(&turn)))
         .function(functions::edit(Arc::clone(&turn)))
         .function(functions::delete(Arc::clone(&turn)))
+        .function(functions::open_zone())
         .function(functions::php())
         .function(config::get(Arc::clone(&turn)))
         .function(config::set(Arc::clone(&turn)))
