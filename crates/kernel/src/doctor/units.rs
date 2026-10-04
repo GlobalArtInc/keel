@@ -175,8 +175,15 @@ mod tests {
     ];
 
     fn stub(dir: &Path, body: &str) -> PathBuf {
+        let draft = dir.join("systemctl.draft");
+        fs::write(&draft, format!("#!/bin/sh\n{body}\n")).unwrap();
         let path = dir.join("systemctl");
-        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        let copied = std::process::Command::new("cp")
+            .arg(&draft)
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(copied.success(), "the stub is copied into place");
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
         path
     }
