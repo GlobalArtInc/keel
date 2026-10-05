@@ -5,8 +5,8 @@ use keel_sdk::prelude::*;
 use keel_sdk::system::Client;
 use keel_system::auth::api::{Lockout, RateLimit};
 use keel_system::auth::{
-    GUEST_PER_MINUTE, LOCKOUT_MINUTES, LOCKOUT_THRESHOLD, MODULE, decode_totp_secret, totp_code,
-    totp_step,
+    GUEST_PER_MINUTE, LOCKOUT_MINUTES, LOCKOUT_THRESHOLD, MODULE, TOTP_STEP_SECONDS,
+    decode_totp_secret, totp_code, totp_step,
 };
 use keel_testkit::{
     CallOptions, ErrorCode, Harness, PRINCIPAL_HEADER, Reply, TestHttp, Who, tokio,
@@ -256,7 +256,6 @@ async fn five_wrong_codes_lock_the_challenge_pair_for_the_address_and_the_code_p
 {
     let harness = boot().await;
     let secret = enroll_a1(&harness).await;
-    let code = |steps: i64| totp_code(&secret, totp_step(harness.clock().now()) + steps);
 
     let challenged = login_from(&harness, ATTACKER, "a1", PASSWORD).await;
     let challenge = challenge_of(&challenged);
@@ -264,7 +263,10 @@ async fn five_wrong_codes_lock_the_challenge_pair_for_the_address_and_the_code_p
         let wrong = verify_from(&harness, ATTACKER, &challenge, "000000").await;
         refused(&wrong, 401, ErrorCode::Unauthenticated, "auth.error.code");
     }
-    let right = code(1).expect("a code");
+    harness
+        .clock()
+        .advance(Duration::seconds(TOTP_STEP_SECONDS));
+    let right = totp_code(&secret, totp_step(harness.clock().now())).expect("a code");
     let locked = verify_from(&harness, ATTACKER, &challenge, &right).await;
     refused(&locked, 403, ErrorCode::Forbidden, "auth.error.locked");
     let relogin = login_from(&harness, ATTACKER, "a1", PASSWORD).await;
@@ -287,7 +289,6 @@ async fn five_wrong_codes_lock_the_challenge_pair_for_the_address_and_the_code_p
 async fn a_new_challenge_does_not_reset_the_wrong_code_count_of_the_pair() {
     let harness = boot().await;
     let secret = enroll_a1(&harness).await;
-    let code = |steps: i64| totp_code(&secret, totp_step(harness.clock().now()) + steps);
 
     let first = login_from(&harness, ATTACKER, "a1", PASSWORD).await;
     let challenge = challenge_of(&first);
@@ -301,7 +302,10 @@ async fn a_new_challenge_does_not_reset_the_wrong_code_count_of_the_pair() {
     let wrong = verify_from(&harness, ATTACKER, &challenge, "000000").await;
     refused(&wrong, 401, ErrorCode::Unauthenticated, "auth.error.code");
 
-    let right = code(1).expect("a code");
+    harness
+        .clock()
+        .advance(Duration::seconds(TOTP_STEP_SECONDS));
+    let right = totp_code(&secret, totp_step(harness.clock().now())).expect("a code");
     let locked = verify_from(&harness, ATTACKER, &challenge, &right).await;
     refused(&locked, 403, ErrorCode::Forbidden, "auth.error.locked");
     let relogin = login_from(&harness, ATTACKER, "a1", PASSWORD).await;

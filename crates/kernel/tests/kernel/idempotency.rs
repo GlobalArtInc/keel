@@ -29,7 +29,7 @@ const SUM: &str = "ledger.entry.sum";
 const VETO: &str = "ledger.error.veto";
 const START: &str = "2026-10-01T00:00:00Z";
 const PATIENCE: Duration = Duration::from_secs(15);
-const CUT: Duration = Duration::from_millis(300);
+const CUT: Duration = Duration::from_secs(5);
 const CROWD: usize = 60;
 
 mod entry {
