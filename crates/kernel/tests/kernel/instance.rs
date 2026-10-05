@@ -3,7 +3,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use keel_kernel::instance::{
     INSTANCE_ID_FILE, KV_INSTANCE_ID, KV_INSTANCE_KEY, KV_SECRET_KEY, SECRET_KEY_FILE,
 };
@@ -12,7 +12,7 @@ use keel_kernel::{Instance, InstanceError};
 use keel_sdk::InstanceInfoSource;
 use keel_sdk::prelude::*;
 use keel_testkit::{Harness, TestDatabase, Who};
-use keel_types::{InstanceInfo, PROTOCOL};
+use keel_types::{InstanceInfo, PROTOCOL, ProvenInstance};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 async fn kv(storage: &keel_kernel::Storage, key: &str) -> Option<serde_json::Value> {
@@ -349,6 +349,124 @@ async fn the_handshake_answers_the_instance_key_products_and_contributed_feature
         serde_json::from_str::<InstanceInfo>(&signed_in.body).unwrap(),
         info
     );
+
+    drop(http);
+    harness.finish().await;
+}
+
+fn published(info: &InstanceInfo) -> VerifyingKey {
+    let der = STANDARD
+        .decode(info.public_key.strip_prefix("ed25519:").unwrap())
+        .unwrap();
+    VerifyingKey::from_bytes(&der[12..].try_into().unwrap()).unwrap()
+}
+
+fn signature_of(proof: &str) -> Signature {
+    let bytes = STANDARD
+        .decode(proof.strip_prefix("ed25519:").expect("the scheme"))
+        .expect("base64");
+    Signature::from_bytes(&bytes.try_into().expect("64 bytes"))
+}
+
+#[tokio::test]
+async fn the_handshake_proves_the_instance_key_by_signing_a_fresh_challenge() {
+    let harness = Harness::new()
+        .module(&RELAY)
+        .product(&SKY)
+        .enabled(["sky"])
+        .boot()
+        .await;
+    let http = harness.http().await;
+    let plain = http.get(Who::Guest, "/api/v1/instance").await;
+    assert_eq!(plain.status, 200, "{}", plain.body);
+    let info: InstanceInfo = serde_json::from_str(&plain.body).unwrap();
+    assert!(
+        !serde_json::from_str::<Value>(&plain.body)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("proof")
+    );
+
+    let unrelated = http.get(Who::Guest, "/api/v1/instance?view=full").await;
+    assert_eq!(unrelated.status, 200, "{}", unrelated.body);
+    assert_eq!(
+        serde_json::from_str::<Value>(&unrelated.body).unwrap(),
+        serde_json::from_str::<Value>(&plain.body).unwrap(),
+        "a query without a challenge answers the plain handshake"
+    );
+
+    let challenge = "0123456789abcdef".repeat(4);
+    let asked = http
+        .get(
+            Who::Guest,
+            &format!("/api/v1/instance?challenge={challenge}"),
+        )
+        .await;
+    assert_eq!(asked.status, 200, "{}", asked.body);
+    let proven: ProvenInstance = serde_json::from_str(&asked.body).unwrap();
+    assert_eq!(proven.instance, info);
+    let key = published(&info);
+    let signature = signature_of(&proven.proof);
+    key.verify_strict(&info.proof_message(&challenge), &signature)
+        .expect("the proof verifies under the published key");
+    assert!(
+        key.verify_strict(&info.proof_message(&"f".repeat(64)), &signature)
+            .is_err(),
+        "a proof answers its own challenge alone"
+    );
+    let mut altered = info.clone();
+    altered.protocol += 2;
+    assert!(
+        key.verify_strict(&altered.proof_message(&challenge), &signature)
+            .is_err(),
+        "a proof covers the protocol"
+    );
+    altered = info.clone();
+    altered.products = vec!["moon".to_owned()];
+    assert!(
+        key.verify_strict(&altered.proof_message(&challenge), &signature)
+            .is_err(),
+        "a proof covers the products"
+    );
+    altered = info.clone();
+    altered.keel = "9.9.9".to_owned();
+    assert!(
+        key.verify_strict(&altered.proof_message(&challenge), &signature)
+            .is_err(),
+        "a proof covers the version"
+    );
+    let other = "f".repeat(64);
+    let again = http
+        .get(Who::Admin, &format!("/api/v1/instance?challenge={other}"))
+        .await;
+    let again: ProvenInstance = serde_json::from_str(&again.body).unwrap();
+    assert_ne!(again.proof, proven.proof);
+    key.verify_strict(&info.proof_message(&other), &signature_of(&again.proof))
+        .unwrap();
+
+    let short = "a".repeat(31);
+    let long = "a".repeat(129);
+    for query in [
+        format!("challenge={short}"),
+        format!("challenge={long}"),
+        format!("challenge={}%20", "a".repeat(32)),
+        format!("challenge={}.", "a".repeat(32)),
+        format!("challenge={challenge}&challenge={other}"),
+        "challenge=".to_owned(),
+    ] {
+        let refused = http
+            .get(Who::Guest, &format!("/api/v1/instance?{query}"))
+            .await;
+        assert_eq!(refused.status, 422, "{query}: {}", refused.body);
+        let error: Value = serde_json::from_str(&refused.body).unwrap();
+        assert_eq!(error["error"]["key"], "keel.error.validation", "{query}");
+        let field = &error["error"]["fields"][0];
+        assert_eq!(field["path"], "challenge", "{query}");
+        assert_eq!(field["key"], "keel.error.challenge", "{query}");
+        assert_eq!(field["params"]["min"], 32, "{query}");
+        assert_eq!(field["params"]["max"], 128, "{query}");
+    }
 
     drop(http);
     harness.finish().await;

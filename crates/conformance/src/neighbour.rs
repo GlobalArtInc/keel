@@ -2,8 +2,8 @@ use std::io::Read;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use keel_types::{Id, InstanceInfo, PROTOCOL};
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+use keel_types::{Id, InstanceInfo, PROOF_SCHEME, PROTOCOL};
 
 use crate::report::{Failure, fail};
 use crate::signature::hex;
@@ -60,6 +60,31 @@ pub fn public_key(key: &VerifyingKey) -> String {
     der.extend_from_slice(&SPKI_PREFIX);
     der.extend_from_slice(key.as_bytes());
     format!("{PUBLIC_KEY_SCHEME}{}", STANDARD.encode(der))
+}
+
+pub fn challenge() -> Result<String, Failure> {
+    Ok(hex(&random()?))
+}
+
+pub fn proves(instance: &InstanceInfo, challenge: &str, proof: &str) -> bool {
+    let key = instance
+        .public_key
+        .strip_prefix(PUBLIC_KEY_SCHEME)
+        .and_then(|encoded| STANDARD.decode(encoded).ok())
+        .and_then(|der| der.strip_prefix(&SPKI_PREFIX).map(<[u8]>::to_vec))
+        .and_then(|raw| <[u8; 32]>::try_from(raw).ok())
+        .and_then(|raw| VerifyingKey::from_bytes(&raw).ok());
+    let signature = proof
+        .strip_prefix(PROOF_SCHEME)
+        .and_then(|encoded| STANDARD.decode(encoded).ok())
+        .and_then(|raw| <[u8; 64]>::try_from(raw).ok())
+        .map(|raw| Signature::from_bytes(&raw));
+    match (key, signature) {
+        (Some(key), Some(signature)) => key
+            .verify_strict(&instance.proof_message(challenge), &signature)
+            .is_ok(),
+        _ => false,
+    }
 }
 
 pub fn peer_token() -> Result<String, Failure> {
@@ -125,6 +150,31 @@ mod tests {
                 .verify_strict(challenge, &signature)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_proof_of_the_instance_key_verifies_for_its_challenge_and_handshake_alone() {
+        let identity = Identity::new(Id::generate(), "0.4.0").unwrap();
+        let instance = identity.instance();
+        let challenge = challenge().unwrap();
+        assert!(keel_types::is_challenge(&challenge));
+        let signature = identity.key.sign(&instance.proof_message(&challenge));
+        let proof = format!("{PROOF_SCHEME}{}", STANDARD.encode(signature.to_bytes()));
+        assert!(proves(&instance, &challenge, &proof));
+        let flipped = if challenge.starts_with('0') { '1' } else { '0' };
+        let another = format!("{flipped}{}", &challenge[1..]);
+        assert_ne!(another, challenge);
+        assert!(!proves(&instance, &another, &proof));
+        let mut far = instance.clone();
+        far.protocol += 2;
+        assert!(!proves(&far, &challenge, &proof));
+        let mut newer = instance.clone();
+        newer.keel = "0.4.1".to_owned();
+        assert!(!proves(&newer, &challenge, &proof));
+        let other = Identity::new(identity.id, "0.4.0").unwrap().instance();
+        assert!(!proves(&other, &challenge, &proof));
+        assert!(!proves(&instance, &challenge, "ed25519:"));
+        assert!(!proves(&instance, &challenge, &proof[PROOF_SCHEME.len()..]));
     }
 
     #[test]

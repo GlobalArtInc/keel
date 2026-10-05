@@ -316,6 +316,7 @@ issue_code() {
   need_keel
   [ "$(recall product)" = dns ] || fail "code runs on the dns machine"
   local taken="taken-$STAMP.test" code
+  check "keel ctl settings.set lets the webhook deliveries reach the panel machine at its IP address" called settings.set key=webhook.private_targets value=true
   check "keel ctl dns.zone.create creates $taken, which no site of the panel machine can get" called dns.zone.create "name=\"$taken\""
   code=$(call peer.pair_code "scopes=$SCOPES" level=reseller onBehalf=true | field data.code) || fail "keel ctl peer.pair_code failed"
   check "the pair code reads PAIR-XXXX-XXXX" grep -qE '^PAIR-[0-9A-Z]{4}-[0-9A-Z]{4}$' <<<"$code"

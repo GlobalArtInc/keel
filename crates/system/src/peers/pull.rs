@@ -36,6 +36,10 @@ async fn pull(delivery: &Delivery, row: &product::Model) -> Result<usize> {
     let mut after = u64::try_from(start).unwrap_or_default();
     let mut received = 0;
     for _ in 0..ROUNDS {
+        if inbox::pending(&seams.db, &row.id).await? >= inbox::PENDING_MAX {
+            tracing::warn!(peer = %row.id, pending = inbox::PENDING_MAX, "the feed of a peer waits while the inbox of its link is full");
+            break;
+        }
         let page = remote.feed(&token, after, LIMIT).await?;
         if page.next < after
             || page.data.iter().any(|event| {

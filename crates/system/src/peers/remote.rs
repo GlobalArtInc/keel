@@ -3,10 +3,12 @@ use std::time::Duration;
 use keel_sdk::serde::de::DeserializeOwned;
 use keel_sdk::serde::{Deserialize, Serialize};
 use keel_sdk::serde_json::{self, Value};
-use keel_sdk::types::{CallError, Envelope, ErrorCode, Event, InstanceInfo};
+use keel_sdk::types::{CHALLENGE_PARAM, CallError, Envelope, ErrorCode, Event, InstanceInfo};
 use keel_sdk::{KeelError, Result};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::redirect::Policy;
+
+use super::proof;
 
 pub const INSTANCE_PATH: &str = "/api/v1/instance";
 pub const CALL_PATH: &str = "/api/v1/call";
@@ -21,6 +23,7 @@ pub const ERROR_HANDSHAKE: &str = "peer.error.handshake";
 pub const ERROR_ANSWER: &str = "peer.error.answer";
 pub const ERROR_URL: &str = "peer.error.url";
 const JSON: &str = "application/json";
+const PROOF_MEMBER: &str = "proof";
 const REASON_CAP: usize = 256;
 
 pub struct Remote {
@@ -33,6 +36,12 @@ pub struct Remote {
 pub struct FeedPage {
     pub data: Vec<Event>,
     pub next: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Presented {
+    pub instance: InstanceInfo,
+    pub proven: bool,
 }
 
 impl Remote {
@@ -53,10 +62,36 @@ impl Remote {
     }
 
     pub async fn handshake(&self) -> Result<InstanceInfo> {
-        let url = format!("{}{INSTANCE_PATH}", self.base);
+        let answered = self
+            .instance_at(&format!("{}{INSTANCE_PATH}", self.base))
+            .await?;
+        serde_json::from_value(answered).map_err(|_| self.not_an_installation())
+    }
+
+    pub async fn proven(&self) -> Result<Presented> {
+        let challenge = proof::challenge()?;
+        let mut answered = self
+            .instance_at(&format!(
+                "{}{INSTANCE_PATH}?{CHALLENGE_PARAM}={challenge}",
+                self.base
+            ))
+            .await?;
+        let proof = answered
+            .as_object_mut()
+            .and_then(|members| members.remove(PROOF_MEMBER));
+        let instance: InstanceInfo =
+            serde_json::from_value(answered).map_err(|_| self.not_an_installation())?;
+        let proven = proof
+            .as_ref()
+            .and_then(Value::as_str)
+            .is_some_and(|proof| proof::proves(&instance, &challenge, proof));
+        Ok(Presented { instance, proven })
+    }
+
+    async fn instance_at(&self, url: &str) -> Result<Value> {
         let response = self
             .client
-            .get(&url)
+            .get(url)
             .header(ACCEPT, JSON)
             .send()
             .await
@@ -66,10 +101,13 @@ impl Remote {
             .await
             .map_err(|reason| unreachable(&self.base, &reason))?;
         if !status.is_success() {
-            return Err(KeelError::peer(ERROR_HANDSHAKE).param("url", self.base.as_str()));
+            return Err(self.not_an_installation());
         }
-        serde_json::from_slice(&body)
-            .map_err(|_| KeelError::peer(ERROR_HANDSHAKE).param("url", self.base.as_str()))
+        serde_json::from_slice(&body).map_err(|_| self.not_an_installation())
+    }
+
+    fn not_an_installation(&self) -> KeelError {
+        KeelError::peer(ERROR_HANDSHAKE).param("url", self.base.as_str())
     }
 
     pub async fn call<T: DeserializeOwned>(

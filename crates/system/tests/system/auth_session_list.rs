@@ -125,6 +125,7 @@ impl Fixture for SessionFixture {
                         ip: Some("127.0.0.1".parse().expect("an address")),
                         user_agent: Some(agent.clone()),
                         session: None,
+                        token: None,
                     }),
                     ..CallOptions::default()
                 },

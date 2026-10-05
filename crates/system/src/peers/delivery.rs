@@ -16,6 +16,7 @@ use super::entity::product;
 use super::functions::by_instance;
 use super::inbox;
 use super::pairing::ERROR_MASK;
+use crate::auth::api::{GUEST_PER_MINUTE, RateLimit, SETTING_RATE_GUEST_PER_MINUTE};
 use crate::webhooks::api::{
     EVENT_ID_HEADER, PEER_HEADER, SIGNATURE_HEADER, admits, any_matches, is_mask, verify,
 };
@@ -34,6 +35,8 @@ pub const ERROR_FEED: &str = "peer.error.feed";
 pub const ERROR_QUERY: &str = "peer.error.query";
 const UNAUTHENTICATED: &str = "keel.error.unauthenticated";
 const UNAVAILABLE: &str = "keel.error.unavailable";
+const RATE_LIMITED: &str = "auth.error.rate_limited";
+const INBOX_FULL: &str = "keel.error.rate_limited";
 pub(super) const RETRY_PAUSE: Duration = Duration::from_secs(5);
 
 pub(super) struct Seams {
@@ -46,6 +49,8 @@ pub(super) struct Seams {
     pub(super) principals: Arc<dyn PrincipalSource>,
     pub(super) accounts: Arc<dyn AccountSource>,
     pub(super) reach: Arc<dyn PeerReach>,
+    pub(super) settings: Arc<dyn SettingsSource>,
+    pub(super) refusals: Arc<RateLimit>,
     pub(super) instance: Option<Id>,
 }
 
@@ -104,8 +109,7 @@ pub(super) fn representable(event: &Event) -> bool {
     YEARS.contains(&event.at.year())
 }
 
-async fn hook(delivery: &Delivery, request: EndpointRequest) -> Result<Value> {
-    let seams = delivery.seams()?;
+async fn signer(seams: &Seams, request: &EndpointRequest) -> Result<product::Model> {
     let (Some(peer), Some(signature)) = (
         request.header(PEER_HEADER).map(str::trim),
         request.header(SIGNATURE_HEADER),
@@ -128,6 +132,37 @@ async fn hook(delivery: &Delivery, request: EndpointRequest) -> Result<Value> {
         tracing::warn!(peer = %row.id, instance = row.instance_id, %rejection, "a delivery was refused");
         return Err(unsigned());
     }
+    Ok(row)
+}
+
+async fn guest_limit(seams: &Seams) -> Result<u32> {
+    Ok(seams
+        .settings
+        .resolve(SETTING_RATE_GUEST_PER_MINUTE, Id::ROOT_ACCOUNT, &seams.db)
+        .await?
+        .and_then(|value| value.as_u64())
+        .and_then(|limit| u32::try_from(limit).ok())
+        .unwrap_or(GUEST_PER_MINUTE))
+}
+
+async fn hook(delivery: &Delivery, request: EndpointRequest) -> Result<Value> {
+    let seams = delivery.seams()?;
+    let now = seams.clock.now();
+    let address = request.client.ip;
+    if address.is_some_and(|ip| seams.refusals.exhausted(ip, now)) {
+        return Err(KeelError::rate_limited(RATE_LIMITED));
+    }
+    let row = match signer(seams, &request).await {
+        Ok(row) => row,
+        Err(refusal) => {
+            if let Some(ip) = address
+                && refusal.key() == ERROR_SIGNATURE
+            {
+                seams.refusals.admit(ip, now, guest_limit(seams).await?);
+            }
+            return Err(refusal);
+        }
+    };
     let event: Event = serde_json::from_slice(&request.body).map_err(|_| not_an_event("body"))?;
     let id = event.id.to_string();
     if request.header(EVENT_ID_HEADER).map(str::trim) != Some(id.as_str()) {
@@ -138,6 +173,10 @@ async fn hook(delivery: &Delivery, request: EndpointRequest) -> Result<Value> {
     }
     if !representable(&event) {
         return Err(not_an_event("at"));
+    }
+    if inbox::pending(&seams.db, &row.id).await? >= inbox::PENDING_MAX {
+        tracing::warn!(peer = %row.id, instance = row.instance_id, pending = inbox::PENDING_MAX, "a delivery waits while the inbox of its link is full");
+        return Err(KeelError::rate_limited(INBOX_FULL).param("pending", inbox::PENDING_MAX));
     }
     let inserted = inbox::receive(&seams.db, &row.id, &event, seams.clock.now()).await?;
     if inserted {

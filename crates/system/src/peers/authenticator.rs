@@ -55,8 +55,9 @@ impl PeerAuthenticator {
 
     async fn peer(&self, secret: &str, db: &Db) -> Result<Authenticated> {
         let started = self.started()?;
+        let hash = token_hash(secret);
         let Some(row) = product::Entity::find()
-            .filter(product::Column::InboundTokenHash.eq(token_hash(secret)))
+            .filter(product::Column::InboundTokenHash.eq(hash.as_str()))
             .one(db)
             .await?
         else {
@@ -86,6 +87,7 @@ impl PeerAuthenticator {
         Ok(Authenticated {
             principal,
             session: None,
+            token: Some(hash),
         })
     }
 }
@@ -179,6 +181,14 @@ impl PeerReach for PeerAuthenticator {
             None => true,
             Some(link) => origin.is_some_and(|origin| names_peer(origin, &link.instance_id)),
         })
+    }
+
+    async fn holds(&self, link: Id, token: &str, db: &Db) -> Result<bool> {
+        Ok(product::Entity::find_by_id(link.to_string())
+            .filter(product::Column::InboundTokenHash.eq(token))
+            .one(db)
+            .await?
+            .is_some())
     }
 }
 

@@ -30,7 +30,10 @@ pub use event::{
 };
 pub use expr::{Context, Expr};
 pub use id::Id;
-pub use instance::InstanceInfo;
+pub use instance::{
+    CHALLENGE_MAX_LEN, CHALLENGE_MIN_LEN, CHALLENGE_PARAM, InstanceInfo, PROOF_CONTEXT,
+    PROOF_SCHEME, ProvenInstance, is_challenge,
+};
 pub use level::Level;
 pub use list::{Filter, FilterOp, FilterValue, ListQuery, Page, Sort, SortDir};
 pub use log::{LogLevel, LogLine};

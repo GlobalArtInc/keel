@@ -519,7 +519,7 @@ impl Inner {
             match key {
                 Some(key) => {
                     idempotency::admit(key)?;
-                    let hash = idempotency::hash(&params);
+                    let hash = idempotency::hash(principal.level, &params);
                     if let Some(record) =
                         idempotency::lookup(&self.db, principal.id, key, self.clock.now()).await?
                     {

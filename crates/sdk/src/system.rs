@@ -37,12 +37,14 @@ pub struct Client {
     pub ip: Option<IpAddr>,
     pub user_agent: Option<String>,
     pub session: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Authenticated {
     pub principal: Principal,
     pub session: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,6 +74,7 @@ pub trait PeerReach: Send + Sync {
     async fn reaches(&self, link: Id, principal: &Principal, db: &Db) -> Result<bool>;
     async fn customer(&self, link: Id, external_id: &str, db: &Db) -> Result<Option<Principal>>;
     async fn admits(&self, principal: &Principal, origin: Option<&str>, db: &Db) -> Result<bool>;
+    async fn holds(&self, link: Id, token: &str, db: &Db) -> Result<bool>;
 }
 
 #[derive(Clone, Debug)]
@@ -709,6 +712,10 @@ mod tests {
         async fn admits(&self, _: &Principal, origin: Option<&str>, _: &Db) -> Result<bool> {
             Ok(origin == Some("bill:alpha"))
         }
+
+        async fn holds(&self, _: Id, _: &str, _: &Db) -> Result<bool> {
+            unreachable!("only admits is asked")
+        }
     }
 
     fn about(kind: &str, account: Option<&str>) -> Event {
@@ -775,6 +782,7 @@ mod tests {
             ip: Some("127.0.0.1".parse().expect("an address")),
             user_agent: Some("probe/1".into()),
             session: Some("abc".into()),
+            token: None,
         };
         let handle = CallBuilder::new(crate::tests::principal(Level::User), "req-1")
             .client(Some(client.clone()))

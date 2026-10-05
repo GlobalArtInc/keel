@@ -1,13 +1,17 @@
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::time::Duration;
 
 use keel_sdk::prelude::*;
-use keel_sdk::sea_orm::ConnectionTrait;
+use keel_sdk::sea_orm::{ConnectionTrait, TransactionTrait};
 use keel_sdk::serde_json;
 use keel_sdk::system::{AuditEvent, AuditOutcome, AuditSink};
 use keel_sdk::types::Via;
+use keel_system::auth::api::retire_credentials;
 use keel_system::auth::{KEY_HANDOVER, KEY_HANDOVER_REFUSED, LOGIN_KEY_PREFIX};
-use keel_system::peers::{ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, LOGIN_PREFIX};
-use keel_testkit::{Answer, Harness, TestHttp, Who, tokio};
+use keel_system::peers::{
+    DELETE, ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, LOGIN_PREFIX, ROTATE,
+};
+use keel_testkit::{Answer, Harness, PRINCIPAL_HEADER, TestHttp, Who, tokio};
 
 use crate::peers::{
     Linked, Two, call_with, composed, data, installation, link_principal, mint, outbound, refused,
@@ -1045,6 +1049,463 @@ async fn a_customer_handed_over_lies_below_its_link_and_lands_inside_the_install
             .await,
         ["/f/dns.zone.list?search=a.example"]
     );
+
+    linking.finish().await;
+}
+
+async fn minted_on_behalf(http: &TestHttp, token: &str, origin: &str, customer: &str) -> String {
+    let header = format!("origin={origin}; external_id={customer}");
+    let created = on_behalf(
+        http,
+        token,
+        &[header.as_str()],
+        "auth.token.create",
+        json!({ "name": "for-the-customer" }),
+    )
+    .await;
+    assert_eq!(created.status, 200, "{}", created.body);
+    created.json()["data"]["token"].as_str().unwrap().to_owned()
+}
+
+async fn session_of(http: &TestHttp, issued: Answer) -> String {
+    assert_eq!(issued.status, 200, "{}", issued.body);
+    let key = issued.json()["data"]["key"].as_str().unwrap().to_owned();
+    let redeemed = redeem(http, &key).await;
+    assert_eq!(redeemed.status, 200, "{}", redeemed.body);
+    redeemed.session_cookie().expect("a session cookie")
+}
+
+async fn boots(http: &TestHttp, cookie: &str) -> Answer {
+    http.request("GET", "/api/v1/boot", &[("cookie", cookie)], None)
+        .await
+}
+
+enum Minted {
+    Token(String),
+    Session(String),
+}
+
+impl Minted {
+    async fn answer(&self, http: &TestHttp) -> Answer {
+        match self {
+            Minted::Token(token) => call_with(http, token, "keel.account.list", json!({})).await,
+            Minted::Session(cookie) => boots(http, cookie).await,
+        }
+    }
+}
+
+async fn created_with(http: &TestHttp, token: &str) -> String {
+    let created = call_with(
+        http,
+        token,
+        "auth.token.create",
+        json!({ "name": "minted-by-a-minted-token" }),
+    )
+    .await;
+    assert_eq!(created.status, 200, "{}", created.body);
+    created.json()["data"]["token"].as_str().unwrap().to_owned()
+}
+
+async fn mint_for_the_customers(linking: &Linking, token: &str) -> Vec<(&'static str, Minted)> {
+    let http = linking.http();
+    let origin = linking.origin.as_str();
+    let for_reseller = format!("origin={origin}; external_id=client-r");
+    let for_user = format!("origin={origin}; external_id=client-42");
+    let redirect = json!({ "ttl": 60, "redirect": REDIRECT });
+    let mut issue = redirect.clone();
+    issue["externalId"] = json!("client-42");
+    let minted = minted_on_behalf(http, token, origin, "client-42").await;
+    let of_reseller = minted_on_behalf(http, token, origin, "client-r").await;
+    let mut below = redirect.clone();
+    below["principal"] = json!(su_target(linking));
+    vec![
+        (
+            "an API token a token minted for the customer created",
+            Minted::Token(created_with(http, &minted).await),
+        ),
+        (
+            "an API token created on behalf of the customer",
+            Minted::Token(minted),
+        ),
+        (
+            "the session of a login key a token minted for a reseller issued for its customer",
+            Minted::Session(
+                session_of(
+                    http,
+                    call_with(http, &of_reseller, "auth.key.issue", below).await,
+                )
+                .await,
+            ),
+        ),
+        (
+            "the session of a handover key issued on behalf of the customer",
+            Minted::Session(
+                session_of(
+                    http,
+                    on_behalf(http, token, &[for_user.as_str()], KEY_HANDOVER, redirect).await,
+                )
+                .await,
+            ),
+        ),
+        (
+            "the session of a login key issued on behalf of a reseller for its customer",
+            Minted::Session(
+                session_of(
+                    http,
+                    on_behalf(
+                        http,
+                        token,
+                        &[for_reseller.as_str()],
+                        "auth.key.issue",
+                        issue.clone(),
+                    )
+                    .await,
+                )
+                .await,
+            ),
+        ),
+        (
+            "the session of a login key the link issued as itself",
+            Minted::Session(
+                session_of(
+                    http,
+                    call_with(http, token, "auth.key.issue", issue.clone()).await,
+                )
+                .await,
+            ),
+        ),
+        (
+            "a su the reseller entered from the session of its handover key",
+            Minted::Session(su_from(http, token, &for_reseller, su_target(linking)).await),
+        ),
+    ]
+}
+
+fn su_target(linking: &Linking) -> Id {
+    linking.b().principal(Who::A1).id
+}
+
+async fn su_from(http: &TestHttp, token: &str, customer: &str, target: Id) -> String {
+    let cookie = session_of(
+        http,
+        on_behalf(
+            http,
+            token,
+            &[customer],
+            KEY_HANDOVER,
+            json!({ "ttl": 60, "redirect": REDIRECT }),
+        )
+        .await,
+    )
+    .await;
+    let entered = http
+        .request(
+            "POST",
+            "/api/v1/call/auth.su",
+            &[
+                ("cookie", cookie.as_str()),
+                ("content-type", "application/json"),
+            ],
+            Some(&json!({ "principal": target }).to_string()),
+        )
+        .await;
+    assert_eq!(entered.status, 200, "{}", entered.body);
+    assert_eq!(
+        entered.json()["data"]["principal"]["id"],
+        json!(target),
+        "{}",
+        entered.body
+    );
+    cookie
+}
+
+async fn live_sessions_of_links(harness: &Harness) -> Vec<String> {
+    harness
+        .database()
+        .rows("SELECT kind FROM auth_session WHERE link_principal_id IS NOT NULL AND revoked_at IS NULL ORDER BY kind")
+        .await
+}
+
+#[tokio::test]
+async fn credentials_minted_for_a_customer_die_with_the_rotation_and_the_deletion_of_the_link() {
+    let linking = Linking::start(json!({
+        "scopes": ["keel.account.list", "auth.token.create", "auth.key.issue", KEY_HANDOVER],
+        "level": "admin",
+        "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    sync(b, Who::Reseller, &linking.origin, "client-r").await;
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let created = linking
+        .http()
+        .request(
+            "POST",
+            "/api/v1/call/auth.token.create",
+            &[
+                (PRINCIPAL_HEADER, Who::A1.login()),
+                ("content-type", "application/json"),
+            ],
+            Some(&json!({ "name": "the-customer's-own" }).to_string()),
+        )
+        .await;
+    assert_eq!(created.status, 200, "{}", created.body);
+    let own = Minted::Token(created.json()["data"]["token"].as_str().unwrap().to_owned());
+
+    let token = linking.token.clone();
+    let minted = mint_for_the_customers(&linking, &token).await;
+    for (name, credential) in &minted {
+        let answer = credential.answer(linking.http()).await;
+        assert_eq!(answer.status, 200, "{name}: {}", answer.body);
+    }
+    assert_eq!(
+        live_sessions_of_links(b).await,
+        ["session", "session", "session", "session", "session", "su"]
+    );
+    let rotated = linking
+        .two
+        .a
+        .call(Who::Admin, ROTATE, json!({ "id": linking.linked.a_link }))
+        .await;
+    assert_eq!(data(&rotated)["rotated"], json!(true));
+    for (name, credential) in &minted {
+        let answer = credential.answer(linking.http()).await;
+        assert_eq!(
+            answer.status, 401,
+            "{name} outlived the rotation: {}",
+            answer.body
+        );
+    }
+    assert!(live_sessions_of_links(b).await.is_empty());
+    let kept = own.answer(linking.http()).await;
+    assert_eq!(kept.status, 200, "{}", kept.body);
+
+    let token = outbound(&linking.two.a, &linking.linked.a_link).await;
+    let minted = mint_for_the_customers(&linking, &token).await;
+    for (name, credential) in &minted {
+        let answer = credential.answer(linking.http()).await;
+        assert_eq!(answer.status, 200, "{name}: {}", answer.body);
+    }
+    let deleted = b
+        .call(Who::Admin, DELETE, json!({ "id": linking.linked.b_link }))
+        .await;
+    assert_eq!(data(&deleted)["deleted"], json!(true));
+    for (name, credential) in &minted {
+        let answer = credential.answer(linking.http()).await;
+        assert_eq!(
+            answer.status, 401,
+            "{name} outlived the deletion: {}",
+            answer.body
+        );
+    }
+    assert!(live_sessions_of_links(b).await.is_empty());
+    let kept = own.answer(linking.http()).await;
+    assert_eq!(kept.status, 200, "{}", kept.body);
+
+    linking.finish().await;
+}
+
+const LINEAGE_LOCK: &str = "hashtextextended('auth_link:' || '{link}', 0)";
+
+async fn lock_waits(harness: &Harness, event: Option<&str>) -> usize {
+    let event = event.map_or(String::new(), |event| {
+        format!(" AND wait_event = '{event}'")
+    });
+    harness
+        .database()
+        .rows(&format!(
+            "SELECT count(*)::text FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'{event}"
+        ))
+        .await[0]
+        .parse()
+        .unwrap()
+}
+
+async fn until_waiting(harness: &Harness, event: Option<&str>, count: usize) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while lock_waits(harness, event).await < count {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{count} calls never waited on {event:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+async fn live_tokens_of(harness: &Harness, link: &str) -> Vec<String> {
+    harness
+        .database()
+        .rows(&format!(
+            "SELECT id FROM auth_token WHERE link_principal_id = '{link}' AND revoked_at IS NULL"
+        ))
+        .await
+}
+
+async fn commit(held: Db) {
+    held.into_transaction()
+        .expect("the test alone holds the transaction")
+        .expect("a transaction")
+        .commit()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_credential_minted_through_a_link_while_it_retires_is_refused_once_it_has_retired() {
+    let linking = Linking::start(json!({
+        "scopes": ["keel.account.list", "auth.token.create"],
+        "level": "admin",
+        "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    let http = linking.http();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let link = link_principal(b, &linking.linked.b_link).await;
+    let minted = minted_on_behalf(http, &linking.token, &linking.origin, "client-42").await;
+
+    let held = Db::from_transaction(b.db().begin().await.unwrap());
+    retire_credentials(&held, link.parse().unwrap(), b.clock().now())
+        .await
+        .unwrap();
+    let (late, ()) = tokio::join!(
+        call_with(
+            http,
+            &minted,
+            "auth.token.create",
+            json!({ "name": "late" })
+        ),
+        async {
+            until_waiting(b, None, 1).await;
+            commit(held).await;
+        }
+    );
+    refused(&late, 401, "keel.error.unauthenticated");
+    assert!(live_tokens_of(b, &link).await.is_empty());
+
+    let held = Db::from_transaction(b.db().begin().await.unwrap());
+    retire_credentials(&held, link.parse().unwrap(), b.clock().now())
+        .await
+        .unwrap();
+    let (late, ()) = tokio::join!(
+        call_with(
+            http,
+            &linking.token,
+            "auth.token.create",
+            json!({ "name": "late" })
+        ),
+        async {
+            until_waiting(b, Some("advisory"), 1).await;
+            held.execute_unprepared(&format!(
+                "UPDATE peer_product SET inbound_token_hash = 'rotated' WHERE id = '{}'",
+                linking.linked.b_link
+            ))
+            .await
+            .unwrap();
+            commit(held).await;
+        }
+    );
+    refused(&late, 401, "keel.error.unauthenticated");
+    assert!(live_tokens_of(b, &link).await.is_empty());
+
+    linking.finish().await;
+}
+
+#[tokio::test]
+async fn retiring_a_link_waits_for_a_credential_being_minted_through_it_and_revokes_it() {
+    let linking = Linking::start(json!({
+        "scopes": ["keel.account.list", "auth.token.create"],
+        "level": "admin",
+        "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let link = link_principal(b, &linking.linked.b_link).await;
+    minted_on_behalf(linking.http(), &linking.token, &linking.origin, "client-42").await;
+    let first = live_tokens_of(b, &link).await;
+    assert_eq!(first.len(), 1, "{first:?}");
+
+    let held = Db::from_transaction(b.db().begin().await.unwrap());
+    held.execute_unprepared(&format!(
+        "SELECT pg_advisory_xact_lock_shared({})",
+        LINEAGE_LOCK.replace("{link}", &link)
+    ))
+    .await
+    .unwrap();
+    held.execute_unprepared(&format!(
+        "INSERT INTO auth_token (id, token_hash, principal_id, account_id, name, level, scope, ip_allow, created_at, link_principal_id) \
+         SELECT '{}', 'minting', principal_id, account_id, 'minting', level, scope, ip_allow, created_at, link_principal_id FROM auth_token WHERE id = '{}'",
+        Id::generate(),
+        first[0]
+    ))
+    .await
+    .unwrap();
+    let (deleted, ()) = tokio::join!(
+        b.call(Who::Admin, DELETE, json!({ "id": linking.linked.b_link })),
+        async {
+            until_waiting(b, Some("advisory"), 1).await;
+            commit(held).await;
+        }
+    );
+    assert_eq!(data(&deleted)["deleted"], json!(true));
+    assert!(live_tokens_of(b, &link).await.is_empty());
+
+    linking.finish().await;
+}
+
+#[tokio::test]
+async fn a_login_key_redeemed_while_its_link_retires_ends_with_its_session() {
+    let linking = Linking::start(json!({
+        "scopes": [KEY_HANDOVER],
+        "level": "admin",
+        "onBehalf": true
+    }))
+    .await;
+    let b = linking.b();
+    let http = linking.http();
+    sync(b, Who::A1, &linking.origin, "client-42").await;
+    let for_user = format!("origin={}; external_id=client-42", linking.origin);
+    let issued = on_behalf(
+        http,
+        &linking.token,
+        &[for_user.as_str()],
+        KEY_HANDOVER,
+        json!({ "ttl": 60, "redirect": REDIRECT }),
+    )
+    .await;
+    assert_eq!(issued.status, 200, "{}", issued.body);
+    let key = issued.json()["data"]["key"].as_str().unwrap().to_owned();
+    let account = b.principal(Who::A1).account_id;
+
+    let held = b.db().begin().await.unwrap();
+    held.execute_unprepared(&format!(
+        "SELECT 1 FROM keel_account WHERE id = '{account}' FOR UPDATE"
+    ))
+    .await
+    .unwrap();
+    let (redeemed, deleted, ()) = tokio::join!(
+        redeem(http, &key),
+        async {
+            until_waiting(b, None, 1).await;
+            b.call(Who::Admin, DELETE, json!({ "id": linking.linked.b_link }))
+                .await
+        },
+        async {
+            until_waiting(b, None, 2).await;
+            held.rollback().await.unwrap();
+        }
+    );
+    assert_eq!(data(&deleted)["deleted"], json!(true));
+    assert_eq!(redeemed.status, 200, "{}", redeemed.body);
+    let session = redeemed.session_cookie().expect("a session cookie");
+    let ended = boots(http, &session).await;
+    assert_eq!(
+        ended.status, 401,
+        "the session outlived its link: {}",
+        ended.body
+    );
+    assert!(live_sessions_of_links(b).await.is_empty());
 
     linking.finish().await;
 }

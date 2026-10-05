@@ -70,6 +70,7 @@ impl CredentialAuthenticator {
         Ok(Authenticated {
             principal,
             session: Some(id_hash),
+            token: None,
         })
     }
 
@@ -104,7 +105,8 @@ impl CredentialAuthenticator {
     async fn token(&self, secret: &str, client: &Client, db: &Db) -> Result<Authenticated> {
         let started = self.started()?;
         let now = started.clock.now();
-        let Some(row) = token::resolve(db, &token::hash(secret), now).await? else {
+        let hash = token::hash(secret);
+        let Some(row) = token::resolve(db, &hash, now).await? else {
             return Err(unauthenticated());
         };
         if !token::allows(&row.ip_allow.0, client.ip)? {
@@ -122,6 +124,7 @@ impl CredentialAuthenticator {
         Ok(Authenticated {
             principal,
             session: None,
+            token: Some(hash),
         })
     }
 }

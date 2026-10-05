@@ -86,7 +86,11 @@ impl Authenticator for TestAuthenticator {
             None if token == "boom" => return Err(KeelError::internal("probe.error.boom")),
             None => None,
         };
-        Ok(principal.map(|principal| Authenticated { principal, session }))
+        Ok(principal.map(|principal| Authenticated {
+            principal,
+            session,
+            token: None,
+        }))
     }
 }
 
@@ -1657,6 +1661,7 @@ impl Authenticator for Chain {
         let mine = Some(Authenticated {
             principal: answered,
             session: None,
+            token: None,
         });
         match (self.name, token) {
             ("first", "pass") => Ok(None),

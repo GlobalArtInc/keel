@@ -625,6 +625,7 @@ start_relays
 dns_url="https://localhost:$dns_port"
 check "the dns installation takes its public address $dns_url" dns_ok "$dns/shell-url.json" ctl settings.set key=auth.shell_url "value=$dns_url"
 check "the panel installation takes the relay to it as its public address, which pairing sends the dns installation" panel_ok "$panel/shell-url.json" ctl settings.set key=auth.shell_url "value=http://127.0.0.1:$to_panel_port"
+check "the dns installation admits webhook deliveries to the private address of the relay in front of the panel" dns_ok "$dns/private-targets.json" ctl settings.set key=webhook.private_targets value=true
 
 admin_password=$(secret)
 reseller_password=$(secret)

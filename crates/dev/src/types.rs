@@ -8,8 +8,8 @@ use keel_types::{
     Account, ActionRole, Boot, CallError, Check, Choices, ColumnType, Context, Control,
     DashboardLayout, Descriptor, DownloadFile, DownloadRef, Envelope, ErrorCode, Event, Expr,
     FileAttrs, GroupResult, InstanceInfo, KeelAttrs, Kind, Level, ListQuery, LogLine, Mode,
-    NotificationFrame, OptionsQuery, Page, Principal, ScreenResult, ScreenUi, StatValue,
-    TaskProgress, TaskRef, TaskState, Tone, Total, UiAttrs,
+    NotificationFrame, OptionsQuery, Page, Principal, ProvenInstance, ScreenResult, ScreenUi,
+    StatValue, TaskProgress, TaskRef, TaskState, Tone, Total, UiAttrs,
 };
 use schemars::generate::SchemaSettings;
 use schemars::transform::{Transform, transform_subschemas};
@@ -161,6 +161,7 @@ pub fn document() -> Result<Document, Error> {
         root::<NotificationFrame>(&mut generator)?,
         root::<LogLine>(&mut generator)?,
         root::<InstanceInfo>(&mut generator)?,
+        root::<ProvenInstance>(&mut generator)?,
     ];
     let definitions = generator.take_definitions(false);
     let mut schema = json_schema!({
@@ -303,7 +304,7 @@ mod tests {
         assert_eq!(document.schema["$schema"], json!(META_SCHEMA));
         assert_eq!(document.schema["$id"], json!(DOCUMENT));
         let definitions = document.schema["$defs"].as_object().unwrap();
-        assert_eq!(document.roots.len(), 39);
+        assert_eq!(document.roots.len(), 40);
         for root in &document.roots {
             assert!(definitions.contains_key(root), "{root} is under $defs");
         }
@@ -380,7 +381,7 @@ mod tests {
     #[test]
     fn every_per_type_file_is_one_ref_into_the_document() {
         let files = files().unwrap();
-        assert_eq!(files.len(), 40);
+        assert_eq!(files.len(), 41);
         for (name, content) in &files {
             if name == DOCUMENT {
                 continue;
@@ -433,11 +434,11 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let out = temporary.path().join("schema");
         let outcome = run(&out, false).unwrap();
-        assert_eq!(outcome.files.len(), 40);
+        assert_eq!(outcome.files.len(), 41);
         assert!(
             outcome
                 .to_string()
-                .starts_with("40 schema files written to")
+                .starts_with("41 schema files written to")
         );
         let stale = out.join("Gone.json");
         fs::write(&stale, "{}\n").unwrap();

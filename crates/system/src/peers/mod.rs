@@ -9,6 +9,7 @@ mod inbox;
 mod links;
 mod on_behalf;
 mod pairing;
+mod proof;
 mod pull;
 mod remote;
 mod rotation;
@@ -27,8 +28,10 @@ use authenticator::PeerAuthenticator;
 use delivery::Delivery;
 use links::Links;
 
+use crate::auth::api::RateLimit;
+
 pub use authenticator::ERROR_PRINCIPAL;
-pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, SCHEDULE, SOURCE};
+pub use check::{JOB_ID, PROBLEM_INSTANCE_KEY, PROBLEM_PROOF, PROBLEM_PROTOCOL, SCHEDULE, SOURCE};
 pub use codes::{CODE_PREFIX, CODE_SYMBOLS};
 pub use delivery::{
     ERROR_EVENT, ERROR_FEED, ERROR_QUERY, ERROR_SIGNATURE, FEED, FEED_BATCH, FEED_LIMIT,
@@ -39,8 +42,8 @@ pub use functions::{
 };
 pub use identity::{MASKS as IDENTITY_MASKS, UPSERTS};
 pub use inbox::{
-    BATCH as INBOX_BATCH, MAX_ATTEMPTS as INBOX_MAX_ATTEMPTS, POLL as INBOX_POLL,
-    RETENTION_DAYS as INBOX_RETENTION_DAYS,
+    BATCH as INBOX_BATCH, MAX_ATTEMPTS as INBOX_MAX_ATTEMPTS, PENDING_MAX as INBOX_PENDING_MAX,
+    POLL as INBOX_POLL, RETENTION_DAYS as INBOX_RETENTION_DAYS,
 };
 pub use on_behalf::{
     ERROR_CUSTOMER, ERROR_HEADER, ERROR_ORIGIN, MAX_EXTERNAL_ID, is_external_id, names_peer,
@@ -50,11 +53,12 @@ pub use pairing::{
     ERROR_SCOPE, ERROR_SELF, ERROR_TOKEN, LINK, LOGIN_PREFIX, MAX_MASKS, PAIR, PAIR_CODE, ROLE,
     TTL_DEFAULT, TTL_MAX, TTL_MIN, WEBHOOK_SECRET_PREFIX, compatible,
 };
+pub use proof::CHALLENGE_BYTES;
 pub use pull::{LIMIT as PULL_LIMIT, PAUSE as PULL_PAUSE, ROUNDS as PULL_ROUNDS};
 pub use remote::{
     ERROR_ANSWER, ERROR_HANDSHAKE, ERROR_UNREACHABLE, ERROR_URL, FEED_PATH, HOOK_PATH,
 };
-pub use rotation::{ERROR_NO_URL, REKEY, RENEW, ROTATE};
+pub use rotation::{ERROR_NO_URL, ERROR_PROOF, REKEY, RENEW, ROTATE};
 
 pub const FEATURE: &str = "peers";
 pub const MENU_PATH: &str = "system/peers";
@@ -112,6 +116,7 @@ fn init(r: &mut Registrar) -> Result<()> {
     let links = Arc::new(Links::default());
     let offered: Arc<dyn PeerLinks> = links.clone();
     let delivery = Arc::new(Delivery::default());
+    let refusals = Arc::new(RateLimit::new());
     let [hook, feed] = delivery::endpoints(&delivery);
     r.require::<dyn Caller>()
         .require::<dyn PrincipalSource>()
@@ -119,6 +124,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .require::<dyn SecretCipher>()
         .require::<dyn OutboxSubscriber>()
         .require::<dyn EventRelay>()
+        .require::<dyn SettingsSource>()
         .contribute(InstanceInfoSource::new().feature(FEATURE))
         .contribute(hook)
         .contribute(feed)
@@ -159,6 +165,8 @@ fn init(r: &mut Registrar) -> Result<()> {
                 principals: ctx.require::<dyn PrincipalSource>()?,
                 accounts: ctx.require::<dyn AccountSource>()?,
                 reach: ctx.require::<dyn PeerReach>()?,
+                settings: ctx.require::<dyn SettingsSource>()?,
+                refusals,
                 instance: ctx
                     .require::<Installation>()
                     .ok()

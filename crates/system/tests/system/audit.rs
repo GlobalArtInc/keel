@@ -431,6 +431,7 @@ fn event(at: DateTime<Utc>, principal: &Principal, n: u32) -> AuditEvent {
             ip: Some("10.0.0.7".parse().expect("an address")),
             user_agent: None,
             session: None,
+            token: None,
         }),
         params: json!({ "kind": "user", "n": n }),
         subject: None,

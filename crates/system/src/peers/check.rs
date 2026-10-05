@@ -10,29 +10,33 @@ use keel_sdk::types::{InstanceInfo, PROTOCOL};
 use super::entity::{pair_code, product};
 use super::inbox;
 use super::pairing::compatible;
-use super::remote::Remote;
+use super::remote::{Presented, Remote};
 use crate::cron::api::{CronJob, JobRun, JobRunExt};
 use crate::notify::api::{Problems, Raise, Severity};
 
 pub const JOB_ID: &str = "peer.check";
 pub const SCHEDULE: &str = "40 3 * * *";
 pub const PROBLEM_INSTANCE_KEY: &str = "peer.problem.instance_key";
+pub const PROBLEM_PROOF: &str = "peer.problem.proof";
 pub const PROBLEM_PROTOCOL: &str = "peer.problem.protocol";
 pub const SOURCE: &str = "peer.check";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Verdict {
     Refused,
+    Unproven,
     Incompatible,
     Compatible,
 }
 
-pub(super) fn verdict(row: &product::Model, presented: &InstanceInfo) -> Verdict {
-    if presented.instance_id.to_string() != row.instance_id
-        || presented.public_key != row.public_key
+pub(super) fn verdict(row: &product::Model, presented: &Presented) -> Verdict {
+    let instance: &InstanceInfo = &presented.instance;
+    if instance.instance_id.to_string() != row.instance_id || instance.public_key != row.public_key
     {
         Verdict::Refused
-    } else if compatible(presented.protocol) {
+    } else if !presented.proven {
+        Verdict::Unproven
+    } else if compatible(instance.protocol) {
         Verdict::Compatible
     } else {
         Verdict::Incompatible
@@ -66,7 +70,7 @@ async fn check(run: &JobRun) -> Result<()> {
         let Some(url) = row.url.clone() else {
             continue;
         };
-        let presented = match Remote::new(&url)?.handshake().await {
+        let presented = match Remote::new(&url)?.proven().await {
             Ok(presented) => presented,
             Err(error) => {
                 tracing::warn!(peer = %row.id, %url, error = %error, "the daily check did not reach the peer");
@@ -79,9 +83,13 @@ async fn check(run: &JobRun) -> Result<()> {
                 raise(caller.as_ref(), PROBLEM_INSTANCE_KEY, &row.id, params).await?;
                 continue;
             }
+            Verdict::Unproven => {
+                raise(caller.as_ref(), PROBLEM_PROOF, &row.id, params).await?;
+                continue;
+            }
             Verdict::Incompatible => {
                 let mut params = params;
-                params["protocol"] = json!(presented.protocol);
+                params["protocol"] = json!(presented.instance.protocol);
                 params["supported"] = json!(PROTOCOL);
                 raise(caller.as_ref(), PROBLEM_PROTOCOL, &row.id, params).await?;
             }
@@ -89,7 +97,10 @@ async fn check(run: &JobRun) -> Result<()> {
                 Problems::clear(caller.as_ref(), PROBLEM_PROTOCOL, &row.id).await?;
             }
         }
-        Problems::clear(caller.as_ref(), PROBLEM_INSTANCE_KEY, &row.id).await?;
+        for key in [PROBLEM_INSTANCE_KEY, PROBLEM_PROOF] {
+            Problems::clear(caller.as_ref(), key, &row.id).await?;
+        }
+        let presented = presented.instance;
         product::Entity::update_many()
             .col_expr(
                 product::Column::ProductsJson,
@@ -112,7 +123,7 @@ async fn check(run: &JobRun) -> Result<()> {
 }
 
 pub(super) async fn clear(caller: &dyn Caller, link: &str) -> Result<()> {
-    for key in [PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL] {
+    for key in [PROBLEM_INSTANCE_KEY, PROBLEM_PROOF, PROBLEM_PROTOCOL] {
         Problems::clear(caller, key, link).await?;
     }
     Ok(())
@@ -159,20 +170,29 @@ mod tests {
         }
     }
 
-    fn presented(instance: &str, key: &str, protocol: u32) -> InstanceInfo {
-        InstanceInfo {
-            instance_id: instance.parse().unwrap(),
-            keel: "0.4.1".into(),
-            protocol,
-            products: vec!["dns".into()],
-            public_key: key.into(),
-            features: Vec::new(),
-            service_kinds: Vec::new(),
+    fn presented(instance: &str, key: &str, protocol: u32) -> Presented {
+        Presented {
+            instance: InstanceInfo {
+                instance_id: instance.parse().unwrap(),
+                keel: "0.4.1".into(),
+                protocol,
+                products: vec!["dns".into()],
+                public_key: key.into(),
+                features: Vec::new(),
+                service_kinds: Vec::new(),
+            },
+            proven: true,
         }
     }
 
+    fn unproven(mut presented: Presented) -> Presented {
+        presented.proven = false;
+        presented
+    }
+
     #[test]
-    fn another_key_or_instance_is_refused_and_a_far_protocol_is_incompatible() {
+    fn another_key_or_instance_is_refused_an_unproven_key_is_unproven_and_a_far_protocol_is_incompatible()
+     {
         let row = row();
         let instance = "01J9A00000000000000000000A";
         assert_eq!(
@@ -196,6 +216,27 @@ mod tests {
         );
         assert_eq!(
             verdict(&row, &presented(instance, "ed25519:other", PROTOCOL + 2)),
+            Verdict::Refused
+        );
+        assert_eq!(
+            verdict(
+                &row,
+                &unproven(presented(instance, "ed25519:pinned", PROTOCOL))
+            ),
+            Verdict::Unproven
+        );
+        assert_eq!(
+            verdict(
+                &row,
+                &unproven(presented(instance, "ed25519:pinned", PROTOCOL + 2))
+            ),
+            Verdict::Unproven
+        );
+        assert_eq!(
+            verdict(
+                &row,
+                &unproven(presented(instance, "ed25519:other", PROTOCOL))
+            ),
             Verdict::Refused
         );
     }

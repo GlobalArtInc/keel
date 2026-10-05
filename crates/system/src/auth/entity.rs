@@ -40,6 +40,7 @@ pub mod session {
         pub reason: Option<String>,
         pub parent_id_hash: Option<String>,
         pub su_id_hash: Option<String>,
+        pub link_principal_id: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -137,6 +138,8 @@ pub mod token {
         pub last_used_at: Option<DateTimeUtc>,
         pub created_at: DateTimeUtc,
         pub revoked_at: Option<DateTimeUtc>,
+        #[serde(skip)]
+        pub link_principal_id: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -229,6 +232,7 @@ pub mod login_key {
         pub expires_at: DateTimeUtc,
         pub used_at: Option<DateTimeUtc>,
         pub created_at: DateTimeUtc,
+        pub link_principal_id: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

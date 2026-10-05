@@ -4,9 +4,10 @@ use keel_sdk::types::{MetaPrincipal, Via};
 
 use super::super::functions::{below_caller, http_client, login_principal, open_session};
 use super::super::mail::{SETTING_SHELL_URL, shell_base};
+use super::super::retire::{lineage, parsed};
 use super::{
-    MAX_TTL_SECONDS, hash, is_local_path, issue as issue_row, issued_by, principal_id,
-    redeem as redeem_row, url_of,
+    Issue as Row, MAX_TTL_SECONDS, hash, is_local_path, issue as issue_row, issued_by,
+    principal_id, redeem as redeem_row, url_of,
 };
 
 pub const PERMISSION_ISSUE: &str = "auth.key.issue";
@@ -168,12 +169,16 @@ pub fn issue() -> FunctionDef {
                 return Err(KeelError::validation("auth.error.redirect").field("redirect"));
             }
             let now = call.require::<dyn Clock>()?.now();
+            let link = lineage(&call).await?;
             let key = issue_row(
                 call.tx()?,
-                target,
-                call.principal().id,
-                &params.redirect,
-                params.ttl,
+                Row {
+                    principal: target,
+                    issued_by: call.principal().id,
+                    link,
+                    redirect: &params.redirect,
+                    ttl: params.ttl,
+                },
                 now,
             )
             .await?;
@@ -211,12 +216,16 @@ pub fn handover() -> FunctionDef {
                 return Err(KeelError::validation("auth.error.redirect").field("redirect"));
             }
             let now = call.require::<dyn Clock>()?.now();
+            let link = lineage(&call).await?;
             let key = issue_row(
                 call.tx()?,
-                customer.id,
-                peer.id,
-                &params.redirect,
-                params.ttl,
+                Row {
+                    principal: customer.id,
+                    issued_by: peer.id,
+                    link,
+                    redirect: &params.redirect,
+                    ttl: params.ttl,
+                },
                 now,
             )
             .await?;
@@ -244,7 +253,8 @@ pub fn redeem() -> FunctionDef {
                 .ok_or_else(key_refused)?;
             let issued_by = issued_by(&row)?;
             let principal = login_principal(&call, principal_id(&row)?, key_refused).await?;
-            let principal = open_session(&call, principal, client, now).await?;
+            let link = parsed(row.link_principal_id.as_deref());
+            let principal = open_session(&call, principal, client, now, link).await?;
             Ok(Redeemed {
                 redirect: row.redirect,
                 principal,

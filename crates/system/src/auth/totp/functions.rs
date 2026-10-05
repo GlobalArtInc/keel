@@ -209,7 +209,7 @@ pub fn verify(attempts: Arc<Attempts>, lockout: Arc<Lockout>) -> FunctionDef {
                     return Err(challenge_refused());
                 }
                 lockout.succeeded(&principal.login, client.ip);
-                let principal = open_session(&call, principal, client, now).await?;
+                let principal = open_session(&call, principal, client, now, None).await?;
                 Ok(LoggedIn::authenticated(principal))
             }
         })

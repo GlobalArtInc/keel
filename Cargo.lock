@@ -2675,6 +2675,7 @@ dependencies = [
  "base32",
  "base64 0.22.1",
  "croner",
+ "ed25519-dalek",
  "futures",
  "hmac 0.13.0",
  "insta",

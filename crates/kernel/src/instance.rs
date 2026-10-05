@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, SigningKey};
+use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, Signer, SigningKey};
 use keel_sdk::runtime::Contributions;
 use keel_sdk::{InstanceInfoSource, ProductManifest};
 use keel_types::id::InvalidId;
-use keel_types::{Id, InstanceInfo, PROTOCOL};
+use keel_types::{Id, InstanceInfo, PROOF_SCHEME, PROTOCOL};
 use rand::TryRng;
 use rand::rngs::SysRng;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, TransactionTrait};
@@ -153,6 +153,11 @@ impl InstanceKey {
         der.extend_from_slice(&SPKI_PREFIX);
         der.extend_from_slice(self.0.verifying_key().as_bytes());
         format!("{PUBLIC_KEY_SCHEME}{}", STANDARD.encode(der))
+    }
+
+    pub fn prove(&self, instance: &InstanceInfo, challenge: &str) -> String {
+        let signature = self.0.sign(&instance.proof_message(challenge));
+        format!("{PROOF_SCHEME}{}", STANDARD.encode(signature.to_bytes()))
     }
 
     fn seal(&self, data_key: &Key) -> Result<Sealed, KeyError> {

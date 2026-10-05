@@ -37,23 +37,25 @@ pub fn is_local_path(redirect: &str) -> bool {
         && !redirect.chars().any(char::is_control)
 }
 
-pub async fn issue(
-    db: &Db,
-    principal: Id,
-    issued_by: Id,
-    redirect: &str,
-    ttl: u32,
-    now: DateTime<Utc>,
-) -> Result<Secret> {
+pub struct Issue<'a> {
+    pub principal: Id,
+    pub issued_by: Id,
+    pub link: Option<Id>,
+    pub redirect: &'a str,
+    pub ttl: u32,
+}
+
+pub async fn issue(db: &Db, issue: Issue<'_>, now: DateTime<Utc>) -> Result<Secret> {
     let key = generate()?;
     login_key::ActiveModel {
         key_hash: Set(hash(key.expose())),
-        principal_id: Set(principal.to_string()),
-        issued_by: Set(issued_by.to_string()),
-        redirect: Set(redirect.to_owned()),
-        expires_at: Set(now + Duration::seconds(i64::from(ttl))),
+        principal_id: Set(issue.principal.to_string()),
+        issued_by: Set(issue.issued_by.to_string()),
+        redirect: Set(issue.redirect.to_owned()),
+        expires_at: Set(now + Duration::seconds(i64::from(issue.ttl))),
         used_at: Set(None),
         created_at: Set(now),
+        link_principal_id: Set(issue.link.map(|link| link.to_string())),
     }
     .insert(db)
     .await?;

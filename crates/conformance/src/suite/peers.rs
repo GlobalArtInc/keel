@@ -4,14 +4,14 @@ use futures::StreamExt;
 use keel_client::OnBehalf;
 use keel_client::http::HeaderName;
 use keel_types::{
-    ActorVia, ErrorCode, Event, EventActorKind, Id, InstanceInfo, Level, MetaPrincipal, PROTOCOL,
-    Page, PeerScope,
+    ActorVia, CHALLENGE_PARAM, ErrorCode, Event, EventActorKind, Id, InstanceInfo, Level,
+    MetaPrincipal, PROTOCOL, Page, PeerScope, ProvenInstance,
 };
 use serde_json::{Value, json};
 
 use super::Suite;
 use super::events::Stream;
-use crate::client::{Answer, Credential, FEED_PATH, ON_BEHALF_OF};
+use crate::client::{Answer, Credential, FEED_PATH, INSTANCE_PATH, ON_BEHALF_OF};
 use crate::listener::{
     EVENT_ID_HEADER, HOOK_PATH, Listener, Neighbour, PEER_HEADER, Received, SECRET_MEMBER,
 };
@@ -136,6 +136,7 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
             Ok(instance)
         }),
     )?;
+    proves_its_key(suite, &local).await?;
     let cast = suite.report.check(
         "the suite describes its neighbours with instance keys of their own and makes the tokens and the secret they pair with",
         Cast::new(&local.keel),
@@ -175,6 +176,59 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     suite
         .report
         .check("auth.logout after the peer checks", outcome)?;
+    Ok(())
+}
+
+async fn proves_its_key(suite: &mut Suite, local: &InstanceInfo) -> Result<(), Aborted> {
+    let challenge = suite.report.check(
+        "the suite makes a fresh challenge of 32 random bytes",
+        neighbour::challenge(),
+    )?;
+    let answer = suite
+        .client
+        .get(
+            &format!("{INSTANCE_PATH}?{CHALLENGE_PARAM}={challenge}"),
+            Credential::Guest,
+            &[],
+        )
+        .await;
+    suite.report.check(
+        "GET /api/v1/instance with a fresh challenge answers the handshake and a proof its instance key signed over the challenge, the identity, the version, the protocol and the products",
+        answer.and_then(|answer| {
+            answer.status_is(200)?;
+            let proven = answer.body_as::<ProvenInstance>()?;
+            ensure(&proven.instance == local, || {
+                answer
+                    .failure("the proven handshake differs from the plain one")
+                    .0
+            })?;
+            ensure(
+                neighbour::proves(&proven.instance, &challenge, &proven.proof),
+                || answer.failure("the proof does not verify under the published key").0,
+            )
+        }),
+    )?;
+    let answer = suite
+        .client
+        .get(
+            &format!("{INSTANCE_PATH}?{CHALLENGE_PARAM}=short"),
+            Credential::Guest,
+            &[],
+        )
+        .await;
+    suite.report.check(
+        "GET /api/v1/instance with a malformed challenge answers 422 keel.error.challenge on challenge",
+        answer.and_then(|answer| {
+            let error = answer.error(422, ErrorCode::Validation, VALIDATION)?;
+            ensure(
+                error.fields.iter().any(|field| {
+                    field.path == CHALLENGE_PARAM
+                        && field.key.as_deref() == Some("keel.error.challenge")
+                }),
+                || answer.failure(format!("fields[] is {:?}", error.fields)).0,
+            )
+        }),
+    )?;
     Ok(())
 }
 

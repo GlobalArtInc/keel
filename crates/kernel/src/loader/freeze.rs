@@ -563,6 +563,7 @@ impl Freezer {
                 graph.products(),
                 &self.contributions,
             )));
+            services.provide(Arc::new(key.clone()));
         }
         if let Some(key) = graph.license_key() {
             services.provide::<dyn LicenseKey>(key.clone());

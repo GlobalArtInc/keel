@@ -117,6 +117,7 @@ pub(super) async fn authenticate(
             {
                 Ok(authenticated) => {
                     client.session = authenticated.session;
+                    client.token = authenticated.token;
                     let mut principal = authenticated.principal;
                     match preferences(&live.registry, &principal, &db).await {
                         Ok(preferred) => zone = overlay(&live.registry, &mut principal, preferred),
@@ -208,6 +209,7 @@ async fn delegate(
             return Ok(Authenticated {
                 principal,
                 session: authenticated.session,
+                token: authenticated.token,
             });
         }
     }
@@ -246,6 +248,7 @@ pub(super) fn client(headers: &HeaderMap, extensions: &Extensions, trusted: &[Ip
             .filter(|agent| !agent.is_empty())
             .map(str::to_owned),
         session: None,
+        token: None,
     }
 }
 
@@ -448,6 +451,7 @@ mod tests {
         assert_eq!(bare.ip, None);
         assert_eq!(bare.user_agent.as_deref(), Some("probe/1"));
         assert!(bare.session.is_none());
+        assert!(bare.token.is_none());
         let addr: std::net::SocketAddr = "127.0.0.1:4321".parse().expect("an address");
         extensions.insert(axum::extract::ConnectInfo(addr));
         let connected = client(&headers(&[("user-agent", "")]), &extensions, &[]);

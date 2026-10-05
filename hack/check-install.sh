@@ -204,6 +204,7 @@ check "peers-vm.sh --help prints the usage and exits 0" prints_usage hack/peers-
 check "peers-vm.sh installs through install.sh listening on the address the other machine reaches" grep -qF 'bash deploy/install.sh --product "$product" --listen "$address:$PORT" --binary "$archive" --yes' hack/peers-vm.sh
 check "peers-vm.sh trusts the neighbour's certificate through the trust store of the system" grep -qF 'update-ca-certificates' hack/peers-vm.sh
 check "peers-vm.sh pairs by code over the CLI" grep -qF 'call peer.create "url=\"$url\"" "code=\"$code\""' hack/peers-vm.sh
+check "peers-vm.sh lets the dns machine deliver its events to the address of the panel machine" grep -qF 'called settings.set key=webhook.private_targets value=true' hack/peers-vm.sh
 check "peers-vm.sh proves a site's zone in the account of its customer on the other machine" grep -qF 'check "the zone belongs to the account of the customer the panel machine named by its origin"' hack/peers-vm.sh
 check "peers-vm.sh proves the repeat of a signed event received once" grep -qF 'check "the event of the zone is still once in the inbox and on the bus after its repeat"' hack/peers-vm.sh
 check "peers-vm.sh proves one service for two opens with one key" grep -qF 'check "the dns machine holds one service of that external id, in the customer'"'"'s account"' hack/peers-vm.sh

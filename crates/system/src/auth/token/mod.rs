@@ -24,6 +24,7 @@ pub struct Issue<'a> {
     pub scope: TokenScope,
     pub ip_allow: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub link: Option<Id>,
 }
 
 pub fn generate() -> Result<Secret> {
@@ -70,6 +71,7 @@ pub async fn issue(db: &Db, issue: Issue<'_>, now: DateTime<Utc>) -> Result<(Id,
         last_used_at: Set(None),
         created_at: Set(now),
         revoked_at: Set(None),
+        link_principal_id: Set(issue.link.map(|link| link.to_string())),
     }
     .insert(db)
     .await?;

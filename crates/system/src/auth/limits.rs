@@ -47,6 +47,14 @@ impl RateLimit {
         self.len() == 0
     }
 
+    pub fn exhausted(&self, ip: IpAddr, now: DateTime<Utc>) -> bool {
+        self.buckets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&ip.to_canonical())
+            .is_some_and(|bucket| bucket.refill_at > now && bucket.tokens == 0)
+    }
+
     pub fn admit(&self, ip: IpAddr, now: DateTime<Utc>, limit: u32) -> bool {
         let mut buckets = self.buckets.lock().unwrap_or_else(PoisonError::into_inner);
         buckets.retain(|_, bucket| bucket.refill_at > now);
@@ -231,6 +239,24 @@ mod tests {
         assert_eq!(limit.len(), 2);
         assert!(limit.admit(local, start + Duration::minutes(2), 3));
         assert_eq!(limit.len(), 1);
+    }
+
+    #[test]
+    fn a_bucket_reads_exhausted_once_spent_without_spending_and_until_it_refills() {
+        let limit = RateLimit::new();
+        let start = at("2026-09-13T10:00:00Z");
+        let local = ip("127.0.0.1");
+        assert!(!limit.exhausted(local, start));
+        assert!(limit.is_empty());
+        assert!(limit.admit(local, start, 2));
+        assert!(!limit.exhausted(local, start));
+        assert!(limit.admit(local, start, 2));
+        assert!(limit.exhausted(local, start));
+        assert!(limit.exhausted(ip("::ffff:127.0.0.1"), start + Duration::seconds(59)));
+        assert!(!limit.exhausted(ip("10.1.1.1"), start));
+        assert!(!limit.exhausted(local, start + Duration::minutes(1)));
+        assert!(!limit.admit(local, start + Duration::seconds(30), 2));
+        assert!(limit.exhausted(local, start + Duration::seconds(30)));
     }
 
     #[test]

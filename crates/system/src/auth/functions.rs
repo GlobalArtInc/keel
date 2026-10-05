@@ -224,7 +224,7 @@ pub fn login(state: Arc<State>, lockout: Arc<Lockout>) -> FunctionDef {
                     });
                 }
                 lockout.succeeded(&params.login, client.ip);
-                let principal = open_session(&call, principal, client, now).await?;
+                let principal = open_session(&call, principal, client, now, None).await?;
                 Ok(LoggedIn::authenticated(principal))
             }
         })
@@ -264,13 +264,14 @@ pub(super) async fn open_session<P>(
     principal: Principal,
     client: &Client,
     now: DateTime<Utc>,
+    link: Option<Id>,
 ) -> Result<MetaPrincipal> {
     let lifetime = policy::lifetime(call).await?;
     let tx = call.tx()?;
     if let Some(previous) = &client.session {
         session::revoke(tx, previous, now, session::REASON_REPLACED).await?;
     }
-    let token = session::open(tx, &principal, client, now, lifetime).await?;
+    let token = session::open(tx, &principal, client, now, lifetime, link).await?;
     call.session(SessionChange::Set(token));
     Ok(MetaPrincipal {
         id: principal.id,

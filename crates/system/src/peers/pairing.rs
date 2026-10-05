@@ -18,7 +18,10 @@ use super::functions::{EVENT_CREATED, Peer, STATUS_ACTIVE, by_instance, peer_of}
 use super::identity::subscribed;
 use super::remote::{HOOK_PATH, Remote, base_of, checked};
 use crate::auth::api::{SETTING_SHELL_URL, is_peer_token, peer_token, token_hash};
-use crate::webhooks::api::{PeerSubscription, is_mask as is_event_mask, subscribe_peer};
+use crate::webhooks::api::{
+    PeerSubscription, Resolver, check_target, is_mask as is_event_mask, private_targets,
+    resolver_or_system, subscribe_peer,
+};
 
 pub const PAIR_CODE: &str = "peer.pair_code";
 pub const PAIR: &str = "peer.pair";
@@ -396,10 +399,19 @@ pub(super) fn pair() -> FunctionDef {
                 .map(|url| checked(url, "url"))
                 .transpose()?;
             let token = peer_token()?;
-            let secret = match (&url, params.subscribe.is_empty()) {
-                (Some(_), false) => Some(webhook_secret()?),
-                _ => None,
+            let hooked = match &url {
+                Some(url) if !params.subscribe.is_empty() => {
+                    let admitted =
+                        private_targets(call.require::<dyn SettingsSource>()?.as_ref(), call.db())
+                            .await?;
+                    let resolver = resolver_or_system(call.require::<dyn Resolver>().ok());
+                    check_target(&format!("{url}{HOOK_PATH}"), admitted, resolver.as_ref())
+                        .await
+                        .is_ok()
+                }
+                _ => false,
             };
+            let secret = hooked.then(webhook_secret).transpose()?;
             let feed_seq = call.require::<dyn OutboxSubscriber>()?.newest().await?;
             let row = insert_link(
                 &call,

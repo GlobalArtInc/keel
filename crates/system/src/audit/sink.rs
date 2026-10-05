@@ -244,6 +244,7 @@ mod tests {
                 ip: Some("10.0.0.7".parse().expect("an address")),
                 user_agent: None,
                 session: None,
+                token: None,
             }),
             params: json!({ "id": "n1", "password": "***" }),
             subject: Some("n1".into()),

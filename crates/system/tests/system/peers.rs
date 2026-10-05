@@ -4,15 +4,16 @@ use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ConnectionTrait, TransactionTrait};
 use keel_sdk::serde_json;
 use keel_sdk::system::{Caller, PeerLink, PeerLinks, SecretCipher};
-use keel_sdk::types::{ErrorCode, InstanceInfo, PROTOCOL};
+use keel_sdk::types::{CHALLENGE_PARAM, ErrorCode, InstanceInfo, PROTOCOL, ProvenInstance};
 use keel_system::auth::api::token_hash;
 use keel_system::cron::api::{Outcome, Scheduler};
 use keel_system::notify::api::{Problems, Raise, Severity};
 use keel_system::peers::{
     CODE_PREFIX, CREATE, DELETE, ERROR_CODE, ERROR_INSTANCE_KEY, ERROR_LEVEL, ERROR_MASK,
-    ERROR_NO_URL, ERROR_PAIRED, ERROR_PROTOCOL, ERROR_SELF, ERROR_STORED, ERROR_TOKEN,
+    ERROR_NO_URL, ERROR_PAIRED, ERROR_PROOF, ERROR_PROTOCOL, ERROR_SELF, ERROR_STORED, ERROR_TOKEN,
     ERROR_UNREACHABLE, ERROR_URL, FEATURE, GET, JOB_ID, LIST, LOGIN_PREFIX, MODULE, PAIR,
-    PAIR_CODE, PROBLEM_INSTANCE_KEY, PROBLEM_PROTOCOL, RENEW, ROLE, ROTATE, SOURCE, STATUS_ACTIVE,
+    PAIR_CODE, PROBLEM_INSTANCE_KEY, PROBLEM_PROOF, PROBLEM_PROTOCOL, RENEW, ROLE, ROTATE, SOURCE,
+    STATUS_ACTIVE,
 };
 use keel_testkit::{Answer, Harness, Reply, TestHttp, Who, tokio};
 
@@ -1006,14 +1007,27 @@ async fn deleting_a_link_clears_its_problems_and_the_check_clears_those_of_links
         .get::<dyn Caller>()
         .expect("the kernel provides the caller");
     let gone = "01J9C00000000000000000000C";
-    for (subject, source) in [(gone, SOURCE), ("elsewhere", "peer.other")] {
+    for (key, subject, source) in [
+        (PROBLEM_PROTOCOL, gone, SOURCE),
+        (PROBLEM_PROTOCOL, "elsewhere", "peer.other"),
+        (PROBLEM_PROOF, linked.a_link.as_str(), SOURCE),
+    ] {
         Problems::raise(
             caller.as_ref(),
-            Raise::new(PROBLEM_PROTOCOL, subject, Severity::Warning).source(source),
+            Raise::new(key, subject, Severity::Warning).source(source),
         )
         .await
         .expect("the problem is raised");
     }
+    assert_eq!(
+        open_problems(&two.a).await,
+        [
+            format!("{PROBLEM_INSTANCE_KEY} {}", linked.a_link),
+            format!("{PROBLEM_PROOF} {}", linked.a_link),
+            format!("{PROBLEM_PROTOCOL} {gone}"),
+            format!("{PROBLEM_PROTOCOL} elsewhere"),
+        ]
+    );
 
     let deleted = two
         .a
@@ -1287,12 +1301,25 @@ async fn the_daily_check_raises_a_problem_for_a_protocol_out_of_reach_and_clears
         features: Vec::new(),
         service_kinds: Vec::new(),
     };
+    let key = two.b.instance_key().clone();
     let router = axum::Router::new().route(
         "/api/v1/instance",
-        axum::routing::get(move || {
-            let far = far.clone();
-            async move { axum::Json(far) }
-        }),
+        axum::routing::get(
+            move |axum::extract::Query(asked): axum::extract::Query<
+                std::collections::HashMap<String, String>,
+            >| {
+                let far = far.clone();
+                let key = key.clone();
+                async move {
+                    let challenge = asked.get(CHALLENGE_PARAM).cloned().unwrap_or_default();
+                    let proof = key.prove(&far, &challenge);
+                    axum::Json(ProvenInstance {
+                        instance: far,
+                        proof,
+                    })
+                }
+            },
+        ),
     );
     let fake = TestHttp::bind(router).await.unwrap();
     two.a
@@ -1340,13 +1367,162 @@ async fn the_daily_check_raises_a_problem_for_a_protocol_out_of_reach_and_clears
     two.finish().await;
 }
 
+async fn handshake_of(http: &TestHttp, query: &str) -> Value {
+    let answer = http
+        .request("GET", &format!("/api/v1/instance{query}"), &[], None)
+        .await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    answer.json()
+}
+
+#[tokio::test]
+async fn a_server_repeating_a_copied_instance_key_receives_no_token_and_fails_the_daily_check() {
+    let two = Two::start().await;
+    let linked = two
+        .pair(
+            json!({ "scopes": ["keel.account.list"], "level": "admin" }),
+            json!({ "scopes": ["keel.account.list"], "level": "admin" }),
+        )
+        .await;
+    let a_token = outbound(&two.a, &linked.a_link).await;
+    let copied = handshake_of(&two.b_http, "").await;
+    assert_eq!(
+        serde_json::from_value::<InstanceInfo>(copied.clone())
+            .unwrap()
+            .public_key,
+        two.b.instance_key().public_key()
+    );
+    let replayed = handshake_of(
+        &two.b_http,
+        &format!("?{CHALLENGE_PARAM}={}", "e".repeat(64)),
+    )
+    .await;
+    assert!(replayed["proof"].as_str().unwrap().starts_with("ed25519:"));
+    let pinned = |harness: &Harness| {
+        let link = linked.a_link.clone();
+        let db = harness.database_handle();
+        async move {
+            db.rows(&format!(
+                "SELECT keel_version || ' ' || public_key || ' ' || inbound_token_hash FROM peer_product WHERE id = '{link}'"
+            ))
+            .await
+        }
+    };
+
+    for (name, answer) in [
+        ("the copied handshake without a proof", copied),
+        ("a proof the neighbour gave for another challenge", replayed),
+    ] {
+        let renewed = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let heard = renewed.clone();
+        let router = axum::Router::new()
+            .route(
+                "/api/v1/instance",
+                axum::routing::get(move || {
+                    let answer = answer.clone();
+                    async move { axum::Json(answer) }
+                }),
+            )
+            .route(
+                &format!("/api/v1/call/{RENEW}"),
+                axum::routing::post(move |body: String| {
+                    let heard = heard.clone();
+                    async move {
+                        heard.lock().unwrap().push(body);
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+                    }
+                }),
+            );
+        let fake = TestHttp::bind(router).await.unwrap();
+        two.a
+            .db()
+            .execute_unprepared(&format!(
+                "UPDATE peer_product SET url = '{}', keel_version = 'pinned' WHERE id = '{}'",
+                fake.url(""),
+                linked.a_link
+            ))
+            .await
+            .unwrap();
+        let before = pinned(&two.a).await;
+
+        let rotated = two
+            .a
+            .call(Who::Admin, ROTATE, json!({ "id": linked.a_link }))
+            .await;
+        error_key(&rotated, ErrorCode::Forbidden, ERROR_PROOF);
+        assert_eq!(
+            error_param(&rotated, "instanceId"),
+            json!(two.b.instance().to_string()),
+            "{name}"
+        );
+        assert!(
+            renewed.lock().unwrap().is_empty(),
+            "{name}: peer.renew carried the tokens to the server"
+        );
+        assert_eq!(pinned(&two.a).await, before, "{name}");
+        let still = call_with(&two.b_http, &a_token, "keel.account.list", json!({})).await;
+        assert_eq!(still.status, 200, "{name}: {}", still.body);
+
+        run_check(&two.a).await;
+        assert_eq!(
+            open_problems(&two.a).await,
+            [format!("{PROBLEM_PROOF} {}", linked.a_link)],
+            "{name}"
+        );
+        assert_eq!(
+            pinned(&two.a).await,
+            before,
+            "{name}: the daily check took the unproven handshake"
+        );
+        assert!(renewed.lock().unwrap().is_empty(), "{name}");
+        fake.stop().await.unwrap();
+    }
+
+    two.a
+        .db()
+        .execute_unprepared(&format!(
+            "UPDATE peer_product SET url = '{}' WHERE id = '{}'",
+            two.b_url(),
+            linked.a_link
+        ))
+        .await
+        .unwrap();
+    run_check(&two.a).await;
+    assert!(open_problems(&two.a).await.is_empty());
+    let rotated = two
+        .a
+        .call(Who::Admin, ROTATE, json!({ "id": linked.a_link }))
+        .await;
+    assert_eq!(data(&rotated)["rotated"], json!(true));
+    let retired = call_with(&two.b_http, &a_token, "keel.account.list", json!({})).await;
+    refused(&retired, 401, "keel.error.unauthenticated");
+    two.finish().await;
+}
+
+fn error_param(reply: &Reply, name: &str) -> Value {
+    reply
+        .error()
+        .and_then(|error| error.params.get(name).cloned())
+        .unwrap_or(Value::Null)
+}
+
 #[cfg(feature = "settings")]
 #[tokio::test]
 async fn an_initiator_with_an_address_and_events_receives_a_webhook_secret_both_sides_keep() {
     let a = composed(Harness::new().module(&keel_system::settings::MODULE))
         .boot()
         .await;
-    let b = installation().await;
+    let b = composed(Harness::new().module(&keel_system::settings::MODULE))
+        .boot()
+        .await;
+    let admitted = b
+        .call(
+            Who::Admin,
+            "settings.set",
+            json!({ "key": keel_system::webhooks::PRIVATE_TARGETS_KEY, "value": true }),
+        )
+        .await;
+    assert_eq!(admitted.status(), 200, "{admitted:?}");
     let a_http = a.http().await;
     let b_http = b.http().await;
     let set = a

@@ -141,6 +141,7 @@
       "body_too_large": "The request body is above {limit} bytes",
       "call_still_shared": "The call is still referenced when it should commit",
       "caller_unavailable": "The function {function} cannot be called yet: the dispatcher is not ready",
+      "challenge": "The challenge must be {min} to {max} letters, digits, - or _",
       "config_missing": "The configuration section {section} is not contributed",
       "conflict": "The change conflicts with the current state",
       "cross_site": "The request comes from another site",

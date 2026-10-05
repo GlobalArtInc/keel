@@ -2119,6 +2119,56 @@
         "lang"
       ]
     },
+    "ProvenInstance": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "$ref": "#/$defs/Id"
+        },
+        "keel": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "publicKey": {
+          "type": "string"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "serviceKinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "proof": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "instanceId",
+        "keel",
+        "protocol",
+        "products",
+        "publicKey",
+        "proof"
+      ]
+    },
     "Scope": {
       "oneOf": [
         {

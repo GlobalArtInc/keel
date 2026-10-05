@@ -38,6 +38,7 @@
       "origin": "The origin {origin} does not name the calling installation",
       "paired": "The installation {instanceId} is already paired with this one",
       "principal": "The link {id} names no principal that can be read",
+      "proof": "The installation at {url} does not prove that it holds the instance key pinned for {instanceId}",
       "protocol": "The other installation speaks protocol {protocol}, and this one supports {supported} and its neighbours",
       "query": "The query parameter {name} is malformed",
       "scope": "A pairing may not grant more than the token of the caller holds",
@@ -60,6 +61,7 @@
     },
     "problem": {
       "instance_key": "The installation at {url} presents another instance key than the one pinned for {instanceId}",
+      "proof": "The installation at {url} does not prove that it holds the instance key pinned for {instanceId}",
       "protocol": "The installation at {url} speaks protocol {protocol}, which this one no longer understands with {supported}"
     },
     "pull": "Pull its events from its feed (this installation is behind NAT)",

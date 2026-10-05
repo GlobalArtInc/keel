@@ -26,6 +26,7 @@ const EXPORT: &str = "ledger.entry.export";
 const QUEUE: &str = "ledger.entry.queue";
 const DEFER: &str = "ledger.entry.defer";
 const SUM: &str = "ledger.entry.sum";
+const MARK: &str = "ledger.entry.mark";
 const VETO: &str = "ledger.error.veto";
 const START: &str = "2026-10-01T00:00:00Z";
 const PATIENCE: Duration = Duration::from_secs(15);
@@ -66,6 +67,14 @@ struct Added {
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+struct Marked {
+    id: Id,
+    label: String,
+    #[schemars(extend("x-keel" = json!({ "level": "reseller" })))]
+    margin: i64,
+}
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Sum {
@@ -277,6 +286,21 @@ fn init(r: &mut Registrar) -> Result<()> {
             .level(Level::User)
             .unowned()
             .handler(defer),
+    )
+    .function(
+        function::<Add, Marked>(MARK)
+            .kind(Kind::Action)
+            .level(Level::User)
+            .unowned()
+            .handler(|call: Call<Add>| async move {
+                let amount = call.params().amount;
+                let added = add(call).await?;
+                Ok(Marked {
+                    id: added.id,
+                    label: added.label,
+                    margin: amount * 2,
+                })
+            }),
     )
     .function(
         function::<Nothing, Sum>(SUM)
@@ -573,6 +597,53 @@ async fn a_repeat_with_the_same_key_and_body_replays_the_response() {
     assert_eq!(entered("rent"), 3);
     serving.stop().await.expect("the socket stops");
     http.stop().await.expect("the server stops");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_key_replays_only_at_the_level_its_answer_was_shaped_for() {
+    let harness = boot().await;
+    let reseller = harness.principal(Who::Reseller).clone();
+    let mut narrowed = reseller.clone();
+    narrowed.level = Level::User;
+    let body = json!({ "label": "margin", "amount": 21 });
+
+    let first = harness
+        .call_with(&reseller, MARK, body.clone(), keyed("mark-1"))
+        .await;
+    let answered = data(&first).clone();
+    assert_eq!(answered["margin"], json!(42));
+    let replayed = harness
+        .call_with(&reseller, MARK, body.clone(), keyed("mark-1"))
+        .await;
+    assert!(replayed.replay);
+    assert_eq!(data(&replayed), &answered);
+
+    let below = harness
+        .call_with(&narrowed, MARK, body.clone(), keyed("mark-1"))
+        .await;
+    let error = below
+        .error()
+        .unwrap_or_else(|| panic!("the narrower credential got {:?}", below.data()));
+    assert_eq!(error.code, ErrorCode::IdempotencyMismatch, "{error:?}");
+    assert!(!below.replay);
+    assert_eq!(entered("margin"), 1, "the handler ran once");
+
+    let fresh = harness
+        .call_with(&narrowed, MARK, body.clone(), keyed("mark-2"))
+        .await;
+    assert!(
+        data(&fresh).get("margin").is_none(),
+        "the field is the reseller's"
+    );
+    let above = harness
+        .call_with(&reseller, MARK, body, keyed("mark-2"))
+        .await;
+    assert_eq!(
+        above.error().map(|error| error.code),
+        Some(ErrorCode::IdempotencyMismatch)
+    );
+    assert_eq!(entered("margin"), 2);
     harness.finish().await;
 }
 

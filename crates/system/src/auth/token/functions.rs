@@ -4,6 +4,7 @@ use keel_sdk::sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use keel_sdk::types::{Scope, is_mask};
 
 use super::super::entity::token::{self, TokenScope};
+use super::super::retire::lineage;
 use super::{Issue, issue, revoke};
 
 pub const PERMISSION_READ: &str = "auth.token.read";
@@ -138,6 +139,7 @@ pub fn create() -> FunctionDef {
                     KeelError::validation("auth.error.token_expires_past").field("expiresAt")
                 );
             }
+            let link = lineage(&call).await?;
             let (id, token) = issue(
                 call.tx()?,
                 Issue {
@@ -147,6 +149,7 @@ pub fn create() -> FunctionDef {
                     scope,
                     ip_allow: params.ip_allow.clone().unwrap_or_default(),
                     expires_at: params.expires_at,
+                    link,
                 },
                 now,
             )

@@ -75,6 +75,7 @@ impl Authenticator for TestAuthenticator {
         Ok(principal.map(|principal| Authenticated {
             principal,
             session: None,
+            token: None,
         }))
     }
 }

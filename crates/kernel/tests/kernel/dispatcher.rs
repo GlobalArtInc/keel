@@ -1609,6 +1609,7 @@ async fn the_audit_event_carries_the_client_the_subject_and_the_masked_result_of
         ip: Some("10.0.0.9".parse().expect("an address")),
         user_agent: Some("probe/1".into()),
         session: None,
+        token: None,
     };
     let with_client = |id: &str| CallOptions {
         client: Some(client.clone()),
@@ -2272,6 +2273,7 @@ impl keel_sdk::system::Authenticator for LevelAuthenticator {
         Ok(Some(keel_sdk::system::Authenticated {
             principal: principal(level, account),
             session: None,
+            token: None,
         }))
     }
 }

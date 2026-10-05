@@ -7195,6 +7195,102 @@ URL is opened by hand in a browser, and the dns machine finds the delivery of `s
 delivered before `peer.delete`, since the subscription of a link goes with it and takes the
 deliveries not yet sent along. Pinning the certificate of a neighbour in its link is left to a
 later milestone and named in `deploy/README.md`.
+Step 8b leaves points for the pass over [design/03-access.md](design/03-access.md),
+[design/05-modules.md](design/05-modules.md), [design/07-ecosystem.md](design/07-ecosystem.md),
+[design/09-operations.md](design/09-operations.md) and
+[design/10-contracts.md](design/10-contracts.md). The handshake proves the instance key: `GET
+/api/v1/instance?challenge=<c>`, a challenge of 32 to 128 letters, digits, `-` and `_`, answers the
+handshake with `proof`, `ed25519:` and the base64 of a signature of the instance key over
+`keel-instance-proof`, a line break and the JSON array `[challenge, instanceId, publicKey, keel,
+protocol, products]`, so the proof covers everything a link records of the handshake, its identity,
+version, protocol and products, and only `features` and `serviceKinds`, which no link keeps, stay
+unsigned; `ProvenInstance`, the handshake with its proof, joins `keel-types` and `contracts/schema`
+like every other wire type; a malformed or repeated challenge answers `422` with
+`keel.error.challenge` on `challenge`, the handshake without a challenge is unchanged, and the
+`peers` group of the conformance suite checks both. `peer.rotate` and the daily check ask with a
+fresh challenge of 32 random bytes and take the handshake only when its proof verifies under the
+presented key, which must be the pinned one: a server presenting the pinned key without a valid
+proof answers `403 peer.error.proof { instanceId, url }` before `peer.renew` carries any token, and
+the check raises the warning `peer.problem.proof` and records nothing of that handshake, clearing it
+with `peer.problem.instance_key` once a proof verifies. Pairing pins the key it reads without a
+proof, as trust on first use does. The proof binds no channel: a server at the address that reaches
+the neighbour can relay the challenge, which only the certificate pinned in the link or a token
+sealed to the instance key would stop, both left open. A credential minted through a link dies with
+it: an API token, a login key and the session such a key opens keep the principal of the link they
+came through in the new column `link_principal_id` of `auth_token`, `auth_login_key` and
+`auth_session`, the link's principal for a call as the link and its actor for a call on behalf of a
+customer, and a `su` session takes it from the session it starts in; an API token or a login key
+minted with an API token that carries a link carries that link too, since only the peer ever held
+that token, so no chain of tokens outlives the link; `peer.rotate` and `peer.delete` retire them
+with the link's own credentials, so the session a handover key or `svc.<kind>.login` opened ends
+too. For `auth` to know which of its tokens a call came with, `Authenticated` and `Client` gain
+`token`, the hash a module keeps the bearer token of the call under (`token_hash` of an API token,
+`inbound_token_hash` of a peer token), `None` for a session cookie, beside `session`, and
+`PeerReach` gains `holds(link, token)`, whether the link still holds the token of that hash. Minting
+under a link takes a shared transaction lock on the link's principal and checks under it that the
+credential the call came with is still live, the link still holding the token of the call or the API
+token unrevoked and unexpired, and answers `401 keel.error.unauthenticated` otherwise; retiring
+takes that lock exclusively before it revokes anything and revokes login keys before sessions, so a
+credential minted while its link rotates or is deleted is either retired with the link or refused,
+and a key redeemed meanwhile ends with the session it opens. Every other change the link makes stays
+as the customer's own act: a password or an address it sets on behalf of a reseller for a principal
+below it, and a token created, a key issued or a password set inside a session a link's key opened,
+outlive the link, so a peer that redeems its own handover key keeps the customer's access, since
+nothing tells the peer from the customer's browser in that session; a session passes its link to no
+credential minted in it, as a token a customer makes for itself there would end at every rotation
+while the peer in that session could keep the access through a password or an address all the same;
+left open. That `auth.key.handover` turns a call on behalf into a full session of the customer
+whatever else the masks of the link hold, and that any principal of the panel who sees a site opens
+the neighbour as the customer of that site, stays as step 6b decided, the session now ending with
+the link. A delivery the hook refuses for its signature (headers missing, a link unknown or without
+a secret, a signature stale or wrong) spends one request from a bucket the hook keeps per address,
+apart from the guest bucket of `auth` and refilled each minute to `auth.rate.guest_per_minute`, and
+an address with none left is answered `429 auth.error.rate_limited` before its link is looked up or
+its body hashed, until its minute refills; a signed delivery spends nothing. So a sender refused at
+every delivery, after a link deleted on this side alone or with a clock off by more than the window,
+holds back the hook at its address and never the logins from it. A link whose inbox holds 10 000
+unprocessed events is answered `429 keel.error.rate_limited { pending }`, which the sender retries
+along its ladder, and the pull consumer reads no page for it until the inbox drains below that. A
+link's subscription obeys `webhook.private_targets` as a user's does: the sender no longer exempts
+it, so a delivery to an address resolving to a private network fails with
+`webhook.error.url_private` at each attempt while the setting is off, and `peer.pair` checks the
+hook address as `webhook.subscription.set` checks a URL, resolving it, and issues no webhook secret,
+and so makes no subscription, when the address is plain `http`, an IP literal or a name resolving to
+a private network while the setting is off, or a name that does not resolve, the initiator then
+pulling; `hack/peers-e2e.sh` and `hack/peers-vm.sh` turn the setting on for the dns side as
+`hack/conformance.sh` does. The request hash of `keel_idempotency` covers the caller's level beside
+the body, so a key replays only at the level its answer was stripped for, and a credential of the
+same principal at another level, a token under a lower ceiling, gets `409 idempotency_mismatch`
+rather than fields above it. Reviewed without a finding: the parameters of a service reaching zone
+templates (`dns.zones` checks a template within the service's own account), `keel-client`, the
+replay window and the constant-time comparisons of the hook, and the feed serving events of its own
+installation alone. Left open beside the points above: a level granted to a link bounds the
+functions it reaches, not the accounts, since its principal sits in the root account and a
+reseller's scope is the subtree of its account, so a link granted `reseller` reaches every account
+through every function its masks admit, `dns.zone.*` with an `account` parameter, the events of its
+subscription and feed and the records of its origin wherever they sit included, though a panel needs
+that level only for `keel.principal.upsert`; a principal of each link in an account of its own,
+under which its upserts place their accounts, would bound it and moves where synced customers land.
+The inbox bounds how many events of a link wait, not how large they are: an event may be as large as
+a request body, so a link flooding large events still grows the inbox and the outbox up to their
+retention. The bucket of the hook counts by address alone, so a paired installation sharing the
+address of a refused sender waits along its ladder with it. The receiving administrator approves no
+event masks (step 2a), and an identity link applies its peer's account and principal events as an
+administrator (step 2b), both kept. An instance id is bound to no key: the records of a deleted link
+stay under origins naming its instance, and the next pairing presenting that id under any key
+reaches them, while keeping the key of a deleted link would refuse the re-pair that recovers from a
+lost key. The receiving side of `peer.renew` checks the token alone, so a stolen token can rotate
+the link away from its peer; a proof by the caller's instance key there would need the kernel to
+sign for the peers module. The calls of a link, the pull feed and `dns-peer`, send its token to the
+address without a proof, a refused daily check keeps them going, and a pulled event is authenticated
+by TLS alone where a pushed one carries the link's signature. The daily check, `peer.rotate` and
+`PeerLinks` reach the address a code holder gave without the private-targets guard, on fixed paths
+whose answers are read as a handshake or an envelope. A token scoped to functions grants `onBehalf`
+in a pair code, since containing a peer scope in a function scope compares masks alone, so a token a
+link mints may issue a code with `onBehalf` its link lacks. `PeerLinks` handing a link's token to
+any module compiled in, the pre-check of `dns-peer` writing the customer on the neighbour before the
+local transaction decides and the widened scope of its task stay: modules compiled into the binary
+are trusted code, and the review of M7 takes up plugins.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

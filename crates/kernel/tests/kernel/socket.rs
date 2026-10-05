@@ -61,6 +61,7 @@ impl Authenticator for OwnerOverHttp {
         Ok(Some(Authenticated {
             principal,
             session: None,
+            token: None,
         }))
     }
 }

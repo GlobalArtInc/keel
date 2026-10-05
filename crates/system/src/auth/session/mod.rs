@@ -57,6 +57,7 @@ pub async fn open(
     client: &Client,
     now: DateTime<Utc>,
     lifetime: Lifetime,
+    link: Option<Id>,
 ) -> Result<Secret> {
     let token = generate()?;
     session::ActiveModel {
@@ -74,6 +75,7 @@ pub async fn open(
         reason: Set(None),
         parent_id_hash: Set(None),
         su_id_hash: Set(None),
+        link_principal_id: Set(link.map(|link| link.to_string())),
     }
     .insert(db)
     .await?;
@@ -104,6 +106,7 @@ pub async fn open_su(
         reason: Set(None),
         parent_id_hash: Set(Some(parent.id_hash.clone())),
         su_id_hash: Set(None),
+        link_principal_id: Set(parent.link_principal_id.clone()),
     }
     .insert(db)
     .await?;

@@ -304,7 +304,7 @@ async fn post(
         })?),
         None => None,
     };
-    let allow_private = peer.is_some() || started.private_targets().await?;
+    let allow_private = started.private_targets().await?;
     let target = targets::check(
         &subscription.url,
         allow_private,

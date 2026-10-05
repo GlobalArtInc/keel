@@ -522,6 +522,16 @@ export interface Principal {
   origin?: string | null;
   lang: string;
 }
+export interface ProvenInstance {
+  instanceId: Id;
+  keel: string;
+  protocol: number;
+  products: string[];
+  publicKey: string;
+  features?: string[];
+  serviceKinds?: string[];
+  proof: string;
+}
 export interface StatValue {
   value: number;
   unit: string;

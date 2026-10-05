@@ -10,13 +10,14 @@ use super::continuation;
 use super::entity::product;
 use super::functions::{EVENT_ROTATED, Pick, not_found, retire};
 use super::pairing::{ERROR_INSTANCE_KEY, ERROR_PROTOCOL, ERROR_TOKEN};
-use super::remote::Remote;
+use super::remote::{Presented, Remote};
 use crate::auth::api::{is_peer_token, peer_token, token_hash};
 
 pub const ROTATE: &str = "peer.rotate";
 pub const RENEW: &str = "peer.renew";
 pub const REKEY: &str = "peer.rekey";
 pub const ERROR_NO_URL: &str = "peer.error.no_url";
+pub const ERROR_PROOF: &str = "peer.error.proof";
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(crate = "keel_sdk::serde", rename_all = "camelCase")]
@@ -55,14 +56,17 @@ pub(super) struct Rotated {
     rotated: bool,
 }
 
-pub(super) fn presented_by(row: &product::Model, presented: &InstanceInfo) -> Result<()> {
+pub(super) fn presented_by(row: &product::Model, presented: &Presented, url: &str) -> Result<()> {
     match verdict(row, presented) {
         Verdict::Refused => {
             Err(KeelError::forbidden(ERROR_INSTANCE_KEY)
                 .param("instanceId", row.instance_id.as_str()))
         }
+        Verdict::Unproven => Err(KeelError::forbidden(ERROR_PROOF)
+            .param("instanceId", row.instance_id.as_str())
+            .param("url", url)),
         Verdict::Incompatible => Err(KeelError::conflict(ERROR_PROTOCOL)
-            .param("protocol", presented.protocol)
+            .param("protocol", presented.instance.protocol)
             .param("supported", keel_sdk::types::PROTOCOL)),
         Verdict::Compatible => Ok(()),
     }
@@ -92,8 +96,9 @@ pub(super) fn rotate() -> FunctionDef {
                 );
             };
             let remote = Remote::new(url)?;
-            let presented = remote.handshake().await?;
-            presented_by(&row, &presented)?;
+            let presented = remote.proven().await?;
+            presented_by(&row, &presented, remote.base())?;
+            let presented: InstanceInfo = presented.instance;
             let cipher = call.require::<dyn SecretCipher>()?;
             let outbound =
                 String::from_utf8(cipher.open(&row.outbound_token_enc)?).map_err(|_| {

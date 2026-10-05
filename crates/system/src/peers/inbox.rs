@@ -5,7 +5,8 @@ use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::sea_query::{Expr, OnConflict, Query};
 use keel_sdk::sea_orm::{
-    ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, Statement,
 };
 use keel_sdk::serde_json;
 use keel_sdk::types::{ErrorCode, Event};
@@ -18,6 +19,8 @@ pub const BATCH: u64 = 100;
 pub const POLL: Duration = Duration::from_secs(5);
 pub const RETENTION_DAYS: i64 = 7;
 pub const MAX_ATTEMPTS: i32 = 5;
+pub const PENDING_MAX: u64 = 10_000;
+const PENDING: &str = "SELECT count(*) AS held FROM (SELECT 1 FROM peer_inbox WHERE peer_id = $1 AND processed_at IS NULL LIMIT $2) pending";
 
 pub async fn receive(db: &Db, link: &str, event: &Event, now: DateTime<Utc>) -> Result<bool> {
     let inserted = inbox::Entity::insert(inbox::ActiveModel {
@@ -36,6 +39,23 @@ pub async fn receive(db: &Db, link: &str, event: &Event, now: DateTime<Utc>) -> 
     .exec_without_returning(db)
     .await?;
     Ok(inserted > 0)
+}
+
+pub async fn pending(db: &Db, link: &str) -> Result<u64> {
+    let held = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            PENDING,
+            [
+                link.into(),
+                i64::try_from(PENDING_MAX).unwrap_or(i64::MAX).into(),
+            ],
+        ))
+        .await?
+        .map(|row| row.try_get::<i64>("", "held"))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(u64::try_from(held).unwrap_or_default())
 }
 
 fn linked() -> keel_sdk::sea_orm::sea_query::SelectStatement {

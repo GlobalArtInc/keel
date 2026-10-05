@@ -42,6 +42,7 @@ fn from(ip: &str) -> CallOptions {
             ip: Some(ip.parse().expect("an address")),
             user_agent: Some("keel-system-tests/1".into()),
             session: None,
+            token: None,
         }),
         ..CallOptions::default()
     }

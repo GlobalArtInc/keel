@@ -376,6 +376,7 @@ async fn read_only_keeps_reads_login_and_license_install() {
                     ip: Some("10.0.0.1".parse().expect("an address")),
                     user_agent: Some("keel-system-tests/1".into()),
                     session: None,
+                    token: None,
                 }),
                 ..CallOptions::default()
             },

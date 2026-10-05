@@ -50,6 +50,7 @@ impl Authenticator for FixtureAuthenticator {
         Ok(principal.map(|principal| Authenticated {
             principal,
             session: None,
+            token: None,
         }))
     }
 }

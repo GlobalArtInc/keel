@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Duration, Utc};
 use keel_sdk::KeelError;
-use keel_types::Id;
+use keel_types::{Id, Level};
 use schemars::{Schema, json_schema};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, Value as DbValue};
 use serde_json::Value;
@@ -67,8 +67,9 @@ pub fn ttl(setting: Option<Value>) -> Duration {
     Duration::hours(i64::from(hours.clamp(1, MAX_HOURS)))
 }
 
-pub fn hash(params: &Value) -> String {
-    let canonical = serde_json::to_string(&canonical(params)).unwrap_or_default();
+pub fn hash(level: Level, params: &Value) -> String {
+    let shaped = serde_json::json!({ "level": level, "params": canonical(params) });
+    let canonical = serde_json::to_string(&shaped).unwrap_or_default();
     let digest = Sha256::digest(canonical.as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -191,16 +192,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_request_hash_ignores_key_order_and_sees_every_value() {
-        let a = hash(&json!({ "title": "x", "nested": { "b": 1, "a": [1, { "z": 0, "y": 1 }] } }));
-        let b = hash(&json!({ "nested": { "a": [1, { "y": 1, "z": 0 }], "b": 1 }, "title": "x" }));
+    fn the_request_hash_ignores_key_order_and_sees_every_value_and_the_level() {
+        let user = Level::User;
+        let a = hash(
+            user,
+            &json!({ "title": "x", "nested": { "b": 1, "a": [1, { "z": 0, "y": 1 }] } }),
+        );
+        let b = hash(
+            user,
+            &json!({ "nested": { "a": [1, { "y": 1, "z": 0 }], "b": 1 }, "title": "x" }),
+        );
         assert_eq!(a, b);
         assert_eq!(a.len(), 64);
         assert_ne!(
             a,
-            hash(&json!({ "title": "y", "nested": { "b": 1, "a": [1, { "z": 0, "y": 1 }] } }))
+            hash(
+                user,
+                &json!({ "title": "y", "nested": { "b": 1, "a": [1, { "z": 0, "y": 1 }] } })
+            )
         );
-        assert_ne!(hash(&json!([1, 2])), hash(&json!([2, 1])));
+        assert_ne!(hash(user, &json!([1, 2])), hash(user, &json!([2, 1])));
+        assert_ne!(
+            hash(Level::Reseller, &json!({ "title": "x" })),
+            hash(user, &json!({ "title": "x" }))
+        );
     }
 
     #[test]

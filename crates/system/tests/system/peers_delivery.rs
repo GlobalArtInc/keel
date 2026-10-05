@@ -2,13 +2,14 @@ use std::future::Future;
 use std::time::Duration;
 
 use keel_sdk::prelude::*;
-use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
+use keel_sdk::sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use keel_sdk::serde_json;
 use keel_sdk::system::{EventRelay, SecretCipher};
 use keel_sdk::types::{Event, EventSubject};
+use keel_system::auth::GUEST_PER_MINUTE;
 use keel_system::peers::{
     CREATE, DELETE, ERROR_EVENT, ERROR_FEED, ERROR_MASK, ERROR_QUERY, ERROR_SIGNATURE, FEED_PATH,
-    HOOK_PATH, INBOX_MAX_ATTEMPTS, INBOX_RETENTION_DAYS,
+    HOOK_PATH, INBOX_MAX_ATTEMPTS, INBOX_PENDING_MAX, INBOX_RETENTION_DAYS,
 };
 use keel_system::webhooks::api::{EVENT_ID_HEADER, PEER_HEADER, SIGNATURE_HEADER, sign};
 use keel_testkit::{
@@ -303,21 +304,54 @@ async fn with_an_address() -> Harness {
 }
 
 #[cfg(feature = "settings")]
-async fn give_the_address(two: &Two) {
+async fn give_an_address(two: &Two, address: &str) {
     let set = two
         .a
         .call(
             Who::Admin,
             "settings.set",
-            json!({ "key": keel_system::auth::SETTING_SHELL_URL, "value": two.a_http.url("") }),
+            json!({ "key": keel_system::auth::SETTING_SHELL_URL, "value": address }),
         )
         .await;
     assert_eq!(set.status(), 200, "{set:?}");
 }
 
 #[cfg(feature = "settings")]
+async fn give_the_address(two: &Two) {
+    give_an_address(two, &two.a_http.url("")).await;
+}
+
+#[cfg(feature = "settings")]
+async fn private_targets(harness: &Harness, admitted: bool) {
+    let set = harness
+        .call(
+            Who::Admin,
+            "settings.set",
+            json!({ "key": keel_system::webhooks::PRIVATE_TARGETS_KEY, "value": admitted }),
+        )
+        .await;
+    assert_eq!(set.status(), 200, "{set:?}");
+}
+
+#[cfg(feature = "settings")]
+fn guarded_neighbour() -> keel_testkit::Builder {
+    composed(
+        Harness::new()
+            .module(&PROBE)
+            .module(&keel_system::settings::MODULE),
+    )
+}
+
+#[cfg(feature = "settings")]
+async fn hooked_neighbour() -> Harness {
+    let neighbour = guarded_neighbour().boot().await;
+    private_targets(&neighbour, true).await;
+    neighbour
+}
+
+#[cfg(feature = "settings")]
 async fn pair_with_an_address(level: &str, a_grants: Value) -> (Two, Linked) {
-    let two = Two::of(with_an_address().await, neighbour().await).await;
+    let two = Two::of(with_an_address().await, hooked_neighbour().await).await;
     give_the_address(&two).await;
     let linked = two
         .pair(json!({ "scopes": [], "level": level }), a_grants)
@@ -542,6 +576,309 @@ async fn a_bad_or_stale_signature_is_refused() {
     );
     until(&format!("{id} is processed"), || async {
         processed(&two.a).await == [id.clone()]
+    })
+    .await;
+    two.finish().await;
+}
+
+#[cfg(feature = "settings")]
+async fn pulls_instead_of_a_hook_at(two: Two, address: String) {
+    give_an_address(&two, &address).await;
+    let linked = two
+        .pair(
+            json!({ "scopes": [], "level": "admin" }),
+            json!({ "subscribe": [MASK] }),
+        )
+        .await;
+    assert_eq!(
+        rows(
+            &two.b,
+            &format!(
+                "SELECT (SELECT count(*) FROM webhook_subscription)::text || ' ' || (webhook_secret_enc IS NULL)::text || ' ' || url FROM peer_product WHERE id = '{}'",
+                linked.b_link
+            )
+        )
+        .await,
+        [format!("0 true {address}")]
+    );
+    assert_eq!(
+        rows(
+            &two.a,
+            &format!(
+                "SELECT (pull_seq IS NOT NULL)::text || ' ' || (webhook_secret_enc IS NULL)::text FROM peer_product WHERE id = '{}'",
+                linked.a_link
+            )
+        )
+        .await,
+        ["true true"]
+    );
+    let saved = emit(&two.b, Who::Admin, SAVE).await;
+    until(&format!("{saved} arrives by the feed"), || async {
+        processed(&two.a).await == [saved.clone()]
+    })
+    .await;
+    assert_eq!(
+        rows(&two.b, "SELECT count(*)::text FROM webhook_delivery").await,
+        ["0"]
+    );
+    two.finish().await;
+}
+
+#[cfg(feature = "settings")]
+#[tokio::test]
+async fn a_link_gets_no_hook_at_an_address_the_private_targets_guard_refuses_and_pulls_instead() {
+    let two = Two::of(with_an_address().await, guarded_neighbour().boot().await).await;
+    let address = two.a_http.url("");
+    assert!(address.starts_with("http://127.0.0.1:"));
+    pulls_instead_of_a_hook_at(two, address).await;
+}
+
+#[cfg(feature = "settings")]
+#[tokio::test]
+async fn a_link_gets_no_hook_at_a_name_resolving_to_a_private_network_and_pulls_instead() {
+    let two = Two::of(with_an_address().await, guarded_neighbour().boot().await).await;
+    let port = two
+        .a_http
+        .url("")
+        .rsplit(':')
+        .next()
+        .expect("a port")
+        .to_owned();
+    pulls_instead_of_a_hook_at(two, format!("https://localhost:{port}")).await;
+}
+
+#[cfg(feature = "settings")]
+#[tokio::test]
+async fn a_delivery_to_a_link_obeys_the_private_targets_guard_at_each_attempt() {
+    let (two, _) = pair_with_a_hook("admin").await;
+    let first = emit(&two.b, Who::Admin, SAVE).await;
+    until(&format!("{first} arrives by the hook"), || async {
+        processed(&two.a).await == [first.clone()]
+    })
+    .await;
+    private_targets(&two.b, false).await;
+    let second = emit(&two.b, Who::Admin, SAVE).await;
+    until_rows(
+        &two.b,
+        &format!(
+            "SELECT state || ' ' || attempt || ' ' || split_part(last_error, ':', 1) FROM webhook_delivery WHERE event_id = '{second}'"
+        ),
+        &["failed 1 webhook.error.url_private".to_owned()],
+    )
+    .await;
+    assert_eq!(processed(&two.a).await, std::slice::from_ref(&first));
+    private_targets(&two.b, true).await;
+    execute(
+        &two.b,
+        &format!(
+            "UPDATE webhook_delivery SET next_at = '2000-01-01T00:00:00Z' WHERE event_id = '{second}'"
+        ),
+    )
+    .await;
+    until(
+        &format!("{second} arrives once the guard admits it"),
+        || async { processed(&two.a).await == sorted(vec![first.clone(), second.clone()]) },
+    )
+    .await;
+    two.finish().await;
+}
+
+async fn redeem_unknown(http: &TestHttp) -> Answer {
+    http.request(
+        "POST",
+        "/api/v1/call/auth.key.redeem",
+        &[("content-type", "application/json")],
+        Some(&json!({ "key": "a key nobody issued" }).to_string()),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_stranger_refused_at_the_hook_is_held_to_the_guest_rate_of_its_address_at_the_hook_alone()
+{
+    let (two, linked) = pair_behind_nat("admin", json!([])).await;
+    sealed_secret(&two.a, &linked.a_link, SECRET).await;
+    let peer = two.b.instance().to_string();
+    let (id, body) = event_of(two.b.instance());
+    let forged = sign(
+        b"whs_a_secret_the_stranger_guessed",
+        two.a.clock().now().timestamp(),
+        &body,
+    )
+    .unwrap();
+    for attempt in 0..GUEST_PER_MINUTE {
+        let refused = hook(&two.a_http, &peer, &id, Some(&forged), &body).await;
+        assert_eq!(refused.status, 401, "attempt {attempt}: {}", refused.body);
+        assert_eq!(refused.json()["error"]["key"], json!(ERROR_SIGNATURE));
+    }
+    let good = sign(SECRET.as_bytes(), two.a.clock().now().timestamp(), &body).unwrap();
+    for (case, signature) in [("forged", &forged), ("signed", &good)] {
+        let held = hook(&two.a_http, &peer, &id, Some(signature), &body).await;
+        assert_eq!(held.status, 429, "{case}: {}", held.body);
+        assert_eq!(
+            held.json()["error"]["key"],
+            json!("auth.error.rate_limited"),
+            "{case}"
+        );
+    }
+    assert_eq!(
+        rows(&two.a, "SELECT count(*)::text FROM peer_inbox").await,
+        ["0"]
+    );
+    let guest = redeem_unknown(&two.a_http).await;
+    assert_eq!(
+        guest.status, 401,
+        "a guest call from the address the hook holds keeps its own rate: {}",
+        guest.body
+    );
+    assert_eq!(guest.json()["error"]["key"], json!("auth.error.key"));
+    let held = hook(&two.a_http, &peer, &id, Some(&good), &body).await;
+    assert_eq!(held.status, 429, "{}", held.body);
+    two.a
+        .clock()
+        .advance(keel_sdk::chrono::Duration::seconds(61));
+    let good = sign(SECRET.as_bytes(), two.a.clock().now().timestamp(), &body).unwrap();
+    let accepted = hook(&two.a_http, &peer, &id, Some(&good), &body).await;
+    assert_eq!(accepted.status, 200, "{}", accepted.body);
+    for _ in 0..GUEST_PER_MINUTE {
+        let signed = hook(&two.a_http, &peer, &id, Some(&good), &body).await;
+        assert_eq!(signed.status, 200, "{}", signed.body);
+        assert_eq!(signed.json()["data"]["duplicate"], json!(true));
+    }
+    two.finish().await;
+}
+
+async fn flood(harness: &Harness, link: &str, count: u64) {
+    execute(
+        harness,
+        &format!(
+            "INSERT INTO peer_inbox (peer_id, event_id, event_json, received_at) \
+             SELECT '{link}', 'flood-' || n, '{{}}'::jsonb, now() FROM generate_series(1, {count}) AS n"
+        ),
+    )
+    .await;
+}
+
+async fn pending(harness: &Harness, link: &str) -> u64 {
+    rows(
+        harness,
+        &format!(
+            "SELECT count(*)::text FROM peer_inbox WHERE peer_id = '{link}' AND processed_at IS NULL"
+        ),
+    )
+    .await[0]
+        .parse()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_link_whose_inbox_is_full_is_answered_429_until_it_drains() {
+    let (two, linked) = pair_behind_nat("admin", json!([])).await;
+    sealed_secret(&two.a, &linked.a_link, SECRET).await;
+    let event = as_value(&foreign(two.b.instance(), SAVED, Id::ROOT_ACCOUNT));
+    let id = event["id"].as_str().unwrap().to_owned();
+    flood(&two.a, &linked.a_link, INBOX_PENDING_MAX + 500).await;
+    let held = two.a.db().begin().await.unwrap();
+    held.execute_unprepared(&format!(
+        "SELECT 1 FROM peer_inbox WHERE peer_id = '{}' FOR UPDATE",
+        linked.a_link
+    ))
+    .await
+    .unwrap();
+    assert!(pending(&two.a, &linked.a_link).await >= INBOX_PENDING_MAX);
+
+    let full = deliver(&two.a, &two.a_http, &event).await;
+    assert_eq!(full.status, 429, "{}", full.body);
+    assert_eq!(
+        full.json()["error"]["key"],
+        json!("keel.error.rate_limited")
+    );
+    assert_eq!(
+        full.json()["error"]["params"]["pending"],
+        json!(INBOX_PENDING_MAX)
+    );
+    assert_eq!(
+        rows(
+            &two.a,
+            &format!("SELECT count(*)::text FROM peer_inbox WHERE event_id = '{id}'")
+        )
+        .await,
+        ["0"]
+    );
+
+    held.rollback().await.unwrap();
+    execute(
+        &two.a,
+        &format!(
+            "DELETE FROM peer_inbox WHERE peer_id = '{}' AND event_id LIKE 'flood-%'",
+            linked.a_link
+        ),
+    )
+    .await;
+    let accepted = deliver(&two.a, &two.a_http, &event).await;
+    assert_eq!(accepted.status, 200, "{}", accepted.body);
+    assert_eq!(accepted.json()["data"]["duplicate"], json!(false));
+    until(&format!("{id} is processed"), || async {
+        processed(&two.a).await == [id.clone()]
+    })
+    .await;
+    two.finish().await;
+}
+
+#[tokio::test]
+async fn the_pull_feed_waits_while_the_inbox_of_its_link_is_full() {
+    let (two, linked) = pair_behind_nat("admin", json!([])).await;
+    until_cursor(&two.a, &two.b).await;
+    let start = rows(
+        &two.a,
+        &format!(
+            "SELECT pull_seq::text FROM peer_product WHERE id = '{}'",
+            linked.a_link
+        ),
+    )
+    .await;
+    flood(&two.a, &linked.a_link, INBOX_PENDING_MAX + 500).await;
+    let held = two.a.db().begin().await.unwrap();
+    held.execute_unprepared(&format!(
+        "SELECT 1 FROM peer_inbox WHERE peer_id = '{}' FOR UPDATE",
+        linked.a_link
+    ))
+    .await
+    .unwrap();
+    let saved = emit(&two.b, Who::Admin, SAVE).await;
+    tokio::time::sleep(keel_system::peers::PULL_PAUSE * 2).await;
+    assert_eq!(
+        rows(
+            &two.a,
+            &format!(
+                "SELECT pull_seq::text FROM peer_product WHERE id = '{}'",
+                linked.a_link
+            )
+        )
+        .await,
+        start,
+        "the feed was read while the inbox was full"
+    );
+    assert_eq!(
+        rows(
+            &two.a,
+            &format!("SELECT count(*)::text FROM peer_inbox WHERE event_id = '{saved}'")
+        )
+        .await,
+        ["0"]
+    );
+
+    held.rollback().await.unwrap();
+    execute(
+        &two.a,
+        &format!(
+            "DELETE FROM peer_inbox WHERE peer_id = '{}' AND event_id LIKE 'flood-%'",
+            linked.a_link
+        ),
+    )
+    .await;
+    until(&format!("{saved} is pulled and processed"), || async {
+        processed(&two.a).await.contains(&saved)
     })
     .await;
     two.finish().await;
@@ -1241,7 +1578,7 @@ async fn an_inbox_row_of_a_deleted_link_never_enters_the_bus() {
 #[tokio::test]
 async fn a_pushed_delivery_carries_no_event_from_before_the_pairing_when_the_consumer_lags() {
     let a = with_an_address().await;
-    let b = neighbour().await;
+    let b = hooked_neighbour().await;
     let before = emit(&b, Who::Admin, SAVE).await;
     let two = Two::of(a, b).await;
     give_the_address(&two).await;
@@ -1276,15 +1613,12 @@ async fn a_pushed_delivery_carries_no_event_from_before_the_pairing_when_the_con
     let key = b.key().clone();
     let instance = b.instance();
     let database = b.stop().await;
-    let b = composed(
-        Harness::new()
-            .module(&PROBE)
-            .key(key)
-            .instance(instance)
-            .database(database),
-    )
-    .boot()
-    .await;
+    let b = guarded_neighbour()
+        .key(key)
+        .instance(instance)
+        .database(database)
+        .boot()
+        .await;
     let after = emit(&b, Who::Admin, SAVE).await;
     until_rows(
         &a,
