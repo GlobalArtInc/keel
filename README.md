@@ -59,8 +59,8 @@ hack/        scripts CI runs
 The checks below are the ones CI runs, in the same order; run them before pushing. The job
 `check` builds the shell first, since `cargo build -p keel-bin` embeds `frontend/dist/shell`
 through `embed_frontend!`; the tests, `hack/prove-binary.sh`, `hack/conformance.sh`,
-`hack/descriptors.sh` and `hack/e2e.sh` use the Postgres superuser connection in
-`KEEL_TEST_DATABASE_URL`, from which every test creates and drops a database of its own; when
+`hack/descriptors.sh`, `hack/e2e.sh` and `hack/peers-e2e.sh` use the Postgres superuser connection
+in `KEEL_TEST_DATABASE_URL`, from which every test creates and drops a database of its own; when
 the variable is unset, `keel-testkit` starts the container `keel-testkit-postgres` from
 `postgres:16` through the local Docker socket, keeps it running for the next test process and
 prints the URL it uses, which is the path the `env -u` command below proves. The frontend
@@ -90,6 +90,7 @@ hack/descriptors.sh target/debug/keel
 cargo run -p keel-dev -- i18n missing --dump contracts/dump
 pnpm exec playwright install chromium
 hack/e2e.sh target/debug/keel
+hack/peers-e2e.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
 hack/check-docs.sh
@@ -136,7 +137,16 @@ descriptors of the dump emit and fails on one the committed dictionaries do not 
 channel to a mail catcher (`KEEL_TEST_SMTP_URL` and `KEEL_TEST_SMTP_API`, or a container the script
 starts through podman or docker) and an overdue todo whose problem the poll job raises, and runs the
 Playwright suite of `frontend/e2e/` against it; the traces of a failed run are kept as a CI
-artifact. Every script that starts the binary speaks https to it with the certificate the binary
+artifact. `hack/peers-e2e.sh` starts two installations of the binary on two databases and ports,
+`dns` alone and `panel` alone, each with a host agent of its own, pairs them by code over `ctl`,
+creates a site on the `panel` side whose zone lands on the `dns` side on behalf of the site's
+customer, runs the `@peers` specs of `frontend/e2e/`, which show a DNS error on the hosting form and
+open the `dns` side by a one-time key, calls `svc.dns.zones.open` twice with one `Idempotency-Key`,
+sees a signed event delivered once though its delivery is repeated, and revokes a token to get
+`401`. The two reach each other through relays on plain HTTP, since neither trusts the self-signed
+certificate of the other; the relay in front of the `panel` side drops the answer of the first
+delivery, so the `dns` side reads it as failed and `webhook.delivery.retry` resends it under a later
+signature. Every script that starts the binary speaks https to it with the certificate the binary
 generates under the site's data directory. `hack/check-install.sh` checks the installer under
 `deploy/`: `bash -n` and shellcheck over the scripts, `--help` printing the usage, every subcommand
 and flag they call found in the built binary's `--help`, every function they call defined in the

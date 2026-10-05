@@ -209,6 +209,9 @@ jobs:
       - name: The browser suite against the binary
         run: hack/e2e.sh target/debug/keel
 
+      - name: Two installations of the binary end to end
+        run: hack/peers-e2e.sh target/debug/keel
+
       - name: Keep the traces of a failed browser suite
         if: failure()
         uses: actions/upload-artifact@v4

@@ -678,9 +678,15 @@ records.
 | `hack/panel-vm.sh ssl <domain> [--production]` | a site on a real domain with a certificate from Let's Encrypt staging, or production with the flag, served over TLS, printing the subject, issuer, expiry and fingerprint nginx served |
 | `hack/panel-vm.sh db`, `mail`, `ftp`, `files`, `backup`, `config`, `services` | each module against the real daemon: MariaDB grants that leave a sibling closed, mail delivery and logins, the FTP chroot, the file manager as the user, a backup restored and refused after a changed byte, a refused and an accepted override, and the units started and stopped |
 | `hack/bridge-vm.sh install <archive>`, then `run` | `panel` beside `dns` on bind, nginx and php-fpm: a site with its zone served by named under one account, a taken zone refused on the domain field, the disable refusal and the switch to `dns-peer` across a restart and back |
+| `hack/peers-vm.sh install dns <archive> <address>` on one machine and `install panel <archive> <address>` on another, then `trust`, `code`, `pair`, `check` and `revoked` as each step prints | `panel` on one machine reaching `dns` on the other: pairing by code, a site whose zone named serves on the other machine in the account of the site's customer, a taken zone refused on the domain field, the one-time key opened in a browser with the link as actor in the trail, the zone's signed event received once though sent twice, `svc.dns.zones.open` twice with one key giving one service, and a revoked token and a deleted link answering `401` |
 
 ## Left to later milestones
 
+- Pinning the certificate of a paired installation in its link. Until then an installation reaches
+  a neighbour whose certificate the trust store of the system admits, so two installations with
+  self-signed certificates each add the other's `/var/lib/keel/tls/cert.pem` to that store, as
+  `hack/peers-vm.sh trust` does, and are reached under an address their certificates name, the
+  address of `--listen` for a generated one.
 - ACME for the listener's certificate, the certificate button of the settings and the problem of
   a certificate about to expire; until then the pair is the generated one or the operator's.
 - The edition ceiling of account limits, the license check of `keel doctor`, which still reports

@@ -7162,6 +7162,39 @@ key answers `403 peer.error.instance_key` before any pairing request, and so any
 installation. `peer.rotate` from the side of the installation is left out, since it would need the
 listener to answer `peer.renew`; each neighbour of the listener keeps the Ed25519 signing key whose
 public half its handshake publishes, so the proof of possession of 8b can be signed by it.
+Step 8a leaves points for the pass over [design/07-ecosystem.md](design/07-ecosystem.md),
+[design/09-operations.md](design/09-operations.md) and the exit checklist. `hack/peers-e2e.sh
+target/debug/keel`, a step of the job `check` after the browser suite, proves the "Done when" of M6
+on two binaries: `dns` alone and `panel` alone, each on a database, a `data_dir`, a port and a host
+agent of its own, paired by `peer.pair_code` and `peer.create` over the CLI with the scopes a panel
+needs and the subscription `dns.zone.*` and `svc.*`. The stage `@peers` of `hack/e2e.sh` moves into
+it, so `frontend/e2e/peers.spec.ts` runs against its two installations alone, the hosting form
+showing the neighbour's refusal of a taken zone on the domain field before "Open in KeelDNS", and
+needs no mail catcher. The installations reach each other through two relays on plain HTTP, as step
+6b left it for this step: nothing lets one installation trust the self-signed certificate of
+another, and the public address of the panel, which pairing sends, is its relay. A relay records
+each request with the prefix of its bearer credential, never the value; the relay in front of the
+panel forwards the first delivery and answers the dns side `500` in place of the panel's answer, so
+the panel holds the event, the dns side reads the delivery failed, and `webhook.delivery.retry`
+sends it again under a later signature, which the panel answers as a duplicate, its inbox and its
+bus keeping the event once; a copy of the delivery replayed byte for byte is a duplicate too, and
+one differing by a space is refused with `401 peer.error.signature`. `svc.dns.zones.open` is called
+twice with one key over HTTPS with the API token of an administrator of the dns side, the stand-in
+for a billing installation, since one link joins the two and its level `reseller` reaches no `svc`
+function, and a third installation is out of the step's scope; the account is the customer the panel
+synced, so the one service lands in the account of the site's zone and counts it, a second key for
+its external id answers `409 svc.error.exists`, and its `svc.service.opened` reaches the panel once.
+Revocation is shown twice: the revoked API token answers `401`, and after `peer.delete` on the dns
+side the panel's next call with its peer token is answered `401`, which the panel relays as `peer`
+with `keel.error.unauthenticated`. `hack/peers-vm.sh` is the operator's proof on two machines, its
+steps alternating between them: each is installed with `--listen <address>:1500`, so the generated
+certificate names the address, and trusts the other's certificate through the trust store of the
+system, which the clients of the installation read; with no relay between them the repeat is a
+delivery marked failed in the database and sent again by `webhook.delivery.retry`, the one-time
+URL is opened by hand in a browser, and the dns machine finds the delivery of `svc.service.opened`
+delivered before `peer.delete`, since the subscription of a link goes with it and takes the
+deliveries not yet sent along. Pinning the certificate of a neighbour in its link is left to a
+later milestone and named in `deploy/README.md`.
 
 **Touches.** `docs/`, `README.md`, the versions.
 
@@ -7189,10 +7222,11 @@ public half its handshake publishes, so the proof of possession of 8b can be sig
   -p keel-bin --no-default-features --features panel`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`, `hack/check-install.sh
   target/debug/keel`, `hack/check-release.sh target/debug/keel`, `hack/conformance.sh
   target/debug/keel`, `hack/descriptors.sh target/debug/keel`, `cargo run -p keel-dev -- i18n
-  missing --dump contracts/dump`, `pnpm exec playwright install chromium` once and `hack/e2e.sh
-  target/debug/keel`, then `hack/check-test-databases.sh`, `hack/check-deps.sh` and
-  `hack/check-docs.sh`; the scripts that start the binary speak https to it with the certificate it
-  generates under the site's data directory. The job `frontend`, in `frontend/`: `pnpm install
+  missing --dump contracts/dump`, `pnpm exec playwright install chromium` once, `hack/e2e.sh
+  target/debug/keel` and `hack/peers-e2e.sh target/debug/keel`, then `hack/check-test-databases.sh`,
+  `hack/check-deps.sh` and `hack/check-docs.sh`; the scripts that start the binary speak https to it
+  with the certificate it generates under the site's data directory. The job `frontend`, in
+  `frontend/`: `pnpm install
   --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`, `pnpm lint`, `pnpm
   format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`, `pnpm exec http-server
   storybook-static --port 6006 --silent &`, `pnpm exec wait-on http://127.0.0.1:6006/index.json` and

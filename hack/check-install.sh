@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 keel=${1:-}
 problems=0
-scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh hack/host-vm.sh hack/dns-vm.sh hack/panel-vm.sh)
+scripts=(deploy/install.sh deploy/uninstall.sh hack/check-install.sh hack/update-vm.sh hack/backup-vm.sh hack/install-vm.sh hack/host-vm.sh hack/dns-vm.sh hack/panel-vm.sh hack/peers-vm.sh)
 units=(keel.service keel-privileged.service keel-update.path keel-update.service)
 enabled_units=(keel.service keel-privileged.service keel-update.path)
 
@@ -200,6 +200,16 @@ check "panel-vm.sh finds every package of panel installed" grep -qF 'check "the 
 check "panel-vm.sh finds every unit of panel running" grep -qF 'check "$unit is enabled and running" unit_running "$unit"' hack/panel-vm.sh
 check "panel-vm.sh takes the Let's Encrypt staging directory unless --production is given" grep -qF 'ACME_DIRECTORY=$PRODUCTION' hack/panel-vm.sh
 check "panel-vm.sh names --production in its usage" grep -qE '^       hack/panel-vm.sh ssl <domain> \[--production\]$' hack/panel-vm.sh
+check "peers-vm.sh --help prints the usage and exits 0" prints_usage hack/peers-vm.sh
+check "peers-vm.sh installs through install.sh listening on the address the other machine reaches" grep -qF 'bash deploy/install.sh --product "$product" --listen "$address:$PORT" --binary "$archive" --yes' hack/peers-vm.sh
+check "peers-vm.sh trusts the neighbour's certificate through the trust store of the system" grep -qF 'update-ca-certificates' hack/peers-vm.sh
+check "peers-vm.sh pairs by code over the CLI" grep -qF 'call peer.create "url=\"$url\"" "code=\"$code\""' hack/peers-vm.sh
+check "peers-vm.sh proves a site's zone in the account of its customer on the other machine" grep -qF 'check "the zone belongs to the account of the customer the panel machine named by its origin"' hack/peers-vm.sh
+check "peers-vm.sh proves the repeat of a signed event received once" grep -qF 'check "the event of the zone is still once in the inbox and on the bus after its repeat"' hack/peers-vm.sh
+check "peers-vm.sh proves one service for two opens with one key" grep -qF 'check "the dns machine holds one service of that external id, in the customer'"'"'s account"' hack/peers-vm.sh
+check "peers-vm.sh proves a revoked token answering 401" grep -qF 'check "the revoked API token answers 401"' hack/peers-vm.sh
+check "peers-vm.sh makes the archive path absolute before it changes into the checkout" test "$(grep -nF 'archive=$(realpath -- "$archive")' hack/peers-vm.sh | cut -d: -f1)" -lt "$(grep -nF 'cd "$(dirname "$0")/.."' hack/peers-vm.sh | cut -d: -f1)"
+check "peers-vm.sh finds svc.service.opened delivered to the panel machine before it deletes the link" test "$(grep -nF 'check "svc.service.opened of the service went to the hook of the panel machine and was delivered before the link goes"' hack/peers-vm.sh | cut -d: -f1)" -lt "$(grep -nF 'called peer.delete' hack/peers-vm.sh | cut -d: -f1)"
 check "install.sh prepares the products after the policy and before the units" test "$(grep -nE '^  install_policy$' deploy/install.sh | cut -d: -f1)" -lt "$(grep -nE '^  prepare_products$' deploy/install.sh | cut -d: -f1)" -a "$(grep -nE '^  prepare_products$' deploy/install.sh | cut -d: -f1)" -lt "$(grep -nE '^  install_units$' deploy/install.sh | cut -d: -f1)"
 check "install.sh installs the packages of panel through the package manager" grep -qF '  apt_install "${packages[@]}"' deploy/install.sh
 for root in /var/www /etc/ssl/keel /var/lib/keel-panel-acme /var/lib/keel-panel-dumps /var/lib/keel-panel-backups /var/lib/keel-panel-transfer /etc/postfix/keel /etc/dovecot/keel /var/lib/keel-panel-mail /etc/vsftpd/keel /etc/vsftpd/keel-users; do
