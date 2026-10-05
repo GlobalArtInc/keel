@@ -636,8 +636,8 @@ async fn an_event_outside_the_masks_or_outside_the_subscribers_scope_creates_no_
         .call(Who::Admin, "probe.note.touch", json!({}))
         .await;
     data(&touched);
-    wait_until("the admin receives the three events", || async {
-        listener.received("admin").len() >= 3
+    wait_until("the admin receives the four events", || async {
+        listener.received("admin").len() >= 4
     })
     .await;
     wait_until("the reseller receives the subtree's events", || async {

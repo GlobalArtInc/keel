@@ -479,7 +479,7 @@ async fn a_raised_problem_notifies_the_admins_once_counts_in_boot_and_feeds_the_
     assert_eq!(row["unread"], json!(true));
     harness
         .clock()
-        .advance(keel_sdk::chrono::Duration::seconds(60));
+        .advance(keel_sdk::chrono::Duration::milliseconds(1));
     let critical = raise(
         &harness,
         Raise::new("probe.disk", "/var", Severity::Critical).source(SOURCE),
