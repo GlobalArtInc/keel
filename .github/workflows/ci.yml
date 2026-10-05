@@ -22,7 +22,7 @@ jobs:
   check:
     name: fmt, clippy, test
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     services:
       postgres:

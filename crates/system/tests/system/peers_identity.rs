@@ -477,14 +477,16 @@ async fn an_account_suspended_on_the_identity_peer_is_suspended_here_with_its_li
         &format!("SELECT seq::text FROM keel_outbox WHERE type = 'keel.account.suspended' AND subject_json->>'id' = '{billed}'"),
     )
     .await;
-    assert_eq!(
+    let recorded = [format!("keel.account {billed} {}", seq[0])];
+    until("the applied event is recorded for its subject", || async {
         rows(
             &two.a,
-            "SELECT subject_kind || ' ' || subject_id || ' ' || seq FROM peer_identity"
+            "SELECT subject_kind || ' ' || subject_id || ' ' || seq FROM peer_identity",
         )
-        .await,
-        [format!("keel.account {billed} {}", seq[0])]
-    );
+        .await
+            == recorded
+    })
+    .await;
 
     let resumed = two
         .b
