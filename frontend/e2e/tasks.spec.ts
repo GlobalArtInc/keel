@@ -83,7 +83,7 @@ keelTest.describe('tasks', () => {
       const csv = await readDownload(page, () => confirmExport(page));
       expect(csv.trim().split('\n')[0]).toBe(CSV_HEADER);
       await expect(modal(page)).toHaveCount(0);
-      await page.locator('keel-rail [data-rail="tasks"]').click();
+      await page.locator('keel-rail [data-rail="tasks"] button').click();
       const jobs = drawer(page).locator('button.job');
       await expect(jobs).toHaveCount(JOBS);
       await expect(jobs.locator('phx-badge')).toHaveText(['Done', 'Cancelled', 'Done']);

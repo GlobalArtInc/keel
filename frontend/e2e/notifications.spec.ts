@@ -7,7 +7,7 @@ const RAISED = /Problem note\.overdue raised for/;
 const VERSION = /Version \d+\.\d+\.\d+/;
 
 function rail(page: Page, item: string) {
-  return page.locator(`keel-rail [data-rail="${item}"]`);
+  return page.locator(`keel-rail [data-rail="${item}"] button`);
 }
 
 keelTest.describe('notifications', { tag: '@polled' }, () => {
