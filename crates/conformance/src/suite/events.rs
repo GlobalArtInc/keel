@@ -3,10 +3,9 @@ use std::time::Duration;
 use keel_client::Streaming;
 use keel_client::http::header::{CACHE_CONTROL, CONTENT_TYPE, HeaderName};
 use keel_types::{ErrorCode, Event, Id};
-use serde_json::{Value, json};
 use tokio::time::Instant;
 
-use super::Suite;
+use super::{Suite, probes};
 use crate::client::Credential;
 use crate::report::{Aborted, Failure, ensure, fail};
 
@@ -20,10 +19,10 @@ const STREAMS_PER_SESSION: usize = 4;
 const KEEP_ALIVE_SECONDS: u64 = 15;
 const FRAME_WAIT: Duration = Duration::from_secs(10);
 const CLOSE_WAIT: Duration = Duration::from_secs(KEEP_ALIVE_SECONDS + 10);
-const ADMIN_NOTE: &str = "conformance-events-admin";
-const USER_NOTE: &str = "conformance-events-user";
-const USER_NOTE_EDITED: &str = "conformance-events-user-edited";
-const SESSION_NOTE: &str = "conformance-events-session";
+const ADMIN_PROBE: &str = "events-admin";
+const USER_PROBE: &str = "events-user";
+const USER_PROBE_EDITED: &str = "events-user-edited";
+const SESSION_PROBE: &str = "events-session";
 
 pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     let answer = suite.client.get(PATH, Credential::Guest, &[]).await;
@@ -48,13 +47,13 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
         "the admin's session opens the stream as text/event-stream, no-store, retry: 3000",
         outcome,
     )?;
-    let outcome = edit(suite, None, ADMIN_NOTE).await;
-    let admin_note = suite
+    let outcome = create(suite, ADMIN_PROBE).await;
+    let admin_probe = suite
         .report
-        .check("note.edit creates the admin's note", outcome)?;
-    let outcome = admin.invalidation(admin_note).await;
+        .check("webhook.subscription.set saves the admin's probe", outcome)?;
+    let outcome = admin.invalidation(admin_probe).await;
     let (admin_seq, _) = suite.report.check(
-        "the admin's stream receives the data.invalidate of its note.edit with the seq as its id",
+        "the admin's stream receives the data.invalidate of its probe with the seq as its id",
         outcome,
     )?;
     let outcome = suite.find_user().await;
@@ -66,38 +65,44 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     suite
         .report
         .check("auth.su into the user for the event checks", outcome)?;
-    let outcome = edit(suite, None, USER_NOTE).await;
-    let user_note = suite
-        .report
-        .check("note.edit as the user creates the user's note", outcome)?;
-    let outcome = Stream::open(suite, Some(admin_seq.saturating_sub(1))).await;
-    let mut own = suite.report.check(
-        "the user opens the stream with Last-Event-ID just before the admin's note",
+    let outcome = create(suite, USER_PROBE).await;
+    let user_probe = suite.report.check(
+        "webhook.subscription.set as the user saves the user's probe",
         outcome,
     )?;
-    let outcome = own.invalidation(user_note).await.and_then(|(seq, before)| {
-        ensure(seq > admin_seq, || {
-            format!("the user's note has seq {seq}, not after {admin_seq}")
-        })?;
-        ensure(!before.iter().any(|event| about(event, admin_note)), || {
-            "the admin's note was replayed to the user".to_owned()
-        })
-    });
+    let outcome = Stream::open(suite, Some(admin_seq.saturating_sub(1))).await;
+    let mut own = suite.report.check(
+        "the user opens the stream with Last-Event-ID just before the admin's probe",
+        outcome,
+    )?;
+    let outcome = own
+        .invalidation(user_probe)
+        .await
+        .and_then(|(seq, before)| {
+            ensure(seq > admin_seq, || {
+                format!("the user's probe has seq {seq}, not after {admin_seq}")
+            })?;
+            ensure(
+                !before.iter().any(|event| about(event, admin_probe)),
+                || "the admin's probe was replayed to the user".to_owned(),
+            )
+        });
     let _ = suite.report.check(
-        "Last-Event-ID replays the user's own note within the window and leaves the admin's out",
+        "Last-Event-ID replays the user's own probe within the window and leaves the admin's out",
         outcome,
     );
-    let outcome = admin.invalidation(user_note).await;
+    let outcome = admin.invalidation(user_probe).await;
     let _ = suite.report.check(
-        "the admin's stream receives the data.invalidate of the user's note too",
+        "the admin's stream receives the data.invalidate of the user's probe too",
         outcome.map(|_| ()),
     );
-    let outcome = edit(suite, Some(user_note), USER_NOTE_EDITED).await;
+    let name = suite.name(USER_PROBE_EDITED);
+    let outcome = probes::rename(suite, user_probe, &name).await;
     let _ = suite.report.check(
-        "note.edit as the user edits its note while the stream is live",
+        "webhook.subscription.set as the user edits its probe while the stream is live",
         outcome.map(|_| ()),
     );
-    let outcome = own.invalidation(user_note).await;
+    let outcome = own.invalidation(user_probe).await;
     let _ = suite.report.check(
         "the user's stream receives the data.invalidate of its own edit live",
         outcome.map(|_| ()),
@@ -129,28 +134,20 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
         "the fifth stream of a session closes the first with retry: 0",
         outcome,
     );
-    let outcome = edit(suite, None, SESSION_NOTE).await;
-    let session_note = suite.report.check(
-        "note.edit creates a note for the session's newer streams",
+    let outcome = create(suite, SESSION_PROBE).await;
+    let session_probe = suite.report.check(
+        "webhook.subscription.set saves a probe for the session's newer streams",
         outcome,
     )?;
-    let outcome = all_receive(&mut streams, session_note).await;
+    let outcome = all_receive(&mut streams, session_probe).await;
     let _ = suite.report.check(
         "the four newer streams of the session stay open and receive its data.invalidate",
         outcome,
     );
-    let answer = suite
-        .client
-        .call(
-            "note.delete",
-            json!({ "ids": [admin_note, user_note, session_note] }),
-            Credential::Session,
-            &[],
-        )
-        .await;
+    let outcome = probes::delete(suite, &[admin_probe, user_probe, session_probe]).await;
     let _ = suite.report.check(
-        "note.delete removes the notes of the event checks",
-        answer.and_then(|answer| answer.data::<Value>().map(|_| ())),
+        "webhook.subscription.delete removes the probes of the event checks",
+        outcome,
     );
     let outcome = suite.logout().await;
     suite
@@ -164,17 +161,9 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     Ok(())
 }
 
-async fn edit(suite: &mut Suite, id: Option<Id>, title: &str) -> Result<Id, Failure> {
-    let mut params = json!({ "title": title });
-    if let Some(id) = id {
-        params["id"] = json!(id);
-    }
-    let answer = suite
-        .client
-        .call("note.edit", params, Credential::Session, &[])
-        .await?;
-    let (row, _) = answer.data::<Value>()?;
-    super::id_of(&row, "id").map_err(|failure| answer.failure(failure.0))
+async fn create(suite: &mut Suite, what: &str) -> Result<Id, Failure> {
+    let name = suite.name(what);
+    probes::create(suite, &name).await
 }
 
 async fn open_many(suite: &mut Suite, count: usize) -> Result<Vec<Stream>, Failure> {
@@ -230,14 +219,14 @@ enum Read {
     Silent,
 }
 
-struct Stream {
+pub struct Stream {
     response: Streaming,
     buffer: Vec<u8>,
     closed: bool,
 }
 
 impl Stream {
-    async fn open(suite: &mut Suite, last_event_id: Option<u64>) -> Result<Self, Failure> {
+    pub async fn open(suite: &mut Suite, last_event_id: Option<u64>) -> Result<Self, Failure> {
         let id = last_event_id.map(|id| id.to_string());
         let extra: Vec<(HeaderName, &str)> =
             id.iter().map(|id| (LAST_EVENT_ID, id.as_str())).collect();
@@ -343,6 +332,50 @@ impl Stream {
                         "no {DATA_INVALIDATE} about {subject} within {FRAME_WAIT:?}"
                     )));
                 }
+            }
+        }
+    }
+
+    pub async fn arrival(&mut self, id: Id) -> Result<Event, Failure> {
+        let deadline = Instant::now() + FRAME_WAIT;
+        loop {
+            let within = deadline.saturating_duration_since(Instant::now());
+            match self.read(within).await? {
+                Read::Frame(frame) if frame.event.as_deref() == Some(DATA_INVALIDATE) => {
+                    let (_, event) = invalidated(&frame)?;
+                    if event.id == id {
+                        return Ok(event);
+                    }
+                }
+                Read::Frame(_) => {}
+                Read::Closed => {
+                    return Err(fail(format!(
+                        "the stream closed before a {DATA_INVALIDATE} of the event {id}"
+                    )));
+                }
+                Read::Silent => {
+                    return Err(fail(format!(
+                        "no {DATA_INVALIDATE} of the event {id} within {FRAME_WAIT:?}"
+                    )));
+                }
+            }
+        }
+    }
+
+    pub async fn absent(&mut self, id: Id, within: Duration) -> Result<(), Failure> {
+        let deadline = Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.read(left).await? {
+                Read::Frame(frame) if frame.event.as_deref() == Some(DATA_INVALIDATE) => {
+                    let (_, event) = invalidated(&frame)?;
+                    ensure(event.id != id, || {
+                        format!("the event {id} arrived on the stream a second time")
+                    })?;
+                }
+                Read::Frame(_) => {}
+                Read::Closed => return Err(fail("the stream closed while it was watched")),
+                Read::Silent => return Ok(()),
             }
         }
     }

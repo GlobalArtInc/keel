@@ -2310,7 +2310,11 @@ name = "keel-conformance"
 version = "0.3.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "chrono",
  "clap",
+ "ed25519-dalek",
+ "futures",
  "hmac 0.13.0",
  "keel-client",
  "keel-types",

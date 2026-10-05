@@ -4,8 +4,14 @@ mod errors;
 mod events;
 mod export;
 mod features;
+mod fields;
 mod health;
+mod idempotency;
 mod lists;
+mod peers;
+mod probes;
+mod schema;
+mod svc;
 mod tokens;
 mod webhooks;
 
@@ -27,6 +33,7 @@ pub struct Suite {
     pub client: Client,
     pub settings: Settings,
     pub report: Report,
+    pub run: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,8 +47,9 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         client: Client::new(&settings.url, settings.cacert.as_deref())?,
         settings,
         report: Report::default(),
+        run: Id::generate().to_string().to_lowercase(),
     };
-    let groups: [(&str, Step); 10] = [
+    let groups: [(&str, Step); 14] = [
         ("health", |suite| Box::pin(health::run(suite))),
         ("boot", |suite| Box::pin(boot::run(suite))),
         ("auth", |suite| Box::pin(auth::run(suite))),
@@ -50,8 +58,12 @@ pub async fn run(settings: Settings) -> Result<Outcome, Failure> {
         ("export", |suite| Box::pin(export::run(suite))),
         ("error", |suite| Box::pin(errors::run(suite))),
         ("features", |suite| Box::pin(features::run(suite))),
+        ("fields", |suite| Box::pin(fields::run(suite))),
         ("webhook", |suite| Box::pin(webhooks::run(suite))),
         ("events", |suite| Box::pin(events::run(suite))),
+        ("idempotency", |suite| Box::pin(idempotency::run(suite))),
+        ("svc", |suite| Box::pin(svc::run(suite))),
+        ("peers", |suite| Box::pin(peers::run(suite))),
     ];
     for (name, group) in groups {
         if group(&mut suite).await.is_err() {
@@ -75,6 +87,10 @@ type Group<'a> = std::pin::Pin<Box<dyn Future<Output = Result<(), Aborted>> + 'a
 type Step = fn(&mut Suite) -> Group<'_>;
 
 impl Suite {
+    pub fn name(&self, what: &str) -> String {
+        format!("conformance-{}-{what}", self.run)
+    }
+
     pub async fn login(&mut self) -> Result<MetaPrincipal, Failure> {
         let answer = self
             .client

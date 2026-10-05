@@ -1,12 +1,11 @@
 use keel_types::{ErrorCode, Page};
 use serde_json::{Value, json};
 
-use super::{Suite, ids};
+use super::{Suite, ids, probes};
 use crate::client::{Answer, Credential};
 use crate::report::{Aborted, Failure, ensure};
 
-pub const NOTE_PREFIX: &str = "conformance-";
-pub const NOTES: [&str; 3] = ["conformance-a", "conformance-b", "conformance-c"];
+pub const SUFFIXES: [&str; 3] = ["a", "b", "c"];
 pub const OVERSIZE_PAGE: u32 = 1_000_000;
 
 pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
@@ -15,7 +14,7 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
         .report
         .check("auth.login as the admin for the list checks", outcome)?;
     accounts(suite).await?;
-    notes(suite).await?;
+    probes(suite).await?;
     let outcome = suite.logout().await;
     suite
         .report
@@ -115,24 +114,22 @@ async fn accounts(suite: &mut Suite) -> Result<(), Aborted> {
     Ok(())
 }
 
-async fn notes(suite: &mut Suite) -> Result<(), Aborted> {
+async fn probes(suite: &mut Suite) -> Result<(), Aborted> {
+    let prefix = suite.name("list-");
+    let names: Vec<String> = SUFFIXES
+        .iter()
+        .map(|suffix| format!("{prefix}{suffix}"))
+        .collect();
     let mut created = Vec::new();
-    for title in NOTES {
-        let answer = suite
-            .client
-            .call(
-                "note.edit",
-                json!({ "title": title }),
-                Credential::Session,
-                &[],
-            )
-            .await;
+    for name in &names {
+        let answer = probes::save(suite, probes::probe(name)).await;
         let id = suite.report.check(
-            &format!("note.edit creates the note {title}"),
+            &format!("webhook.subscription.set creates the probe {name}"),
             answer.and_then(|answer| {
+                let answer = answer.confidential();
                 let (row, _) = answer.data::<Value>()?;
-                ensure(row["title"] == title, || {
-                    answer.failure("the saved title differs").0
+                ensure(row["name"] == json!(name), || {
+                    answer.failure("the saved name differs").0
                 })?;
                 super::id_of(&row, "id").map_err(|failure| answer.failure(failure.0))
             }),
@@ -141,87 +138,75 @@ async fn notes(suite: &mut Suite) -> Result<(), Aborted> {
     }
     let answer = list(
         suite,
-        "note.list",
-        json!({ "search": NOTE_PREFIX, "pageSize": 2 }),
+        probes::LIST,
+        json!({ "search": prefix, "pageSize": 2 }),
     )
     .await;
     suite.report.check(
-        "note.list searched by the prefix with pageSize 2 answers two rows and total 3",
+        "webhook.subscription.list searched by the prefix with pageSize 2 answers two rows and total 3",
         page_of(answer).and_then(|page| {
             ensure(page.data.len() == 2 && page.total == 3, || {
                 format!("{} rows of {} total", page.data.len(), page.total)
             })
         }),
     )?;
-    let answer = list(suite, "note.list", json!({ "search": NOTES[1] })).await;
+    let answer = list(suite, probes::LIST, json!({ "search": names[1] })).await;
     suite.report.check(
-        "note.list searched by one title answers that note alone",
+        "webhook.subscription.list searched by one name answers that probe alone",
         page_of(answer).and_then(|page| {
             ensure(
-                page.total == 1 && page.data.len() == 1 && page.data[0]["title"] == NOTES[1],
+                page.total == 1 && page.data.len() == 1 && page.data[0]["name"] == json!(names[1]),
                 || format!("{:?}", page.data),
             )
         }),
     )?;
     let answer = list(
         suite,
-        "note.list",
-        json!({ "search": NOTE_PREFIX, "sort": { "key": "title", "dir": "asc" } }),
+        probes::LIST,
+        json!({ "search": prefix, "sort": { "key": "name", "dir": "desc" } }),
     )
     .await;
     suite.report.check(
-        "note.list sorted by title ascending answers a, b, c",
+        "webhook.subscription.list sorted by name descending answers c, b, a",
         page_of(answer).and_then(|page| {
-            let titles: Vec<&str> = page
+            let listed: Vec<&str> = page
                 .data
                 .iter()
-                .filter_map(|row| row["title"].as_str())
+                .filter_map(|row| row["name"].as_str())
                 .collect();
-            ensure(titles == NOTES, || format!("{titles:?}"))
+            let expected: Vec<&str> = names.iter().rev().map(String::as_str).collect();
+            ensure(listed == expected, || format!("{listed:?}"))
         }),
     )?;
     let answer = list(
         suite,
-        "note.list",
-        json!({ "sort": { "key": "id", "dir": "asc" } }),
+        probes::LIST,
+        json!({ "sort": { "key": "events", "dir": "asc" } }),
     )
     .await;
     suite.report.check(
-        "note.list sorted by a column not marked sortable answers 422 on sort.key",
-        not_sortable(answer, "id"),
+        "webhook.subscription.list sorted by a column not marked sortable answers 422 on sort.key",
+        not_sortable(answer, "events"),
     )?;
     let answer = list(
         suite,
-        "note.list",
-        json!({ "filters": [{ "key": "title", "value": NOTES[2] }] }),
+        probes::LIST,
+        json!({ "filters": [{ "key": "name", "value": names[2] }] }),
     )
     .await;
     suite.report.check(
-        "note.list filtered by title answers that note alone",
+        "webhook.subscription.list filtered by name answers that probe alone",
         page_of(answer).and_then(|page| {
             ensure(
-                page.total == 1 && page.data.len() == 1 && page.data[0]["title"] == NOTES[2],
+                page.total == 1 && page.data.len() == 1 && page.data[0]["name"] == json!(names[2]),
                 || format!("{:?}", page.data),
             )
         }),
     )?;
-    let answer = suite
-        .client
-        .call(
-            "note.delete",
-            json!({ "ids": created }),
-            Credential::Session,
-            &[],
-        )
-        .await;
+    let outcome = probes::delete(suite, &created).await;
     suite.report.check(
-        "note.delete removes the three notes",
-        answer.and_then(|answer| {
-            let (data, _) = answer.data::<Value>()?;
-            ensure(data["deleted"] == 3, || {
-                answer.failure("deleted is not 3").0
-            })
-        }),
+        "webhook.subscription.delete removes the three probes",
+        outcome,
     )?;
     Ok(())
 }

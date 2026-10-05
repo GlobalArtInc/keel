@@ -6,8 +6,7 @@ use crate::client::{Answer, Credential};
 use crate::report::{Aborted, Failure, ensure};
 
 pub const ROUTE: &str = "/api/v1/x/keel/export";
-pub const LIST: &str = "note.list";
-pub const NOTE: &str = "conformance-export";
+pub const LIST: &str = "keel.principal.list";
 pub const CSV_TYPE: &str = "text/csv; charset=utf-8";
 pub const ACCOUNT_COLUMN: &str = "accountId";
 pub const ACCOUNT_LABEL: &str = "Account";
@@ -17,34 +16,20 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     suite
         .report
         .check("auth.login as the admin for the export checks", outcome)?;
-    let answer = suite
-        .client
-        .call(
-            "note.edit",
-            json!({ "title": NOTE }),
-            Credential::Session,
-            &[],
-        )
-        .await;
-    let note = suite.report.check(
-        "note.edit creates the note the export carries",
-        answer.and_then(|answer| {
-            let (row, _) = answer.data::<Value>()?;
-            super::id_of(&row, "id").map_err(|failure| answer.failure(failure.0))
-        }),
-    )?;
+    let user_login = suite.settings.user_login.clone();
     let answer = export(suite, json!({ "func": LIST, "format": "csv" })).await;
     let admin_header = suite.report.check(
-        "keel.export of note.list as the admin streams a csv named after the list and the day",
+        "keel.export of keel.principal.list as the admin streams a csv named after the list and the day",
         csv(answer).and_then(|(header, rows, disposition)| {
             ensure(
                 disposition.starts_with(&format!("attachment; filename=\"{LIST}-"))
                     && disposition.ends_with(".csv\""),
                 || format!("Content-Disposition is {disposition}"),
             )?;
-            ensure(rows.iter().any(|row| row.contains(NOTE)), || {
-                format!("{NOTE} is not among {} rows", rows.len())
-            })?;
+            ensure(
+                rows.iter().any(|row| row.split(',').any(|cell| cell == user_login)),
+                || format!("{user_login} is not among {} rows", rows.len()),
+            )?;
             Ok(header)
         }),
     )?;
@@ -66,7 +51,7 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
         .check("auth.su into the user for the export checks", outcome)?;
     let answer = export(suite, json!({ "func": LIST, "format": "csv" })).await;
     let _ = suite.report.check(
-        "keel.export of note.list as the user lacks the accountId column",
+        "keel.export of keel.principal.list as the user lacks the accountId column",
         csv(answer).and_then(|(header, _, _)| {
             ensure(
                 !header.split(',').any(|label| label == ACCOUNT_LABEL) && !header.is_empty(),
@@ -93,19 +78,6 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
         "auth.su.exit back to the admin after the export checks",
         outcome,
     )?;
-    let answer = suite
-        .client
-        .call(
-            "note.delete",
-            json!({ "ids": [note] }),
-            Credential::Session,
-            &[],
-        )
-        .await;
-    let _ = suite.report.check(
-        "note.delete removes the export note",
-        answer.and_then(|answer| answer.data::<Value>().map(|_| ())),
-    );
     let outcome = suite.logout().await;
     suite
         .report

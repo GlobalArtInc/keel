@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use keel_client::http::header::{CACHE_CONTROL, ETAG, SET_COOKIE};
 use keel_client::http::{HeaderMap, HeaderName, HeaderValue, Method};
-use keel_client::{Pin, Request, Response, Streaming, Trust};
-use keel_types::{CallError, ErrorCode, Meta};
+use keel_client::{Feed, Pin, Request, Response, Streaming, Trust};
+use keel_types::{CallError, ErrorCode, InstanceInfo, Meta};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -16,6 +16,10 @@ pub const SESSION_PREFIX: &str = keel_client::SESSION_PREFIX;
 pub const REQUEST_ID: &str = "x-keel-request-id";
 pub const META_VERSION: &str = "x-keel-meta-version";
 pub const API_PREFIX: &str = keel_client::API_PREFIX;
+pub const INSTANCE_PATH: &str = keel_client::INSTANCE_PATH;
+pub const FEED_PATH: &str = keel_client::FEED_PATH;
+pub const IDEMPOTENCY_KEY: HeaderName = keel_client::IDEMPOTENCY_KEY;
+pub const ON_BEHALF_OF: HeaderName = keel_client::ON_BEHALF_OF;
 pub const CACHE_PRIVATE: &str = "private, no-store";
 pub const MASK: &str = "***";
 
@@ -83,6 +87,19 @@ impl Client {
 
     pub fn without_request_id(&self) -> &[String] {
         &self.without_request_id
+    }
+
+    pub fn feed(&self, token: &str, after: u64) -> Result<Feed, Failure> {
+        let credential = keel_client::Credential::peer(token)
+            .map_err(|error| fail(format!("the peer token is refused: {error}")))?;
+        Ok(self.keel.with_credential(credential).feed(after))
+    }
+
+    pub async fn instance(&mut self) -> Result<(Answer, InstanceInfo), Failure> {
+        let answer = self.get(INSTANCE_PATH, Credential::Guest, &[]).await?;
+        answer.status_is(200)?;
+        let instance = answer.body_as::<InstanceInfo>()?;
+        Ok((answer, instance))
     }
 
     pub async fn get(
@@ -221,6 +238,10 @@ impl Answer {
             confidential: false,
             response,
         }
+    }
+
+    pub fn replayed(&self) -> bool {
+        self.response.replayed()
     }
 
     pub fn confidential(mut self) -> Self {

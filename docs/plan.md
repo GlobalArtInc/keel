@@ -7090,6 +7090,78 @@ lets one installation trust the self-signed certificate of another. For 8b: `aut
 turns a call on behalf into a full browser session of the customer whatever else the mask of the
 link holds, and any principal of the panel who sees a site, a reseller or an administrator above its
 account included, opens the neighbour as the customer of that site.
+Step 7 leaves points for the pass over [design/05-modules.md](design/05-modules.md),
+[design/07-ecosystem.md](design/07-ecosystem.md) and
+[design/10-contracts.md](design/10-contracts.md). `hack/conformance.sh target/debug/keel`, still the
+one command CI, the README and "How we work" name, runs the suite against `dns` alone, `panel` alone
+and both in turn, each on a database, a `data_dir` and an agent of its own, and
+`KEEL_CONFORMANCE_COMPOSITIONS` names other sets; `demo` has no composition of its own any more, so
+the suite leans on no function of a product. Its generic row is a webhook subscription, which every
+composition carries and a user may save: a probe is a disabled subscription to a sink address under
+a mask no event matches, and the lists, the errors, the webhooks and the event stream run over
+probes where they ran over the notes of `demo`, the export over `keel.principal.list`, whose
+`accountId` column the user does not see. For each composition the script admits webhook deliveries
+to private addresses as before, sets `auth.shell_url` to the installation's own address, since
+pairing sends it and a neighbour issues a webhook secret only to an initiator with an address and
+masks, and raises `auth.rate.guest_per_minute` to 600, since the logins of the groups and the guest
+calls of pairing pass thirty a minute; `keel product features` must name a feature of each
+first-party product the composition enables and none of the others. The feature group checks that
+the listing names no feature the boot leaves out, and the `402` of a function withheld by the
+default edition of a bundle the composition enables, from a table of the suite:
+`dns.zone.dnssec.get` behind `dns.dnssec` for `dns` on `lite`, `note.withheld` behind
+`demo.withheld` for `demo` on `full`; the editions of `panel` withhold nothing. A product of the
+table that runs on that edition, as each runs on its default while the license module holds no
+lease, must leave the feature out of the boot, or the group fails, so an edition that starts
+granting what it withholds fails the run instead of dropping the `402` checks; only a lease that
+puts the product on another edition, or a composition without the license module, which keeps every
+feature of every edition and reports no license, takes the row out. `keel product features` cannot
+carry this check, since it lists what every edition of the enabled products declares. The check that
+a field shown by the descriptor is accepted by the server is the group `fields`, at the level of
+members, since the server evaluates no `show_if` and the two interpreters of conditions stay with
+the shared fixtures: every field of a function the admin's descriptor carries and the user's lacks
+is refused for the user with `403 forbidden_field` naming exactly those paths, and a call of the
+user carrying every field its descriptor shows, each with a value outside its JSON types and the key
+left out so the ownership guard lets it pass, answers `422 validation` under the key
+`keel.error.validation` with `fields[]` naming every mistyped field and no path outside the shown
+ones, which proves no shown field is refused before validation and that the call stopped at the
+schema rather than in a handler, whose own refusals carry their own keys. A member whose schema
+names no type, `properties` without `type` included, admits a value of any type, so it takes a
+string and is not counted as mistyped. The webhook group checks the retries on the first rung alone:
+a listener route answers `500` to the first attempt of each event, the delivery reads `failed` at
+attempt 1 with status 500 and its next attempt about a minute away, `webhook.delivery.retry` puts it
+back to `pending`, and the second attempt carries the same `X-Keel-Event-Id` with a fresh signature
+and reads `delivered` at attempt 2. The suite waits 1.1 seconds after reading the failed delivery
+before it asks for the retry, so the second attempt, signed at its own time as
+[design/07-ecosystem.md](design/07-ecosystem.md) requires, must carry a later `t` than the first; an
+installation that resent the stored signature fails the check. The idempotency group finds that a
+replay answers the first answer with its `once` members masked as `***`, the stored response being
+masked, so a replay never hands out a secret again, a rule
+[design/10-contracts.md](design/10-contracts.md) gains beside the replay; a key is the caller's, so
+the user sending the admin's key and body is answered anew, and a read carrying a key is never
+replayed. The `svc` group takes every kind from `svc.kinds`, which must agree with the
+`serviceKinds` of the handshake in order, builds the account from the customer's `(origin,
+externalId)` and the other required members of the kind's account schema, and the parameters from
+the parameter schema by the lowest value of each required member, the next one for `set_params`, so
+a kind whose schema asks for what the builder cannot make, a required string of a pattern other than
+an id, a `minLength` or `minItems` above 1024 or a bound past the range of a 64-bit integer, fails
+its check by name rather than the process, as does a signature time at the ends of that range;
+`login` answers `409 svc.error.no_principal` until a principal of the account's origin is upserted
+into the account. In the `peers` group a listener of the suite plays the neighbouring installations
+with Ed25519 instance keys of their own: as the initiator it calls `peer.pair` itself, reads the
+subscription made at pairing on its hook and the pull feed through the `Feed` of `keel-client`,
+rotates its second link with `peer.renew` and sees both links revoked by `peer.delete`; as the
+receiver it answers the handshake and `peer.pair` that `peer.create` of the installation sends, then
+signs events to the installation's hook and watches the inbox put the first on the admin's event
+stream and answer the repeat as a duplicate without a second event. On that side too the token the
+installation hands the neighbour in `peer.pair` is used: under the default scopes it answers `403
+keel.error.level` on `keel.account.list`, the level guard running before the scope guard and the
+scopes granting `service`, `403 keel.error.token_scope` on `auth.logout`, which that level reaches
+outside the empty functions, and `401` once `peer.delete` removes the link; and a second
+`peer.create` to an address whose handshake presents the paired neighbour's instance under another
+key answers `403 peer.error.instance_key` before any pairing request, and so any token, leaves the
+installation. `peer.rotate` from the side of the installation is left out, since it would need the
+listener to answer `peer.renew`; each neighbour of the listener keeps the Ed25519 signing key whose
+public half its handshake publishes, so the proof of possession of 8b can be signed by it.
 
 **Touches.** `docs/`, `README.md`, the versions.
 

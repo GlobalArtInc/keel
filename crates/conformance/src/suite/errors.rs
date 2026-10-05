@@ -2,7 +2,7 @@ use keel_client::http::header::ORIGIN;
 use keel_types::{ErrorCode, Id};
 use serde_json::json;
 
-use super::Suite;
+use super::{Suite, probes};
 use crate::client::{Answer, Credential};
 use crate::report::{Aborted, Failure, ensure};
 
@@ -39,13 +39,14 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
     suite
         .report
         .check("auth.login as the admin for the error checks", outcome)?;
-    let answer = suite
-        .client
-        .call("note.edit", json!({}), Credential::Session, &[])
-        .await;
+    let mut nameless = probes::probe(&suite.name("error-nameless"));
+    if let Some(params) = nameless.as_object_mut() {
+        params.remove("name");
+    }
+    let answer = probes::save(suite, nameless).await;
     suite.report.check(
-        "note.edit without its required title answers 422 validation with fields[] naming title",
-        missing_field(answer, "title"),
+        "webhook.subscription.set without its required name answers 422 validation with fields[] naming name",
+        missing_field(answer, "name"),
     )?;
     let outcome = suite.find_user().await;
     let user = suite.report.check(
@@ -69,17 +70,11 @@ pub async fn run(suite: &mut Suite) -> Result<(), Aborted> {
             })
         }),
     )?;
-    let answer = suite
-        .client
-        .call(
-            "note.edit",
-            json!({ "title": "conformance-forbidden", "account": Id::ROOT_ACCOUNT }),
-            Credential::Session,
-            &[],
-        )
-        .await;
+    let mut foreign = probes::probe(&suite.name("error-forbidden"));
+    foreign["account"] = json!(Id::ROOT_ACCOUNT);
+    let answer = probes::save(suite, foreign).await;
     suite.report.check(
-        "the user sending account to note.edit answers 403 forbidden_field with fields[].path account",
+        "the user sending account to webhook.subscription.set answers 403 forbidden_field with fields[].path account",
         forbidden_field(answer, "account"),
     )?;
     let outcome = suite.su_exit().await;

@@ -200,13 +200,21 @@ Installing the built binary on a host is `deploy/install.sh --product demo --bin
 on a clean Debian or Ubuntu; `deploy/README.md` describes the steps, the flags and what the
 installer leaves to later milestones.
 
-`hack/conformance.sh target/debug/keel` prepares a fresh database and `data_dir` the same way,
-enables `demo`, creates an admin and a user in a second account over `ctl`, starts `serve` and
-runs `keel-conformance`, the contract suite: a black-box client of the started binary on
-`keel-client`, typed with `keel-types`, that prints one line per check and exits non-zero on any
-failure. It takes `--url`, `--admin-login`, `--admin-password` (or
-`KEEL_CONFORMANCE_ADMIN_PASSWORD`), `--user-login`, the login of a user in another account, and
-`--cacert`, a PEM whose certificates are pinned: the one the installation presents.
+`hack/conformance.sh target/debug/keel` runs `keel-conformance`, the contract suite, against three
+compositions in turn: `dns` alone, `panel` alone and both. For each it prepares a fresh database
+and `data_dir` the same way, enables the products, creates an admin and a user in a second account
+over `ctl`, admits webhook deliveries to private addresses, sets `auth.shell_url` to the
+installation's own address and raises the guest rate, starts `serve` and runs the suite;
+`KEEL_CONFORMANCE_COMPOSITIONS` names other sets, such as `"dns,panel"`. The suite is a black-box
+client of the started binary on `keel-client`, typed with `keel-types`, that prints one line per
+check and exits non-zero on any failure: health, boot, auth, tokens, lists, export, errors,
+features, the fields a descriptor shows and hides, webhooks with their signature and retries, the
+event stream, idempotency, every service kind of `svc.kinds` built from its schemas, and peers,
+where a listener of the suite plays the neighbouring installations for pairing, scopes, on-behalf
+calls, deliveries, the pull feed, the inbox and revocation. It takes `--url`, `--admin-login`,
+`--admin-password` (or `KEEL_CONFORMANCE_ADMIN_PASSWORD`), `--user-login`, the login of a user in
+another account, and `--cacert`, a PEM whose certificates are pinned: the one the installation
+presents.
 
 `keel --config <path>` (or `KEEL_CONFIG`) points at another configuration file; `keel ctl
 --socket <path>` at another control socket than `/run/keel/core.sock`. The descriptor snapshots

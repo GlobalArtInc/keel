@@ -7,6 +7,8 @@ timeout=${KEEL_PROVE_TIMEOUT:-30}
 keel=${1:-}
 conformance=${2:-}
 admin_url=${KEEL_TEST_DATABASE_URL:-}
+read -r -a compositions <<<"${KEEL_CONFORMANCE_COMPOSITIONS:-dns panel dns,panel}"
+first_party=(dns panel)
 scheme=https
 cacert=""
 database=""
@@ -15,11 +17,14 @@ serve_pid=""
 serve_log=""
 admin_login=root
 user_login=alice
+guest_per_minute=600
 
 usage() {
   echo "usage: hack/conformance.sh [path/to/keel] [path/to/keel-conformance]" >&2
   echo "  KEEL_TEST_DATABASE_URL must point at a Postgres superuser connection;" >&2
-  echo "  a binary that is not given is built with cargo build" >&2
+  echo "  a binary that is not given is built with cargo build;" >&2
+  echo "  KEEL_CONFORMANCE_COMPOSITIONS lists the product sets to run against," >&2
+  echo "  each a comma-separated set, by default \"dns panel dns,panel\"" >&2
 }
 
 fail() {
@@ -27,9 +32,8 @@ fail() {
   exit 1
 }
 
-cleanup() {
-  local code=$?
-  trap - EXIT
+teardown() {
+  local code=0
   if [ -n "$serve_pid" ]; then
     echo "stopping keel serve ($serve_pid)"
     if ! stop_serve; then
@@ -46,13 +50,24 @@ cleanup() {
       echo "could not drop database $database" >&2
       code=1
     fi
+    database=""
   fi
   if [ -n "$site" ] && [ -d "$site" ]; then
     rm -rf "$site"
     echo "removed $site"
   fi
+  site=""
+  return "$code"
+}
+
+cleanup() {
+  local code=$?
+  trap - EXIT
+  if ! teardown; then
+    code=1
+  fi
   if [ "$code" -eq 0 ]; then
-    echo "the conformance suite is green"
+    echo "the conformance suite is green against ${compositions[*]}"
   fi
   exit "$code"
 }
@@ -166,6 +181,88 @@ stop_serve() {
   fi
 }
 
+composed() {
+  local products=$1 product=$2
+  case ",$products," in *",$product,"*) return 0 ;; *) return 1 ;; esac
+}
+
+run_composition() {
+  local products=$1 index=$2
+  local product tmp
+  local -a enabled
+  echo "=== the composition $products"
+  tmp=${TMPDIR:-/tmp}
+  site=$(mktemp -d "${tmp%/}/keel-conformance.XXXXXX")
+  database="keel_test_conformance_$(date +%s)_$$_$index"
+  port=$(free_port)
+  psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
+  echo "created database $database"
+  mkdir -p "$site/run" "$site/lib"
+  cacert=""
+  if [ "$scheme" = https ]; then
+    cacert="$site/lib/tls/cert.pem"
+  fi
+  cat >"$site/config.yaml" <<EOF
+listen: 127.0.0.1:$port
+socket: $site/run/core.sock
+data_dir: $site/lib
+database: $(database_url "$admin_url" "$database")
+log: { level: info, format: text }
+host: { socket: $site/agent/agent.sock }
+dns: { zones_dir: $site/agent/zones, include_dir: $site/agent/named }
+hosting: { transfer_dir: $site/agent/transfer }
+EOF
+  echo "site $site, binary $keel, suite $conformance"
+  start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
+
+  IFS=, read -r -a enabled <<<"$products"
+  for product in "${enabled[@]}"; do
+    keel_ok "$site/enable-$product.out" product enable "$product"
+  done
+  keel_ok "$site/features.out" product features
+  for product in "${first_party[@]}"; do
+    if composed "$products" "$product"; then
+      grep -q "^$product\." "$site/features.out" \
+        || fail "keel product features names no feature of $product, which the composition $products enables"
+    elif grep -q "^$product\." "$site/features.out"; then
+      fail "keel product features names a feature of $product, which the composition $products leaves disabled"
+    fi
+  done
+  echo "keel product features names the features of the enabled products and of no other"
+  start_serve
+
+  local root_account=00000000000000000000000000
+  local admin_password user_password admin_id account_id user_id
+  admin_password=$(secret)
+  user_password=$(secret)
+  keel_ok "$site/admin.json" ctl keel.principal.create "login=$admin_login" level=admin "account=$root_account"
+  admin_id=$(json_get "$site/admin.json" 'doc["data"]["id"]')
+  keel_ok "$site/admin-password.json" ctl auth.password.set "principal=$admin_id" "password=$admin_password"
+  keel_ok "$site/account.json" ctl keel.account.create kind=user
+  account_id=$(json_get "$site/account.json" 'doc["data"]["id"]')
+  keel_ok "$site/user.json" ctl keel.principal.create "login=$user_login" level=user "account=$account_id"
+  user_id=$(json_get "$site/user.json" 'doc["data"]["id"]')
+  keel_ok "$site/user-password.json" ctl auth.password.set "principal=$user_id" "password=$user_password"
+  echo "created the admin $admin_login and the user $user_login in account $account_id"
+  keel_ok "$site/private-targets.json" ctl settings.set key=webhook.private_targets value=true
+  echo "allowed webhook deliveries to private targets for the suite's listener"
+  keel_ok "$site/shell-url.json" ctl settings.set key=auth.shell_url "value=$scheme://127.0.0.1:$port"
+  echo "gave the installation its public address $scheme://127.0.0.1:$port, which pairing sends a neighbour"
+  keel_ok "$site/rate.json" ctl settings.set key=auth.rate.guest_per_minute "value=$guest_per_minute"
+  echo "raised the guest rate to $guest_per_minute calls a minute for the suite's logins and pairings"
+
+  echo "--- keel-conformance against $products"
+  local args=(--url "$scheme://127.0.0.1:$port" --admin-login "$admin_login" --user-login "$user_login")
+  if [ -n "$cacert" ]; then
+    args+=(--cacert "$cacert")
+  fi
+  KEEL_CONFORMANCE_ADMIN_PASSWORD="$admin_password" "$conformance" "${args[@]}"
+
+  stop_serve || fail "keel serve did not stop cleanly"
+  teardown || fail "the composition $products was not torn down cleanly"
+  echo "=== the composition $products is green"
+}
+
 if [ -z "$admin_url" ]; then
   usage
   echo "KEEL_TEST_DATABASE_URL is not set" >&2
@@ -174,6 +271,18 @@ fi
 for tool in psql curl python3; do
   if ! command -v "$tool" >/dev/null; then
     echo "$tool is not installed" >&2
+    exit 2
+  fi
+done
+if [ "${#compositions[@]}" -eq 0 ]; then
+  usage
+  echo "KEEL_CONFORMANCE_COMPOSITIONS names no composition" >&2
+  exit 2
+fi
+for products in "${compositions[@]}"; do
+  if ! [[ "$products" =~ ^[a-z][a-z0-9_]*(,[a-z][a-z0-9_]*)*$ ]]; then
+    usage
+    echo "the composition $products is not a comma-separated set of product ids" >&2
     exit 2
   fi
 done
@@ -198,57 +307,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-tmp=${TMPDIR:-/tmp}
-site=$(mktemp -d "${tmp%/}/keel-conformance.XXXXXX")
-database="keel_test_conformance_$(date +%s)_$$"
-port=$(free_port)
-psql "$admin_url" -qAt -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$database\" TEMPLATE template1" >/dev/null
-echo "created database $database"
-mkdir -p "$site/run" "$site/lib"
-if [ "$scheme" = https ]; then
-  cacert="$site/lib/tls/cert.pem"
-fi
-cat >"$site/config.yaml" <<EOF
-listen: 127.0.0.1:$port
-socket: $site/run/core.sock
-data_dir: $site/lib
-database: $(database_url "$admin_url" "$database")
-log: { level: info, format: text }
-host: { socket: $site/agent/agent.sock }
-dns: { zones_dir: $site/agent/zones, include_dir: $site/agent/named }
-EOF
-echo "site $site, binary $keel, suite $conformance"
-start_agent "$keel" "$site/agent" || fail "keel privileged did not start beside the kernel"
-
-keel_ok "$site/enable.out" product enable demo
-keel_ok "$site/enable-dns.out" product enable dns
-keel_ok "$site/features.out" product features
-if grep -qx "demo.withheld" "$site/features.out"; then
-  fail "keel product features names demo.withheld, which the fixture leaves out"
-fi
-echo "keel product features leaves demo.withheld out"
-start_serve
-
-root_account=00000000000000000000000000
-admin_password=$(secret)
-user_password=$(secret)
-keel_ok "$site/admin.json" ctl keel.principal.create "login=$admin_login" level=admin "account=$root_account"
-admin_id=$(json_get "$site/admin.json" 'doc["data"]["id"]')
-keel_ok "$site/admin-password.json" ctl auth.password.set "principal=$admin_id" "password=$admin_password"
-keel_ok "$site/account.json" ctl keel.account.create kind=user
-account_id=$(json_get "$site/account.json" 'doc["data"]["id"]')
-keel_ok "$site/user.json" ctl keel.principal.create "login=$user_login" level=user "account=$account_id"
-user_id=$(json_get "$site/user.json" 'doc["data"]["id"]')
-keel_ok "$site/user-password.json" ctl auth.password.set "principal=$user_id" "password=$user_password"
-echo "created the admin $admin_login and the user $user_login in account $account_id"
-keel_ok "$site/private-targets.json" ctl settings.set key=webhook.private_targets value=true
-echo "allowed webhook deliveries to private targets for the suite's listener"
-
-echo "--- keel-conformance"
-conformance_args=(--url "$scheme://127.0.0.1:$port" --admin-login "$admin_login" --user-login "$user_login")
-if [ -n "$cacert" ]; then
-  conformance_args+=(--cacert "$cacert")
-fi
-KEEL_CONFORMANCE_ADMIN_PASSWORD="$admin_password" "$conformance" "${conformance_args[@]}"
-
-stop_serve || fail "keel serve did not stop cleanly"
+index=0
+for products in "${compositions[@]}"; do
+  index=$((index + 1))
+  run_composition "$products" "$index"
+done
