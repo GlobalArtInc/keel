@@ -293,6 +293,16 @@ modal that misses frames for five seconds polls `task.get`, and a details button
 the task drawer without giving up the follow; `redirect` navigates, `download` hands the file to
 the browser.
 
+The role `external`, named in the vocabulary since M2, is an action whose function answers `{ url
+}`, as `hosting.site.open_zone` answers the address the zone of a site opens at
+([07-ecosystem.md](07-ecosystem.md)): the action runner calls the function and navigates inside the
+shell to a path starting with a single `/`, leaves for an `http` or `https` address in the same tab
+through the injection token `KEEL_OPEN_EXTERNAL`, since a window opened after an asynchronous call
+is blocked by browsers, and on any other answer opens nothing and shows `keel.error.target`; a
+refusal shows its toast as any action's. A key held in a column or a param, such as the `zoneError`
+of a site whose zone the neighbour refused, is shown as text, as the column `error` of a failed
+apply is; translating it is left to the shell.
+
 `provideKeelViews([{ func, component }])` registers a component for a function name; anything not
 registered falls back to the generic renderer for its `kind`. The registry is a first-class
 mechanism, not an escape hatch (see "Custom views" below).
@@ -423,7 +433,9 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
 - A harness for Playwright against a built binary, `keelTest` of the nested entry point
   `@globalart/keel/testing/playwright`, with a login through the real screen, the three fixture
   logins and a session over the HTTP API; `hack/e2e.sh` prepares the site and runs the suite under
-  `frontend/e2e/` in CI.
+  `frontend/e2e/` in CI, leaving out the specs tagged `@peers`, which `hack/peers-e2e.sh` runs
+  against the two installations it pairs, `frontend/e2e/peers.spec.ts` following "Open in KeelDNS"
+  onto the neighbour as the customer of a site ([09-operations.md](09-operations.md)).
 - `/boot` fixtures with no product, one product and two products enabled, `KEEL_BOOT`, so the
   brand rule and the product headings are covered by Storybook and Playwright without a second
   installation.
@@ -681,6 +693,7 @@ The full plan is in [../plan.md](../plan.md); the frontend-relevant parts are:
 | M2        | entry points `/meta`, `/client`, `/forms`, `/renderer` (list, form, action, wizard, tabs, the object renderer), `/shell` with the one shell application (`/boot.products`, the brand rule, product headings, the settings value form and the security page as its own views), `/testing` with the `/boot` fixtures, the dump loader, the Storybook decorator and the Playwright harness; `rust-embed` in `bin/keel`; Storybook with fixtures; phoenix-ui batch 1; the OwnLate to `PHX_LABELS` bridge; publication of `@globalart/keel` to Nexus |
 | M3        | the real event stream in `/client` with `data.invalidate` through the lists; the progress modal, the task drawer, the notification centre, the about drawer and the home screen in `/shell`; the export dropdown, column order, the cell editor and the multi-row form in `/renderer`; the file control, the upload submit and the scoped labels in `/forms`; download and upload in `/client`; phoenix-ui batch 2 pinned at `0.3.1`; the OwnLate projects with `keel-dev i18n pull`, `missing` and `extract` |
 | M5        | renderers `report`, `dashboard`, `tree`, `master-detail`, `stream`; phoenix-ui batch 3 pinned at `0.4.0` with the `code`, `key_value` and `transfer` controls in `/forms`; `KeelClient.stream`; the forgotten-password flow at `/reset` and the address confirmation at `/verify` in `/shell`; one named chunk per product under `frontend/products`, checked by `tools/product-chunks.mjs`; the file manager and configuration editor of `panel` as custom views in `frontend/products/panel` |
+| M6        | the role `external` in the action runner, `KEEL_OPEN_EXTERNAL` and `keel.error.target`; the row action "Open in KeelDNS" of `panel` and the column `zoneError` from descriptors alone; `frontend/e2e/peers.spec.ts` against two installations through `hack/peers-e2e.sh` |
 
 M2 is done when the `demo` bundle, enabled on the `keel` binary, is driven entirely from the
 browser without any product TypeScript: a list with search, sorting, filters and bulk delete with

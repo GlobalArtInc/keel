@@ -385,10 +385,10 @@ async fn boot_of(running: &Running) -> Value {
     body
 }
 
-async fn public_key_of(running: &Running) -> Value {
+async fn identity_of(running: &Running) -> (Value, Value) {
     let (status, body) = get(running, "/api/v1/instance").await;
     assert_eq!(status, 200, "{body}");
-    body["publicKey"].clone()
+    (body["instanceId"].clone(), body["publicKey"].clone())
 }
 
 async fn titles_of(site: &Site) -> Vec<String> {
@@ -417,7 +417,7 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
     assert_eq!(status, 200, "{body}");
     assert!(cookie.is_some(), "the source logs alice in: {body}");
     let source_boot = boot_of(&running).await;
-    let source_key = public_key_of(&running).await;
+    let source_identity = identity_of(&running).await;
     let archive = source.archive("site.tar.zst");
     assert_eq!(
         source
@@ -566,9 +566,9 @@ async fn a_backup_restored_into_a_fresh_database_and_data_dir_answers_the_same_b
     assert_eq!(restored.products(), ["probe"]);
     assert_eq!(boot_of(&restored).await, source_boot);
     assert_eq!(
-        public_key_of(&restored).await,
-        source_key,
-        "the instance key opens under the restored data key"
+        identity_of(&restored).await,
+        source_identity,
+        "the instance id comes back and the instance key opens under the restored data key"
     );
     let (status, cookie, body) = login_with_totp(&restored, &enrolled.secret, 1).await;
     assert_eq!(status, 200, "{body}");
@@ -629,7 +629,7 @@ async fn a_backup_without_the_key_restores_but_the_sealed_values_do_not_open() {
         .await
         .expect("the source starts");
     let enrolled = enrol_alice(&running).await;
-    let source_key = public_key_of(&running).await;
+    let source_identity = identity_of(&running).await;
     let archive = source.archive("plain.tar.zst");
     assert_eq!(
         source
@@ -705,9 +705,13 @@ async fn a_backup_without_the_key_restores_but_the_sealed_values_do_not_open() {
         std::fs::read_to_string(source.config.data_dir.join("secret.key")).unwrap(),
         "the target generates a key of its own"
     );
+    let (instance_id, public_key) = identity_of(&restored).await;
+    assert_eq!(
+        instance_id, source_identity.0,
+        "the target keeps the instance id of the dump"
+    );
     assert_ne!(
-        public_key_of(&restored).await,
-        source_key,
+        public_key, source_identity.1,
         "the target answers the handshake with an instance key of its own"
     );
     let (status, cookie, body) = login_with_totp(&restored, &enrolled.secret, 0).await;

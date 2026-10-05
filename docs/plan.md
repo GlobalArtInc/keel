@@ -1,10 +1,9 @@
 # Plan
 
 This document orders the work: the milestones M0 to M8 with their scope and exit criteria, the
-breakdowns of M0, M1, M2 and M3 into PR-sized steps, the working rules of the repository, and the
-M0, M1, M2 and M3 exit checklists. The design itself lives in `design/`; this document only says in
-which order it is built and how each step is shown to be done. Nothing here carries a date or a
-duration.
+breakdowns of M0 to M6 into PR-sized steps, the working rules of the repository, and the M0 to M6
+exit checklists. The design itself lives in `design/`; this document only says in which order it
+is built and how each step is shown to be done. Nothing here carries a date or a duration.
 
 ## Milestones
 
@@ -6420,12 +6419,13 @@ service is. The system module `peers` (feature `peers`, in the matrix) starts he
 
 **Goal.** Pairing by one-time code end to end: `peer.pair_code { scopes, level, on_behalf, ttl }`
 on the receiving side (admin) answering `PAIR-XXXX-XXXX`; `peer.create { url, code, subscribe }`
-on the initiating side reading the handshake and posting `/api/v1/x/peers/pair` with its
-instance, the inbound `kpt_` token and its scopes; the receiver answering its `peerId`, the
-outbound token, the granted scopes and the webhook secret; both rows stored as the design
-sketches (the token that calls us as a sha256 hash, the token we call with and the secret as
-`Secret`). `kpt_` tokens join `auth` as the fourth prefix with a `service`-level principal in the
-root account per link; the dispatcher enforces the three scope facets (`functions` masks,
+on the initiating side reading the handshake and calling the receiver's guest function
+`peer.pair` (`POST /api/v1/call/peer.pair`, as the step decided) with its instance, the inbound
+`kpt_` token and its scopes; the receiver answering its `peerId`, the outbound token, the granted
+scopes and the webhook secret; both rows stored as the design sketches (the token that calls us as
+a sha256 hash, the token we call with and the secret as `Secret`). `kpt_` tokens join `auth` as the
+fourth prefix with a `service`-level principal in the root account per link; the dispatcher
+enforces the three scope facets (`functions` masks,
 `level` ceiling, `onBehalf`) in the token-scope guard M4 placed in the order; trust on first use
 pins the peer's instance key and a later contact presenting another key is refused;
 `peer.rotate` issues fresh tokens and retires the old; `peer.delete` revokes at once; the
@@ -7314,26 +7314,26 @@ are trusted code, and the review of M7 takes up plugins.
   `KEEL_TEST_DATABASE_URL` names, `env -u KEEL_TEST_DATABASE_URL cargo test -p keel-testkit` against
   the container the testkit starts, `cargo run -p keel-dev -- types --out contracts/schema --check`,
   `cargo test -p keel-bin --no-default-features`, `cargo build -p keel-bin --no-default-features
-  --features demo`, `cargo build -p keel-bin --no-default-features --features dns`, `cargo build
-  -p keel-bin --no-default-features --features panel`, `cargo build -p keel-bin`, `hack/prove-binary.sh target/debug/keel`, `hack/check-install.sh
-  target/debug/keel`, `hack/check-release.sh target/debug/keel`, `hack/conformance.sh
-  target/debug/keel`, `hack/descriptors.sh target/debug/keel`, `cargo run -p keel-dev -- i18n
-  missing --dump contracts/dump`, `pnpm exec playwright install chromium` once, `hack/e2e.sh
-  target/debug/keel` and `hack/peers-e2e.sh target/debug/keel`, then `hack/check-test-databases.sh`,
-  `hack/check-deps.sh` and `hack/check-docs.sh`; the scripts that start the binary speak https to it
-  with the certificate it generates under the site's data directory. The job `frontend`, in
-  `frontend/`: `pnpm install
+  --features demo`, `cargo build -p keel-bin --no-default-features --features dns`, `cargo build -p
+  keel-bin --no-default-features --features panel`, `cargo build -p keel-bin`, `hack/prove-binary.sh
+  target/debug/keel`, `hack/check-install.sh target/debug/keel`, `hack/check-release.sh
+  target/debug/keel`, `hack/conformance.sh target/debug/keel`, `hack/descriptors.sh
+  target/debug/keel`, `cargo run -p keel-dev -- i18n missing --dump contracts/dump`, `pnpm exec
+  playwright install chromium` once, `hack/e2e.sh target/debug/keel` and `hack/peers-e2e.sh
+  target/debug/keel`, then `hack/check-test-databases.sh`, `hack/check-deps.sh` and
+  `hack/check-docs.sh`; the scripts that start the binary speak https to it with the certificate it
+  generates under the site's data directory. The job `frontend`, in `frontend/`: `pnpm install
   --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`, `pnpm lint`, `pnpm
   format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`, `pnpm exec http-server
   storybook-static --port 6006 --silent &`, `pnpm exec wait-on http://127.0.0.1:6006/index.json` and
   `pnpm test-storybook`, `node tools/stamp.mjs` and, in `frontend/dist/keel`, `pnpm publish
   --dry-run --no-git-checks`. The job `system` runs the `keel-system` matrix, `cargo clippy` and
-  `cargo test -p keel-system --no-default-features --features <set>` over twenty sets — each of
-  the eleven modules alone, `tasks,cron,notify,update` and `tasks,backup`, the seven modules of M3
+  `cargo test -p keel-system --no-default-features --features <set>` over twenty-two sets — each of
+  the thirteen modules alone, `tasks,cron,notify,update` and `tasks,backup`, the seven modules of M3
   without each of the M1 modules and without `tasks` in turn, and the three nested prefixes
-  `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against Postgres and the mail
-  catcher. The job `rehearsal` builds the shell with `pnpm install --frozen-lockfile` and `pnpm
-  build` in `frontend/`, then runs `hack/rehearsal.sh "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"`
+  `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify` — against Postgres and the mail catcher.
+  The job `rehearsal` builds the shell with `pnpm install --frozen-lockfile` and `pnpm build` in
+  `frontend/`, then runs `hack/rehearsal.sh "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"`
   and `hack/check-test-databases.sh` against Postgres. The Build workflow builds the musl release
   with its size check, after `keel-dev i18n pull` when the translation token is present, and
   `release.yml` publishes an annotated `keel-v*` tag to the release channel.
@@ -8394,3 +8394,220 @@ security review left without a fix, are listed last, unticked.
       compromised kernel reaches the override lines unchecked, a variable schema in the agent
       being the subject of the M7 review; an offline lease cannot tell a clock set back before the
       first start.
+
+## M6 exit checklist
+
+Every ticked item below is checked by CI on `main` — the tests of the workspace, the twenty-two-set
+`keel-system` matrix against Postgres and the mail catcher, the builds of `keel-bin` with each
+bundle alone, `hack/prove-binary.sh`, `hack/check-install.sh`, `hack/check-release.sh`,
+`hack/conformance.sh` over `dns` alone, `panel` alone and both, `hack/descriptors.sh`, `keel-dev i18n
+missing`, `hack/e2e.sh` and `hack/peers-e2e.sh` against the built binary over https, the job
+`rehearsal`, the job `frontend`, and `hack/check-docs.sh` over this checklist. "Two installations"
+in CI are two kernels of the testkit on two databases in one process or two binaries on two ports
+of one machine, never a real network; what needs two machines or the published channel is proven
+by the operator with `hack/peers-vm.sh`, which `deploy/README.md` lists under "Proving on a
+machine", and on `keel-demo`. Those items are left unticked and named operator-run, and each is
+ticked once it holds, with the date-free note "confirmed by hand" and the machines. A "Done when"
+item that has a CI half and a machine half is split into a ticked item and an operator-run one.
+What M6 planned and left undone, and the findings of the security review left without a fix, are
+listed last, unticked.
+
+- [x] Two installations are paired by code: `two_installations_pair_by_code_and_call_each_other_within_scope`,
+      `a_used_or_expired_code_is_refused`, `a_pair_code_checks_its_grants_and_only_an_administrator_issues_one`
+      and `pairing_refuses_itself_a_paired_instance_an_unreachable_address_and_a_far_protocol` in
+      `crates/system/tests/system/peers.rs`, two kernels on two databases; the handshake they read
+      in `the_handshake_answers_the_instance_key_products_and_contributed_features` and
+      `the_instance_key_survives_a_restart_and_is_sealed` in `crates/kernel/tests/kernel/instance.rs`;
+      `hack/peers-e2e.sh target/debug/keel` pairs two binaries, `dns` alone and `panel` alone on two
+      databases and ports, with `peer.pair_code` and `peer.create` over the CLI; the `peers` group
+      of `hack/conformance.sh target/debug/keel` pairs a listener playing a neighbour as the
+      initiator and as the receiver.
+- [ ] On two machines, each installed with `--listen <address>:1500` and trusting the other's
+      certificate through the trust store of the system, `panel` on one reaches `dns` on the other:
+      paired by code, a site whose zone named serves on the other machine in the account of the
+      site's customer, a taken zone refused on the domain field, the one-time key opened in a
+      browser with the link as actor in the trail, the zone's signed event received once though
+      sent twice, `svc.dns.zones.open` twice with one key giving one service, and a revoked token
+      and a deleted link answering `401` — operator-run: `hack/peers-vm.sh install dns <archive>
+      <address>` on one machine and `hack/peers-vm.sh install panel <archive> <address>` on the
+      other, then `trust`, `code`, `pair`, `check` and `revoked` as each step prints, the transcript
+      of the two machines recorded here.
+- [x] Creating a site in `panel` on one installation creates a zone in `dns` on the other on behalf
+      of the client, and a DNS error arrives in the hosting form as a key on a field:
+      `a_site_on_one_installation_creates_its_zone_on_the_other_on_behalf_of_the_customer`,
+      `a_dns_error_reaches_the_hosting_form_as_a_field_key` and `an_unreachable_neighbour_answers_peer`
+      in `products/panel/tests/panel/dns_peer.rs` with two kernels, beside
+      `a_refusal_the_site_form_is_certain_to_give_comes_before_the_neighbour`,
+      `a_silent_neighbour_answers_peer_before_the_hook_times_out`,
+      `the_task_of_a_site_gone_before_it_runs_creates_no_zone` and
+      `a_zone_refused_after_commit_marks_the_site_row_and_raises_a_problem`; the pre-check
+      `check_answers_the_refusals_of_create_for_the_caller_and_creates_nothing` in
+      `products/dns/tests/dns/zones.rs`; in the browser `frontend/e2e/peers.spec.ts` ("a zone the
+      neighbour refuses stops the wizard with the key of dns-peer on the domain field") through
+      `hack/peers-e2e.sh target/debug/keel`, which finds the zone of the site in the account of the
+      customer the panel synced on the `dns` side and audited as created by the customer with the
+      link as actor.
+- [x] The `dns` installation opens from the `panel` installation by a one-time key, with `actor` in
+      the audit trail: `the_neighbour_opens_by_a_one_time_key_with_the_peer_as_actor_in_the_audit`,
+      `a_token_of_the_customer_short_of_full_scope_opens_nothing_on_the_neighbour`,
+      `a_neighbour_without_a_public_address_opens_under_the_address_of_the_link` and
+      `a_neighbour_that_refuses_the_key_or_cannot_be_reached_answers_peer` in
+      `products/panel/tests/panel/open_neighbour.rs`; the handover in
+      `a_peer_hands_its_customer_over_with_a_one_time_key_and_the_peer_as_actor`,
+      `a_handover_outside_a_call_for_a_customer_is_refused` and
+      `a_customer_handed_over_lies_below_its_link_and_lands_inside_the_installation` in
+      `crates/system/tests/system/peers_on_behalf.rs`; the role `external` under Jest in
+      `frontend/libs/keel/renderer/src/action.spec.ts` ("leaves for the address its function
+      answers", "navigates inside the shell to a path its function answers", "opens nothing and says
+      so when the answer names no usable address"); in the browser `frontend/e2e/peers.spec.ts`
+      ("Open in KeelDNS follows a one-time key onto the neighbour as the customer of the site")
+      through `hack/peers-e2e.sh target/debug/keel`, which then reads the audit row of
+      `auth.key.handover` on the `dns` side: the customer as the principal, the link as the actor,
+      `via` the link.
+- [x] `svc.dns.zones.open` called twice with the same key produces one service:
+      `svc_dns_zones_open_twice_with_one_key_produces_one_service`, `set_params_changes_the_zone_limit`
+      and `stat_answers_zones_used` in `products/dns/tests/dns/svc.rs`;
+      `open_twice_with_one_key_yields_one_service`, `two_kinds_for_one_customer_land_in_one_account`
+      and `close_suspends_and_deletes_nothing` in `crates/system/tests/system/svc.rs` over a fixture
+      kind; the replay itself in `a_repeat_with_the_same_key_and_body_replays_the_response`,
+      `the_same_key_with_another_body_answers_mismatch`, `a_required_key_missing_answers_validation`,
+      `keys_expire_and_are_pruned` and `a_concurrent_repeat_waits_for_the_first_and_replays_its_response`
+      in `crates/kernel/tests/kernel/idempotency.rs`; `hack/peers-e2e.sh target/debug/keel` calls
+      `svc.dns.zones.open` twice with one key over https with an administrator's API token of the
+      `dns` side, gets one service in the account of the site's zone and the replay marker, `409
+      svc.error.exists` for another key, and one `svc.service.opened` at the panel; the `svc` and
+      `idempotency` groups of `hack/conformance.sh target/debug/keel` over every kind of
+      `svc.kinds`.
+- [x] An event arrives signed, and a repeat creates no duplicate:
+      `an_event_arrives_signed_and_a_repeat_creates_no_duplicate`, `a_bad_or_stale_signature_is_refused`
+      and `the_pull_feed_resumes_after_its_cursor_behind_nat` in
+      `crates/system/tests/system/peers_delivery.rs`;
+      `the_pull_feed_streams_the_events_after_its_cursor_and_ends_when_caught_up` in
+      `crates/client/tests/client.rs`; `hack/peers-e2e.sh target/debug/keel`, whose relay in front
+      of the panel answers the first delivery `500` after the panel took it, so
+      `webhook.delivery.retry` sends it again under a later signature and the panel answers it as a
+      duplicate, its inbox and its outbox keeping the event once, a copy replayed byte for byte is a
+      duplicate too and one differing by a space is refused with `401 peer.error.signature`; the
+      `webhooks` and `peers` groups of `hack/conformance.sh target/debug/keel`.
+- [x] Conformance is green against an installation with `dns` alone, with `panel` alone and with
+      both enabled: `hack/conformance.sh target/debug/keel` runs the suite against the three
+      compositions in turn, each on a database, a `data_dir` and a host agent of its own, and a
+      broken expectation exits non-zero
+      (`a_broken_expectation_makes_the_suite_exit_non_zero_with_one_line_per_check` in
+      `crates/conformance/tests/exit_code.rs`).
+- [x] Revoking a token breaks its calls with `401`: `rotate_retires_the_old_token_and_delete_answers_401`
+      and `credentials_minted_under_a_peer_token_die_with_its_rotation_and_its_deletion` in
+      `crates/system/tests/system/peers.rs`;
+      `credentials_minted_for_a_customer_die_with_the_rotation_and_the_deletion_of_the_link` in
+      `crates/system/tests/system/peers_on_behalf.rs`; `hack/peers-e2e.sh target/debug/keel`
+      revokes an API token, which then answers `401`, and deletes the link on the `dns` side, after
+      which the panel's next call with its peer token is answered `401` and relayed as `peer` with
+      `keel.error.unauthenticated`; the `peers` group of `hack/conformance.sh target/debug/keel`
+      sees the token it was handed answer `401` once `peer.delete` removes the link.
+- [x] `peers`: scopes, on-behalf bound to `origin`, trust on first use with a proof of the key, and
+      rotation: `a_call_outside_the_token_functions_answers_forbidden`,
+      `a_peer_presenting_another_instance_key_is_refused`,
+      `a_server_repeating_a_copied_instance_key_receives_no_token_and_fails_the_daily_check` and
+      `the_daily_check_raises_a_problem_for_a_protocol_out_of_reach_and_clears_it` in
+      `crates/system/tests/system/peers.rs`;
+      `an_on_behalf_call_runs_as_the_customer_with_the_peer_as_actor`,
+      `a_principal_created_by_hand_is_out_of_reach`, `a_token_without_on_behalf_is_refused` and
+      `the_token_mask_and_level_ceiling_apply_on_top_of_the_customer` in
+      `crates/system/tests/system/peers_on_behalf.rs`;
+      `the_handshake_proves_the_instance_key_by_signing_a_fresh_challenge` in
+      `crates/kernel/tests/kernel/instance.rs`.
+- [x] Shared customer identity, `keel.principal.upsert` by `origin` and `external_id` and the
+      `keel.account.*` events: `upsert_by_origin_and_external_id_twice_yields_one_account`,
+      `an_account_suspended_on_the_identity_peer_is_suspended_here_with_its_lifecycle`,
+      `an_account_deleted_on_the_identity_peer_is_deleted_here_by_the_task` and
+      `a_caller_below_admin_places_no_record_under_an_origin_naming_an_instance` in
+      `crates/system/tests/system/peers_identity.rs`; `concurrent_upserts_of_one_pair_yield_one_account`
+      and `creating_and_renaming_emit_the_identity_events_and_an_unchanged_login_emits_none` in
+      `crates/kernel/tests/kernel/upsert.rs`.
+- [x] `Idempotency-Key` end to end, the socket and the CLI included:
+      `concurrent_repeats_of_a_task_function_spawn_one_job`,
+      `a_key_replays_only_at_the_level_its_answer_was_shaped_for` and
+      `keel_ctl_sends_the_key_of_its_flag` in `crates/kernel/tests/kernel/idempotency.rs`;
+      `the_hourly_job_of_cron_prunes_the_expired_idempotency_records` in
+      `crates/system/tests/system/cron.rs`.
+- [x] The `svc` module and the kinds of the first products:
+      `closing_one_of_two_services_keeps_the_account_active_until_the_last_and_an_open_resumes_it`,
+      `a_peer_cannot_lift_an_administrators_suspension_by_closing_the_last_service_and_opening_another`,
+      `a_peer_reaches_no_service_of_another_peers_customer` and
+      `an_event_about_a_service_reaches_the_peer_whose_customer_it_serves_and_no_other` in
+      `crates/system/tests/system/svc.rs`;
+      `closing_the_newer_of_two_services_gives_back_the_limit_and_template_of_the_older` in
+      `products/dns/tests/dns/svc.rs`;
+      `svc_hosting_sites_open_and_set_params_set_the_site_limit_of_the_account` in
+      `products/panel/tests/panel/svc.rs`; the matrix sets `peers` and `svc`.
+- [x] `keel-client`: `a_call_answers_the_typed_envelope_and_field_errors`,
+      `a_call_with_a_key_is_retried_and_one_without_is_not`, `on_behalf_reaches_the_customer`,
+      `a_pinned_certificate_is_trusted_whatever_its_names_and_another_or_the_system_roots_are_refused`
+      and `a_customer_is_built_exactly_when_the_installation_reads_its_header` in
+      `crates/client/tests/client.rs`; `keel-conformance` runs on it.
+- [x] The security review of peers and services fixed every finding it could, each with a named
+      test: the proof of possession in
+      `a_server_repeating_a_copied_instance_key_receives_no_token_and_fails_the_daily_check` in
+      `crates/system/tests/system/peers.rs`,
+      `the_handshake_proves_the_instance_key_by_signing_a_fresh_challenge` in
+      `crates/kernel/tests/kernel/instance.rs`,
+      `a_proof_holds_for_its_key_its_challenge_and_the_handshake_it_signed_alone` in
+      `crates/system/src/peers/proof.rs` and
+      `a_proof_signs_the_challenge_the_identity_the_version_the_protocol_and_the_products_without_ambiguity`
+      and `a_challenge_is_32_to_128_letters_digits_dashes_or_underscores` in
+      `crates/types/src/instance.rs`; credentials that die with their link in
+      `credentials_minted_for_a_customer_die_with_the_rotation_and_the_deletion_of_the_link`,
+      `a_credential_minted_through_a_link_while_it_retires_is_refused_once_it_has_retired`,
+      `retiring_a_link_waits_for_a_credential_being_minted_through_it_and_revokes_it` and
+      `a_login_key_redeemed_while_its_link_retires_ends_with_its_session` in
+      `crates/system/tests/system/peers_on_behalf.rs`; the hook and the inbox under floods in
+      `a_stranger_refused_at_the_hook_is_held_to_the_guest_rate_of_its_address_at_the_hook_alone`,
+      `a_link_whose_inbox_is_full_is_answered_429_until_it_drains` and
+      `the_pull_feed_waits_while_the_inbox_of_its_link_is_full`, private targets in
+      `a_link_gets_no_hook_at_an_address_the_private_targets_guard_refuses_and_pulls_instead`,
+      `a_link_gets_no_hook_at_a_name_resolving_to_a_private_network_and_pulls_instead` and
+      `a_delivery_to_a_link_obeys_the_private_targets_guard_at_each_attempt` in
+      `crates/system/tests/system/peers_delivery.rs`, with
+      `a_bucket_reads_exhausted_once_spent_without_spending_and_until_it_refills` in
+      `crates/system/src/auth/limits.rs`; idempotency across levels in
+      `a_key_replays_only_at_the_level_its_answer_was_shaped_for`.
+- [x] The versions are raised to `0.4.0`: the workspace, the frontend packages and their version
+      constants; `keel --version` answers `keel 0.4.0`, `hack/descriptors.sh target/debug/keel`
+      finds the dump and the OpenAPI document at that version and
+      `boot_without_a_product_shows_the_platform_brand_and_the_platform_group_only` the boot
+      fixture; `the_channel_file_names_a_contract_and_a_floor_the_workspace_version_admits` admits
+      it under contract 1, the migrations of M6 being additive.
+- [x] `hack/check-deps.sh` is green: `keel-client` depends on `keel-types` alone among the
+      workspace crates, neither the kernel nor the SDK depends on it, `keel-conformance` depends on
+      it and on `keel-types`, and a product module crate may depend on it as on `keel-host`, next
+      to the rules of M0 to M5.
+- [x] `hack/check-docs.sh` is green: every M6 name it carries is found under `docs/design/` and
+      under `crates/`, `products/` or `frontend/libs/keel`, every Rust test and spec this checklist
+      cites is defined or exists, every command it cites exists, and the README's check lists, the
+      "How we work" section and `ci.yml` agree, the twenty-two-set matrix and `hack/peers-e2e.sh`
+      included.
+- [ ] `keel-v0.4.0` is tagged, published to the channel, and `keel-demo` is updated to it from the
+      button of the update screen — operator-run.
+- [ ] Planned in M6 and left undone, for the milestone that needs each: pinning the certificate of
+      a neighbour in its link, which `keel-client` offers as `Trust::Pinned` while the links use
+      the trust store of the system; the zone of a site is spawned after commit rather than queued
+      with it, so a stop between the commit and the spawn leaves the site without its zone, and no
+      function retries a refused zone; a key held in a column or a param, such as `zoneError`, is
+      shown untranslated; one panel reaches one DNS neighbour, the oldest link offering `dns`;
+      `peer.rotate` from the side of the installation is left out of the conformance suite.
+- [ ] Left without a fix by the security review, for the milestone that needs each: the proof binds
+      no channel, so a server at the address that reaches the neighbour can relay the challenge, and
+      the calls of a link, the pull feed and `dns-peer` send its token without a proof; a level
+      granted to a link bounds the functions it reaches, not the accounts, since its principal sits
+      in the root account; the inbox bounds how many events of a link wait, not how large they are,
+      and the bucket of the hook counts by address alone; the receiving administrator approves no
+      event masks, an identity link applies its peer's events as an administrator, and an
+      administrator's record under a peer's origin is adopted by the peer's next upsert; an
+      instance id is bound to no key after its link is deleted; the receiving side of `peer.renew`
+      checks the token alone; the daily check, `peer.rotate` and `PeerLinks` reach the address a
+      code holder gave without the private-targets guard; a token scoped to functions may grant
+      `onBehalf` in a pair code; what a link changes inside a session its key opened outlives the
+      link, and `auth.key.handover` turns a call on behalf into a full session whatever the masks
+      of the link; `PeerLinks` hands a link's token to any module compiled in, the pre-check of
+      `dns-peer` writes the customer on the neighbour before the local transaction decides, and its
+      task runs with a widened scope, the subject of the M7 review.

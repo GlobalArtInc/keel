@@ -95,7 +95,9 @@ fn main() -> keel::ExitCode {
         .module(&keel_system::audit::MODULE).module(&keel_system::tasks::MODULE)
         .module(&keel_system::cron::MODULE).module(&keel_system::notify::MODULE)
         .module(&keel_system::license::MODULE).module(&keel_system::update::MODULE)
-        .module(&keel_system::backup::MODULE)
+        .module(&keel_system::backup::MODULE).module(&keel_system::webhooks::MODULE)
+        .module(&keel_system::peers::MODULE).module(&keel_system::svc::MODULE)
+        .module(&keel_system::stats::MODULE)
         .product(&keel_dns::MANIFEST).product(&keel_panel::MANIFEST)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"))
         .run()
@@ -134,7 +136,11 @@ alone. What proves the kernel clean is the cargo graph (`hack/check-deps.sh`) an
 composition of the kernel without `keel-host`, not the absence of the agent from a shipped binary.
 The root boundary and the agent are described in [06-host.md](06-host.md). The other shared
 libraries, `keel-host-agent`, `keel-storage` and `keel-client`, follow the same rule: the kernel
-never imports them.
+never imports them. `keel-client`, the Rust client of the wire contract, depends on `keel-types`
+alone among the workspace crates and the SDK does not import it either; `keel-conformance` is a
+client on it, and a product module crate may depend on it as on `keel-host`, as `dns-peer` does to
+reach a neighbouring installation ([05-modules.md](05-modules.md)); `hack/check-deps.sh` holds the
+rules.
 
 ### How products relate to each other
 
@@ -231,7 +237,7 @@ lists them with the product they belong to, not as a fixed path.
 | `crates/host-agent` | `keel-host-agent`: the agent side, run as the `privileged` subcommand |
 | `crates/release` | `keel-release`: the release manifest, its Ed25519 signature and the verifier the root side and the facade share, the bin `keel-release` (`keygen`, `sign`, `verify`), the public release keys under `keys/` and `channel.json` with the `contract` and `min_upgrade_from` of the next release; from M4 |
 | `crates/storage` | `keel-storage`: the S3 backup target and the encryption of remote archives, not built yet; the installation backup and the site archives of `panel` are written to local directories without it |
-| `crates/client` | `keel-client`: Rust client for a peer installation |
+| `crates/client` | `keel-client`: the Rust client of the wire contract, for a peer installation and the conformance suite: typed calls, credentials, on-behalf, keyed retries, a pinned certificate or the system roots, the pull feed as a stream; depends on `keel-types` alone; from M6 |
 | `crates/testkit` | `keel-testkit` |
 | `crates/conformance` | `keel-conformance` (bin) |
 | `crates/dev` | `keel-dev` (bin): `types`, `descriptors dump \| diff \| check`, `views share`, `openapi` and, under `src/i18n/`, `i18n extract \| missing \| pull`; depends on `keel-types` alone |
@@ -244,19 +250,19 @@ lists them with the product they belong to, not as a fixed path.
 | `contracts/` | `fixtures/*.json`, `fixtures/descriptors/keel.*.json` (the kernel's descriptor snapshots); from M2 `schema/` (the JSON Schema of `keel-types`), `dump/` (the projected contract of the binary per level), `icons.json` (the phoenix icon set the kernel embeds) and the generated `openapi.json`, all committed for diffs; from M3 `i18n.json`, the translation projects with their dictionary directories and key prefixes; later `protocol.md`, the prose of the contract |
 | `plugins/` | Python plugin SDK and example plugins |
 | `deploy/` | `install.sh`, `uninstall.sh`, the four systemd units under `systemd/`, `config-sample.yaml` and `agent.yaml` with a section per first-party product; `README.md`, the operator's manual of the installer |
-| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `conformance.sh`, `check-docs.sh` and `check-install.sh` from M1; `descriptors.sh` and `e2e.sh` from M2; `check-release.sh`, `release.py` and `rehearsal.sh` from M4, with `agent.sh` (the in-process agent the scripts start) and the operator's proofs on a virtual machine: `install-vm.sh`, `update-vm.sh`, `backup-vm.sh`, `doctor-vm.sh`, `product-vm.sh`, `host-vm.sh` and `dns-vm.sh` |
+| `hack/` | `check-deps.sh`, `check-test-databases.sh` and `prove-binary.sh` from M0; `conformance.sh`, `check-docs.sh` and `check-install.sh` from M1; `descriptors.sh` and `e2e.sh` from M2; `check-release.sh`, `release.py` and `rehearsal.sh` from M4, with `agent.sh` (the in-process agent the scripts start) and the operator's proofs on a virtual machine: `install-vm.sh`, `update-vm.sh`, `backup-vm.sh`, `doctor-vm.sh`, `product-vm.sh`, `host-vm.sh` and `dns-vm.sh`; `check-size.sh`, `check-size-test.sh` and `size-cap` from M5, with `panel-vm.sh` and `bridge-vm.sh`; `peers-e2e.sh` from M6, two installations end to end in CI, with `peers-vm.sh`, the same on two machines |
 | `docs/` | operator, module developer, plugin protocol, descriptor and migration documentation |
 | `.github/workflows/` | `ci.yml`, `build.yml` (the musl artifact and the size check), `publish-npm.yml`, and from M4 `release.yml`, which publishes a `keel-v*` tag to the channel |
 
 Crates are created lazily: about fourteen in total, seven at M0, which needs `keel-types`,
-`keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`,
-plus the probe module `crates/sdk-probe` (`keel-sdk-probe`) that CI builds against `keel-sdk`
-alone ([05-modules.md](05-modules.md)); M1 adds `keel-system` and `keel-conformance`; M2 adds
-`keel-dev` and, outside the workspace's dependency graph, the spike `keel-spike`, which M4
-removed; M4 adds `keel-release`, `keel-host`, `keel-host-agent` and the `dns` bundle with its
-module crates `keel-dns-zones`, `keel-dns-records` and `keel-dns-templates`. A product
-without custom screens keeps no frontend code at all; the one shell application renders its
-screens from descriptors.
+`keel-sdk`, `keel-kernel`, `keel-testkit`, the facade `keel`, `products/demo` and `bin/keel`, plus
+the probe module `crates/sdk-probe` (`keel-sdk-probe`) that CI builds against `keel-sdk` alone
+([05-modules.md](05-modules.md)); M1 adds `keel-system` and `keel-conformance`; M2 adds `keel-dev`
+and, outside the workspace's dependency graph, the spike `keel-spike`, which M4 removed; M4 adds
+`keel-release`, `keel-host`, `keel-host-agent` and the `dns` bundle with its module crates
+`keel-dns-zones`, `keel-dns-records` and `keel-dns-templates`; M5 adds the `panel` bundle with its
+module crates; M6 adds `keel-client`. A product without custom screens keeps no frontend code at
+all; the one shell application renders its screens from descriptors.
 
 The monorepo carries one known risk: the temptation to bypass the SDK "just for a minute". The
 countermeasures are `keel-dev check` linting imports, bundles and module crates depending only on

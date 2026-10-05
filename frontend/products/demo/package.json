@@ -1,6 +1,6 @@
 {
   "name": "@globalart/keel-demo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "The custom views of the demo product: the tag cloud over note.tag.list",
   "repository": {

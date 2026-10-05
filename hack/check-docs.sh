@@ -124,10 +124,50 @@ M5_NAMES = {
     "instant-acme": "instant-acme = { workspace = true }",
 }
 
+M6_NAMES = {
+    "InstanceInfoSource": "pub struct InstanceInfoSource",
+    "ProvenInstance": "pub struct ProvenInstance",
+    "keel-instance-proof": '"keel-instance-proof"',
+    "keel.error.challenge": '"keel.error.challenge"',
+    "OnBehalf": "pub trait OnBehalf",
+    "X-Keel-On-Behalf-Of": "X-Keel-On-Behalf-Of",
+    "PeerReach": "pub trait PeerReach",
+    "PeerLinks": "pub trait PeerLinks",
+    "EventRelay": "pub trait EventRelay",
+    "peer_sees": "pub async fn peer_sees",
+    "peer.pair": '"peer.pair"',
+    "peer.renew": '"peer.renew"',
+    "peer.error.proof": '"peer.error.proof"',
+    "peer_identity": "peer_identity",
+    "local_only": "local_only",
+    "link_principal_id": "link_principal_id",
+    "auth.key.handover": '"auth.key.handover"',
+    "EXTERNAL_PATTERN": "pub const EXTERNAL_PATTERN",
+    "Idempotency": "pub enum Idempotency",
+    "keel.idempotency.hours": '"keel.idempotency.hours"',
+    "keel.idempotency.prune": '"keel.idempotency.prune"',
+    "cron.idempotency.prune": '"cron.idempotency.prune"',
+    "keel.error.idempotency_required": '"keel.error.idempotency_required"',
+    "ServiceKind": "pub trait ServiceKind",
+    "ServiceKindDef": "pub struct ServiceKindDef",
+    "ServiceAccount": "pub struct ServiceAccount",
+    "svc.kinds": '"svc.kinds"',
+    "svc.retention_days": '"svc.retention_days"',
+    "derive": "pub fn derive",
+    "dns.zone.check": '"dns.zone.check"',
+    "hosting.site.open_zone": '"hosting.site.open_zone"',
+    "dns_peer.zone.failed": '"dns_peer.zone.failed"',
+    "dns_peer.error.unpaired_open": '"dns_peer.error.unpaired_open"',
+    "KEEL_OPEN_EXTERNAL": "export const KEEL_OPEN_EXTERNAL",
+    "keel-client": 'name = "keel-client"',
+    "Trust::Pinned": "Pinned(",
+}
+
 CODE_ROOTS = {
     "crates": ["crates"],
     "crates/ or frontend/libs/keel": ["crates", "frontend/libs/keel"],
     "crates/ or products/": ["crates", "products"],
+    "crates/, products/ or frontend/libs/keel": ["crates", "products", "frontend/libs/keel"],
 }
 
 
@@ -157,6 +197,7 @@ check_names("M2", M2_NAMES, "crates/ or frontend/libs/keel")
 check_names("M3", M3_NAMES, "crates/ or frontend/libs/keel")
 check_names("M4", M4_NAMES, "crates")
 check_names("M5", M5_NAMES, "crates/ or products/")
+check_names("M6", M6_NAMES, "crates/, products/ or frontend/libs/keel")
 
 
 def section(text, heading):
@@ -251,6 +292,7 @@ check_checklist("M2", ["crates", "products", "bin"])
 check_checklist("M3", ["crates", "products", "bin"])
 check_checklist("M4", ["crates", "products", "bin"])
 check_checklist("M5", ["crates", "products", "bin"])
+check_checklist("M6", ["crates", "products", "bin"])
 
 with open("README.md") as handle:
     readme = handle.read()

@@ -300,7 +300,8 @@ container (see above), then performs, in order:
 8. `keel product enable <id>` for each requested product, run as `keel` against the fresh
    database before the first start; the kernel migrations run there.
 
-On first start the kernel generates `secret.key` and `instance.id`, reads the enabled products,
+On first start the kernel generates `secret.key`, `instance.id` and the instance's Ed25519 key,
+sealed in `keel_kv` ([07-ecosystem.md](07-ecosystem.md)), reads the enabled products,
 runs the kernel migrations and then the migrations of the loaded modules in `requires` order
 under a session lock, and only then opens the port ([04-storage.md](04-storage.md),
 [05-modules.md](05-modules.md)). It prints a one-time link with a `kok_` login key to
@@ -376,6 +377,33 @@ issues the certificates of the sites `panel` serves over HTTP-01, from the direc
 `hosting.certificate.directory` names (Let's Encrypt production by default, staging or a private
 directory by URL, with `directory_ca` of the config section `hosting_certificate` as the trust
 anchor of a private one); the installation's own listener does not use it yet.
+
+Between installations the certificate is not the identity: a link pins the neighbour's instance
+key, proven by a signed challenge ([07-ecosystem.md](07-ecosystem.md)). The clients of the
+installation, the outgoing calls of `peers` and `keel-client` with `Trust::System` in `dns-peer`,
+verify a neighbour's certificate by the trust store of the operating system, so two installations
+with self-signed certificates each add the other's `<data_dir>/tls/cert.pem` to that store and
+reach each other under an address their certificates name, the address of `--listen` for a
+generated one; pinning the certificate of a neighbour in its link is left to a later milestone, and
+`keel-client` already offers `Trust::Pinned` for it. A link's webhook subscription and the hook
+address pairing accepts obey the setting `webhook.private_targets`, so two installations on one
+private network turn it on for the side that delivers. `hack/peers-e2e.sh target/debug/keel`, a
+step of the job `check` after the browser suite, proves the "Done when" of M6 on two binaries,
+`dns` alone and `panel` alone, each on a database, a `data_dir`, a port and a host agent of its own,
+paired by code over the CLI; they reach each other through two relays on plain HTTP, one in each
+direction, since neither trusts the other's self-signed certificate, the public address of the
+panel, which pairing sends, being its relay, and a relay records each request with the prefix of
+its bearer credential, never the value. The relay in front of the panel forwards the first
+delivery and answers the dns side `500` in place of the panel's answer, so the dns side reads the
+delivery failed and `webhook.delivery.retry` sends it again under a later signature, which the
+panel answers as a duplicate; the specs tagged `@peers` of `frontend/e2e/` run against the two
+installations alone. `hack/peers-vm.sh` is the operator's proof on two machines, its steps
+alternating between them: each is installed with `--listen <address>:1500` and trusts the other's
+certificate through the system trust store with `trust`, and with no relay between them the repeat
+is a delivery marked failed in the database and sent again by `webhook.delivery.retry`, the
+one-time URL is opened by hand in a browser, and the dns machine waits for the delivery of
+`svc.service.opened` before `peer.delete`, since the subscription of a link goes with it and takes
+the deliveries not yet sent along.
 
 `trusted_proxies` makes the installation usable behind a reverse proxy: a list of CIDRs (a bare
 address standing for its `/32` or `/128`, a bad entry failing the start naming it). When the
@@ -579,12 +607,17 @@ table of the schema except the migration ledgers and loads the dump parents firs
 sequences; the ledgers stay the binary's, so the next start re-runs nothing. Without
 `--with-secret-key` the wrapped data key of the dump is kept when this host's `secret.key` opens
 it and dropped otherwise, so a restore on another host boots with a new data key while the sealed
-values of the dump do not open. The configuration file the restore runs with is never
-overwritten: the archive's copy lands beside it as `config.yaml.restored`, and when `/etc/keel`
-is not writable by `keel` the archive's tree lands under `<data_dir>/backups/<archive>.etc/`,
-since `agent.yaml` is root's policy and root copies it. Restore from the UI is the task
-`backup.restore`, which checks the archive and writes `<data_dir>/restore.request`; `keel serve`
-consumes the request before it opens its port, so the restore runs at the next restart.
+values of the dump do not open; the instance key, sealed under that data key, is dropped with it, so
+a copy restored on another host comes up under the instance id of the dump with a new instance key
+and with the dump's links, whose sealed tokens do not open: before it pairs again with a neighbour,
+an administrator on each side deletes the stale link with `peer.delete`
+([07-ecosystem.md](07-ecosystem.md)). A restore with the key keeps the identity and the links. The
+configuration file the restore runs with is never overwritten: the archive's copy lands beside it as
+`config.yaml.restored`, and when `/etc/keel` is not writable by `keel` the archive's tree lands
+under `<data_dir>/backups/<archive>.etc/`, since `agent.yaml` is root's policy and root copies it.
+Restore from the UI is the task `backup.restore`, which checks the archive and writes
+`<data_dir>/restore.request`; `keel serve` consumes the request before it opens its port, so the
+restore runs at the next restart.
 
 ## Observability
 

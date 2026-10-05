@@ -383,6 +383,16 @@ impl Bench {
             .collect()
     }
 
+    async fn event_data(&self, account: Id) -> Value {
+        let text = self
+            .scalar(&format!(
+                "SELECT jsonb_agg(data_json ORDER BY seq)::text FROM keel_outbox WHERE subject_json->>'id' = '{account}'"
+            ))
+            .await
+            .expect("the outbox holds events about the account");
+        serde_json::from_str(&text).expect("the aggregate is JSON")
+    }
+
     async fn finish(self) {
         self.kernel.stop().await.expect("the kernel stops");
         self.storage.close().await.expect("the pool closes");
@@ -469,6 +479,13 @@ async fn suspend_and_resume_switch_the_state_and_walk_the_contributions_after_co
     assert_eq!(
         bench.events(customer).await,
         ["keel.account.suspended", "keel.account.resumed"]
+    );
+    assert_eq!(
+        bench.event_data(customer).await,
+        json!([
+            { "id": customer.to_string(), "state": "suspended" },
+            { "id": customer.to_string(), "state": "active" },
+        ])
     );
 
     let root = bench
@@ -597,6 +614,10 @@ async fn delete_runs_as_a_task_walking_on_delete_in_requires_order_and_removes_t
         Some("0")
     );
     assert_eq!(bench.events(customer).await, ["keel.account.deleted"]);
+    assert_eq!(
+        bench.event_data(customer).await,
+        json!([{ "id": customer.to_string(), "state": "deleted" }])
+    );
     assert_eq!(
         bench
             .scalar(&format!(

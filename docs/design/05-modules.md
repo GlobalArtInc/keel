@@ -207,6 +207,14 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 - Contributions, `r.contribute(T)`, into extension points that modules themselves declare in
   their `pub mod api` and read back with `ctx.contributions::<T>()`. The kernel knows nothing
   about any of them; it only provides the typed bag.
+- Derived registrations, the hidden `r.derive::<T>(hook)`, for a module whose functions follow
+  from what other modules contribute: a module's `init` runs before the contributions of the
+  modules after it are known and functions are fixed at the freeze, so after every `init` the
+  loader hands the hook the contributions of type `T` of every module, as `init` left them, and the
+  hook registers into its own module's registrar, where the prefix and duplicate checks apply;
+  contributions another hook adds are not visible, a module takes one hook, and a failing hook
+  fails the start naming its module. `svc` derives its functions, its catalogue and its
+  `serviceKinds` that way ([07-ecosystem.md](07-ecosystem.md)).
 - `r.invoker(Arc<dyn Invoker>)` is reserved in the kernel from M0 for the cluster milestone: an
   `Invoker` selects the node a function runs on by a function attribute
   ([06-host.md](06-host.md)). The kernel has one invoker slot; a composition with two providers
@@ -227,11 +235,11 @@ Everything a module adds to the installation goes through `Registrar` inside `in
 | `ConfigSection` | The module's own section of `config.yaml`, validated against the type's schema and typed at freeze, `T::default()` when absent | configuration loading ([09-operations.md](09-operations.md)) |
 | `PermissionSource` | The stored grants of a principal, `grants(principal, db)` answering key → held; the transports overlay the answer on `Principal.grants` once per request and the guards read a stored grant over the registered default ([03-access.md](03-access.md)) | `auth` |
 | `ManifestSource` | `patch(host, db)` answering the `ManifestPatch { name?, logo?, hue?, chroma? }` of the effective brand for a request host, every member optional: white-label branding by hostname, applied to `/boot.brand` and `/brand/logo.svg` and never to the socket's boot | `settings` |
-| `ServiceKind` | A service type for billing: `Params`, `State` and `Account` schemas with `schema_version` | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
+| `ServiceKindDef` | A service type for billing, `ServiceKindDef::new(kind)` over a `ServiceKind` of `keel_sdk::svc` with its `KIND`, `TITLE`, `SCHEMA_VERSION` and its `Params`, `State` and `Account` schemas | `svc` ([07-ecosystem.md](07-ecosystem.md)) |
 | `LimitDef` | An account limit: key, unit, default, level, whether `unlimited` is allowed | `keel_limit` and `call.check_limit` ([03-access.md](03-access.md)) |
 | `AccountLifecycle` | `on_suspend`, `on_resume`, `on_delete`, `on_rename` handlers | `keel.account.*` ([03-access.md](03-access.md)) |
 | `StatCollector` | A metric: key, unit (`count`, `bytes` or `seconds`), an interval of whole minutes and the collector; `new` samples one installation-wide value, `per_account` a value per account id and `per_subject` a value per named subject of an installation-wide key, such as a service | `stats` |
-| `InstanceInfoSource` | Extra fields of `GET /api/v1/instance`, for example `serviceKinds` | the instance endpoint ([07-ecosystem.md](07-ecosystem.md)) |
+| `InstanceInfoSource` | Extra `features` and `serviceKinds` of `GET /api/v1/instance`, which the kernel unions, sorts and serves without knowing what they mean: `peers` contributes the feature `peers`, `svc` the feature `svc` and the name of every kind | the instance endpoint ([07-ecosystem.md](07-ecosystem.md)) |
 
 `LimitDef`, `AccountLifecycle`, `SettingDef`, `ConfigSection`, `StatCollector` and `MailTemplate`
 are part of what the SDK gives every module: a product module contributes a setting or claims a section of `config.yaml` without
@@ -257,38 +265,43 @@ contribution is consumed.
 - Every table, function, permission key, setting and i18n key of a module carries the module id
   as its prefix, literally or with its underscores read as dots.
 - A module crate of a product may depend on the `api` module of another module crate of the same
-  bundle it names in `requires`, which is how `dns-records` reaches `dns-zones`.
+  bundle it names in `requires`, which is how `dns-records` reaches `dns-zones`, and on
+  `keel-client`, a library of L4 like `keel-host`, which is how `dns-peer` reaches a neighbouring
+  installation; `hack/check-deps.sh` admits both.
 - Foreign keys between modules exist only inside a declared `requires` relation and towards
   `keel_account` and `keel_principal`. Another module's data is read through `call.invoke` or a
   service, never through SQL ([04-storage.md](04-storage.md)).
 - A module does not open transactions: the kernel opens the write transaction in `Call`, and a
   nested `call.invoke` reuses it ([02-functions.md](02-functions.md)).
-- Operations on the OS and on peers run only in `after_commit` or as a task; a transaction never
-  waits for the agent.
+- Operations on the OS and on peers run only in `after_commit` or as a task, and a call to a peer
+  may also run in a `before` hook; a transaction never waits for the agent or the network.
 
 ## The SDK
 
-`keel-sdk` is layer L2 together with `keel-testkit`; a hidden `keel_sdk::system` sits beside it.
-The SDK is an interface, not an implementation: it knows nothing of axum, the Postgres pool or
-cookies; even `ctx.spawn` hands the task to a spawner the kernel implements, so the SDK carries no
-runtime. What module code sees is `ModuleDef`, `Registrar`, `Context` and `Call<P>` with `params()`,
+`keel-sdk` is layer L2 together with `keel-testkit`; a hidden `keel_sdk::system` sits beside it. The
+SDK is an interface, not an implementation: it knows nothing of axum, the Postgres pool or cookies;
+even `ctx.spawn` hands the task to a spawner the kernel implements, so the SDK carries no runtime.
+What module code sees is `ModuleDef`, `Registrar`, `Context` and `Call<P>` with `params()`,
 `principal()`, `tx()`, `invoke`, `emit`, `emit_about` (the event with an explicit subject,
 [07-ecosystem.md](07-ecosystem.md)), `after_commit`, `require::<dyn Trait>()`, `check_limit`,
 `extra` (values of patched fields), `setting::<T>(key)`, `config::<T>()`, `tz()`, `task()` (the
 `TaskHandle` of a call running as a job, `None` otherwise) and `spawn_self_as_task()` (the call
-re-entered as a job, answering its `TaskRef`); `Principal`, `Account` and `Level`; `KeelError`
-with an i18n key, an optional field and a source; `ListQuery`, `Page` and `ListSource`, with
-`fetch_page` for a module source that narrows its own query; `MenuNode`; `Secret`; `Id`; the
-`Owned` trait with `scope_by_account`, `resolve_account`, `LimitDef` and `AccountLifecycle`;
-`SettingDef`, `SettingsSource` and `ConfigSection`; `ProductManifest` with `Brand`, `MenuGroup`,
-`LevelLabels` and `Edition`; `Download` and `DownloadOutcome` for the handler of a `download`
-function and `keel_sdk::multipart` with `FileAttrs` for the file fields of an `upload`;
-`DashboardWidget`, the contribution behind `/boot.dashboard`; and the `Clock`
-service, `call.require::<dyn Clock>()`, from which the dispatcher, the `keel` module and every
-module stamp times, so that a test can freeze it. The crates the surface is expressed in,
-`chrono` and `chrono-tz` among them, are re-exported under their own names. The function builder
-is specified in [02-functions.md](02-functions.md), the account helpers in
-[03-access.md](03-access.md), `Secret` and `Id` in [04-storage.md](04-storage.md).
+re-entered as a job, answering its `TaskRef`); `Principal`, `Account` and `Level`; `KeelError` with
+an i18n key, an optional field and a source; `ListQuery`, `Page` and `ListSource`, with `fetch_page`
+for a module source that narrows its own query; `MenuNode`; `Secret`; `Id`; the `Owned` trait with
+`scope_by_account`, `resolve_account`, `LimitDef` and `AccountLifecycle`; `SettingDef`,
+`SettingsSource` and `ConfigSection`; `ProductManifest` with `Brand`, `MenuGroup`, `LevelLabels` and
+`Edition`; `Download` and `DownloadOutcome` for the handler of a `download` function and
+`keel_sdk::multipart` with `FileAttrs` for the file fields of an `upload`; `DashboardWidget`, the
+contribution behind `/boot.dashboard`; `Idempotency`, which `.idempotent(Idempotency::Required)` on
+the function builder declares ([02-functions.md](02-functions.md)); `keel_sdk::svc` with
+`ServiceKind`, `ServiceKindDef`, `ServiceAccount` and the helpers `peak` and `login`
+([07-ecosystem.md](07-ecosystem.md)); `InstanceInfoSource`; and the `Clock` service,
+`call.require::<dyn Clock>()`, from which the dispatcher, the `keel` module and every module stamp
+times, so that a test can freeze it. The crates the surface is expressed in, `chrono` and
+`chrono-tz` among them, are re-exported under their own names. The function builder is specified in
+[02-functions.md](02-functions.md), the account helpers in [03-access.md](03-access.md), `Secret`
+and `Id` in [04-storage.md](04-storage.md).
 
 ## keel-system
 
@@ -305,13 +318,14 @@ example SSO in place of `auth`, or a different `notify` for billing.
 ### Hidden hooks
 
 Hooks needed only by system modules — `Authenticator` with `Client`, `Authenticated` and
-`SessionChange`, `PrincipalSource`, `AccountSource`, `SecretCipher`, `SecondFactorSource`,
+`SessionChange`, `OnBehalf`, `PeerReach`, `PeerLinks` with `PeerLink`, `PrincipalSource`,
+`AccountSource`, `LimitSource`, `SecretCipher`, `SecondFactorSource`,
 `PreferenceSource`, `LanguageSource`, `PermissionSource` with `PermissionCatalogue`,
 `ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, `TaskRunner`
 with `TaskSpec` and `TaskSink`, `Caller` with `CallerOptions`, `LiveEvents` with `Frame`,
 `AdvisoryLock` with `LockGuard`, `ProblemCounter`, `OutboxSubscriber`, `EventRelay`, `Endpoint`
-with `EndpointRequest`, and later `TransportRegistry` and `StorageSnapshot` — live in
-`keel_sdk::system`,
+with `EndpointRequest`, the function `peer_sees`, the registrar's `derive`, and later
+`TransportRegistry` and `StorageSnapshot` — live in `keel_sdk::system`,
 marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
 authentication, the transports, backup and the outbox consumers plug in; a product module has no
 reason to touch them. The public `keel-sdk` is frozen at 1.0 (M7); until then only
@@ -321,44 +335,62 @@ The authentication seam is a chain, not a single service: a module registers its
 through the contribution bag, `r.contribute(Arc<dyn Authenticator>)`, so that several modules
 answer for their own token prefixes, and the transport asks them in module order with the
 `Credential` and the `Client` of the request. `Ok(None)` means "not my credential" and the next
-one is asked; `Ok(Some(Authenticated { principal, session }))` ends the chain, `session` being the
-`id_hash` of the session row for a cookie and `None` for a token; `Err` ends it with that error;
-a credential none recognises answers `401 unauthenticated`. `Client { ip, user_agent, session }`
-is what the transport learned about the request, read from the call through
-`CallExt::client()`, `None` on the socket. A handler records `SessionChange { Set(Secret) |
+one is asked; `Ok(Some(Authenticated { principal, session, token }))` ends the chain, `session`
+being the `id_hash` of the session row for a cookie and `None` for a token, and `token` the hash a
+module keeps the bearer token of the call under (`token_hash` of an API token,
+`inbound_token_hash` of a peer token), `None` for a session cookie; `Err` ends it with that error;
+a credential none recognises answers `401 unauthenticated`. `auth` answers for `ks_` and `kat_`,
+`peers` for `kpt_`. `Client { ip, user_agent, session, token }` is what the transport learned
+about the request, read from the call through `CallExt::client()`, `None` on the socket. Once the
+credential is authenticated, the transport hands an `X-Keel-On-Behalf-Of` header as sent to the
+`OnBehalf { act_for(caller, header, db) }` contributions, and the first that answers a principal
+supplies the principal of the call; a header none accepts answers `403 keel.error.on_behalf`
+([07-ecosystem.md](07-ecosystem.md)). A handler records `SessionChange { Set(Secret) |
 Clear }` through `CallExt::session()`, and the dispatcher carries it to the transport only for a
 write that committed or a read that completed, so a call that fails after recording it answers
-without `Set-Cookie`. `PrincipalSource { by_id, by_login }` is the kernel's lookup over
-`keel_principal`, answering the stored principal with `via: internal`, no actor and the full
-scope, so that `auth` resolves logins and session rows to principals without SQL on a kernel
-table.
+without `Set-Cookie`. `PrincipalSource { by_id, by_login, by_external, of_external_id, create }`
+is the kernel's lookup over `keel_principal`, answering the stored principal with `via: internal`,
+no actor and the full scope, so that `auth` resolves logins and session rows to principals and
+`peers` creates the principal of a link and finds a customer by its external identity without SQL
+on a kernel table.
 
 The kernel provides its own hidden services under the name of the platform before the requirements
 of the modules are checked at freeze, so a module may `r.require` one at `init` and a module
 providing one of them is reported as a second provider rather than replacing the kernel:
-`PrincipalSource`; `AccountSource { ancestry }`, the chain from an account up to the root read from
-`keel_account.path`; `SecretCipher { seal, open }` over the data key the kernel opens from
-`keel_kv.secret_key`, whose sealed form is the same JSON text as the wrapped key, so a `TEXT` column
-holds nothing the key does not unlock and a composition without a key provides no cipher;
-`LanguageSource`, the languages the frozen catalogue serves; `Caller { call }`, the dispatcher
-entered outside a request with an explicit principal, through which a module runs an internal
-function of its own or a job's call, so the outbox and the audit trail see it as any call;
-`LiveEvents { publish }`, the in-memory bus of the frames the event stream carries beside the
-outbox, `task.progress` and `notification` among them; `AdvisoryLock { take }`, the session lock on
-a pinned connection; `OutboxSubscriber { after, newest, latest }`, the only reader of `keel_outbox`
-([04-storage.md](04-storage.md)); and `EventRelay { relay }`, which enters an event of another
-installation into `keel_outbox` under its own id with its `instance_id`, answers a repeat as nothing
-new and refuses an event of this installation and an id the outbox holds for another one.
-`PrincipalSource` also answers `at_or_above(level)` and `of_account(account)`, the recipient lookups
-of `notify`. A module provides the others: `TaskRunner
-{ spawn, progress, log, checkpoint, cancel, state }` from `tasks`, behind which the dispatcher turns
-a call into a job; `ProblemCounter { counts }` from `notify`, from which `GET /api/v1/boot` fills
-`problems`; `SecondFactorSource { enrolled }` from `auth`, from which `GET /api/v1/boot` fills
-`principal.totp`, `false` for a guest, for the owner and while none is provided; `PreferenceSource {
-preferences }` from `settings`, from which the HTTP transport resolves once per request the language
-it overlays on the principal and the zone it hands to `Call::tz()`; and `AuditSink { record }` from
-`audit`, fed the `AuditEvent` of every write call. `ContextExt::db()` is the pool handle a module
-reads outside any call, the `audit` worker being its first consumer.
+`PrincipalSource`; `AccountSource { ancestry, by_id, of_external_id }`, the chain from an account up
+to the root read from `keel_account.path`, an account by its id and the accounts of an external id;
+`LimitSource { effective, store }`, the effective limit of an account and the write of its own row
+of `keel_limit` the service kinds make, refused for an undeclared key and for `null` where the
+definition admits no unlimited; `InstanceInfo`, the handshake the kernel folds at freeze;
+`SecretCipher { seal, open }` over the data key the kernel opens from `keel_kv.secret_key`, whose
+sealed form is the same JSON text as the wrapped key, so a `TEXT` column holds nothing the key does
+not unlock and a composition without a key provides no cipher; `LanguageSource`, the languages the
+frozen catalogue serves; `Caller { call }`, the dispatcher entered outside a request with an
+explicit principal, through which a module runs an internal function of its own or a job's call, so
+the outbox and the audit trail see it as any call; `LiveEvents { publish }`, the in-memory bus of
+the frames the event stream carries beside the outbox, `task.progress` and `notification` among
+them; `AdvisoryLock { take }`, the session lock on a pinned connection; `OutboxSubscriber { after,
+newest, latest }`, the only reader of `keel_outbox` ([04-storage.md](04-storage.md)); and
+`EventRelay { relay }`, which enters an event of another installation into `keel_outbox` under its
+own id with its `instance_id`, answers a repeat as nothing new and refuses an event of this
+installation and an id the outbox holds for another one. `PrincipalSource` also answers
+`at_or_above(level)` and `of_account(account)`, the recipient lookups of `notify`. A module provides
+the others: `TaskRunner { spawn, enqueue, wake, progress, log, checkpoint, cancel, state }` from
+`tasks`, behind which the dispatcher turns a call into a job, `enqueue(db, spec)` inserting the job
+through the caller's transaction and `wake(id)` publishing its state and waking the worker once that
+transaction committed ([02-functions.md](02-functions.md)); `PeerReach { reaches, customer, admits,
+holds }` and `PeerLinks { offering }` from `peers`, through which `auth`, `svc`, `webhooks` and
+`dns-peer` learn whether a principal reaches through a link, which customer an external id names for
+it, whether a link's principal may see a record of an origin, whether a link still holds a token,
+and which link offers a product with its address and its outbound token opened, each asked only when
+`peers` provides it ([07-ecosystem.md](07-ecosystem.md)); `ProblemCounter { counts }` from `notify`,
+from which `GET /api/v1/boot` fills `problems`; `SecondFactorSource { enrolled }` from `auth`, from
+which `GET /api/v1/boot` fills `principal.totp`, `false` for a guest, for the owner and while none
+is provided; `PreferenceSource { preferences }` from `settings`, from which the HTTP transport
+resolves once per request the language it overlays on the principal and the zone it hands to
+`Call::tz()`; and `AuditSink { record }` from `audit`, fed the `AuditEvent` of every write call.
+`ContextExt::db()` is the pool handle a module reads outside any call, the `audit` worker being its
+first consumer.
 
 ## Versioning
 
@@ -380,7 +412,7 @@ The storage counterpart of the data plane, additive-only migrations inside a maj
 | `keel-testkit` | L2 | Test harness for a module in isolation |
 | `keel-dev` | L7 | Developer CLI, `crates/dev`: `types`, `descriptors dump \| diff \| check`, `views share` and `openapi` exist from M2; scaffolding, i18n, lints and docs follow with the milestones that need them |
 | `keel-conformance` | L7 | Contract suite against the running `keel` binary with any set of products enabled |
-| `keel-client` | L4 | Rust client for calling a peer |
+| `keel-client` | L4 | Rust client of the wire contract, for calling a peer and for the conformance suite |
 
 `keel-testkit` boots a module with `Harness::new().module(&M).boot()`; `.product(&MANIFEST)`
 boots a bundle with the modules it names. The harness links `keel-kernel` to boot the module in
@@ -434,20 +466,70 @@ settings from the registry.
 
 `keel-conformance` runs against the started `keel` binary with any set of products enabled: boot,
 auth, the list contract, errors, idempotency, webhooks and `svc.*`, plus the check that a field
-shown by the descriptor is accepted by the server. It is a black-box client on `keel-client`,
-typed with `keel-types`, and nothing else of the workspace, takes `--url`, the admin's
-credentials and the login of a user in another account, prints one line per check and exits
-non-zero on any failure.
-The skeleton — the health routes, boot as a guest, the auth cycle with `su`, a token scoped to
-one function, the list contract on `keel.account.list` and `note.list`, and the error shapes —
-exists from M1 as the mandatory CI job `hack/conformance.sh`, run against the built binary with
-the `demo` bundle; it runs with each first-party bundle alone and with all of them once there is
-more than one (M4), and idempotency, webhooks, `svc.*` and the field-shown-iff-accepted check
-join it with their milestones.
+shown by the descriptor is accepted by the server. It is a black-box client on `keel-client`, typed
+with `keel-types`, and nothing else of the workspace, takes `--url`, the admin's credentials, the
+login of a user in another account and `--cacert`, a PEM whose certificates it pins, prints one line
+per check and exits non-zero on any failure. The skeleton — the health routes, boot as a guest, the
+auth cycle with `su`, a token scoped to one function, the list contract and the error shapes —
+exists from M1 as the mandatory CI job `hack/conformance.sh`. Since M6 the suite leans on no
+function of a product, and `hack/conformance.sh target/debug/keel` runs it against `dns` alone,
+`panel` alone and both in turn, each on a database, a `data_dir` and an agent of its own,
+`KEEL_CONFORMANCE_COMPOSITIONS` naming other sets; `demo` has no composition of its own any more.
+For each composition the script admits webhook deliveries to private addresses, sets
+`auth.shell_url` to the installation's own address, since pairing sends it, and raises
+`auth.rate.guest_per_minute` to 600, since the logins of the groups and the guest calls of pairing
+pass thirty a minute; `keel product features` must name a feature of each first-party product the
+composition enables and none of the others. The groups:
 
-`keel-client` is the Rust client of a peer, typed with `keel-types`; it retries only requests that
-carry an `Idempotency-Key`. Other languages use the OpenAPI document generated from the function
-registry.
+- The generic row is a webhook subscription, which every composition carries and a user may save:
+  a probe is a disabled subscription to a sink address under a mask no event matches, and the
+  lists, the errors, the webhooks and the event stream run over probes, the export over
+  `keel.principal.list`.
+- `features` checks that the listing names no feature the boot leaves out, and the `402` of a
+  function withheld by the default edition of a bundle the composition enables, from a table of
+  the suite (`dns.zone.dnssec.get` behind `dns.dnssec` for `dns` on `lite`, `note.withheld` behind
+  `demo.withheld` for `demo` on `full`); a product of the table that runs on that edition must leave
+  the feature out of the boot, and only a lease on another edition or a composition without the
+  `license` module takes the row out.
+- `fields` is the check that a field shown by the descriptor is accepted, at the level of members,
+  since the server evaluates no `show_if`: every field the admin's descriptor carries and the
+  user's lacks is refused for the user with `403 forbidden_field` naming exactly those paths, and a
+  call of the user carrying every field its descriptor shows, each with a value outside its JSON
+  types and the key left out, answers `422 validation` with `fields[]` naming every mistyped field
+  and no path outside the shown ones; a member whose schema names no type takes any value.
+- `webhooks` checks the signature and the first rung of the retries: a listener answers `500` to
+  the first attempt of each event, the delivery reads `failed` at attempt 1 with its next attempt
+  about a minute away, `webhook.delivery.retry` sends it again with the same `X-Keel-Event-Id` and a
+  signature of a later `t`, and it reads `delivered` at attempt 2.
+- `idempotency` finds that a replay answers the first answer with its `once` members masked, that a
+  key is its principal's, that a read carrying a key is never replayed and that a malformed key is
+  refused.
+- `svc` takes every kind from `svc.kinds`, which must agree with the `serviceKinds` of the
+  handshake in order, builds the account from the customer's `(origin, externalId)` and the
+  parameters from the parameter schema by the lowest value of each required member, the next one
+  for `set_params`, so a kind whose schema asks for what the builder cannot make fails its check
+  by name rather than the process; `login` answers `409 svc.error.no_principal` until a principal
+  of the account's origin is upserted into the account.
+- `peers`: a listener of the suite plays the neighbouring installations with Ed25519 instance keys
+  of their own. As the initiator it calls `peer.pair` itself, reads the subscription made at pairing
+  on its hook and the pull feed through the `Feed` of `keel-client`, rotates its second link with
+  `peer.renew` and sees both links revoked by `peer.delete`; as the receiver it answers the
+  handshake and the `peer.pair` that `peer.create` sends, then signs events to the installation's
+  hook and watches the inbox put the first on the admin's event stream and answer the repeat as a
+  duplicate. The group reads the installation's handshake with a challenge, whose proof must verify,
+  and without one, and refuses a malformed or repeated challenge. The token the installation hands
+  the neighbour answers `403 keel.error.level` and `403 keel.error.token_scope` outside its scope
+  and `401` once `peer.delete` removes the link, and a second `peer.create` to an address presenting
+  the paired neighbour's instance under another key answers `403 peer.error.instance_key` before any
+  token leaves the installation. `peer.rotate` from the installation's side is left out, since the
+  listener would have to answer `peer.renew`.
+
+`keel-client` is the Rust client of the wire contract ([10-contracts.md](10-contracts.md)): it
+depends on `keel-types` alone among the workspace crates, neither the kernel nor the SDK depends on
+it, and `keel-conformance` depends on it and on `keel-types`, three rules `hack/check-deps.sh`
+holds. It retries only requests that carry an `Idempotency-Key`, pins a certificate or trusts the
+roots of the operating system, and reads the pull feed as a stream. Other languages use the OpenAPI
+document generated from the function registry.
 
 ## System modules
 
@@ -475,8 +557,8 @@ where the feature is plural: `task` (`task.list`, `task_job`), `plugin` (`plugin
 | `update` | Channel check, update as a task, rollback, the pre-update dump | M4 |
 | `backup` | Backup as a task, the list of archives, restore at the next start | M4 |
 | `plugins` | Extensions without a rebuild, in any language | M7 |
-| `peers` | Neighbouring products | M6 |
-| `svc` | Services for billing | M6 |
+| `peers` | Neighbouring installations: pairing, peer tokens, on-behalf calls, event delivery, shared identity | M6 |
+| `svc` | Services for billing: the kinds products contribute, their catalogue and functions | M6 |
 | `stats` | Metrics and reports | M5 |
 
 M8 adds `keel-system::cluster` with the node registry and the `Invoker` that selects a node by a
@@ -486,7 +568,9 @@ function attribute ([06-host.md](06-host.md)).
 
 - Tokens are opaque, prefixed `ks_` (session), `kat_` (API token), `kpt_` (peer token) and
   `kok_` (one-time login key); only their sha256 is stored, so revocation is immediate and a
-  backup contains no usable keys.
+  backup contains no usable keys. `auth` generates the `kpt_` token of a link, 32 random bytes as
+  hex, and its authenticator claims `ks_` and `kat_` alone: `peers` contributes the authenticator
+  of `kpt_` ([07-ecosystem.md](07-ecosystem.md)).
 - The session cookie is `__Host-keel_session`, one for the installation whatever products are
   enabled; the `__Host-` prefix is why the installation listens on TLS only from its first start
   ([09-operations.md](09-operations.md)).
@@ -561,11 +645,21 @@ function attribute ([06-host.md](06-host.md)).
   menu change at once ([03-access.md](03-access.md)). The module's menu nodes are
   `system/sessions`, `system/tokens`, `system/ip-rules` and `system/grants`. `su` goes only down
   the ladder, as a separate session with an `actor`; audit records both sides.
-- One-time login keys: `auth.key.issue { principal, ttl <= 300, redirect }` returns a `kok_`
-  key and the relative `url` `/login?key=…`, redeemed by a same-origin `POST auth.key.redeem`
-  that answers `{ redirect, principal, issuedBy }`; the key dies on first use. The `peers`
-  module adds `externalId`, resolved against `(origin, external_id)` for the peer that carries
-  an `origin`, and a public-URL setting makes the `url` absolute (M6)
+- One-time login keys: `auth.key.issue { principal | externalId, ttl <= 300, redirect }` returns
+  a `kok_` key and the relative `url` `/login?key=…`, redeemed by a same-origin `POST
+  auth.key.redeem` that answers `{ redirect, principal, issuedBy }`; the key dies on first use.
+  `externalId` is accepted only from a caller that arrived through a peer link, and through a link
+  the target must be a principal of the peer's origin. `auth.key.handover { ttl, redirect }`, at
+  the `user` level, issues the key for the caller itself and answers a call on behalf of a customer
+  alone, the link being the key's `issued_by`. For any call through a peer link the `url` is
+  absolute under `auth.shell_url`. `auth` reaches `peers` through the hidden `PeerReach` alone,
+  since it requires nothing ([07-ecosystem.md](07-ecosystem.md)).
+- Credentials of a link: retiring a link's inbound token retires every credential of its principal
+  through `retire_credentials` of `auth::api`, and `auth_token`, `auth_login_key` and
+  `auth_session` keep in `link_principal_id` the principal of the link a credential was minted
+  through, so `peer.rotate` and `peer.delete` revoke those too; minting under a link and retiring it
+  are serialised by the transaction lock `auth_link:<principal>`, shared and exclusive, and a
+  credential minted with a token the link no longer holds answers `401`
   ([07-ecosystem.md](07-ecosystem.md)).
 - M1 scope: argon2id, opaque sessions, `__Host-` cookie with CSRF checks, Bearer, TOTP, tokens
   with scope and IP restrictions, `su`, login keys, IP rules, rate limit, session management,
@@ -673,7 +767,9 @@ function attribute ([06-host.md](06-host.md)).
   object from job id to schedule at admin level, changes a job's schedule without a build.
   Functions, all admin-level and unowned: `cron.job.list` over the contributions joined with
   their last run, `cron.job.run { id }` starting a job now, `cron.run.list`; the menu node
-  `system/cron`.
+  `system/cron`. Since M6 the module contributes its own job `cron.idempotency.prune`, hourly at
+  minute 25, which calls the kernel's internal `keel.idempotency.prune` as the owner, since the
+  kernel cannot depend on the module that runs jobs ([02-functions.md](02-functions.md)).
 
 ### notify
 
@@ -743,7 +839,15 @@ function attribute ([06-host.md](06-host.md)).
   installation emitted reaches only a subscription whose scope covers every account and that is not
   `local_only`, the flag `webhook.subscription.set` records when the credential saving it is
   narrowed by a scope of functions or a call through a peer, and that a peer's subscription always
-  carries ([07-ecosystem.md](07-ecosystem.md)).
+  carries ([07-ecosystem.md](07-ecosystem.md)). An event about a service reaches a subscription
+  with a principal only when `peer_sees` admits it, after the account scope.
+- The subscription of a peer link is made by `peers` at pairing through `subscribe_peer` of
+  `webhooks::api`: `peer_id` names the link, `level` carries the level granted to it, whose
+  account scope the consumer applies, its scope cache keyed by level, and `floor_seq` the outbox
+  `seq` at pairing, below which it delivers nothing; its deliveries carry `X-Keel-Peer`, it obeys
+  `webhook.private_targets` like any other, `webhook.subscription.set`, `.toggle` and `.delete`
+  refuse it with `409 webhook.error.peer`, and it goes with its deliveries at `peer.delete`. The
+  module requires `AccountSource` and takes `PeerReach` at start when `peers` provides it.
 
 ### license
 
@@ -844,21 +948,47 @@ function attribute ([06-host.md](06-host.md)).
 
 - Peers link installations on different hosts; products enabled on one installation share the
   kernel, the account tree and the outbox and need no pairing ([07-ecosystem.md](07-ecosystem.md)).
-- Pairing with a one-time code; mutual `kpt_` tokens with scopes; trust on first use by the
-  instance's Ed25519 key, so a TLS rotation does not break the link.
+  The module id is `peer`, the feature `peers`; it requires `auth`, `cron`, `notify` and
+  `webhook`, contributes the feature `peers` to the handshake and joins the `keel-system` matrix.
+- Pairing with a one-time code: `peer.pair_code` on the receiving side, `peer.create` on the
+  initiating side, which calls the guest `peer.pair` of the receiver; mutual `kpt_` tokens with
+  scopes, each link with a `service`-level principal `peer-<link id>` in the root account; trust on
+  first use by the instance's Ed25519 key, proven by a signed challenge at every rotation and daily
+  check, so a TLS rotation does not break the link; `peer.rotate` from either side through the guest
+  `peer.renew`, and `peer.delete`, both retiring every credential of the link. The tables are
+  `peer_product`, `peer_pair_code`, `peer_inbox` and `peer_identity`; the cron job `peer.check`
+  checks every link daily and raises `peer.problem.protocol`, `peer.problem.instance_key` and
+  `peer.problem.proof`; the menu node is `system/peers`.
 - A pull feed `/api/v1/x/peer/feed?after=seq` for instances behind NAT and the hook
-  `/api/v1/x/peer/hook` for signed deliveries; the inbox deduplicates by link and event id.
-- On-behalf calls are allowed only for principals whose `origin` is this peer.
+  `/api/v1/x/peer/hook` for signed deliveries, both `Endpoint`s; the inbox deduplicates by link and
+  event id, bounds a link to 10 000 waiting events and relays them onto the bus through
+  `EventRelay`; a pull consumer on the initiating side keeps the cursor of a link it pulls.
+- On-behalf calls are allowed only for principals whose `origin` and whose account's `origin` name
+  this peer; the module contributes the `OnBehalf` resolution of `X-Keel-On-Behalf-Of`, the hooks
+  that bind an origin to its peer on `keel.account.upsert` and `keel.principal.upsert`, and provides
+  `PeerReach` and `PeerLinks` to the modules that ask.
 - `keel.account.*` and `keel.principal.*` events from an identity peer are applied by a handler
   in this module. The trust model and delivery are in [07-ecosystem.md](07-ecosystem.md).
 
 ### svc
 
-- A module, not the kernel: it collects `ServiceKind` contributions from product modules and
-  registers `svc.<kind>.open`, `suspend`, `resume`, `close`, `set_params`, `stat` and `login`.
-- `serviceKinds` in `GET /api/v1/instance` are supplied through `InstanceInfoSource`.
-- Service semantics (account upsert on `open`, retention on `close`) are in
-  [07-ecosystem.md](07-ecosystem.md).
+- A module, not the kernel: it collects `ServiceKindDef` contributions from product modules through
+  the hidden `derive` of the registrar and registers for each kind `svc.<kind>.open`, `suspend`,
+  `resume`, `close`, `set_params`, `stat` and `login`, `admin`-level without a permission key,
+  `open` and `close` requiring an `Idempotency-Key`, and the catalogue `svc.kinds`. The module id
+  and the feature are `svc`; it requires no other module, reads the identity of an account through
+  the kernel's hidden `AccountSource` and asks `PeerReach` only when `peers` provides it.
+- `serviceKinds` in `GET /api/v1/instance` are supplied through `InstanceInfoSource`, beside the
+  feature `svc`.
+- `svc_service` keeps the services, unique per kind and external id; the setting
+  `svc.retention_days` (1 to 3650, 30 by default) fixes how long a closed service is kept; the
+  module hooks `keel.account.suspend` and `resume` to drop the marks of the suspensions it made,
+  forgets an account's services through its `AccountLifecycle`, and emits `svc.service.opened`,
+  `suspended`, `resumed`, `closed` and `updated`.
+- The SDK side lives in `keel_sdk::svc`: `ServiceKind`, `ServiceKindDef`, `ServiceAccount`, the
+  wire shapes of the functions, `SUBJECT` and the helpers `peak` and `login` the kinds of the
+  first products use. Service semantics (account upsert on `open`, retention and the suspension
+  marks on `close`, the reach of a peer) are in [07-ecosystem.md](07-ecosystem.md).
 
 ### stats
 
@@ -900,14 +1030,14 @@ tool's output when the host refused it.
 | Crate | Module | Feature | What it keeps |
 |-------|--------|---------|---------------|
 | `hosting-users` | `hosting` | `panel.users` | `hosting_user`: a hosting user is the operating-system account `hp_<name>` inside the uid range with its home; the edit form switches its shell between `nologin` and `bash`; the limit `hosting.users`; the file manager's `hosting.file.*` |
-| `hosting-web` | `hosting_site` | `panel.web` | `hosting_site`: a site of a hosting user with its domain, aliases, document root inside the home and PHP version, rendered as an nginx server block and a php-fpm pool; the limit `hosting.site.max`; `DnsProvider`, `Sites` and `SiteCertificates` in its `api`; the configuration editor's `hosting.site.config.get` and `.set` |
+| `hosting-web` | `hosting_site` | `panel.web` | `hosting_site`: a site of a hosting user with its domain, aliases, document root inside the home and PHP version, rendered as an nginx server block and a php-fpm pool, and the key of a zone the neighbour refused after commit in `zone_error`; the limit `hosting.site.max`; `DnsProvider`, `Sites` and `SiteCertificates` in its `api`; the configuration editor's `hosting.site.config.get` and `.set`; `hosting.site.open_zone` behind the row action "Open in KeelDNS"; the service kind `hosting.sites` with `hosting_site_service` and the hourly collector `hosting.site.count`, which makes it require `stats` |
 | `hosting-ssl` | `hosting_certificate` | `panel.web` | one certificate per site, issued over ACME HTTP-01 or uploaded, renewed thirty days before expiry, the problem `hosting.certificate.expiring` fourteen days before |
 | `hosting-db` | `hosting_database` | `panel.databases` | MariaDB databases, users and grants per account, named `<hosting user>_<suffix>`; the limits `hosting.database.max` and `hosting.database.user.max`; the backup source `hosting_database.dumps` |
 | `hosting-mail` | `hosting_mail` | `panel.mail` | mail domains and mailboxes of one system user `vmail`, rendered into the postfix maps and the dovecot passwd-file; MX and SPF through `DnsProvider::add_records`; the backup source `hosting_mail.maildirs` |
 | `hosting-ftp` | `hosting_ftp` | `panel.ftp` | FTP accounts per site, chrooted under the site's document root through vsftpd and PAM; the limit `hosting.ftp.max` |
 | `hosting-backup` | `hosting_backup` | `panel.backup` | per-site archives of the document root, the databases of the site's user and the mailboxes of the site's mail domain, with a schedule per site and retention |
 | `hosting-services` | `hosting_service` | none | the services of the agent's policy with their state, memory and start; start, stop, restart and reload; the problem `hosting.service.down` |
-| `dns-local`, `dns-peer` | `dns_local`, `dns_peer` | none | the two sides of the bridge to `dns` ([07-ecosystem.md](07-ecosystem.md)) |
+| `dns-local`, `dns-peer` | `dns_local`, `dns_peer` | none | the two sides of the bridge to `dns` ([07-ecosystem.md](07-ecosystem.md)); `dns-peer` depends on `keel-client`, on the `api` of `hosting-users` and on the `notify` api, requires `hosting_site`, `hosting`, `task` and `notify`, and contributes the task `dns_peer.zone.create`, the pre-check hook on `hosting.site.create` and the problem source `dns_peer.zone.failed` |
 
 The editions `lite` and `pro` grant every feature of the bundle alike; `pro` has none of its own
 yet. The functions of `hosting-services` and the configuration editor are for the operator,

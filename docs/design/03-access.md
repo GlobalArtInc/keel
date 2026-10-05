@@ -188,13 +188,12 @@ context carries two identities: the effective `principal` and the `actor` who in
 | `ctl --as`| the local socket (`owner`) running as a principal | `socket`    |
 | on-behalf | a paired neighbour acting for one of its clients | `peer`      |
 
-The mechanism is the `via` of the actor principal itself: the actor of a `su` session carries
-`via: Su`, the `--as` actor is the socket principal with `via: Socket`, the on-behalf actor is
-the peer with `via: Peer(id)`; an actor with any other `via` is a kernel bug, so `actor.via` on
-the wire is a closed set of exactly these three values. The dispatcher checks this before the
-call runs: a principal whose actor arrived any other way is answered `500` with
-`keel.error.actor_not_delegated` and the offending `via` in `params`, and no function runs for
-it.
+The mechanism is the `via` of the actor principal itself: the actor of a `su` session carries `via:
+Su`, the `--as` actor is the socket principal with `via: Socket`, the on-behalf actor is the
+principal of the peer's link with `via: Peer(<link id>)`; an actor with any other `via` is a kernel
+bug, so `actor.via` on the wire is a closed set of exactly these three values. The dispatcher checks
+this before the call runs: a principal whose actor arrived any other way is answered `500` with
+`keel.error.actor_not_delegated` and the offending `via` in `params`, and no function runs for it.
 
 Rules for `su`:
 
@@ -245,9 +244,18 @@ principal with the owner as `actor` and `via: socket`, answering `not_found` for
 not know ([10-contracts.md](10-contracts.md)).
 
 On-behalf calls from a neighbouring product (`X-Keel-On-Behalf-Of: origin=…; external_id=…`)
-produce a principal whose `actor` is the peer. They are accepted only for principals and accounts
-whose `origin` is that peer, so a leaked billing token does not open a login under manually
-created users. The pairing and scope rules are in [07-ecosystem.md](07-ecosystem.md).
+produce a principal whose `actor` is the principal of the peer's link, `{ id, login, level, via:
+peer }` in the envelope like the actor of `su`. They are accepted only for principals and accounts
+whose `origin` names that peer, so a leaked billing token does not open a login under manually
+created users. The call runs with the customer's level, grants, ownership and account scoping, and
+the token's function masks and level apply on top: a customer above the token's level answers
+`keel.error.token_level`. The hidden `OnBehalf` seam of the SDK turns the header into the principal
+of the call, so the kernel knows nothing of origins. A peer hands its customer over with
+`auth.key.handover`, a one-time key for the customer itself issued by the link, which answers only a
+call on behalf of a customer lying below the level granted to the link; and every credential
+minted through a link, an API token, a login key and the session such a key opens, dies with the
+link at `peer.rotate` and `peer.delete`. The pairing, scope and login rules are in
+[07-ecosystem.md](07-ecosystem.md).
 
 The M1 acceptance sequence exercises all of this end to end:
 `login → boot → keel.account.list → auth.su → list narrowed and actor filled → su.exit`;
@@ -341,9 +349,8 @@ row cannot be changed (`keel.account.error.root_immutable`), and an account cann
 under itself or one of its descendants (`keel.account.error.parent_cycle`). Moving an account
 rewrites the `path` of its whole subtree. The union of the enabled bundles' `account_kinds` is
 not yet enforced on create: at M0 any identifier other than `system` is accepted, and the check
-arrives with the first bundle that declares a kind other than `user`. `AccountLifecycle`'s
-`on_rename` and the `keel.account.renamed` event presume a name the table does not carry; which
-column they act on is decided when the lifecycle is built.
+arrives with the first bundle that declares a kind other than `user`. An account carries no name,
+so `keel.account.renamed` is not emitted and `AccountLifecycle`'s `on_rename` keeps no caller.
 
 ## Principals
 
@@ -357,7 +364,7 @@ column they act on is decided when the lifecycle is built.
 | `login`       | Unique login name.                                                             |
 | `level`       | One of the ladder values, never `guest`. `keel.principal.create` and `update` refuse a level above the caller's own, and bind the level to the account's kind: `admin` and `owner` live only in the root account, `reseller` only in an account of kind `reseller`. |
 | `role`        | Role inside the account (`owner`, `member`, ...): product vocabulary.          |
-| `state`       | Principal state; `active` by default, `suspended` after `keel.principal.suspend`. |
+| `state`       | Principal state; `active` by default. No function suspends a principal, so `suspended` stays reserved and the events `keel.principal.suspended` and `resumed` are not emitted. |
 | `lang`        | Language of the principal.                                                     |
 | `origin`, `external_id` | Stable external identity, unique as a pair.                          |
 | `acl_gen`     | Rights generation counter for metadata caching; bumped by a change of the principal's level, role or account, and for every principal of a subtree by a change of an ancestor account. |
@@ -523,7 +530,13 @@ row lock), both admitting unlimited. The `panel` bundle of M5 adds `hosting.user
 10 per account each and unlimited allowed, each checked under an advisory lock per account
 before the insert; `hosting.users` is the one key named after the module `hosting`, the others
 after their modules (`hosting_site`, `hosting_database`, `hosting_ftp`), as `dns.record.max` is.
-A function that edits the stored values is not built yet.
+The stored values have two writers since M6: the service kinds `dns.zones` and `hosting.sites`
+store the account's `dns.zones` and `hosting.site.max` through the hidden
+`LimitSource::store(key, account, value, db)`, which the kernel answers by writing the account's
+row of `keel_limit` and refuses for an undeclared key or for `null` where the definition admits no
+unlimited, the effective limit staying the tightest along the path
+([07-ecosystem.md](07-ecosystem.md)); a function through which an administrator edits the stored
+values is not built yet.
 
 The limit table is `keel_limit(account_id, key, value)`, one of the kernel tables
 ([04-storage.md](04-storage.md)); the keys stored in it come from `LimitDef` contributions.
@@ -569,7 +582,7 @@ account in `deleting`, which `doctor` reports; calling delete again runs a new j
 modules of `keel-system` contribute no `on_delete` yet, so deleting an account whose principals
 hold passwords, sessions or settings fails loudly with `rows_remain`; `notify` and `webhooks`
 expose `drop_account` in the shape of an `on_delete` handler, tested directly, for the milestone
-that wires them. `on_rename` has no caller until the origin sync of M6.
+that wires them. `on_rename` keeps no caller, since an account carries no name.
 
 Module migrations use `ON DELETE RESTRICT` on their account foreign keys by default. A module
 that forgot to contribute `on_delete` therefore makes the deletion fail at step 3 rather than
@@ -582,9 +595,10 @@ r.within("keel.account.delete", hooks::forbid_delete_with_zones);
 ```
 
 The other state changes drive the matching handlers and emit the matching events
-(`keel.account.suspended`, `resumed`, `renamed`). For service accounts opened by billing, `close`
-moves the account to `suspended` with a retention period, and deletion remains a separate explicit
-call ([07-ecosystem.md](07-ecosystem.md)).
+(`keel.account.suspended`, `resumed`). For service accounts opened by billing, the `close` of the
+last open service of an account moves the account to `suspended` and keeps the service for a
+retention period, and deletion remains a separate explicit call
+([07-ecosystem.md](07-ecosystem.md)).
 
 ### External identity: `origin` and `external_id`
 
@@ -599,16 +613,47 @@ Products enabled on the same installation need none of this: they share the rows
 
 ```
 POST /api/v1/call/keel.principal.upsert
-{ "origin": "bill:01J9A", "externalId": "client-42", "login": "alice", "level": "user",
-  "account": { "origin": "bill:01J9A", "externalId": "acc-7", "kind": "user" } }
+{ "origin": "bill:01J9A…", "externalId": "client-42", "login": "alice", "level": "user",
+  "account": { "origin": "bill:01J9A…", "externalId": "acc-7", "kind": "user" } }
+→ { "id": "01J9P…", "accountId": "01J8A…", "created": true }
 ```
 
-The pair also gates on-behalf access: a peer may act only for principals and accounts whose
-`origin` is that peer. Changes to accounts and principals are published as `keel.account.*` and
-`keel.principal.*` events (`created`, `suspended`, `resumed`, `deleted`, `renamed`) through the
-outbox; a billing peer with the `identity` role is the source of truth and panels apply its
-events in the `peers` module. Upsert by `origin/external_id` and the account events are scheduled
-for M6.
+`keel.account.upsert { origin, externalId, kind?, parent? }` answers `{ id, created }` and
+`keel.principal.upsert { origin, externalId, login, level, role?, lang?, account }` `{ id,
+accountId, created }`; both are kernel actions at the `reseller` level, under `keel.account.manage`
+and `keel.principal.manage`, without a screen and without an ownership guard, and the principal
+upsert upserts its account first through `call.invoke` of `keel.account.upsert`, so that function's
+level, permission and hooks apply and its field errors come back under `account`. Both members of
+both pairs are 1 to 256 characters of `EXTERNAL_PATTERN` of `keel-types`, visible ASCII without `"`,
+`,`, `;` and `\`, the alphabet of the on-behalf header, so every synced customer stays addressable
+on behalf; a character outside it answers `keel.schema.pattern`. A new account takes the kind `user`
+unless `kind` names another, and the caller's own account as its parent unless `parent` names one
+within the caller's reach; `parent` applies only when the account is created. On an existing account
+a different kind is applied and `acl_gen` is bumped for its subtree, as `keel.account.update` does,
+the state is never changed, and an account in `deleting` answers `409 keel.account.error.deleting`;
+on an existing principal the login, level, role, language and account are applied with the rules of
+`keel.principal.update`, which shares the change path, and a taken login answers
+`keel.principal.error.login_exists`. A pair held outside the caller's reach answers `422
+keel.account.error.external_taken` or `keel.principal.error.external_taken` on `externalId`.
+Concurrent upserts of one pair insert with `ON CONFLICT DO NOTHING` and read the row again for
+update, so they end with one row and one `created: true`.
+
+The pair also gates access from a peer. A peer may act only for principals whose origin and whose
+account's origin name that peer's instance ([07-ecosystem.md](07-ecosystem.md)), and the upserts
+refuse an origin naming an instance, `<name>:<instance id>`, to a caller below `admin` other than
+the principal of the link to that instance, whether it calls through its peer token, a token minted
+under it or on behalf of a customer, with `403 peer.error.origin`: a record under the origin of a
+peer was placed by that peer or by an administrator. The `peers` module checks it in hooks inside
+the transaction of both upserts; origins of any other shape stay open to resellers, and a
+composition without `peers` binds nothing.
+
+Changes to accounts and principals are published through the outbox as `keel.account.created`,
+`suspended`, `resumed` and `deleted` and `keel.principal.created`, `renamed` (a change of the
+login) and `deleted` (each principal removed with its account); `keel.setup.admin` and the
+principals of peer links emit nothing. A billing peer with the `identity` role is the source of
+truth, and the installations it pairs with apply its suspensions, resumptions, deletions and
+renames in the `peers` module, through the same functions a local change calls
+([07-ecosystem.md](07-ecosystem.md)).
 
 ## Open questions
 

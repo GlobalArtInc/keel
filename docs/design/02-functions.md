@@ -309,10 +309,12 @@ A function declares `mode: read | write`, and the mode decides which stages exis
    way out, `forbidden_field` on the way in — then the parameters are validated against the
    schema and the `check` presets.
 4. **Idempotency.** Write mode only: a repeated `Idempotency-Key` is either replayed or
-   rejected with `409`. A replay ends the call here; nothing below runs again.
+   rejected with `409`. A replay ends the call here; nothing below runs again. A function that
+   requires the key refuses a call without one here, after its parameters were validated.
 5. **Before hooks.** Outside the transaction, with a timeout; they may read, enrich the
-   parameters, or veto. This is the stage open to plugins.
-6. **Transaction.** Write mode only: the kernel opens the transaction that `call.tx()` exposes.
+   parameters, veto, or wait on the network. This is the stage open to plugins.
+6. **Transaction.** Write mode only: the kernel opens the transaction that `call.tx()` exposes; a
+   keyed call takes the key's lock in it first and reads the record again under it.
 7. **Within hooks.** Inside the transaction; in-process modules only.
 8. **Handler.** The function body, with `call.tx()` and nested `call.invoke` on the same
    transaction.
@@ -321,7 +323,7 @@ A function declares `mode: read | write`, and the mode decides which stages exis
 11. **Audit event.** An in-process event describing the call, raised after commit and after
     rollback alike, so failed calls are audited too.
 12. **After.** `after_commit` callbacks run asynchronously; host-agent operations and peer calls
-    happen here or in a task, never inside the transaction.
+    happen here, in a task, or for a peer in a `before` hook, never inside the transaction.
 
 Stages 4 (idempotency), 6 (transaction), 7 (within hooks), 9 (emit to outbox) and 10 (commit or
 rollback) exist only for `mode: write`. The handler runs in both modes; for a read it runs on a
@@ -365,7 +367,10 @@ The guard stage runs the checks a function's `access` and its registrations impl
 - **Token scope.** An API token or a peer token may be limited to a mask of functions, a level
   ceiling and on-behalf rights; a token scoped to one function receives `403` on another,
   `keel.error.token_scope` with the function in `params`, and a read-only token receives
-  `keel.error.token_read_only` on a write. The guard runs for the entered call only: a nested
+  `keel.error.token_read_only` on a write. A peer scope (`Scope::Peer`) carries the three facets
+  of [07-ecosystem.md](07-ecosystem.md): a customer a peer acts for above the token's level
+  answers `keel.error.token_level`, and an actor whose token lacks `onBehalf`
+  `keel.error.token_on_behalf`. The guard runs for the entered call only: a nested
   `invoke` belongs to a call the guard already admitted, the same rule as module guards.
 - **Module guards.** Guards contributed by modules, such as the `auth` module's IP rules and
   rate limit, and the guard a module attaches to a raw route. A module registers one with
@@ -499,15 +504,48 @@ same key and a different body is `409` with `code: idempotency_mismatch`. The re
 `keel_idempotency` with an expiry (see [04-storage.md](04-storage.md)). Because the stage sits
 before the hooks and the handler, a replay costs no hook, no transaction and no second event.
 
-Three details the mechanism fixes: the record is written in the call's transaction, so only a
-committed response is ever replayed and a failed call leaves no record behind; a record expires
-24 hours after it was written; and a guest carries no identity to key on, so a key sent with a
-guest call is ignored. The dispatcher reports a replay next to the envelope, and the transport
-turns it into the header.
+The details the mechanism fixes:
+
+- The record is written in the call's transaction, so only a committed response is ever replayed
+  and a failed call leaves no record behind. A guest carries no identity to key on, so a key sent
+  with a guest call is ignored, and so is a key on a read. The dispatcher reports a replay next to
+  the envelope, and the transport turns it into the header.
+- A concurrent repeat waits for the first call rather than answering `409` while it runs, since
+  `keel-client` retries only after a failure to connect or a `5xx` and would surface a `409` to a
+  caller that is retrying. The dispatcher takes a transaction lock on the principal and the key,
+  `pg_advisory_xact_lock` over `keel_idempotency:<principal>:<key>`, at the start of the call's
+  transaction, or of the transaction that queues the job of a `result: task` function, reads the
+  record again under it and replays or refuses what the first call committed, so the handler runs
+  once; the repeat's `before` hooks have run by then, and the wait is bounded by the function's own
+  timeout.
+- A keyed call of a `result: task` function inserts its job through that transaction with
+  `TaskRunner::enqueue(db, spec)`, writes the record in it, commits, and only then calls
+  `TaskRunner::wake(id)`, which publishes the job's state and wakes the worker; so the job and the
+  record commit together or not at all, a timeout or a failed record leaves no job behind for the
+  retry to duplicate, and the call holds one pool connection. An unkeyed spawn keeps
+  `TaskRunner::spawn`. `Call::spawn_self_as_task` in a write call enqueues through the call's
+  transaction and wakes from an `after_commit` hook, so a job a write call queues for itself exists
+  only once the call commits, as the job erasing an account for `keel.account.delete` does; in a
+  read call it spawns as before.
+- A record lives the hours of the kernel's setting `keel.idempotency.hours` (1 to 720, 24 by
+  default) read for the root account when it is written. The internal function
+  `keel.idempotency.prune` deletes the expired records and the `cron` module runs it hourly as its
+  job `cron.idempotency.prune`, so a composition without `cron` keeps expired records, which are
+  never replayed and are taken over by the next call with their key.
+- A key is 1 to 255 printable ASCII characters, otherwise the write answers `422` with
+  `keel.error.idempotency_key`. The request hash covers the caller's level beside the canonical
+  parameters, so a key replays only at the level its answer was stripped for.
+- A function declares `.idempotent(Idempotency::Required)`, which puts `idempotency: required` in
+  its descriptor and a required `Idempotency-Key` header in its OpenAPI operation; a call without a
+  key then answers `422 validation` with `keel.error.idempotency_required`, except a call through
+  the `Caller` (`via: internal`: a job, a cron job, a module's in-process call) and a nested
+  `invoke`. The freeze refuses the declaration on a read function and on a guest-level function.
+  `keel ctl --idempotency-key <key>` sends the key on the socket
+  ([10-contracts.md](10-contracts.md)).
 
 `keel-client` retries only requests that carry a key; a billing peer opening a service twice
-with the same key therefore gets one service (the M6 acceptance criterion). The end-to-end path
-across products is finished in M6.
+with the same key therefore gets one service, the M6 acceptance criterion `svc.<kind>.open`
+requires the key for ([07-ecosystem.md](07-ecosystem.md)).
 
 ### Audit event
 

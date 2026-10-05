@@ -310,6 +310,9 @@ marked "proposed", it is the one the design currently assumes; it is not decided
   decided when the first product moves (M7). See [08-frontend.md](08-frontend.md).
 
 Open points that concern one subsystem only stay with its document;
-[07-ecosystem.md](07-ecosystem.md), for example, leaves open whether the catalogue of service kinds
-is a function or a raw route of the `svc` module, and the retention period after
-`svc.<kind>.close`.
+[07-ecosystem.md](07-ecosystem.md), for example, leaves open pinning the certificate of a
+neighbour in its link and lists what the review of M6 left without a fix. M6 settled the points
+that document had left open: the catalogue of service kinds is the function `svc.kinds`, the
+retention after `svc.<kind>.close` is the setting `svc.retention_days`, a protocol out of reach
+raises a problem at the daily check, and `dns-peer` reports a failure after commit on the site row,
+as a problem and in its task.

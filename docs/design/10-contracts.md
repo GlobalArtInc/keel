@@ -36,8 +36,12 @@ Three fixture sets are shared between Rust and TypeScript from M0:
 - `check` preset cases (`domain`, `ip`, `cidr`, `email`, `int`, `name`, `port`, `path`, ...).
 
 `keel-conformance` runs the same contract against the started `keel` binary with any set of
-products enabled — boot, auth, the list contract, errors, idempotency, webhooks, `svc.*` — and
-is a mandatory CI job, run with each first-party bundle alone and with all of them. The three
+products enabled — boot, auth, the list contract, errors, the fields a descriptor shows,
+idempotency, webhooks, the event stream, `svc.*` and peers — and is a mandatory CI job,
+`hack/conformance.sh target/debug/keel`, run over `dns` alone, `panel` alone and both, each on a
+database, a `data_dir` and a host agent of its own, `KEEL_CONFORMANCE_COMPOSITIONS` naming other
+sets ([05-modules.md](05-modules.md)). The suite is a client on `keel-client`, typed with
+`keel-types` ("The Rust client" below). The three
 versioning planes (compile-time `keel-sdk`, wire `PROTOCOL`, data `"keel": 1`) and the N / N-1
 rule for `PROTOCOL` are stated in [01-overview.md](01-overview.md); `PROTOCOL` is reported in
 `GET /api/v1/instance` and in the plugin manifest.
@@ -57,7 +61,7 @@ an audit event ([02-functions.md](02-functions.md)).
 | `GET /api/v1/functions`, `GET /api/v1/functions/{func}` | descriptors, projected under the calling principal |
 | `POST /api/v1/call/{func}` | the call; `GET` is accepted for `kind: list \| get` |
 | `GET /api/v1/i18n?lang=` | the message catalogue of one language, `en` filling every gap |
-| `GET /api/v1/instance` | instance identity for peers: `protocol`, the instance public key, enabled products, service kinds ([07-ecosystem.md](07-ecosystem.md)) |
+| `GET /api/v1/instance` | instance identity for peers, `InstanceInfo`: `instanceId`, `keel`, `protocol`, `products`, the instance public key, `features` and service kinds; served outside authentication, `503 unavailable` without an instance identity; `?challenge=` of 32 to 128 letters, digits, `-` and `_` answers `ProvenInstance`, the same with `proof`, a signature of the instance key over the challenge and the handshake, and a malformed or repeated challenge `422 validation` with `keel.error.challenge` on `challenge` ([07-ecosystem.md](07-ecosystem.md)) |
 | `/api/v1/x/<module>/<name>` | raw routes: `GET` or `POST` for a `download` function and `POST` multipart for an `upload`, `<name>` being the function name without its module prefix, behind authentication, the cross-site check and the whole pipeline; `GET` for a `stream` function, answering `text/event-stream`; `GET` or `POST` for an `Endpoint` a module contributes, which receives the body, the query and the headers without the credential and runs neither the guards nor the audit of the pipeline, so it authenticates on its own and may answer a guest: the peers hook `POST /api/v1/x/peer/hook`, authenticated by the HMAC signature of the delivery, and the pull feed `GET /api/v1/x/peer/feed?after=seq`, behind the peer token of a link; later the WebSocket terminal and VNC |
 | `GET /api/v1/events` | the server-sent event stream, `text/event-stream` with `Cache-Control: no-store`, resumed by `Last-Event-ID` or the query member `after` |
 | `GET /brand/logo.svg`, `GET /brand/<id>/logo.svg` | the effective brand's logo and each compiled-in bundle's, served from the bundle's `assets` or the kernel's own mark, `no-store` ([08-frontend.md](08-frontend.md)) |
@@ -78,18 +82,22 @@ per connection by the account scope of the principal: a `data.invalidate` is sen
 event's `subject.accountId` lies within the scope, an event without one reaches admins alone, so
 a user receives `data.invalidate` only for its own objects; an event another installation emitted,
 whose account ids name nothing here, reaches only an admin or owner whose credential is not
-narrowed by a scope of functions or a call through a peer ([07-ecosystem.md](07-ecosystem.md)); a
+narrowed by a scope of functions or a call through a peer ([07-ecosystem.md](07-ecosystem.md)); an
+event about a service, `svc.service`, reaches a principal of a peer link only when the account of
+the service belongs to that peer, through the hidden `peer_sees`; a
 live frame reaches its own principal, a reseller whose subtree holds its account and every admin,
 never another user. A guest is answered `401` as an envelope. A credential holds at most `SSE_MAX_CLIENTS`, 4, streams at
 once, keyed by a SHA-256 of the session cookie or the bearer token, so a token is capped like a
 session and a stream under `su` counts against the session that holds it; the stream beyond the
 cap evicts the oldest stream of that credential, which ends with a final frame carrying
 `retry: 0` and the comment `superseded`, and a stream that closes by itself frees its slot. At
-every keep-alive the stream runs the authenticator chain again with its credential: an
-unauthenticated answer closes it without a final frame, so a logout, a revoked session or an
-expired token loses its stream within one keep-alive period, any other error is logged and the
-stream stays, and the principal the check answers rescopes the stream. An open stream keeps its
-session from expiring idle. The peers feed is a separate path, not the browser stream.
+every keep-alive the stream runs the authenticator chain again with its credential, and resolves
+again the `X-Keel-On-Behalf-Of` it was opened with: a refusal — unauthenticated, or forbidden or not
+found from a delegation the header no longer obtains — closes it without a final frame, so a
+logout, a revoked session, an expired token or a deleted link loses its stream within one
+keep-alive period, a fault is logged and the stream stays, and the principal the check answers
+rescopes the stream. An open stream keeps its session from expiring idle. The peers feed is a
+separate path, not the browser stream.
 
 ### Conventions shared by every shape
 
@@ -115,11 +123,12 @@ session from expiring idle. The peers feed is a separate path, not the browser s
   the account forms take `parent` and the principal forms `account`, while the rows they read
   back carry `parentId` and `accountId`.
 - The vocabulary is closed by enums in `keel-types` and generated as TypeScript unions: `kind` ∈
-  `list · get · form · action · wizard · report · options · stream · download · upload`;
-  `control`; `column.type` (with an explicit mapping onto `PhxColumn.type`); `action.role` ∈
-  `new · edit · delete · group · button · child · external · export · upload · download ·
-  refresh`; the `check` presets. Icons are validated at start against the icon set of
-  phoenix-ui, embedded from `contracts/icons.json`, which `pnpm generate` writes from
+  `list · get · form · action · wizard · report · options · stream · download · upload`; `control`;
+  `column.type` (with an explicit mapping onto `PhxColumn.type`); `action.role` ∈ `new · edit ·
+  delete · group · button · child · external · export · upload · download · refresh`, where
+  `external` names an action whose function answers `{ url }` for the shell to follow
+  ([08-frontend.md](08-frontend.md)); the `check` presets. Icons are validated at start against the
+  icon set of phoenix-ui, embedded from `contracts/icons.json`, which `pnpm generate` writes from
   `PHX_ICON_NAMES` ([08-frontend.md](08-frontend.md)).
 
 ## Function descriptor: `GET /api/v1/functions/dns.zone.list`
@@ -169,6 +178,7 @@ source string.
 | `name`, `module` | function name and owning module; the module prefix is enforced at registration |
 | `kind`, `mode` | screen kind and `read \| write`; `mode` selects the dispatcher path (no transaction, no idempotency, no outbox for `read`) |
 | `access` | minimum `level`, required `permission`, licence `feature`; evaluated by the guards |
+| `idempotency` | `required` when the function declares `.idempotent(Idempotency::Required)`, absent otherwise; a call without an `Idempotency-Key` then answers `422` (see "Idempotency" below) |
 | `key` | the row key column; its presence makes the function owned, so `OwnedGuard` loads the row's account before the handler ([02-functions.md](02-functions.md)) |
 | `params`, `result` | JSON Schema; `keel://ListQuery` is the shared list query, and the result of a list is the page schema, titled `Page_<Row>` after the Rust row type, with `data`, `total` and `totals`; the example abbreviates its body |
 | `ui.title`, `ui.search` | title key and the columns full-text search runs over |
@@ -263,7 +273,7 @@ The request side follows these rules:
 | `data` | the function's result, shaped by `result` in the descriptor |
 | `meta.requestId` | the same value as `X-Keel-Request-Id`; appears in logs and in agent operations |
 | `meta.principal` | the effective principal: `id`, `login`, `level`, `account` (the account is always explicit, see [03-access.md](03-access.md)) |
-| `meta.principal.actor` | who is acting on the principal's behalf, or `null`: after `auth.su` the actor is the delegating principal with `via: "su"`; on an on-behalf call from a peer the actor is the peer ([07-ecosystem.md](07-ecosystem.md)) |
+| `meta.principal.actor` | who is acting on the principal's behalf, or `null`: after `auth.su` the actor is the delegating principal with `via: "su"`; on an on-behalf call from a peer the actor is the principal of the peer's link, `{ id, login, level, via: "peer" }` in the same shape ([07-ecosystem.md](07-ecosystem.md)) |
 
 ### Error envelope
 
@@ -286,9 +296,9 @@ The request side follows these rules:
 | `idempotency_mismatch` | 409 | the same `Idempotency-Key` with a different body |
 | `limit_exceeded` | 409 | `call.check_limit(key, current)` found the account's limit reached ([03-access.md](03-access.md)) |
 | `license` | 402 | the required `feature` is not licensed, or the licence is in read-only degradation and the function mutates |
-| `rate_limited` | 429 | a rate limit was hit (the `auth` module's login limits or request limits) |
+| `rate_limited` | 429 | a rate limit was hit (the `auth` module's login limits or request limits, the refused signatures of an address at the peers hook, the full inbox of a link) |
 | `unavailable` | 503 | the call cannot be executed now — for example, the cluster node that owns the function is unreachable |
-| `peer` | 502 | a call to a neighbour product failed |
+| `peer` | 502 | a call to a neighbour product failed: a refusal of the neighbour carrying its key, params and field errors, or the transport and answer errors of the calling module (`peer.error.unreachable`, `dns_peer.error.unreachable`) |
 | `internal` | 500 | anything else; details go to the log under `requestId`, not into the envelope |
 
 Where each code originates in the pipeline is tabulated in [02-functions.md](02-functions.md).
@@ -312,13 +322,90 @@ Where each code originates in the pipeline is tabulated in [02-functions.md](02-
   navigation ([07-ecosystem.md](07-ecosystem.md)).
 - The `__Host-` prefix requires TLS, so the installation listens only on TLS from the first start
   ([09-operations.md](09-operations.md)).
+- A peer token granted `onBehalf` may carry `X-Keel-On-Behalf-Of: origin=<name>:<instance>;
+  external_id=<id>`, the name a lowercase ASCII letter followed by up to 63 lowercase letters,
+  digits and `_`, the instance a canonical ULID and the external id 1 to 256 visible ASCII
+  characters without `"`, `,`, `;` and `\`, each key once, in either order; a header out of this
+  grammar answers `422 peer.error.header`, and one no credential may carry `403
+  keel.error.on_behalf` ([07-ecosystem.md](07-ecosystem.md)).
 
 ### Idempotency
 
-`Idempotency-Key` is handled by the kernel, not by handlers. A repeat with the same key and the
-same body is a replay of the stored response marked with `X-Keel-Idempotent-Replay`; the same key
-with a different body is `409 idempotency_mismatch`. Keys are stored in `keel_idempotency`
-([04-storage.md](04-storage.md)); `keel-client` retries only calls that carry a key.
+`Idempotency-Key` is handled by the kernel, not by handlers, for a write by a non-guest; a read
+and a guest call ignore it. After the transport trims it, a key is 1 to 255 printable ASCII
+characters, and any other key, a header value that is not ASCII included, answers `422 validation`
+with `keel.error.idempotency_key` and `{ max: 255 }`. A key is the caller's: the record is keyed by
+the principal and the key, so another principal sending the same key and body is answered anew. A
+repeat with the same key and the same body is a replay of the stored response marked with
+`X-Keel-Idempotent-Replay`; the same key with a different body, or from a credential of the same
+principal at another level, since the request hash covers the caller's level beside the canonical
+body, is `409 idempotency_mismatch`, so a key replays only at the level its answer was stripped
+for. The stored response is masked like every stored copy, `once` members included, so a replay
+answers the first answer with its `once` members as `***` and never hands out a secret again. A
+concurrent repeat waits for the first call and is then replayed or refused by what it committed,
+so the handler runs once ([02-functions.md](02-functions.md)). A record lives the hours of the
+kernel's setting `keel.idempotency.hours` (1 to 720, 24 by default). A function that declares
+`.idempotent(Idempotency::Required)` carries `idempotency: required` in its descriptor and a
+required `Idempotency-Key` header in its OpenAPI operation; a call without a key answers `422
+validation` with `keel.error.idempotency_required` and `{ function }`, after the parameters were
+validated, except a call through the hidden `Caller`, and the freeze refuses the declaration on a
+read function and on a guest-level function. `svc.<kind>.open` and `close` require the key. Keys
+are stored in `keel_idempotency` ([04-storage.md](04-storage.md)); `keel-client` retries only
+calls that carry a key.
+
+### The Rust client
+
+`keel-client` is the typed Rust client of this contract, for a neighbouring installation, the
+conformance suite and any Rust program; it depends on `keel-types` alone among the workspace
+crates. A `Client` is built from the installation's base address with a trust, a credential, an
+optional customer, timeouts (30 seconds, 10 to connect), the number of attempts (3), the first pause
+between them (250 ms, doubling up to 5 s) and the largest answer it reads (8 MiB), and is cheap to
+clone with another credential or customer. The base is an `http` or `https` address without
+credentials, query or fragment, kept as the URL parser normalises it, so `HTTPS://Host/` is
+`https://host`.
+
+- `call::<T>(func, params)` awaits to `Answer<T> { data, meta, replayed, meta_version, session }`
+  and takes `.idempotency_key()`, `.on_behalf()` and `.credential()`; a function name that is not
+  dot-separated segments of ASCII letters, digits, `_` and `-` is refused, so no name leaves
+  `/api/v1/call/`.
+- An ok envelope is accepted under `200` alone and an error envelope under the status of its code
+  alone, which is `Error::Refused` with the `CallError` and accessors for its code, key, params,
+  field paths and request id; a status disagreeing with the envelope, a body that is not an
+  envelope or does not fit `T`, a redirect, which the client never follows so a credential never
+  reaches another address, and an answer above the limit are `Error::Answer`; a failure to connect,
+  a timeout or a connection lost before the whole answer is `Error::Transport` with the number of
+  attempts; what the client refuses to send is `Error::Invalid`.
+- A call is retried only when it carries a key given through `idempotency_key`, on
+  `Error::Transport` or any status of 500 and above, never on a refusal below 500; the handshake,
+  the feed and a stream carry no key and are never retried. A retry after a timeout waits on the
+  key's lock until the first attempt commits and is then answered from the idempotency store.
+- `Credential::token`, `peer` and `session` take a `kat_`, `kpt_` or `ks_` value of visible
+  characters without `"`, `,`, `;` and `\`; the first two travel as `Bearer`, the session as the
+  cookie `__Host-keel_session`, which the cross-site check admits since the client sends neither
+  `Origin` nor `Sec-Fetch-Site`, and the session a login sets is read into `Answer::session`.
+  `OnBehalf::new(origin, external_id)` admits exactly the grammar by which the installation reads
+  `X-Keel-On-Behalf-Of`, so a header it would refuse is refused before it is sent; it is set on a
+  client or on one call, and the handshake and the feed go without it. A key is 1 to 255 printable
+  ASCII characters without surrounding spaces, since the kernel trims.
+- `Trust::System` verifies the certificate by the roots of the operating system;
+  `Trust::Pinned(pins)` admits a server whose end-entity certificate has a pinned SHA-256 and which
+  proves its key in the TLS handshake, whatever the certificate's names, chain and dates, so a
+  self-signed certificate is trusted under any address and a renewed one needs a new pin; a pin
+  reads the fingerprint the installer prints, hex with or without colons, or every certificate of a
+  PEM, and an empty list is refused. A `Trust::Pinned` on an `http` base is refused rather than
+  ignored, while `Trust::System`, the default, is accepted there and means nothing. The client
+  configures the ring provider itself, installs no process-wide provider and offers `http/1.1`
+  alone.
+- `feed(after)` with `.types()` and `.limit()` is a stream of the events of `GET
+  /api/v1/x/peer/feed` that pages from its cursor and ends when a page brings no event and `next`
+  does not move; `cursor()` is the `seq` to resume after, the `next` of a page once its events are
+  yielded; a page going back, or an event out of order or outside the cursor exclusive to `next`
+  inclusive, ends the stream with `Error::Answer`; it does not poll.
+- The raw `send(Request) → Response` and `open(Request) → Streaming` serve the routes outside the
+  envelope: they answer a redirect as the response it is, still unfollowed, and an explicit header
+  of a raw request overrides the one the client derives. The `Debug` of a request or a response
+  prints neither a body nor a header value, and a body that does not fit is reported by the
+  category and position of the error, not its values.
 
 ### CLI and the control socket
 
@@ -347,7 +434,9 @@ is an open question ([11-decisions.md](11-decisions.md)). What M0 fixes:
   `kind: list` result as a grid whose headers are `<module>.<entity>.column.<key>` translated
   through the catalogue in `--lang` (`en` by default), an object as two columns of member and
   value, an error as `error: <code> <key> <params>` with one line per field entry and the
-  request id. `--as <login>` sends the frame's `as`; `--socket <path>` overrides the socket
+  request id. `--as <login>` sends the frame's `as`; `--idempotency-key <key>` sends the frame's
+  `idempotencyKey`, so a function that requires the key, such as `svc.<kind>.open`, is reachable
+  from the CLI, and no key is ever generated for a write; `--socket <path>` overrides the socket
   named by the configuration; the global `--config <path>` or `KEEL_CONFIG` names the
   configuration file.
 - Exit codes: `0` for `ok: true`, `1` for an error envelope or a failure to reach the socket,

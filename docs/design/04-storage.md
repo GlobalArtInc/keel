@@ -107,6 +107,13 @@ worker holds while it is the leader, `keelcron` the session lock of the cron lea
 that the transactions that write events commit in `seq` order. A module holds a session lock
 through the hidden `AdvisoryLock` seam of the SDK, `take(key)` answering a guard on a pinned
 connection that releases the lock when dropped; a module never calls `pg_advisory_lock` itself.
+A transaction lock that serialises calls on one object, released with the transaction, is taken
+with `pg_advisory_xact_lock` on `hashtextextended` of a text that starts with the prefix of its
+owner: the dispatcher's `keel_idempotency:<principal>:<key>` around a keyed write, and a module's
+own inside the call's transaction, such as `dns_zone:<account>` and `hosting_site:<account>` of the
+limit hooks, `dns_service:<account>` and `hosting_site_service:<account>` of the service kinds,
+`svc_account:<origin> <external id>` of `svc` and `auth_link:<principal>` of `auth`, which minting
+under a link takes shared and retiring the link exclusive ([07-ecosystem.md](07-ecosystem.md)).
 Advisory locks are scoped to a database; the installation's keys are the only Keel keys in `keel`.
 
 ## Identifiers, time and JSON
@@ -238,8 +245,8 @@ prefix.
 | `keel_migration` | sqlmig ledger of the kernel's own migrations | sqlmig's own layout |
 | `keel_module` | Registry of modules that ever ran against this database; a module outside the loaded set is `orphaned` | `id`, `version`, `state` |
 | `keel_kv` | Instance-level values: instance id, wrapped key, enabled products, version history, monotonic time | `key`, `value` |
-| `keel_outbox` | Events written in the call transaction, delivered at least once | `seq`, `id`, `type`, `module`, `actor_json`, `subject_json`, `data_json` |
-| `keel_idempotency` | Recorded responses for `Idempotency-Key` replays | `principal_id`, `key`, `func`, `request_hash`, `status`, `response_json` |
+| `keel_outbox` | Events written in the call transaction, delivered at least once, and the events of paired installations relayed onto the bus | `seq`, `id`, `type`, `module`, `actor_json`, `subject_json`, `data_json`, `instance_id` |
+| `keel_idempotency` | Recorded responses for `Idempotency-Key` replays | `principal_id`, `key`, `func`, `request_hash`, `status`, `response_json`, `expires_at` |
 | `keel_limit` | Per-account values of the limits modules contribute through `LimitDef`, inherited along `path` | `account_id`, `key`, `value` |
 
 ### keel_account
@@ -288,12 +295,14 @@ prune`.
 ### keel_kv
 
 `key TEXT`, `value jsonb`. A small key-value store for values that exist once per installation:
-the instance id, the wrapped secret key, the enabled products, the history of versions that ran
-against this database, and the monotonic time that the license module uses against clock changes
-([05-modules.md](05-modules.md)).
+the instance id and its key, the wrapped secret key, the enabled products, the history of versions
+that ran against this database, and the monotonic time that the license module uses against clock
+changes ([05-modules.md](05-modules.md)).
 
-The kernel writes `instance_id` (a ULID, the same value as `instance.id` in the data directory)
-and `secret_key` (the wrapped data key, see "Secrets") at first start. The instance id is
+The kernel writes `instance_id` (a ULID, the same value as `instance.id` in the data directory),
+`secret_key` (the wrapped data key, see "Secrets") and `instance_key` (the Ed25519 seed of the
+instance key, sealed under the data key, [07-ecosystem.md](07-ecosystem.md)) at first start, in one
+transaction under the `keelinst` lock. The instance id is
 generated once and copied in both places; a missing `instance.id` file is restored from the
 row, and a file that names a different id than the row fails the start, because a data
 directory and a database of two installations must not be combined.
@@ -315,7 +324,11 @@ instance-level value consulted once at boot, like the instance id.
 `seq` (monotonic, assigned by the database), `id TEXT` (ULID of the event), `type TEXT`,
 `module TEXT` (the module of the function whose handler emitted the event, the `module` of the
 event shape in [07-ecosystem.md](07-ecosystem.md)), `at timestamptz`, `actor_json jsonb`,
-`subject_json jsonb`, `data_json jsonb`, `created_at timestamptz`.
+`subject_json jsonb`, `data_json jsonb`, `created_at timestamptz`, and since M6 `instance_id TEXT`,
+`NULL` for an event of this installation and the instance id of a paired installation for an event
+the hidden `EventRelay` entered from the inbox of `peers`, under the event's own id, in its own
+transaction under the outbox lock. `id` stays the global key of the table, so an id the outbox holds
+for another installation is refused rather than taken for a repeat.
 
 A row is inserted inside the transaction of the call that produced the event, so an event exists
 exactly when its change is committed. `seq` is an identity value assigned at insert; before its
@@ -336,10 +349,17 @@ shapes are in [07-ecosystem.md](07-ecosystem.md).
 `response_json jsonb`, `created_at timestamptz`, `expires_at timestamptz`; the record is keyed by
 `(principal_id, key)`.
 
-The kernel writes the record in the transaction of a write call that carries an `Idempotency-Key`.
-A repeat with the same body is answered from `response_json` with the header
-`X-Keel-Idempotent-Replay`; a repeat with a different body, detected through `request_hash`, is
-rejected with `409 idempotency_mismatch`. Expired records are removed by retention.
+The kernel writes the record in the transaction of a write call that carries an `Idempotency-Key`,
+or of the transaction that queues the job of a `result: task` function, under a transaction lock on
+the principal and the key, so concurrent repeats wait for the first and the handler runs once
+([02-functions.md](02-functions.md)). A repeat with the same body is answered from `response_json`,
+which holds the response masked like every stored copy, with the header `X-Keel-Idempotent-Replay`;
+a repeat with a different body or from the same principal at another level, detected through
+`request_hash`, the hash of the caller's level and the canonical parameters, is rejected with `409
+idempotency_mismatch`. `expires_at` is the time of the write plus the hours of the kernel's setting
+`keel.idempotency.hours` (1 to 720, 24 by default); the internal function `keel.idempotency.prune`
+deletes the expired records, run hourly by the job `cron.idempotency.prune` of the `cron` module,
+and an expired record is never replayed and is taken over by the next call with its key.
 
 ## Testing against Postgres
 

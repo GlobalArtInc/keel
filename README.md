@@ -11,8 +11,8 @@ database per host; one binary `keel` per host with the frontend embedded.
 
 ## Status
 
-The design is in `docs/design/`, the order of work in `docs/plan.md`. M0, M1, M2, M3 and M4 are
-built; the milestones after them are designed, not yet built.
+The design is in `docs/design/`, the order of work in `docs/plan.md`. M0 to M6 are built; the
+milestones after them are designed, not yet built.
 
 | Milestone | Scope | State |
 |---|---|---|
@@ -22,7 +22,7 @@ built; the milestones after them are designed, not yet built.
 | M3 | Background work and feedback: `tasks`, `cron`, `notify`, `webhooks`, SSE, TLS | done: the binary composes `tasks`, `cron`, `notify` and `webhooks`; `note.export` runs as a task with progress, log, cancellation and a checkpoint that survives a restart, watched in the browser through the progress modal and the task drawer; a cron job raises a problem that reaches the dashboard, the notification centre and the mail catcher; the event stream at `/api/v1/events` carries `data.invalidate` scoped to the principal's account; `keel.export`, group editing through `ui.multi`, the `upload` kind with the brand logo as its first upload, TLS with a generated certificate and `trusted_proxies` are served; `@globalart/keel` pins phoenix-ui 0.3.1 and `keel-dev i18n missing` holds `en` and `ru` complete; every CI-run item of the M3 exit checklist in `docs/plan.md` is green, and the operator-run items are ticked by hand on `keel-demo` after the push; `keel.account.delete` as a task and the per-session cap of the stream were left undone and are named in the checklist |
 | M4 | Operator plane, `keel-host`, KeelDNS alpha | done: `deploy/install.sh --product <id>` installs from the signed channel with the uid range, the four units and the setup link, and only `keel privileged` runs as root; `update` checks the channel, applies from a button as a task after the drain and the pre-update dump and rolls back, the root side installing signed versions alone; `backup` and `restore` with `--with-secret-key`, `doctor`, `support-bundle` and `keel product enable\|disable` on a running installation with the restart exit 75; `keel-host-agent` serves the typed catalogue under `agent.yaml` with every operation in the journal, and `keel-host` reaches it from modules; the feature guard runs over the features of the enabled products; the `dns` bundle (`dns-zones`, `dns-records`, `dns-templates`) renders bind zones after commit and is driven from the browser, the CLI and a token; `release.yml` publishes `keel-v*` tags, the rehearsal builds the `dns` crates from a git revision, the privileged path passed its security review, and `keel.account.delete` as a task and the stream cap closed the two M3 leftovers; every CI-run item of the M4 exit checklist in `docs/plan.md` is green, and the operator-run items (the tag `keel-v0.2.0` on the channel, the update and rollback of `keel-demo` from the button, a fresh VM with `--product dns`, a backup restored on a second VM) and the review findings without a fix are named there, unticked |
 | M5 | KeelPanel, `license`, `stats`, report and dashboard renderers | done: the `license` module verifies an Ed25519 lease bound to the instance, grants the features of the listed editions, refuses to enable an unlisted product and degrades to grace and read-only on a clock that only moves forward, and `keel-dev license issue` issues leases by hand; `stats` samples, rolls over and serves series; the renderers `report`, `dashboard` with stat widgets and a per-principal layout, `tree`, `master-detail` and `stream` over SSE run on phoenix-ui 0.4.0; a forgotten password is reset through a link `notify` mails to a confirmed address; the `panel` bundle keeps hosting users, sites on nginx and php-fpm, ACME certificates, MariaDB databases, mail, FTP, per-site backups and services through the host agent, reaches `dns` through `dns-local` in the same transaction or `dns-peer`, has exactly two custom views (the file manager and the configuration editor, 3.0 % of its functions), and `install.sh --product panel` installs its daemons; the release binary is capped at 42,000,000 bytes and the security review of `panel` fixed its findings; every CI-run item of the M5 exit checklist in `docs/plan.md` is green, and the operator-run items (the production license key pair and a lease for `keel-demo`, the Let's Encrypt site and the module proofs on a VM, the tag `keel-v0.3.0` with `keel-demo` updated from the button, the OwnLate project `keel-panel`) and what was left undone or without a fix are named there, unticked |
-| M6 | Products working together: `peers`, events, services, `keel-client` | |
+| M6 | Products working together: `peers`, events, services, `keel-client` | done: the `peers` module pairs installations by a one-time code into mutual `kpt_` tokens with scopes, pins the neighbour's Ed25519 instance key on first use and asks a signed challenge before every rotation and daily check, lets a peer act on behalf of the customers it synced and hand them over to a browser with a one-time key, and retires every credential minted through a link with it; events of a link travel as signed webhooks or through a pull feed into an inbox that keeps each event once, and an identity link applies its peer's account and principal events; `keel.account.upsert` and `keel.principal.upsert` key customers by origin and external id; the kernel answers repeated writes once per `Idempotency-Key`; the `svc` module sells the kinds `dns.zones` and `hosting.sites` through `svc.<kind>.*` and the catalogue `svc.kinds`; `keel-client` is the typed Rust client with pinned or system TLS; `dns-peer` creates a site's zone on a paired `dns` installation with the DNS error on the hosting form and opens it there with "Open in KeelDNS"; the conformance suite runs in full over `dns` alone, `panel` alone and both, `hack/peers-e2e.sh` proves the milestone on two binaries, and the security review of peers and services fixed its findings; every CI-run item of the M6 exit checklist in `docs/plan.md` is green, and the operator-run items (the two-machine transcript of `hack/peers-vm.sh`, the tag `keel-v0.4.0` with `keel-demo` updated from the button) and what was left undone or without a fix are named there, unticked |
 | M7 | External plugins, SDK 1.0, product module crates may move to their own repositories | |
 | M8 | Cluster of nodes | |
 
@@ -158,14 +158,15 @@ of the dry run to `keel privileged update --from-request` in a temporary tree wi
 binary with the `demo`, the `dns` and the `panel` bundle alone to compiling. The frame parser
 of the host agent and the manifest verifier are fuzzed by bounded property tests inside `cargo
 test`, and so are the lease verifier, the template inputs of `panel` and the MariaDB statement
-builder. `hack/check-docs.sh` holds the documents to the code: the names M1 to M5 introduced are
+builder. `hack/check-docs.sh` holds the documents to the code: the names M1 to M6 introduced are
 found under `docs/design/` and under `crates/`, `products/` or `frontend/libs/keel`, every Rust
-test, Jest and Playwright spec and command the M1 to M5 exit checklists of `docs/plan.md` cite
+test, Jest and Playwright spec and command the M1 to M6 exit checklists of `docs/plan.md` cite
 exists, and the lists above, the "How we work" section of the plan and `ci.yml` name the same
 commands. CI ends with `cargo-semver-checks` against the facade crate `keel`, and a second job runs
 the `keel-system` matrix, `cargo clippy` and `cargo test -p keel-system --no-default-features
---features <set>` over twenty sets: each of the eleven modules alone (`auth`, `settings`, `audit`,
-`tasks`, `cron`, `notify`, `webhooks`, `license`, `update`, `backup`, `stats`), `tasks,cron,notify,update` and
+--features <set>` over twenty-two sets: each of the thirteen modules alone (`auth`, `settings`,
+`audit`, `tasks`, `cron`, `notify`, `webhooks`, `license`, `update`, `backup`, `stats`, `peers`,
+`svc`), `tasks,cron,notify,update` and
 `tasks,backup`, the seven modules of M3 without each of `auth`, `settings`, `audit` and `tasks` in
 turn, and the nested prefixes `auth,settings,audit,tasks`, `…,cron` and `…,cron,notify`, against
 Postgres and the mail catcher;
@@ -244,4 +245,4 @@ of the kernel under `contracts/fixtures/descriptors/` are refreshed with
 - `docs/design/09-operations.md` — delivery, systemd, updates, backups, support
 - `docs/design/10-contracts.md` — wire contracts with examples
 - `docs/design/11-decisions.md` — decisions, alternatives, risks, open questions
-- `docs/plan.md` — milestones, the M0, M1, M2, M3 and M4 work breakdowns and their exit checklists
+- `docs/plan.md` — milestones, the M0 to M6 work breakdowns and their exit checklists

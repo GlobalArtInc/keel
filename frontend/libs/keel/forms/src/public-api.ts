@@ -55,4 +55,4 @@ export { KeelPageComponent } from './page.component';
 export { KeelFieldComponent } from './field.component';
 export { KeelOnceComponent, ONCE_TITLE_KEY } from './once.component';
 
-export const KEEL_FORMS_VERSION = '0.3.0';
+export const KEEL_FORMS_VERSION = '0.4.0';
