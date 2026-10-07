@@ -343,6 +343,18 @@ async fn the_database_is_dropped_when_a_test_panics_before_finish() {
 }
 
 #[tokio::test]
+async fn a_test_database_commits_without_waiting_for_the_disk() {
+    let database = TestDatabase::create().await;
+    assert_eq!(
+        database
+            .rows("SELECT current_setting('synchronous_commit')")
+            .await,
+        ["off"]
+    );
+    database.finish().await;
+}
+
+#[tokio::test]
 async fn the_server_is_the_named_one_when_the_variable_is_set_and_a_started_container_otherwise() {
     let database = TestDatabase::create().await;
     let named = std::env::var(database::VARIABLE).ok();

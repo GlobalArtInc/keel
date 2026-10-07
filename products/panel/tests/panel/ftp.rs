@@ -152,11 +152,11 @@ async fn an_ftp_account_is_chrooted_under_its_site() {
         .call(Who::A1, "hosting.ftp.delete", json!({ "ids": [id] }))
         .await;
     assert_eq!(data(&deleted)["deleted"], json!(1));
-    eventually("the deleted account leaves the user file", async || {
-        logins(&site) == ["hp_deploy"]
-    })
+    eventually(
+        "the deleted account leaves the passwd file and its user file",
+        async || logins(&site) == ["hp_deploy"] && user_file(&site, "hp_upload").is_none(),
+    )
     .await;
-    assert_eq!(user_file(&site, "hp_upload"), None);
 
     let gone = harness
         .call(Who::A1, "hosting.site.delete", json!({ "ids": [web] }))

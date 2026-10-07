@@ -186,13 +186,21 @@ impl TestDatabase {
         let (admin, server) = admin_url().await?;
         let name = format!("{PREFIX}{}", Id::generate().to_string().to_lowercase());
         let connection = connect(&admin).await?;
-        let created = connection
-            .execute_unprepared(&format!("CREATE DATABASE \"{name}\" TEMPLATE {TEMPLATE}"))
-            .await
-            .map_err(|source| DatabaseError::Create {
-                name: name.clone(),
-                source,
-            });
+        let created = async {
+            connection
+                .execute_unprepared(&format!("CREATE DATABASE \"{name}\" TEMPLATE {TEMPLATE}"))
+                .await?;
+            connection
+                .execute_unprepared(&format!(
+                    "ALTER DATABASE \"{name}\" SET synchronous_commit TO off"
+                ))
+                .await
+        }
+        .await
+        .map_err(|source| DatabaseError::Create {
+            name: name.clone(),
+            source,
+        });
         let closed = connection.close().await;
         created?;
         closed.map_err(DatabaseError::Connect)?;
