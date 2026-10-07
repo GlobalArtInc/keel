@@ -375,6 +375,27 @@ where
     }
 }
 
+async fn wait_while_progressing<F, Fut>(what: &str, total: usize, mut done: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = usize>,
+{
+    let mut seen = done().await;
+    let mut deadline = tokio::time::Instant::now() + PATIENCE;
+    while seen < total {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{what}: {seen} of {total}, and none more within {PATIENCE:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        let now = done().await;
+        if now > seen {
+            seen = now;
+            deadline = tokio::time::Instant::now() + PATIENCE;
+        }
+    }
+}
+
 async fn subscribe(harness: &Harness, who: Who, name: &str, url: &str, masks: &[&str]) -> Value {
     let reply = harness
         .call(
@@ -871,17 +892,19 @@ async fn the_due_deliveries_of_a_disabled_subscription_do_not_hold_up_another_su
             .filter(|row| row.starts_with(&parked_id))
             .collect::<Vec<String>>()
     };
-    wait_until(
+    wait_while_progressing(
         "every delivery of the parked subscription failed once",
+        MORE_THAN_A_BATCH,
         || async {
-            let rows = parked_rows().await;
-            rows.len() == MORE_THAN_A_BATCH
-                && rows
-                    .iter()
-                    .all(|row| row.ends_with(&format!(" {STATE_FAILED} 1")))
+            parked_rows()
+                .await
+                .iter()
+                .filter(|row| row.ends_with(&format!(" {STATE_FAILED} 1")))
+                .count()
         },
     )
     .await;
+    assert_eq!(parked_rows().await.len(), MORE_THAN_A_BATCH);
     assert_eq!(listener.received("parked").len(), MORE_THAN_A_BATCH);
     let disabled = harness
         .call(
@@ -932,16 +955,19 @@ async fn the_due_deliveries_of_a_disabled_subscription_do_not_hold_up_another_su
         )
         .await;
     assert_eq!(data(&enabled)["enabled"], json!(true));
-    wait_until(
+    wait_while_progressing(
         "the parked deliveries resume once enabled again",
+        MORE_THAN_A_BATCH,
         || async {
             parked_rows()
                 .await
                 .iter()
-                .all(|row| row.ends_with(&format!(" {STATE_FAILED} 2")))
+                .filter(|row| row.ends_with(&format!(" {STATE_FAILED} 2")))
+                .count()
         },
     )
     .await;
+    assert_eq!(parked_rows().await.len(), MORE_THAN_A_BATCH);
     assert_eq!(listener.received("parked").len(), 2 * MORE_THAN_A_BATCH);
     harness.finish().await;
 }
