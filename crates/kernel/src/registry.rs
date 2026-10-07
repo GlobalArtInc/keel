@@ -45,6 +45,7 @@ pub struct Function {
     pub(crate) def: FunctionDef,
     pub(crate) descriptor: Descriptor,
     pub(crate) before: Vec<Hook<BeforeHook>>,
+    pub(crate) external: Vec<Hook<BeforeHook>>,
     pub(crate) within: Vec<Hook<WithinHook>>,
     pub(crate) patched: Vec<PatchedField>,
 }
@@ -227,6 +228,7 @@ impl fmt::Debug for Function {
         f.debug_struct("Function")
             .field("def", &self.def)
             .field("before", &self.before.len())
+            .field("external", &self.external.len())
             .field("within", &self.within.len())
             .field("patched", &self.patched)
             .finish()

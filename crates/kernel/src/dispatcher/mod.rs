@@ -13,7 +13,7 @@ mod task;
 mod unit;
 mod validate;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -93,6 +93,13 @@ struct Prepared {
 enum Work {
     Single(Value),
     Group(group::Group),
+}
+
+struct GroupRows {
+    key: String,
+    read: String,
+    read_key: String,
+    properties: BTreeSet<String>,
 }
 
 struct Target<'a> {
@@ -550,8 +557,19 @@ impl Inner {
         }
         let body = async {
             let params = match &group {
-                Some(_) => params,
-                None => self.before(target.function, &pool, params).await?,
+                Some(group) => {
+                    if origin.task.is_none() {
+                        self.external_group(target, &pool, group, &after).await?;
+                    }
+                    params
+                }
+                None => {
+                    let params = self.before(target.function, &pool, params).await?;
+                    match origin.task {
+                        Some(_) => params,
+                        None => self.external(target, &pool, params, &extra).await?,
+                    }
+                }
             };
             if origin.task.is_none()
                 && let Some(spawned) = self
@@ -809,6 +827,25 @@ impl Inner {
         after: &Shared,
     ) -> Result<Performed, KeelError> {
         let def = target.function.def();
+        let rows = self.group_rows(target)?;
+        let mut updated = 0;
+        for id in &group.ids {
+            let merged = self
+                .group_row(target, &rows, handle, after, id, &group.fields)
+                .await?;
+            self.invoke_nested(handle.clone(), after.clone(), def.name().to_owned(), merged)
+                .await?;
+            updated += 1;
+        }
+        Ok(Performed {
+            data: serde_json::to_value(GroupResult::new(updated))?,
+            download: None,
+            lines: None,
+        })
+    }
+
+    fn group_rows(&self, target: &Target<'_>) -> Result<GroupRows, KeelError> {
+        let def = target.function.def();
         let descriptor = target.function.descriptor();
         let (Some(key), Some(read)) = (
             def.key(),
@@ -822,36 +859,69 @@ impl Inner {
             .and_then(|function| function.def().key())
             .unwrap_or(key)
             .to_owned();
-        let properties = group::properties(descriptor);
-        let mut updated = 0;
-        for id in &group.ids {
-            let mut pick = Map::new();
-            pick.insert(read_key.clone(), id.clone());
-            let current = self
-                .invoke_nested(
-                    handle.clone(),
-                    after.clone(),
-                    read.to_owned(),
-                    Value::Object(pick),
-                )
-                .await?;
-            let merged = group::merge(
-                current,
-                &properties,
-                &target.prepared.params,
-                key,
-                id,
-                &group.fields,
-            );
-            self.invoke_nested(handle.clone(), after.clone(), def.name().to_owned(), merged)
-                .await?;
-            updated += 1;
-        }
-        Ok(Performed {
-            data: serde_json::to_value(GroupResult::new(updated))?,
-            download: None,
-            lines: None,
+        Ok(GroupRows {
+            key: key.to_owned(),
+            read: read.to_owned(),
+            read_key,
+            properties: group::properties(descriptor),
         })
+    }
+
+    async fn group_row(
+        self: &Arc<Self>,
+        target: &Target<'_>,
+        rows: &GroupRows,
+        handle: &CallHandle,
+        after: &Shared,
+        id: &Value,
+        fields: &Map<String, Value>,
+    ) -> Result<Value, KeelError> {
+        let mut pick = Map::new();
+        pick.insert(rows.read_key.clone(), id.clone());
+        let current = self
+            .invoke_nested(
+                handle.clone(),
+                after.clone(),
+                rows.read.clone(),
+                Value::Object(pick),
+            )
+            .await?;
+        Ok(group::merge(
+            current,
+            &rows.properties,
+            &target.prepared.params,
+            &rows.key,
+            id,
+            fields,
+        ))
+    }
+
+    async fn external_group(
+        self: &Arc<Self>,
+        target: &Target<'_>,
+        handle: &CallHandle,
+        group: &group::Group,
+        after: &Shared,
+    ) -> Result<(), KeelError> {
+        let function = target.function;
+        if function.external.is_empty() {
+            return Ok(());
+        }
+        let rows = self.group_rows(target)?;
+        for id in &group.ids {
+            let row = self
+                .group_row(target, &rows, handle, after, id, &group.fields)
+                .await?;
+            for hook in &function.external {
+                let verdict = (hook.hook)(handle.call(row.clone())).await?;
+                if enriched(row.clone(), verdict, &hook.module, function.name())? != row {
+                    return Err(KeelError::internal("keel.error.group_enriched")
+                        .param("module", hook.module.as_str())
+                        .param("function", function.name()));
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn before(
@@ -869,14 +939,34 @@ impl Inner {
                         .param("module", hook.module.as_str())
                         .param("function", function.name())
                 })??;
-            if let Before::Enrich(enrichment) = verdict {
-                params = enrich(params, enrichment).ok_or_else(|| {
-                    KeelError::internal("keel.error.enrich_not_object")
-                        .param("module", hook.module.as_str())
-                        .param("function", function.name())
-                })?;
-            }
+            params = enriched(params, verdict, &hook.module, function.name())?;
         }
+        Ok(params)
+    }
+
+    async fn external(
+        &self,
+        target: &Target<'_>,
+        handle: &CallHandle,
+        mut params: Value,
+        extra: &Map<String, Value>,
+    ) -> Result<Value, KeelError> {
+        let function = target.function;
+        let mut changed = false;
+        for hook in &function.external {
+            let verdict = (hook.hook)(handle.call(params.clone())).await?;
+            changed |= matches!(verdict, Before::Enrich(_));
+            params = enriched(params, verdict, &hook.module, function.name())?;
+        }
+        if !changed {
+            return Ok(params);
+        }
+        let (params, _) = split_extra(params, &target.prepared.patched);
+        let mut checked = params.clone();
+        if let Value::Object(object) = &mut checked {
+            object.extend(extra.clone());
+        }
+        self.admit(target, handle, &checked, true).await?;
         Ok(params)
     }
 
@@ -1052,6 +1142,22 @@ fn split_extra(params: Value, patched: &[String]) -> (Value, Map<String, Value>)
         }
     }
     (params, extra)
+}
+
+fn enriched(
+    params: Value,
+    verdict: Before,
+    module: &str,
+    function: &str,
+) -> Result<Value, KeelError> {
+    match verdict {
+        Before::Proceed => Ok(params),
+        Before::Enrich(enrichment) => enrich(params, enrichment).ok_or_else(|| {
+            KeelError::internal("keel.error.enrich_not_object")
+                .param("module", module)
+                .param("function", function)
+        }),
+    }
 }
 
 fn enrich(params: Value, enrichment: Value) -> Option<Value> {

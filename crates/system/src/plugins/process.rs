@@ -1,35 +1,28 @@
 use std::collections::BTreeMap;
-use std::io;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Duration;
 
 use keel_sdk::prelude::*;
 use keel_sdk::serde_json;
-use keel_sdk::system::{Caller, PluginLauncher, PluginProcess};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::{oneshot, watch};
-use tokio::task::JoinHandle;
+use keel_sdk::system::{Caller, CallerOptions, PluginLauncher, PluginProcess, PrincipalSource};
+use tokio::sync::{Notify, Semaphore, oneshot, watch};
 use tokio::time::{Instant, MissedTickBehavior};
 
+use super::LOGIN_PREFIX;
 use super::config::{PluginConfig, Timings};
+use super::frames::{self, BEFORE, CALL, Connection, Fault, Invoking, Request, Scope};
 use super::manifest::{Restart, Run, RunMode};
+use super::register::ERROR_UNAVAILABLE;
 use crate::notify::api::{Problems, Raise, Severity};
 
 pub const PROBLEM_FAILING: &str = "plugin.failing";
 pub const ERROR_FAILING: &str = "plugin.error.failing";
 pub const ERROR_STOPPED: &str = "plugin.error.stopped";
 pub(super) const PROCESS_SOURCE: &str = "plugin.process";
-const FRAME_LIMIT: usize = 1024 * 1024;
-const PENDING_LIMIT: usize = 64;
 const STOP_WAIT: Duration = Duration::from_secs(5);
-const LIVENESS: &str = "ping";
+const EXEC_LIMIT: usize = 16;
 const UNHOSTED: &str =
     "no host agent is composed into this installation, so its process cannot start";
-
-type Pending = Arc<Mutex<BTreeMap<String, oneshot::Sender<Value>>>>;
 
 #[derive(Default)]
 pub(super) struct Live(Mutex<BTreeMap<String, Arc<Runtime>>>);
@@ -44,6 +37,12 @@ pub(super) struct Runtime {
     finished: watch::Sender<bool>,
     launcher: OnceLock<Arc<dyn PluginLauncher>>,
     caller: OnceLock<Arc<dyn Caller>>,
+    principals: OnceLock<Arc<dyn PrincipalSource>>,
+    timings: OnceLock<Timings>,
+    connection: Mutex<Option<Arc<Connection>>>,
+    slots: Arc<Semaphore>,
+    tripped: Notify,
+    scope: Scope,
 }
 
 #[derive(Default)]
@@ -63,6 +62,19 @@ enum Phase {
     Stopped,
 }
 
+struct Stopping {
+    done: oneshot::Sender<()>,
+    stopped: oneshot::Receiver<()>,
+}
+
+impl Stopping {
+    async fn finish(self) {
+        let Self { done, stopped } = self;
+        drop(done);
+        let _ = stopped.await;
+    }
+}
+
 enum End {
     Stopping,
     Closed,
@@ -70,25 +82,8 @@ enum End {
     Broken(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Fault {
-    Timeout,
-    Stuck,
-    Closed,
-    Busy,
-    Start(String),
-}
-
-struct Connection {
-    writer: tokio::sync::Mutex<OwnedWriteHalf>,
-    pending: Pending,
-    closed: Arc<watch::Sender<bool>>,
-    reader: JoinHandle<()>,
-    next: AtomicU64,
-}
-
 impl Runtime {
-    pub(super) fn new(plugin: &str, run: &Run) -> Self {
+    pub(super) fn new(plugin: &str, run: &Run, scope: Scope) -> Self {
         Self {
             plugin: plugin.to_owned(),
             mode: run.mode,
@@ -99,7 +94,179 @@ impl Runtime {
             finished: watch::Sender::new(false),
             launcher: OnceLock::new(),
             caller: OnceLock::new(),
+            principals: OnceLock::new(),
+            timings: OnceLock::new(),
+            connection: Mutex::new(None),
+            slots: Arc::new(Semaphore::new(EXEC_LIMIT)),
+            tripped: Notify::new(),
+            scope,
         }
+    }
+
+    pub(super) async fn call(&self, func: &str, call: Call<Value>) -> Result<Value> {
+        let answer = self.forward(CALL, func, &call).await?;
+        frames::answered(&answer, &self.plugin)
+    }
+
+    pub(super) async fn before(&self, func: &str, call: Call<Value>) -> Result<Before> {
+        let answer = self.forward(BEFORE, func, &call).await?;
+        frames::verdict(&answer, &self.plugin)
+    }
+
+    pub(super) async fn poll(&self, func: &str, db: &Db) -> Result<Vec<Raise>> {
+        let (Some(caller), Some(principals)) = (self.caller.get(), self.principals.get()) else {
+            return Err(self.unanswered());
+        };
+        let login = format!("{LOGIN_PREFIX}{}", self.plugin);
+        let Some(principal) = principals.by_login(&login, db).await? else {
+            return Err(self.unanswered());
+        };
+        let data = caller
+            .call(principal, func, json!({}), CallerOptions::default())
+            .await?;
+        let raises: Vec<Raise> =
+            serde_json::from_value(data).map_err(|_| frames::malformed(&self.plugin))?;
+        let prefix = format!("{}.", self.plugin);
+        if raises.iter().any(|raise| !raise.key.starts_with(&prefix)) {
+            return Err(frames::malformed(&self.plugin));
+        }
+        Ok(raises)
+    }
+
+    async fn forward(&self, t: &'static str, func: &str, call: &Call<Value>) -> Result<Value> {
+        if let Some(refusal) = self.refusal() {
+            return Err(refusal);
+        }
+        let Some(timings) = self.timings.get().copied() else {
+            return Err(self.unanswered());
+        };
+        let request = Request {
+            t,
+            func: Some(func),
+            principal: Some(call.principal()),
+            params: Some(call.params()),
+        };
+        let invoking = Invoking {
+            call,
+            scope: &self.scope,
+        };
+        let mut stopping = self.stopping.subscribe();
+        let exchange = async {
+            match self.mode {
+                RunMode::Daemon => match self.current() {
+                    Some(connection) => {
+                        connection
+                            .handle(&request, timings.timeout, &invoking)
+                            .await
+                    }
+                    None => Err(Fault::Closed),
+                },
+                RunMode::Exec => self.spawned(&request, &timings, &invoking).await,
+            }
+        };
+        let Some(exchanged) = unless_stopped(&mut stopping, exchange).await else {
+            return Err(self.refusal().unwrap_or_else(|| self.unanswered()));
+        };
+        match exchanged {
+            Ok(answer) => {
+                if self.mode == RunMode::Exec {
+                    self.succeed(true).await;
+                }
+                Ok(answer)
+            }
+            Err(fault) => Err(self.frame_failed(fault, &timings).await),
+        }
+    }
+
+    async fn spawned(
+        &self,
+        request: &Request<'_>,
+        timings: &Timings,
+        invoking: &Invoking<'_>,
+    ) -> std::result::Result<Value, Fault> {
+        let deadline = Instant::now() + timings.timeout;
+        let (process, stopping) = self.launch(deadline).await?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let answer = match Connection::open(&self.plugin, process, timings.timeout) {
+            Ok(connection) => connection.handle(request, remaining, invoking).await,
+            Err(error) => Err(Fault::Start(error.to_string())),
+        };
+        stopping.finish().await;
+        answer
+    }
+
+    async fn launch(
+        &self,
+        deadline: Instant,
+    ) -> std::result::Result<(PluginProcess, Stopping), Fault> {
+        let slot = tokio::time::timeout_at(deadline, Arc::clone(&self.slots).acquire_owned())
+            .await
+            .map_err(|_| Fault::Busy)?
+            .map_err(|_| Fault::Busy)?;
+        let Some(launcher) = self.launcher.get().map(Arc::clone) else {
+            return Err(Fault::Start(UNHOSTED.to_owned()));
+        };
+        let plugin = self.plugin.clone();
+        let cmd = self.cmd.clone();
+        let (handed, taken) = oneshot::channel();
+        let (done, finished) = oneshot::channel::<()>();
+        let (stop, stopped) = oneshot::channel();
+        tokio::spawn(async move {
+            let _slot = slot;
+            let process = match launcher.spawn(&plugin, &cmd, &request_id()).await {
+                Ok(process) => process,
+                Err(error) => {
+                    let _ = handed.send(Err(Fault::Start(describe(&error))));
+                    return;
+                }
+            };
+            let pid = process.pid;
+            if handed.send(Ok(process)).is_ok() {
+                let _ = finished.await;
+            }
+            if let Err(error) = launcher.stop(&plugin, Some(pid), &request_id()).await {
+                tracing::warn!(plugin, pid, error = %describe(&error), "the process of a frame could not be stopped");
+            }
+            let _ = stop.send(());
+        });
+        let process = taken
+            .await
+            .map_err(|_| Fault::Start("its launch ended without an answer".to_owned()))??;
+        Ok((process, Stopping { done, stopped }))
+    }
+
+    async fn frame_failed(&self, fault: Fault, timings: &Timings) -> KeelError {
+        if *self.stopping.borrow() {
+            return self.refusal().unwrap_or_else(|| self.unanswered());
+        }
+        let counted = match (&fault, self.mode) {
+            (Fault::Busy, _) => false,
+            (Fault::TooLarge, _) => return frames::too_large(&self.plugin),
+            (Fault::Timeout, RunMode::Daemon) => true,
+            (_, RunMode::Daemon) => false,
+            (_, RunMode::Exec) => true,
+        };
+        if counted && self.fail(timings, fault.reason(timings)).await {
+            if self.mode == RunMode::Exec
+                && let Some(launcher) = self.launcher.get()
+            {
+                self.sweep(launcher.as_ref()).await;
+            }
+            self.tripped.notify_one();
+        }
+        self.refusal().unwrap_or_else(|| self.unanswered())
+    }
+
+    fn current(&self) -> Option<Arc<Connection>> {
+        lock(&self.connection).clone()
+    }
+
+    fn unanswered(&self) -> KeelError {
+        KeelError::unavailable(ERROR_UNAVAILABLE).param("plugin", self.plugin.as_str())
+    }
+
+    fn is_open(&self) -> bool {
+        self.health().phase == Phase::Open
     }
 
     fn health(&self) -> MutexGuard<'_, Health> {
@@ -128,8 +295,12 @@ impl Runtime {
             .config::<PluginConfig>()
             .map(|config| config.timings())
             .unwrap_or_else(|_| PluginConfig::default().timings());
+        let _ = self.timings.set(timings);
         if let Ok(caller) = ctx.require::<dyn Caller>() {
             let _ = self.caller.set(caller);
+        }
+        if let Ok(principals) = ctx.require::<dyn PrincipalSource>() {
+            let _ = self.principals.set(principals);
         }
         let runtime = Arc::clone(self);
         let Ok(launcher) = ctx.require::<dyn PluginLauncher>() else {
@@ -209,10 +380,14 @@ impl Runtime {
                 }
             };
             let pid = process.pid;
-            let end = match Connection::open(process) {
+            let end = match Connection::open(&self.plugin, process, timings.timeout) {
                 Ok(connection) => {
+                    let connection = Arc::new(connection);
+                    *lock(&self.connection) = Some(Arc::clone(&connection));
                     self.started(pid);
-                    self.watch(&connection, timings, stopping).await
+                    let end = self.watch(&connection, timings, stopping).await;
+                    *lock(&self.connection) = None;
+                    end
                 }
                 Err(error) => End::Broken(format!("its socket could not be used: {error}")),
             };
@@ -266,8 +441,13 @@ impl Runtime {
             tokio::select! {
                 () = stopped(stopping) => return End::Stopping,
                 () = connection.closed() => return End::Closed,
+                () = self.tripped.notified() => {
+                    if self.is_open() {
+                        return End::Opened;
+                    }
+                }
                 _ = tick.tick() => {
-                    let exchange = connection.exchange(json!({ "t": LIVENESS }), timings.timeout);
+                    let exchange = connection.ping(timings.timeout);
                     let Some(exchanged) = unless_stopped(stopping, exchange).await else {
                         return End::Stopping;
                     };
@@ -275,7 +455,7 @@ impl Runtime {
                         Ok(_) => self.succeed(since.elapsed() >= timings.quiet).await,
                         Err(Fault::Closed) => return End::Closed,
                         Err(Fault::Busy) => {}
-                        Err(fault @ (Fault::Stuck | Fault::Start(_))) => {
+                        Err(fault @ (Fault::Stuck | Fault::Start(_) | Fault::TooLarge)) => {
                             return End::Broken(fault.reason(timings));
                         }
                         Err(fault @ Fault::Timeout) => {
@@ -329,13 +509,14 @@ impl Runtime {
             if !self.prepared(launcher, timings, stopping, &mut ready).await {
                 continue;
             }
-            let once = self.once(launcher, json!({ "t": LIVENESS }), timings);
+            let once = self.once(timings);
             match unless_stopped(stopping, once).await {
                 None => return,
                 Some(Ok(_)) => {
                     self.succeed(true).await;
-                    stopped(stopping).await;
-                    return;
+                    if !self.until_tripped(stopping).await {
+                        return;
+                    }
                 }
                 Some(Err(fault)) => {
                     self.failed(launcher, timings, stopping, fault.reason(timings))
@@ -345,24 +526,28 @@ impl Runtime {
         }
     }
 
-    async fn once(
-        &self,
-        launcher: &dyn PluginLauncher,
-        frame: Value,
-        timings: &Timings,
-    ) -> Result<Value, Fault> {
-        let process = launcher
-            .spawn(&self.plugin, &self.cmd, &request_id())
-            .await
-            .map_err(|error| Fault::Start(describe(&error)))?;
-        let pid = process.pid;
-        let answer = match Connection::open(process) {
-            Ok(connection) => connection.exchange(frame, timings.timeout).await,
+    async fn until_tripped(&self, stopping: &mut watch::Receiver<bool>) -> bool {
+        loop {
+            tokio::select! {
+                () = stopped(stopping) => return false,
+                () = self.tripped.notified() => {
+                    if self.is_open() {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn once(&self, timings: &Timings) -> std::result::Result<Value, Fault> {
+        let deadline = Instant::now() + timings.timeout;
+        let (process, stopping) = self.launch(deadline).await?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let answer = match Connection::open(&self.plugin, process, timings.timeout) {
+            Ok(connection) => connection.ping(remaining).await,
             Err(error) => Err(Fault::Start(error.to_string())),
         };
-        if let Err(error) = launcher.stop(&self.plugin, Some(pid), &request_id()).await {
-            tracing::warn!(plugin = self.plugin, pid, error = %describe(&error), "the process of a frame could not be stopped");
-        }
+        stopping.finish().await;
         answer
     }
 
@@ -537,125 +722,6 @@ impl Live {
     }
 }
 
-impl Fault {
-    fn reason(&self, timings: &Timings) -> String {
-        match self {
-            Fault::Timeout => format!(
-                "a frame got no answer within {} ms",
-                timings.timeout.as_millis()
-            ),
-            Fault::Stuck => format!("it read no frame within {} ms", timings.timeout.as_millis()),
-            Fault::Closed => "its process closed its output before it answered".to_owned(),
-            Fault::Busy => format!("it holds {PENDING_LIMIT} frames without an answer"),
-            Fault::Start(detail) => format!("its process could not start: {detail}"),
-        }
-    }
-}
-
-impl Connection {
-    fn open(process: PluginProcess) -> io::Result<Self> {
-        process.stdio.set_nonblocking(true)?;
-        let (read, write) = UnixStream::from_std(process.stdio)?.into_split();
-        let pending = Pending::default();
-        let closed = Arc::new(watch::Sender::new(false));
-        let reader = tokio::spawn(read_frames(read, Arc::clone(&pending), Arc::clone(&closed)));
-        Ok(Self {
-            writer: tokio::sync::Mutex::new(write),
-            pending,
-            closed,
-            reader,
-            next: AtomicU64::new(0),
-        })
-    }
-
-    async fn closed(&self) {
-        let mut closed = self.closed.subscribe();
-        let _ = closed.wait_for(|closed| *closed).await;
-    }
-
-    async fn exchange(&self, mut frame: Value, timeout: Duration) -> Result<Value, Fault> {
-        if *self.closed.borrow() {
-            return Err(Fault::Closed);
-        }
-        let id = format!("k-{}", self.next.fetch_add(1, Ordering::Relaxed) + 1);
-        let (sender, receiver) = oneshot::channel();
-        {
-            let mut pending = lock(&self.pending);
-            if pending.len() >= PENDING_LIMIT {
-                return Err(Fault::Busy);
-            }
-            pending.insert(id.clone(), sender);
-        }
-        frame["id"] = json!(id);
-        let mut line = serde_json::to_vec(&frame).unwrap_or_default();
-        line.push(b'\n');
-        let deadline = Instant::now() + timeout;
-        let written = tokio::time::timeout_at(deadline, async {
-            let mut writer = self.writer.lock().await;
-            writer.write_all(&line).await?;
-            writer.flush().await
-        })
-        .await;
-        let fault = match written {
-            Ok(Ok(())) => None,
-            Ok(Err(_)) => Some(Fault::Closed),
-            Err(_) => Some(Fault::Stuck),
-        };
-        if let Some(fault) = fault {
-            lock(&self.pending).remove(&id);
-            self.closed.send_replace(true);
-            return Err(fault);
-        }
-        match tokio::time::timeout_at(deadline, receiver).await {
-            Ok(Ok(answer)) => Ok(answer),
-            Ok(Err(_)) => Err(Fault::Closed),
-            Err(_) => {
-                lock(&self.pending).remove(&id);
-                Err(Fault::Timeout)
-            }
-        }
-    }
-}
-
-impl Drop for Connection {
-    fn drop(&mut self) {
-        self.reader.abort();
-    }
-}
-
-async fn read_frames(read: OwnedReadHalf, pending: Pending, closed: Arc<watch::Sender<bool>>) {
-    let mut reader = BufReader::new(read);
-    let mut line = Vec::new();
-    loop {
-        line.clear();
-        let mut limited = (&mut reader).take(FRAME_LIMIT as u64 + 1);
-        match limited.read_until(b'\n', &mut line).await {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        if line.last() != Some(&b'\n') {
-            if line.len() > FRAME_LIMIT {
-                tracing::warn!(
-                    "a plugin wrote a frame over {FRAME_LIMIT} bytes; its output is closed"
-                );
-            }
-            break;
-        }
-        let Ok(frame) = serde_json::from_slice::<Value>(&line) else {
-            continue;
-        };
-        let Some(id) = frame.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        let waiting = lock(&pending).remove(id);
-        if let Some(waiting) = waiting {
-            let _ = waiting.send(frame);
-        }
-    }
-    lock(&pending).clear();
-    closed.send_replace(true);
-}
-
 async fn stopped(stopping: &mut watch::Receiver<bool>) {
     let _ = stopping.wait_for(|stop| *stop).await;
 }
@@ -687,28 +753,164 @@ fn describe(error: &KeelError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::net::UnixStream as Socket;
+    use keel_sdk::runtime::CallBuilder;
+    use keel_sdk::sea_orm::DatabaseConnection;
+    use keel_sdk::system::PluginProcess;
+    use keel_sdk::types::{Principal, Scope as Narrowing, Via};
 
     use super::*;
 
-    #[tokio::test]
-    async fn a_plugin_that_reads_no_frame_leaves_the_write_stuck_until_the_timeout() {
-        let (kernel, _plugin) = Socket::pair().unwrap();
-        let connection = Connection::open(PluginProcess {
-            pid: 0,
-            stdio: kernel,
-        })
-        .unwrap();
-        let frame = json!({ "t": LIVENESS, "pad": "x".repeat(4 * FRAME_LIMIT) });
-        let timeout = Duration::from_millis(200);
-        let fault = connection.exchange(frame, timeout).await.unwrap_err();
-        assert_eq!(fault, Fault::Stuck);
+    #[derive(Default)]
+    struct Silent {
+        peers: Mutex<Vec<std::os::unix::net::UnixStream>>,
+        stops: Mutex<Vec<Option<u32>>>,
+    }
+
+    #[async_trait]
+    impl PluginLauncher for Silent {
+        async fn account(&self, _: &str, _: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn spawn(&self, _: &str, _: &[String], _: &str) -> Result<PluginProcess> {
+            let (stdio, peer) = std::os::unix::net::UnixStream::pair()
+                .map_err(|error| KeelError::internal("plugin.error.unavailable").source(error))?;
+            lock(&self.peers).push(peer);
+            Ok(PluginProcess { pid: 7, stdio })
+        }
+
+        async fn stop(&self, _: &str, pid: Option<u32>, _: &str) -> Result<Option<i32>> {
+            lock(&self.stops).push(pid);
+            Ok(None)
+        }
+    }
+
+    fn runtime(mode: RunMode) -> Runtime {
+        within(mode, Duration::from_millis(150))
+    }
+
+    fn within(mode: RunMode, timeout: Duration) -> Runtime {
+        let run = Run {
+            mode,
+            cmd: vec!["./bin/acme".to_owned()],
+            restart: None,
+        };
+        let runtime = Runtime::new(
+            "acme",
+            &run,
+            Scope::new("acme", Level::User, BTreeMap::new()),
+        );
         let timings = Timings {
             timeout,
             ..PluginConfig::default().timings()
         };
-        assert_eq!(fault.reason(&timings), "it read no frame within 200 ms");
-        assert!(*connection.closed.borrow());
-        assert!(lock(&connection.pending).is_empty());
+        runtime
+            .timings
+            .set(timings)
+            .expect("the timings are set once");
+        runtime
+    }
+
+    fn call() -> Call<Value> {
+        let principal = Principal {
+            id: Id::generate(),
+            login: "alice".to_owned(),
+            level: Level::User,
+            account_id: Id::generate(),
+            role: "user".to_owned(),
+            actor: None,
+            scope: Narrowing::Full,
+            via: Via::Http,
+            external_id: None,
+            origin: None,
+            lang: "en".to_owned(),
+            grants: BTreeMap::new(),
+        };
+        CallBuilder::new(principal, "req-1")
+            .read(DatabaseConnection::Disconnected)
+            .call(json!({}))
+    }
+
+    #[tokio::test]
+    async fn an_exec_frame_without_a_free_slot_answers_unavailable_and_counts_no_failure() {
+        let runtime = runtime(RunMode::Exec);
+        let held = runtime
+            .slots
+            .acquire_many(u32::try_from(EXEC_LIMIT).expect("a small limit"))
+            .await
+            .expect("every slot");
+        let started = Instant::now();
+        let error = runtime.call("acme.sync.list", call()).await.unwrap_err();
+        assert!(started.elapsed() >= Duration::from_millis(150));
+        assert_eq!(error.code(), keel_sdk::types::ErrorCode::Unavailable);
+        assert_eq!(error.key(), ERROR_UNAVAILABLE);
+        assert_eq!(runtime.health().failures, 0);
+        drop(held);
+    }
+
+    #[tokio::test]
+    async fn an_exec_frame_in_flight_at_a_kernel_stop_ends_at_once_and_counts_no_failure() {
+        let runtime = Arc::new(within(RunMode::Exec, Duration::from_secs(5)));
+        let launcher = Arc::new(Silent::default());
+        runtime
+            .launcher
+            .set(launcher.clone())
+            .unwrap_or_else(|_| panic!("the launcher is set once"));
+        runtime.finished.send_replace(true);
+        let started = Instant::now();
+        let waiting = tokio::spawn({
+            let runtime = Arc::clone(&runtime);
+            async move { runtime.call("acme.sync.list", call()).await }
+        });
+        while lock(&launcher.peers).is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        runtime.stop().await;
+        let error = waiting.await.expect("the frame task ends").unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(error.key(), ERROR_UNAVAILABLE);
+        assert_eq!(runtime.health().failures, 0);
+        assert_eq!(runtime.health().phase, Phase::Idle);
+    }
+
+    #[tokio::test]
+    async fn an_exec_frame_whose_caller_went_away_still_stops_its_process_and_frees_its_slot() {
+        let runtime = Arc::new(within(RunMode::Exec, Duration::from_secs(5)));
+        let launcher = Arc::new(Silent::default());
+        runtime
+            .launcher
+            .set(launcher.clone())
+            .unwrap_or_else(|_| panic!("the launcher is set once"));
+        let abandoned = tokio::spawn({
+            let runtime = Arc::clone(&runtime);
+            async move { runtime.call("acme.sync.list", call()).await }
+        });
+        while lock(&launcher.peers).is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        abandoned.abort();
+        assert!(abandoned.await.unwrap_err().is_cancelled());
+        let started = Instant::now();
+        while runtime.slots.available_permits() < EXEC_LIMIT
+            && started.elapsed() < Duration::from_secs(2)
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(*lock(&launcher.stops), vec![Some(7)]);
+        assert_eq!(runtime.slots.available_permits(), EXEC_LIMIT);
+        assert_eq!(runtime.health().failures, 0);
+    }
+
+    #[tokio::test]
+    async fn a_daemon_without_a_running_process_answers_unavailable_at_once() {
+        let runtime = runtime(RunMode::Daemon);
+        let started = Instant::now();
+        let error = runtime.call("acme.sync.list", call()).await.unwrap_err();
+        assert!(started.elapsed() < Duration::from_millis(150));
+        assert_eq!(error.key(), ERROR_UNAVAILABLE);
+        runtime.health().phase = Phase::Open;
+        let refused = runtime.before("dns.zone.delete", call()).await.unwrap_err();
+        assert_eq!(refused.key(), ERROR_FAILING);
+        assert_eq!(runtime.health().failures, 0);
     }
 }

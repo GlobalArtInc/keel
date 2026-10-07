@@ -67,6 +67,7 @@ async fn load(
     Ok(Plugin {
         manifest: read.manifest,
         dictionaries: read.dictionaries,
+        levels: landscape.functions.clone(),
     })
 }
 

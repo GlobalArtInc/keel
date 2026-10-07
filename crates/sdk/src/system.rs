@@ -23,7 +23,7 @@ use crate::context::Context;
 use crate::db::Db;
 use crate::error::Result;
 use crate::product::ProductManifest;
-use crate::registrar::Registrar;
+use crate::registrar::{Before, BeforeHook, Registrar};
 use crate::secret::Secret;
 use crate::task::TaskHandle;
 
@@ -703,6 +703,41 @@ impl Extensions {
     }
 }
 
+#[derive(Clone)]
+pub struct ExternalHook {
+    function: String,
+    hook: BeforeHook,
+}
+
+impl ExternalHook {
+    pub fn new<F, Fut>(function: &str, hook: F) -> Self
+    where
+        F: Fn(Call<Value>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Before>> + Send + 'static,
+    {
+        Self {
+            function: function.to_owned(),
+            hook: Arc::new(move |call| Box::pin(hook(call))),
+        }
+    }
+
+    pub fn function(&self) -> &str {
+        &self.function
+    }
+
+    pub fn hook(&self) -> BeforeHook {
+        Arc::clone(&self.hook)
+    }
+}
+
+impl fmt::Debug for ExternalHook {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExternalHook")
+            .field("function", &self.function)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 pub struct PluginProcess {
     pub pid: u32,
@@ -905,5 +940,25 @@ mod tests {
             format!("{:?}", SessionChange::Set(Secret::new("ks_1"))),
             "Set(Secret(***))"
         );
+    }
+
+    #[tokio::test]
+    async fn an_external_hook_names_its_function_and_answers_through_its_closure() {
+        let hook = ExternalHook::new("dns.zone.delete", |call: Call<Value>| async move {
+            Ok(Before::Enrich(
+                serde_json::json!({ "seen": call.params()["id"] }),
+            ))
+        });
+        assert_eq!(hook.function(), "dns.zone.delete");
+        assert_eq!(
+            format!("{hook:?}"),
+            "ExternalHook { function: \"dns.zone.delete\", .. }"
+        );
+        let handle = CallBuilder::new(crate::tests::principal(Level::User), "req-1")
+            .read(sea_orm::DatabaseConnection::Disconnected);
+        let verdict = (hook.hook())(handle.call(serde_json::json!({ "id": 7 })))
+            .await
+            .expect("the hook answers");
+        assert_eq!(verdict, Before::Enrich(serde_json::json!({ "seen": 7 })));
     }
 }

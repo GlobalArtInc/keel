@@ -162,6 +162,7 @@
       "frame_unknown": "The frame is not a func, describe or i18n frame",
       "function_not_found": "The function {function} does not exist",
       "group_body": "A group edit takes ids, fields and mask",
+      "group_enriched": "A hook of {module} on {function} enriched a row of a group edit, which a group edit does not take",
       "group_read": "The function {function} cannot apply a group edit: it has no key or no read function",
       "hook_timeout": "A hook of {module} on {function} took too long",
       "idempotency_key": "The idempotency key must be 1 to {max} printable ASCII characters",

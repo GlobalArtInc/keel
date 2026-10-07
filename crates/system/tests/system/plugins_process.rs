@@ -7,16 +7,15 @@ use keel_sdk::prelude::*;
 use keel_sdk::types::ErrorCode;
 use keel_system::notify::POLL_JOB;
 use keel_system::plugins::{
-    DIRECTORY, ENABLE, ERROR_FAILING, ERROR_STOPPED, ERROR_UNAVAILABLE, FILE, LIST, MODULE,
-    PROBLEM_FAILING,
+    DIRECTORY, ENABLE, ERROR_FAILING, ERROR_STOPPED, FILE, LIST, MODULE, PROBLEM_FAILING,
 };
-use keel_testkit::{Harness, Reply, Who, tokio};
+use keel_testkit::{Builder, Harness, Reply, Who, tokio};
 use tempfile::TempDir;
 
-const PATIENCE: Duration = Duration::from_secs(30);
-const ID: &str = "acme";
+pub(crate) const PATIENCE: Duration = Duration::from_secs(30);
+pub(crate) const ID: &str = "acme";
 const FUNCTION: &str = "acme.sync.list";
-const ACCOUNT: &str = "kp_acme";
+pub(crate) const ACCOUNT: &str = "kp_acme";
 const UID: u32 = 100_000;
 
 const GETENT: &str = "db=$1; shift\n[ \"${1:-}\" = -- ] && shift\ncase $db in passwd) file=HOST/passwd;; group) file=HOST/group;; *) exit 1;; esac\nif [ $# -eq 0 ]; then cat \"$file\"; exit 0; fi\nline=$(awk -F: -v k=\"$1\" '$1 == k || $3 == k' \"$file\")\n[ -n \"$line\" ] || exit 2\nprintf '%s\\n' \"$line\"\n";
@@ -26,14 +25,18 @@ const GROUPADD: &str =
 const GROUPDEL: &str = "echo \"groupdel $*\" >> HOST/log\n";
 const KEEL: &str = "echo \"keel $*\" >> HOST/log\n[ \"$1\" = agent-exec ] && [ \"$2\" = --uid ] || exit 126\nuid=$3\nshift 3\n[ \"$1\" = --policy ] && shift 2\n[ \"$1\" = -- ] || exit 124\nshift\n[ \"$1\" = kill ] && exit 123\nuser=$(awk -F: -v k=\"$uid\" '$3 == k {print $1}' HOST/passwd)\n[ -n \"$user\" ] || exit 125\nexec env -i PATH=/usr/bin:/bin HOME=/nonexistent USER=\"$user\" LOGNAME=\"$user\" \"$@\"\n";
 const KILL: &str = "echo \"kill $USER $*\" >> HOST/log\n";
-const PLUGIN: &str = "echo \"start $USER $*\" >> MARKS/log\nif [ -f MARKS/crash ]; then rm -f MARKS/crash; echo crash >> MARKS/log; exit 3; fi\nif [ -f MARKS/huge ]; then echo huge >> MARKS/log; head -c 1100000 /dev/zero | tr '\\0' a; exec sleep 600; fi\nwhile IFS= read -r line; do\n  id=$(printf '%s\\n' \"$line\" | sed -n 's/.*\"id\":\"\\([^\"]*\\)\".*/\\1/p')\n  if [ -f MARKS/silent ]; then echo \"silent $id\" >> MARKS/log; continue; fi\n  if [ -f MARKS/flood ]; then i=0; while [ $i -lt 300 ]; do echo 'not a frame'; i=$((i+1)); done; printf '{\"id\":\"x-%s\",\"ok\":true}\\n' \"$id\"; fi\n  echo \"frame $id\" >> MARKS/log\n  printf '{\"id\":\"%s\",\"ok\":true}\\n' \"$id\"\n  if [ -f MARKS/once ]; then echo once >> MARKS/log; exit 3; fi\ndone\necho eof >> MARKS/log\n";
+const PLUGIN: &str = "echo \"start $USER $*\" >> MARKS/log\nif [ -f MARKS/crash ]; then rm -f MARKS/crash; echo crash >> MARKS/log; exit 3; fi\nif [ -f MARKS/huge ]; then echo huge >> MARKS/log; head -c 1100000 /dev/zero | tr '\\0' a; exec sleep 600; fi\nwhile IFS= read -r line; do\n  id=$(printf '%s\\n' \"$line\" | sed -n 's/^{\"id\":\"\\([^\"]*\\)\".*/\\1/p')\n  if [ -f MARKS/silent ]; then echo \"silent $id\" >> MARKS/log; continue; fi\n  if [ -f MARKS/flood ]; then i=0; while [ $i -lt 300 ]; do echo 'not a frame'; i=$((i+1)); done; printf '{\"id\":\"x-%s\",\"ok\":true}\\n' \"$id\"; fi\n  echo \"frame $id\" >> MARKS/log\n  printf '{\"id\":\"%s\",\"ok\":true}\\n' \"$id\"\n  if [ -f MARKS/once ]; then echo once >> MARKS/log; exit 3; fi\ndone\necho eof >> MARKS/log\n";
 
-struct Site {
+pub(crate) struct Site {
     dir: TempDir,
 }
 
 impl Site {
     fn new(run: Value) -> Self {
+        Self::with(PLUGIN, &manifest(run))
+    }
+
+    pub(crate) fn with(plugin: &str, manifest: &Value) -> Self {
         let dir = TempDir::new().expect("a temporary directory");
         let site = Self { dir };
         for sub in ["host", "marks", "data"] {
@@ -55,13 +58,13 @@ impl Site {
         fs::create_dir_all(home.join("bin")).expect("the plugin directory");
         site.script(
             &format!("data/{DIRECTORY}/{ID}/bin/acme"),
-            &PLUGIN.replace("MARKS", &site.path("marks").display().to_string()),
+            &plugin.replace("MARKS", &site.path("marks").display().to_string()),
         );
-        fs::write(home.join(FILE), manifest(run).to_string()).expect("the manifest");
+        fs::write(home.join(FILE), manifest.to_string()).expect("the manifest");
         site
     }
 
-    fn path(&self, relative: &str) -> PathBuf {
+    pub(crate) fn path(&self, relative: &str) -> PathBuf {
         self.dir.path().join(relative)
     }
 
@@ -80,7 +83,7 @@ impl Site {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("the script runs");
     }
 
-    fn mark(&self, name: &str) {
+    pub(crate) fn mark(&self, name: &str) {
         fs::write(self.path(&format!("marks/{name}")), b"").expect("a mark");
     }
 
@@ -101,7 +104,7 @@ impl Site {
         lines(&self.path("host/log"))
     }
 
-    fn plugin_log(&self) -> Vec<String> {
+    pub(crate) fn plugin_log(&self) -> Vec<String> {
         lines(&self.path("marks/log"))
     }
 
@@ -109,7 +112,7 @@ impl Site {
         fs::read_to_string(self.path("host/passwd")).unwrap_or_default()
     }
 
-    fn starts(&self) -> usize {
+    pub(crate) fn starts(&self) -> usize {
         self.plugin_log()
             .iter()
             .filter(|line| line.starts_with("start "))
@@ -153,21 +156,31 @@ fn steady() -> Value {
     json!({ "timeout_ms": 10_000, "failures": 5, "quiet_ms": 1_000, "liveness_ms": 200, "backoff_ms": 50 })
 }
 
-async fn boot(site: &Site, config: &Value) -> Harness {
-    Harness::new()
+fn composed(site: &Site, config: &Value, extra: &[&'static ModuleDef]) -> Builder {
+    let mut builder = Harness::new()
         .module(&keel_system::cron::MODULE)
         .module(&keel_system::notify::MODULE)
         .module(&keel_host::MODULE)
-        .module(&MODULE)
+        .module(&MODULE);
+    for module in extra {
+        builder = builder.module(module);
+    }
+    builder
         .data_dir(site.data())
         .agent(&site.policy())
         .section("plugin", config.clone())
-        .boot()
-        .await
 }
 
 async fn enabled(site: &Site, config: &Value) -> Harness {
-    let harness = boot(site, config).await;
+    enabled_with(site, config, &[]).await
+}
+
+pub(crate) async fn enabled_with(
+    site: &Site,
+    config: &Value,
+    extra: &[&'static ModuleDef],
+) -> Harness {
+    let harness = composed(site, config, extra).boot().await;
     let reply = harness.call(Who::Admin, ENABLE, json!({ "id": ID })).await;
     assert_eq!(data(&reply)["changed"], json!(true), "{reply:?}");
     eventually("the account of the plugin is created on enable", || {
@@ -175,26 +188,19 @@ async fn enabled(site: &Site, config: &Value) -> Harness {
     })
     .await;
     let database = harness.stop().await;
-    Harness::new()
-        .module(&keel_system::cron::MODULE)
-        .module(&keel_system::notify::MODULE)
-        .module(&keel_host::MODULE)
-        .module(&MODULE)
-        .data_dir(site.data())
-        .agent(&site.policy())
-        .section("plugin", config.clone())
+    composed(site, config, extra)
         .database(database)
         .boot()
         .await
 }
 
-fn data(reply: &Reply) -> &Value {
+pub(crate) fn data(reply: &Reply) -> &Value {
     reply
         .data()
         .unwrap_or_else(|| panic!("a result was expected, got {:?}", reply.error()))
 }
 
-async fn eventually(what: &str, mut condition: impl FnMut() -> bool) {
+pub(crate) async fn eventually(what: &str, mut condition: impl FnMut() -> bool) {
     let deadline = tokio::time::Instant::now() + PATIENCE;
     while !condition() {
         assert!(tokio::time::Instant::now() < deadline, "{what}");
@@ -206,7 +212,7 @@ async fn answer_key(harness: &Harness) -> (ErrorCode, String) {
     let reply = harness.call(Who::Admin, FUNCTION, json!({})).await;
     let error = reply
         .error()
-        .unwrap_or_else(|| panic!("{FUNCTION} answers an error before the frames exist"));
+        .unwrap_or_else(|| panic!("{FUNCTION} answers while the plugin should refuse it"));
     (error.code, error.key.clone())
 }
 
@@ -226,7 +232,23 @@ async fn answers(harness: &Harness, key: &str) {
     }
 }
 
-async fn failing(harness: &Harness) -> Vec<String> {
+async fn served(harness: &Harness) {
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        let reply = harness.call(Who::Admin, FUNCTION, json!({})).await;
+        if reply.data().is_some() {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{FUNCTION} answers {:?}, not through a call frame",
+            reply.error()
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+pub(crate) async fn failing(harness: &Harness) -> Vec<String> {
     harness
         .database()
         .rows(&format!(
@@ -235,7 +257,7 @@ async fn failing(harness: &Harness) -> Vec<String> {
         .await
 }
 
-async fn raised(harness: &Harness) -> String {
+pub(crate) async fn raised(harness: &Harness) -> String {
     let deadline = tokio::time::Instant::now() + PATIENCE;
     loop {
         if let Some(problem) = failing(harness).await.into_iter().next() {
@@ -249,7 +271,7 @@ async fn raised(harness: &Harness) -> String {
     }
 }
 
-async fn poll(harness: &Harness) {
+pub(crate) async fn poll(harness: &Harness) {
     let scheduler = harness
         .registry()
         .services()
@@ -348,7 +370,7 @@ async fn a_daemon_plugin_runs_under_its_own_account() {
             && spawned[0].ends_with(&format!(" -- {} --serve", program.display())),
         "{spawned:?}"
     );
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     assert_eq!(failing(&harness).await, Vec::<String>::new());
     harness.finish().await;
 }
@@ -386,7 +408,7 @@ async fn a_crash_of_a_daemon_plugin_does_not_take_the_kernel_down_and_it_is_rest
             .is_some_and(|rows| rows.iter().any(|row| row["id"] == json!(ID))),
         "{listed:?}"
     );
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     assert_eq!(failing(&harness).await, Vec::<String>::new());
     harness.finish().await;
 }
@@ -429,7 +451,7 @@ async fn the_breaker_closes_after_a_quiet_period_once_the_plugin_answers() {
     raised(&harness).await;
     answers(&harness, ERROR_FAILING).await;
     site.unmark("silent");
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     let deadline = tokio::time::Instant::now() + PATIENCE;
     while !failing(&harness).await.is_empty() {
         assert!(
@@ -470,7 +492,7 @@ async fn an_exec_plugin_runs_a_process_for_its_liveness_frame() {
     .await;
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(site.starts(), 1, "{:?}", site.plugin_log());
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     harness.finish().await;
 }
 
@@ -488,7 +510,7 @@ async fn an_exec_plugin_without_its_account_gets_one_from_the_supervisor() {
         "{}",
         site.passwd()
     );
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     assert_eq!(failing(&harness).await, Vec::<String>::new());
     harness.finish().await;
 }
@@ -506,7 +528,7 @@ async fn a_daemon_plugin_without_its_account_gets_one_from_the_supervisor() {
         "{}",
         site.passwd()
     );
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     assert_eq!(failing(&harness).await, Vec::<String>::new());
     harness.finish().await;
 }
@@ -625,7 +647,7 @@ async fn the_words_of_the_command_reach_the_plugin_as_its_own_arguments() {
         format!("start {ACCOUNT} --uid 0 --policy /x --help"),
         "{log:?}"
     );
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     harness.finish().await;
 }
 
@@ -663,7 +685,7 @@ async fn lines_that_are_no_frame_or_answer_nothing_waiting_are_dropped() {
     )
     .await;
     assert_eq!(site.starts(), 1, "{:?}", site.plugin_log());
-    answers(&harness, ERROR_UNAVAILABLE).await;
+    served(&harness).await;
     assert_eq!(failing(&harness).await, Vec::<String>::new());
     harness.finish().await;
 }

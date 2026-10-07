@@ -7,7 +7,8 @@ use keel_kernel::dispatcher::{self, CallOptions, Dispatcher, LiveBus, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    AuditEvent, AuditOutcome, AuditSink, Caller, CallerOptions, Client, Frame, LiveEvents, TaskSink,
+    AuditEvent, AuditOutcome, AuditSink, Caller, CallerOptions, Client, ExternalHook, Frame,
+    LiveEvents, TaskSink,
 };
 use keel_sdk::{Registrar, TaskHandle, migrator};
 use keel_testkit::{FixedClock, TestDatabase};
@@ -1365,6 +1366,188 @@ async fn a_before_hook_runs_without_a_transaction_can_enrich_or_veto_and_is_ende
         json!("shelf")
     );
     assert_eq!(bench.titles().await, ["enrich"]);
+    bench.finish().await;
+}
+
+static PORCH_SEEN: LazyLock<Mutex<Vec<(String, String)>>> = LazyLock::new(Mutex::default);
+static PORCH_TARGET: Mutex<Value> = Mutex::new(Value::Null);
+
+static PORCH: ModuleDef = ModuleDef {
+    id: "porch",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &["shelf"],
+    migrations: None,
+    init: porch_init,
+};
+
+fn porch_init(r: &mut Registrar) -> Result<()> {
+    r.contribute(ExternalHook::new(
+        "shelf.book.edit",
+        |call: Call<Value>| async move {
+            let title = call.params()["title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            PORCH_SEEN
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((call.request_id().to_owned(), title.clone()));
+            match title.as_str() {
+                "outside" => Err(KeelError::validation("porch.error.outside")
+                    .field("title")
+                    .param("title", title)),
+                "porch" => Ok(Before::Enrich(json!({ "pages": 7 }))),
+                "steal" => {
+                    let target = PORCH_TARGET
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .clone();
+                    Ok(Before::Enrich(json!({ "id": target })))
+                }
+                "elevate" => Ok(Before::Enrich(json!({ "note": "raised" }))),
+                "shrink" => Ok(Before::Enrich(json!({ "pages": "many" }))),
+                "patient" => {
+                    tokio::time::sleep(Duration::from_millis(600)).await;
+                    Ok(Before::Proceed)
+                }
+                _ => Ok(Before::Proceed),
+            }
+        },
+    ));
+    Ok(())
+}
+
+fn porch_saw(request_id: &str) -> Vec<String> {
+    PORCH_SEEN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(seen, _)| seen == request_id)
+        .map(|(_, title)| title.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn an_external_hook_runs_on_a_call_with_its_own_timeout_but_never_inside_a_nested_invoke() {
+    let bench = bench_with(Composition::new().module(&PORCH)).await;
+    let vetoed = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "title": "outside", "pages": 1 }),
+            request("porch-veto"),
+        )
+        .await;
+    let error = vetoed.error().expect("the external hook vetoes");
+    assert_eq!(error.code, ErrorCode::Validation);
+    assert_eq!(error.fields[0].path, "title");
+    assert_eq!(error.fields[0].key.as_deref(), Some("porch.error.outside"));
+    assert_eq!(porch_saw("porch-veto"), ["outside"]);
+
+    let enriched = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "porch", "pages": 1 }),
+        )
+        .await;
+    let id = enriched.data().expect("the book saves")["id"].clone();
+    let row = bench
+        .call(Level::User, CUSTOMER, "shelf.book.get", json!({ "id": id }))
+        .await;
+    assert_eq!(row.data().expect("the book")["pages"], json!(7));
+
+    let patient = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "patient", "pages": 1 }),
+        )
+        .await;
+    assert!(
+        patient.data().is_some(),
+        "the kernel's hook timeout of 200 ms does not bound an external hook: {:?}",
+        patient.error()
+    );
+
+    let paired = bench
+        .call_with(
+            principal(Level::Reseller, RESELLER),
+            "shelf.book.pair",
+            json!({ "first": "outside", "second": "porch", "fail": false }),
+            request("porch-nested"),
+        )
+        .await;
+    assert!(paired.data().is_some(), "{:?}", paired.error());
+    assert!(porch_saw("porch-nested").is_empty());
+    let mut titles = bench.titles().await;
+    titles.sort();
+    assert_eq!(titles, ["outside", "patient", "porch", "porch"]);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_external_enrichment_passes_the_guards_again_and_a_job_runs_no_external_hook() {
+    let bench = bench_with(Composition::new().module(&PORCH)).await;
+    let theirs = bench
+        .save(Level::User, OTHER, json!({ "title": "theirs", "pages": 1 }))
+        .await;
+    *PORCH_TARGET.lock().unwrap_or_else(PoisonError::into_inner) = json!(theirs);
+
+    let stolen = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "steal", "pages": 1 }),
+        )
+        .await;
+    assert_eq!(code(&stolen), ErrorCode::NotFound);
+    let elevated = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "elevate", "pages": 1 }),
+        )
+        .await;
+    assert_eq!(code(&elevated), ErrorCode::ForbiddenField);
+    assert_eq!(paths(&elevated), ["note"]);
+    let shrunk = bench
+        .call(
+            Level::User,
+            CUSTOMER,
+            "shelf.book.edit",
+            json!({ "title": "shrink", "pages": 1 }),
+        )
+        .await;
+    assert_eq!(code(&shrunk), ErrorCode::Validation);
+    let mut titles = bench.titles().await;
+    titles.sort();
+    assert_eq!(titles, ["theirs"]);
+
+    let sink = Arc::new(SinkDouble {
+        id: Id::generate(),
+        checkpoint: None,
+        seen: Mutex::new(Vec::new()),
+    });
+    let job = bench
+        .call_with(
+            principal(Level::User, CUSTOMER),
+            "shelf.book.edit",
+            json!({ "title": "outside", "pages": 1 }),
+            CallOptions {
+                request_id: Some("porch-job".to_owned()),
+                task: Some(TaskHandle::new(sink)),
+                ..CallOptions::default()
+            },
+        )
+        .await;
+    assert!(job.data().is_some(), "{:?}", job.error());
+    assert!(porch_saw("porch-job").is_empty());
     bench.finish().await;
 }
 

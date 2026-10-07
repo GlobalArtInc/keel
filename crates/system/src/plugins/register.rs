@@ -1,11 +1,13 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use keel_sdk::function::{ErasedHandler, natural_mode};
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::json_schema;
-use keel_sdk::system::DataModule;
+use keel_sdk::system::{DataModule, ExternalHook};
 use keel_sdk::types::{DESCRIPTOR_VERSION, Descriptor};
 
+use super::frames::Scope;
 use super::manifest::{FunctionSpec, Manifest};
 use super::process::{Live, Runtime};
 use crate::cron::api::CronJob;
@@ -16,6 +18,7 @@ pub const ERROR_UNAVAILABLE: &str = "plugin.error.unavailable";
 pub(super) struct Plugin {
     pub(super) manifest: Manifest,
     pub(super) dictionaries: Vec<(String, String)>,
+    pub(super) levels: BTreeMap<String, Level>,
 }
 
 pub(super) fn module(plugin: Plugin) -> DataModule {
@@ -30,9 +33,26 @@ pub(super) fn module(plugin: Plugin) -> DataModule {
 fn register(plugin: &Plugin, r: &mut Registrar) -> Result<()> {
     let manifest = &plugin.manifest;
     let id = manifest.id.as_str();
-    let runtime = Arc::new(Runtime::new(id, &manifest.run));
+    let mut levels = plugin.levels.clone();
+    levels.extend(
+        manifest
+            .functions
+            .iter()
+            .map(|spec| (spec.name.clone(), spec.access.level)),
+    );
+    let scope = Scope::new(id, manifest.level, levels);
+    let runtime = Arc::new(Runtime::new(id, &manifest.run, scope));
     for spec in &manifest.functions {
-        r.described(descriptor(id, spec), unavailable(id, &runtime));
+        r.described(descriptor(id, spec), forwarded(&spec.name, &runtime));
+    }
+    for target in &manifest.rights.hook {
+        let runtime = Arc::clone(&runtime);
+        let function = target.clone();
+        r.contribute(ExternalHook::new(target, move |call: Call<Value>| {
+            let runtime = Arc::clone(&runtime);
+            let function = function.clone();
+            async move { runtime.before(&function, call).await }
+        }));
     }
     for setting in &manifest.settings {
         let mut def = SettingDef::new(&setting.key, setting.schema.clone());
@@ -68,10 +88,12 @@ fn register(plugin: &Plugin, r: &mut Registrar) -> Result<()> {
         r.menu(menu);
     }
     for problem in &manifest.problems {
-        let plugin = id.to_owned();
-        r.contribute(ProblemSource::new(&problem.source, move |_db| {
-            let plugin = plugin.clone();
-            async move { Err(unanswered(&plugin)) }
+        let runtime = Arc::clone(&runtime);
+        let func = problem.func.clone();
+        r.contribute(ProblemSource::new(&problem.source, move |db| {
+            let runtime = Arc::clone(&runtime);
+            let func = func.clone();
+            async move { runtime.poll(&func, &db).await }
         }));
     }
     for widget in &manifest.widgets {
@@ -121,15 +143,12 @@ fn descriptor(id: &str, spec: &FunctionSpec) -> Descriptor {
     }
 }
 
-fn unavailable(id: &str, runtime: &Arc<Runtime>) -> ErasedHandler {
-    let plugin = id.to_owned();
+fn forwarded(func: &str, runtime: &Arc<Runtime>) -> ErasedHandler {
+    let func = func.to_owned();
     let runtime = Arc::clone(runtime);
-    Arc::new(move |_call| {
-        let refusal = runtime.refusal().unwrap_or_else(|| unanswered(&plugin));
-        Box::pin(async move { Err(refusal) })
+    Arc::new(move |call| {
+        let runtime = Arc::clone(&runtime);
+        let func = func.clone();
+        Box::pin(async move { runtime.call(&func, call).await })
     })
-}
-
-fn unanswered(plugin: &str) -> KeelError {
-    KeelError::unavailable(ERROR_UNAVAILABLE).param("plugin", plugin)
 }

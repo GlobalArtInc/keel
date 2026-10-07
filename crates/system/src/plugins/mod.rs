@@ -1,6 +1,7 @@
 mod config;
 mod discover;
 mod entity;
+mod frames;
 mod functions;
 mod manifest;
 mod process;
@@ -13,6 +14,7 @@ use keel_sdk::system::{ContextExt, Extensions, ModuleSource, PrincipalSource};
 
 use crate::notify::api::{ProblemSource, Raise, Severity};
 
+pub use frames::{ERROR_ANSWER, ERROR_FRAME, ERROR_INVOKE, ERROR_TOO_LARGE};
 pub use functions::{DISABLE, ENABLE, ERROR_UNKNOWN, GET, LIST, LOGIN_PREFIX};
 pub use manifest::FILE;
 pub use process::{ERROR_FAILING, ERROR_STOPPED, PROBLEM_FAILING};

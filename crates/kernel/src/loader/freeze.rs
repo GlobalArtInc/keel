@@ -7,8 +7,8 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, EventRelay, Extension, Extensions, Features,
-    Installation, LanguageSource, LicenseKey, LimitSource, LiveEvents, OutboxSubscriber,
+    AccountSource, AdvisoryLock, Backups, Caller, EventRelay, Extension, Extensions, ExternalHook,
+    Features, Installation, LanguageSource, LicenseKey, LimitSource, LiveEvents, OutboxSubscriber,
     ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
@@ -140,6 +140,8 @@ pub enum FreezeProblem {
         kind: &'static str,
         function: String,
     },
+    #[error("module {module}: external hook on {function}; keel.* and auth.* take none")]
+    ExternalClosed { module: String, function: String },
     #[error("module {module}: patch on {target}, which is not registered")]
     PatchTarget { module: String, target: String },
     #[error(
@@ -469,6 +471,7 @@ impl Initialised {
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
+        let mut externals = Vec::new();
         let mut patches = Vec::new();
         let mut views = Vec::new();
         for registrations in self.registrations {
@@ -507,6 +510,14 @@ impl Initialised {
                 freezer.template(&module, template);
             }
             hooks.push((module.clone(), registrations.before, registrations.within));
+            externals.push((
+                module.clone(),
+                registrations
+                    .contributions
+                    .of::<ExternalHook>()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ));
             patches.push((module.clone(), registrations.patches));
             freezer.contributions.extend(registrations.contributions);
             freezer.lifecycle.push(Lifecycle {
@@ -530,6 +541,9 @@ impl Initialised {
         }
         for (module, before, within) in hooks {
             freezer.hooks(&module, before, within);
+        }
+        for (module, external) in externals {
+            freezer.external(&module, external);
         }
         for (module, patches) in patches {
             for patch in patches {
@@ -746,6 +760,7 @@ impl Freezer {
                         def,
                         descriptor,
                         before: Vec::new(),
+                        external: Vec::new(),
                         within: Vec::new(),
                         patched: Vec::new(),
                     },
@@ -945,6 +960,31 @@ impl Freezer {
                     module: module.to_owned(),
                     kind: "within",
                     function: hook.function,
+                }),
+            }
+        }
+    }
+
+    fn external(&mut self, module: &str, hooks: Vec<ExternalHook>) {
+        for hook in hooks {
+            let function = hook.function().to_owned();
+            if matches!(function.split('.').next(), Some("keel" | "auth")) {
+                self.problems.push(FreezeProblem::ExternalClosed {
+                    module: module.to_owned(),
+                    function,
+                });
+                continue;
+            }
+            match self.functions.get_mut(&function) {
+                Some(target) => target.external.push(Hook {
+                    module: module.to_owned(),
+                    hook: hook.hook(),
+                }),
+                None if self.known.contains_key(&function) => {}
+                None => self.problems.push(FreezeProblem::HookTarget {
+                    module: module.to_owned(),
+                    kind: "external",
+                    function,
                 }),
             }
         }
@@ -2355,6 +2395,55 @@ mod tests {
             "Hook { module: \"well_hooked\" }"
         );
     }
+
+    fn outside_init(r: &mut Registrar) -> Result<()> {
+        for function in [
+            "base.item.edit",
+            "base.item.vanish",
+            "keel.account.list",
+            "auth.session.list",
+        ] {
+            r.contribute(ExternalHook::new(function, |_: Call<Value>| async {
+                Ok(Before::Proceed)
+            }));
+        }
+        Ok(())
+    }
+
+    module!(OUTSIDE, "outside", ["base"], outside_init);
+
+    #[test]
+    fn an_external_hook_attaches_apart_from_the_compiled_ones_and_never_to_keel_or_auth() {
+        assert_eq!(
+            problems(&[&BASE, &OUTSIDE], &[&BASE_BUNDLE]),
+            [
+                "module outside: external hook on base.item.vanish, which is not registered",
+                "module outside: external hook on keel.account.list; keel.* and auth.* take none",
+                "module outside: external hook on auth.session.list; keel.* and auth.* take none",
+            ]
+        );
+        let frozen = freeze(&[&BASE, &WELL_HOOKED, &OUTSIDE_ON_EDIT], &[&BASE_BUNDLE]).unwrap();
+        let edit = frozen.registry().function("base.item.edit").unwrap();
+        assert_eq!(edit.before().len(), 1);
+        assert_eq!(edit.before()[0].module, "well_hooked");
+        assert_eq!(edit.external.len(), 1);
+        assert_eq!(edit.external[0].module, "outside_edit");
+    }
+
+    fn outside_on_edit_init(r: &mut Registrar) -> Result<()> {
+        r.contribute(ExternalHook::new(
+            "base.item.edit",
+            |_: Call<Value>| async { Ok(Before::Proceed) },
+        ));
+        Ok(())
+    }
+
+    module!(
+        OUTSIDE_ON_EDIT,
+        "outside_edit",
+        ["base"],
+        outside_on_edit_init
+    );
 
     fn dangling_init(r: &mut Registrar) -> Result<()> {
         r.function(form(

@@ -7,7 +7,7 @@ use keel_kernel::dispatcher::{
 use keel_kernel::{Composition, Kernel};
 use keel_sdk::prelude::*;
 use keel_sdk::system::{
-    AuditEvent, AuditSink, Caller, CallerOptions, TaskRunner, TaskSink, TaskSpec,
+    AuditEvent, AuditSink, Caller, CallerOptions, ExternalHook, TaskRunner, TaskSink, TaskSpec,
 };
 use keel_sdk::{Registrar, TaskHandle, migrator};
 use keel_testkit::{Harness, Reply, TestDatabase, Who};
@@ -267,6 +267,49 @@ static MISNAMED: ModuleDef = ModuleDef {
     migrations: Some(&MIGRATIONS),
     init: misnamed_init,
 };
+
+static GATE_SEEN: LazyLock<Mutex<Vec<(String, Value)>>> = LazyLock::new(Mutex::default);
+
+static GATE: ModuleDef = ModuleDef {
+    id: "gate",
+    version: "0.1.0",
+    sdk: keel_sdk::VERSION,
+    requires: &["desk"],
+    migrations: None,
+    init: gate_init,
+};
+
+fn gate_init(r: &mut Registrar) -> Result<()> {
+    r.contribute(ExternalHook::new(
+        "desk.card.edit",
+        |call: Call<Value>| async move {
+            let row = call.params().clone();
+            GATE_SEEN
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((call.request_id().to_owned(), row.clone()));
+            match (row["color"].as_str(), row["title"].as_str()) {
+                (Some("black"), Some("beta")) => Err(KeelError::validation("gate.error.black")
+                    .field("color")
+                    .param("color", "black")),
+                (Some("teal"), _) => Ok(Before::Enrich(row)),
+                (Some("gold"), _) => Ok(Before::Enrich(json!({ "priority": 9 }))),
+                _ => Ok(Before::Proceed),
+            }
+        },
+    ));
+    Ok(())
+}
+
+fn gate_saw(request_id: &str) -> Vec<Value> {
+    GATE_SEEN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter(|(id, _)| id == request_id)
+        .map(|(_, row)| row.clone())
+        .collect()
+}
 
 const EN: &str = r#"{ "desk": { "card": {
     "edit": { "title": "Card" }, "title": "Title", "color": "Colour", "priority": "Priority",
@@ -772,4 +815,98 @@ async fn ui_multi_naming_the_key_a_secret_or_an_unknown_field_fails_freeze() {
     assert!(!text.contains("ui.multi names priority"), "{text}");
     storage.close().await.expect("the pool closes");
     database.finish().await;
+}
+
+async fn send(harness: &Harness, ids: &[Id], color: &str, request_id: &str) -> Reply {
+    harness
+        .call_with(
+            harness.principal(Who::A1),
+            "desk.card.edit",
+            group(ids, json!({ "color": color }), &["color"]),
+            keel_testkit::CallOptions {
+                request_id: Some(request_id.to_owned()),
+                ..Default::default()
+            },
+        )
+        .await
+}
+
+#[keel_testkit::tokio::test]
+async fn an_external_hook_sees_every_row_of_a_group_edit_before_the_transaction_and_its_veto_writes_nothing()
+ {
+    let harness = Harness::new().module(&DESK).module(&GATE).boot().await;
+    let alpha = create(&harness, Who::A1, "alpha").await;
+    let beta = create(&harness, Who::A1, "beta").await;
+    let gamma = create(&harness, Who::A1, "gamma").await;
+    let untouched = [
+        ("alpha".to_owned(), "white".to_owned(), 1, "1234".to_owned()),
+        ("beta".to_owned(), "white".to_owned(), 1, "1234".to_owned()),
+        ("gamma".to_owned(), "white".to_owned(), 1, "1234".to_owned()),
+    ];
+    let vetoed = send(&harness, &[alpha, beta], "black", "gate-veto").await;
+    let error = vetoed
+        .error()
+        .expect("the external hook vetoes the second row");
+    assert_eq!(error.code, ErrorCode::Validation);
+    assert_eq!(error.fields.len(), 1);
+    assert_eq!(error.fields[0].path, "color");
+    assert_eq!(error.fields[0].key.as_deref(), Some("gate.error.black"));
+    let seen = gate_saw("gate-veto");
+    assert_eq!(seen.len(), 2, "one before frame per row: {seen:?}");
+    for (row, (id, title)) in seen.iter().zip([(alpha, "alpha"), (beta, "beta")]) {
+        assert_eq!(row["id"], json!(id.to_string()));
+        assert_eq!(row["title"], json!(title));
+        assert_eq!(row["color"], json!("black"));
+        assert_eq!(row["priority"], json!(1));
+        assert!(
+            row.get("pin").is_none(),
+            "a secret is not laid over the row"
+        );
+    }
+    assert!(TRACE.handled("gate-veto").is_empty());
+    assert_eq!(
+        TRACE.hooks("gate-veto"),
+        (0, 0),
+        "no transaction was opened"
+    );
+    assert_eq!(cards(&harness, Who::A1).await, untouched);
+
+    let above = send(&harness, &[alpha, beta, gamma], "black", "gate-above").await;
+    assert_eq!(
+        above.error().map(|error| error.code),
+        Some(ErrorCode::Validation)
+    );
+    assert_eq!(gate_saw("gate-above").len(), 2);
+    assert!(
+        RUNNER.spawned_for(harness.principal(Who::A1)).is_empty(),
+        "a veto at the entrance refuses the group before it becomes a task"
+    );
+
+    let enriched = send(&harness, &[alpha, beta], "gold", "gate-enrich").await;
+    let error = enriched
+        .error()
+        .expect("an enrichment of a group row is refused");
+    assert_eq!(error.code, ErrorCode::Internal);
+    assert_eq!(error.key, "keel.error.group_enriched");
+    assert!(TRACE.handled("gate-enrich").is_empty());
+    assert_eq!(cards(&harness, Who::A1).await, untouched);
+
+    let echoed = send(&harness, &[alpha, beta], "teal", "gate-echo").await;
+    assert_eq!(
+        echoed.data(),
+        Some(&json!({ "updated": 2 })),
+        "an enrichment that changes nothing is taken: {:?}",
+        echoed.error()
+    );
+    assert_eq!(gate_saw("gate-echo").len(), 2);
+    assert_eq!(TRACE.handled("gate-echo").len(), 2);
+    assert_eq!(
+        cards(&harness, Who::A1).await,
+        [
+            ("alpha".to_owned(), "teal".to_owned(), 1, "1234".to_owned()),
+            ("beta".to_owned(), "teal".to_owned(), 1, "1234".to_owned()),
+            ("gamma".to_owned(), "white".to_owned(), 1, "1234".to_owned()),
+        ]
+    );
+    harness.finish().await;
 }
