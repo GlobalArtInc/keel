@@ -623,15 +623,15 @@ a compiled module: the frontend, the CLI, audit and the licence do not distingui
 manifest is `keel-plugin.json`.
 
 ```json
-{ "protocol": 1, "id": "acme-sync", "version": "1.2.0",
+{ "protocol": 1, "id": "acme", "version": "1.2.0",
   "requires": { "keel": ">=0.6 <1", "modules": { "dns": ">=1" } },
-  "run": { "mode": "daemon", "cmd": ["./bin/acme-sync", "--serve"], "restart": "always" },
+  "run": { "mode": "daemon", "cmd": ["./bin/acme", "--serve"], "restart": "always" },
   "level": "user", "storage": "kv",
   "rights": { "observe": ["keel.account.*", "auth.login"], "hook": ["dns.zone.delete"], "patch": ["dns.zone.edit"] },
   "functions": [ { "name": "acme.sync.list", "kind": "list", "access": { "level": "user" }, "key": "id",
                    "params": { "$ref": "keel://ListQuery" }, "ui": { "title": "acme.sync.list.title", "columns": [ … ] } } ],
   "patches": [ { "target": "dns.zone.edit", "op": "add_field", "after": "ttl",
-                 "field": { "name": "acmeSync", "schema": { "type": "boolean", "default": true }, "store": "acme-sync" } } ],
+                 "field": { "name": "acmeSync", "schema": { "type": "boolean", "default": true }, "store": "acme" } } ],
   "settings": [ { "key": "acme.email", "schema": { "type": "string", "format": "email" } } ],
   "cron": [ { "id": "acme.renew", "schedule": "0 3 * * *", "func": "acme.renew.run" } ],
   "menu": [ { "path": "dns/acme", "func": "acme.sync.list", "order": 90, "icon": "refresh-cw" } ],
@@ -641,10 +641,10 @@ manifest is `keel-plugin.json`.
 | Field | Meaning |
 |-------|---------|
 | `protocol` | the plugin protocol version; N and N-1 are accepted |
-| `id`, `version` | plugin identity; the storage namespace and the plugin's principal are bound to `id` |
+| `id`, `version` | plugin identity; `id` is a module id (lowercase ASCII letters, digits and underscores), equals the name of the plugin's directory under `/var/lib/keel/plugins`, is neither `keel` nor `auth` nor reaches into their namespaces or a composed module's (`keel_x`, `dns_zone`), and prefixes every function, setting, cron job, problem source and dictionary key the plugin registers; the storage namespace and the plugin's principal `plugin-<id>` are bound to it; `version` is a semantic version |
 | `requires` | semver ranges on the platform and on the modules the plugin depends on |
 | `run` | how the process is started: `mode` (`daemon` or `exec`), `cmd`, `restart`; the process runs under its own uid with timeouts and a circuit breaker |
-| `level` | the level of the plugin's principal; a hook may not act on a function above it |
+| `level` | the level of the plugin's principal, one of `service`, `user` and `admin`; it is granted when an admin enables the plugin, and a manifest asking for another level is refused until the plugin is enabled again; a hook may not act on a function above it |
 | `storage` | `kv` requests `plugin.kv.*` storage, namespaced by plugin and bound to a subject |
 | `rights.observe` | event masks the plugin receives asynchronously from the outbox, after commit; any event may be observed |
 | `rights.hook` | functions on which the plugin may run a `before` hook and veto; not above its own level and never on `keel.*` / `auth.*`, enforced by the kernel |
@@ -652,6 +652,12 @@ manifest is `keel-plugin.json`.
 | `functions` | the plugin's own functions with descriptors in the same shape as compiled ones; calls are forwarded to the process |
 | `patches` | descriptor patches; `add_field` inserts `field` after the named one |
 | `settings`, `cron`, `menu`, `i18n` | the same contributions a compiled module registers: `SettingDef`, `CronJob`, menu nodes, message catalogues; `problems` and `widgets` sections exist as well |
+
+A plugin found in its directory stays disabled until an admin enables it with `plugin.enable`,
+which records it in `plugin_state`, creates its principal and requests a restart. At start the
+kernel reads every enabled manifest, checks it and registers it; a manifest that fails a check is
+refused as a whole with every fault in one reason, the kernel starts without it, and the problem
+`plugin.refused` names it.
 
 ### JSON Lines frames
 

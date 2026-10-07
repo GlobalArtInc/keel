@@ -1,6 +1,7 @@
 use std::fmt;
 
 use keel_sdk::runtime::{Contributions, Derived, RegistrationError, Registrations};
+use keel_sdk::system::{DataModule, Extension};
 use keel_sdk::{KeelError, Registrar};
 
 use super::composition::Graph;
@@ -8,12 +9,19 @@ use super::composition::Graph;
 pub struct Initialised {
     pub(super) graph: Graph,
     pub(super) registrations: Vec<Registrations>,
+    pub(super) extensions: Vec<Extension>,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
     #[error("module {module}: init failed: {source}")]
     Init {
+        module: String,
+        #[source]
+        source: KeelError,
+    },
+    #[error("module {module}: discovering its data modules failed: {source}")]
+    Discover {
         module: String,
         #[source]
         source: KeelError,
@@ -40,11 +48,27 @@ fn list(errors: &[RegistrationError]) -> String {
 
 impl Graph {
     pub fn init(&self) -> Result<Initialised, InitError> {
-        let mut registrars = Vec::with_capacity(self.modules().len());
+        self.init_with(&[], Vec::new())
+    }
+
+    pub(super) fn init_with(
+        &self,
+        data: &[DataModule],
+        extensions: Vec<Extension>,
+    ) -> Result<Initialised, InitError> {
+        let mut registrars = Vec::with_capacity(self.modules().len() + data.len());
         for def in self.modules() {
             let mut registrar = Registrar::new(def.id);
             (def.init)(&mut registrar).map_err(|source| InitError::Init {
                 module: def.id.to_owned(),
+                source,
+            })?;
+            registrars.push(registrar);
+        }
+        for module in data {
+            let mut registrar = Registrar::new(&module.id);
+            (module.init)(&mut registrar).map_err(|source| InitError::Init {
+                module: module.id.clone(),
                 source,
             })?;
             registrars.push(registrar);
@@ -76,6 +100,7 @@ impl Graph {
         Ok(Initialised {
             graph: self.clone(),
             registrations,
+            extensions,
         })
     }
 }

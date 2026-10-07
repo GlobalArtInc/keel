@@ -1186,6 +1186,42 @@
         "valid": "Valid"
       }
     },
+    "plugin": {
+      "action": {
+        "disable": "Disable",
+        "enable": "Enable"
+      },
+      "column": {
+        "enabled": "Enabled",
+        "id": "Plugin",
+        "level": "Level",
+        "reason": "Reason",
+        "status": "Status",
+        "version": "Version"
+      },
+      "confirm": {
+        "disable": "Disable the plugin {id}? The service restarts without it; its principal and its stored data stay in place, and it can be enabled again.",
+        "enable": "Enable the plugin {id}? The service restarts to load it, and its principal holds the level its manifest asks for."
+      },
+      "empty": "No plugin is installed in the plugins directory",
+      "error": {
+        "id": "{id} is not a plugin id",
+        "level": "The plugin {id} asks for the level {level}, which a plugin may not hold",
+        "manifest": "The manifest of the plugin {id} cannot be used: {reason}",
+        "not_started": "The plugin module has not started",
+        "unavailable": "The plugin {plugin} does not answer yet",
+        "unknown": "There is no plugin {id}"
+      },
+      "list": {
+        "title": "Plugins"
+      },
+      "refused": "The plugin {plugin} was not loaded: {reason}",
+      "status": {
+        "loaded": "Loaded",
+        "refused": "Refused",
+        "unloaded": "Not loaded"
+      }
+    },
     "settings": {
       "action": {
         "set": "Change"

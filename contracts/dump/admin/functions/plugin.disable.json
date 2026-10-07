@@ -1,0 +1,47 @@
+{
+  "keel": 1,
+  "name": "plugin.disable",
+  "module": "plugin",
+  "kind": "action",
+  "mode": "write",
+  "access": {
+    "level": "admin"
+  },
+  "params": {
+    "title": "PluginPick",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  },
+  "result": {
+    "title": "PluginChange",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "changed": {
+        "type": "boolean"
+      },
+      "restart": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "enabled",
+      "changed",
+      "restart"
+    ]
+  }
+}

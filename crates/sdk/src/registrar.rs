@@ -5,7 +5,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use keel_types::{Access, Level, LogLine};
+use keel_types::{Access, Descriptor, Level, LogLine};
 use schemars::{JsonSchema, Schema};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::call::{Call, Invoker};
 use crate::context::Context;
 use crate::error::Result;
-use crate::function::{FunctionBuilder, FunctionDef};
+use crate::function::{ErasedHandler, FunctionBuilder, FunctionDef};
 use crate::guard::Guard;
 use crate::host::{AgentOp, ConfigTemplate};
 use crate::lifecycle::AccountLifecycle;
@@ -426,6 +426,11 @@ impl Registrar {
         }
         self.functions.push(def);
         self
+    }
+
+    #[doc(hidden)]
+    pub fn described(&mut self, descriptor: Descriptor, handler: ErasedHandler) -> &mut Self {
+        self.function(FunctionDef::described(descriptor, handler))
     }
 
     pub fn stream<P, F, Fut>(
@@ -1222,5 +1227,84 @@ mod tests {
         assert!(contributions.take::<Widget>().is_empty());
         assert_eq!(contributions.len(), 1);
         assert_eq!(format!("{contributions:?}"), "Contributions(1)");
+    }
+
+    fn described(name: &str) -> Descriptor {
+        serde_json::from_value(json!({
+            "keel": keel_types::DESCRIPTOR_VERSION,
+            "name": name,
+            "module": "elsewhere",
+            "kind": "list",
+            "mode": "read",
+            "access": { "level": "user", "permission": "acme.sync.read" },
+            "key": "id",
+            "idempotency": "required",
+            "params": { "$ref": crate::function::LIST_QUERY_REF, "$schema": "https://json-schema.org/draft/2020-12/schema" },
+            "result": { "type": "object" },
+            "ui": { "title": "acme.sync.list.title", "columns": [{ "key": "id", "type": "text" }] }
+        }))
+        .expect("a descriptor")
+    }
+
+    #[test]
+    fn a_function_registered_from_its_descriptor_keeps_its_shape_under_the_module() {
+        let answer: ErasedHandler =
+            Arc::new(|_| Box::pin(async { Ok(json!({ "data": [], "total": 0 })) }));
+        let mut registrar = Registrar::new("acme");
+        registrar.described(described("acme.sync.list"), answer.clone());
+        registrar.described(described("dns.zone.list"), answer);
+        assert_eq!(
+            registrar.errors(),
+            [RegistrationError::Prefix {
+                module: "acme".to_owned(),
+                kind: "function",
+                name: "dns.zone.list".to_owned(),
+            }]
+        );
+        let mut registrar = Registrar::new("acme");
+        let answer: ErasedHandler = Arc::new(|_| Box::pin(async { Ok(json!({})) }));
+        registrar.described(described("acme.sync.list"), answer);
+        let registrations = registrar.into_registrations().expect("valid");
+        let def = &registrations.functions[0];
+        assert_eq!(def.module(), "acme");
+        assert_eq!(def.ownership(), &crate::function::Ownership::Unowned);
+        assert!(def.list_spec().is_none());
+        let mut expected = described("acme.sync.list");
+        expected.module = "acme".to_owned();
+        expected.params.remove("$schema");
+        assert_eq!(def.descriptor().expect("the descriptor compiles"), expected);
+    }
+
+    #[test]
+    fn a_condition_of_a_described_function_naming_an_unknown_field_fails() {
+        let mut descriptor = described("acme.sync.edit");
+        descriptor.kind = Kind::Form;
+        descriptor.mode = keel_types::Mode::Write;
+        descriptor.params = serde_json::from_value(json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" }, "kind": { "type": "string" } }
+        }))
+        .expect("a schema");
+        descriptor.ui = Some(
+            serde_json::from_value(json!({
+                "title": "acme.sync.edit.title",
+                "pages": [{ "id": "main", "fields": ["name", "kind"], "show_if": { "truthy": "kind" } }],
+                "fields": { "name": { "show_if": { "eq": ["kindd", "x"] } } },
+                "actions": [{ "id": "go", "role": "button", "function": "acme.sync.run", "hidden_if": { "empty": "$screen.params.id" } }]
+            }))
+            .expect("a screen"),
+        );
+        let answer: ErasedHandler = Arc::new(|_| Box::pin(async { Ok(json!({})) }));
+        let mut registrar = Registrar::new("acme");
+        registrar.described(descriptor, answer);
+        let registrations = registrar.into_registrations().expect("valid");
+        let error = registrations.functions[0]
+            .descriptor()
+            .expect_err("the typo is refused");
+        assert!(
+            matches!(&error, crate::ui::UiError::UnknownField { target, field, .. }
+                if target == "field name show_if" && field == "kindd"),
+            "{error}"
+        );
     }
 }

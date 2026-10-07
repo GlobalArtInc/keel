@@ -13,6 +13,8 @@ use keel_sdk::system::{Caller, CallerOptions};
 use keel_sdk::types::{Scope, Via};
 use keel_sdk::{Db, Id, KeelError, Level, Principal, Result};
 
+#[cfg(feature = "plugins")]
+use super::schedule::Schedule;
 use super::scheduler::{Begin, Core};
 
 pub const OWNER_LOGIN: &str = "owner";
@@ -23,6 +25,11 @@ pub const ERROR_OUTCOME: &str = "cron.error.outcome";
 
 pub type JobFuture = Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>;
 pub type JobHandler = Arc<dyn Fn(JobRun) -> JobFuture + Send + Sync>;
+
+#[cfg(feature = "plugins")]
+pub(crate) fn schedule_fault(text: &str) -> Option<String> {
+    Schedule::parse(text).err().map(|error| error.reason)
+}
 
 pub struct CronJob {
     id: String,

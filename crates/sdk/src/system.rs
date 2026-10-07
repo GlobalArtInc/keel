@@ -23,6 +23,7 @@ use crate::context::Context;
 use crate::db::Db;
 use crate::error::Result;
 use crate::product::ProductManifest;
+use crate::registrar::Registrar;
 use crate::secret::Secret;
 use crate::task::TaskHandle;
 
@@ -617,6 +618,88 @@ impl fmt::Debug for Endpoint {
             .field("name", &self.name)
             .field("method", &self.method)
             .finish()
+    }
+}
+
+pub type ModuleInit = Arc<dyn Fn(&mut Registrar) -> Result<()> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct DataModule {
+    pub id: String,
+    pub version: String,
+    pub init: ModuleInit,
+}
+
+impl fmt::Debug for DataModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DataModule")
+            .field("id", &self.id)
+            .field("version", &self.version)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Extension {
+    pub id: String,
+    pub version: String,
+    pub refused: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Discovery {
+    pub modules: Vec<DataModule>,
+    pub refused: Vec<Extension>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Landscape {
+    pub version: String,
+    pub data_dir: PathBuf,
+    pub modules: BTreeMap<String, String>,
+    pub functions: BTreeMap<String, Level>,
+    pub db: Db,
+}
+
+type Discover = Arc<dyn Fn(Landscape) -> BoxFuture<'static, Result<Discovery>> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ModuleSource {
+    discover: Discover,
+}
+
+impl ModuleSource {
+    pub fn new<F, Fut>(discover: F) -> Self
+    where
+        F: Fn(Landscape) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<Discovery>> + Send + 'static,
+    {
+        Self {
+            discover: Arc::new(move |landscape| Box::pin(discover(landscape))),
+        }
+    }
+
+    pub fn discover(&self, landscape: Landscape) -> BoxFuture<'static, Result<Discovery>> {
+        (self.discover)(landscape)
+    }
+}
+
+impl fmt::Debug for ModuleSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ModuleSource").finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Extensions(Vec<Extension>);
+
+impl Extensions {
+    pub fn new(extensions: Vec<Extension>) -> Self {
+        Self(extensions)
+    }
+
+    pub fn all(&self) -> &[Extension] {
+        &self.0
     }
 }
 

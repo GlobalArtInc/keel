@@ -92,6 +92,14 @@ impl std::fmt::Display for FieldCondition {
 }
 
 impl UiDef {
+    pub(crate) fn compiled(screen: ScreenUi) -> Self {
+        Self {
+            screen,
+            conditions: Vec::new(),
+            mistakes: Vec::new(),
+        }
+    }
+
     pub fn screen(&self) -> &ScreenUi {
         &self.screen
     }
@@ -126,6 +134,10 @@ impl UiDef {
             return Err(UiError::Misuse(mistake.clone()));
         }
         let mut screen = self.screen.clone();
+        for (target, expr) in attached(&screen) {
+            let source_text = serde_json::to_string(expr).unwrap_or_default();
+            check(known, &target.to_string(), &source_text, expr)?;
+        }
         for condition in &self.conditions {
             let target = condition.target.to_string();
             let expr = Expr::parse(&condition.source).map_err(|error| UiError::Condition {
@@ -133,23 +145,7 @@ impl UiDef {
                 source_text: condition.source.clone(),
                 error,
             })?;
-            for variable in variables(&expr) {
-                if variable.starts_with('$') {
-                    if !is_system_variable(variable) {
-                        return Err(UiError::UnknownVariable {
-                            target,
-                            source_text: condition.source.clone(),
-                            variable: variable.to_owned(),
-                        });
-                    }
-                } else if !known.contains(variable) {
-                    return Err(UiError::UnknownField {
-                        target,
-                        source_text: condition.source.clone(),
-                        field: variable.to_owned(),
-                    });
-                }
-            }
+            check(known, &target, &condition.source, &expr)?;
             attach(&mut screen, &condition.target, expr).map_err(|target_kind| {
                 UiError::Detached {
                     target: target.clone(),
@@ -175,6 +171,58 @@ impl UiDef {
         }
         self.screen.actions.push(action.inner);
     }
+}
+
+fn check(
+    known: &BTreeSet<String>,
+    target: &str,
+    source_text: &str,
+    expr: &Expr,
+) -> Result<(), UiError> {
+    for variable in variables(expr) {
+        if variable.starts_with('$') {
+            if !is_system_variable(variable) {
+                return Err(UiError::UnknownVariable {
+                    target: target.to_owned(),
+                    source_text: source_text.to_owned(),
+                    variable: variable.to_owned(),
+                });
+            }
+        } else if !known.contains(variable) {
+            return Err(UiError::UnknownField {
+                target: target.to_owned(),
+                source_text: source_text.to_owned(),
+                field: variable.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn attached(screen: &ScreenUi) -> Vec<(ConditionTarget, &Expr)> {
+    let mut found = Vec::new();
+    for page in &screen.pages {
+        if let Some(expr) = &page.show_if {
+            found.push((ConditionTarget::Page(page.id.clone()), expr));
+        }
+    }
+    for (name, field) in &screen.fields {
+        for (slot, expr) in [
+            (FieldCondition::ShowIf, &field.show_if),
+            (FieldCondition::RequiredIf, &field.required_if),
+            (FieldCondition::ReadonlyIf, &field.readonly_if),
+        ] {
+            if let Some(expr) = expr {
+                found.push((ConditionTarget::Field(name.clone(), slot), expr));
+            }
+        }
+    }
+    for action in &screen.actions {
+        if let Some(expr) = &action.hidden_if {
+            found.push((ConditionTarget::Action(action.id.clone()), expr));
+        }
+    }
+    found
 }
 
 fn attach(screen: &mut ScreenUi, target: &ConditionTarget, expr: Expr) -> Result<(), &'static str> {

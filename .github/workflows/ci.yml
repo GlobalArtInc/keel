@@ -275,6 +275,7 @@ jobs:
           - stats
           - peers
           - svc
+          - plugins
           - tasks,cron,notify,update
           - tasks,backup
           - settings,audit,tasks,cron,notify,webhooks

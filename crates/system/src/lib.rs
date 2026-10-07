@@ -12,6 +12,8 @@ pub mod license;
 pub mod notify;
 #[cfg(feature = "peers")]
 pub mod peers;
+#[cfg(feature = "plugins")]
+pub mod plugins;
 #[cfg(feature = "settings")]
 pub mod settings;
 #[cfg(feature = "stats")]

@@ -405,6 +405,29 @@ pub struct FunctionDef {
 }
 
 impl FunctionDef {
+    pub(crate) fn described(descriptor: Descriptor, handler: ErasedHandler) -> Self {
+        FunctionDef {
+            name: descriptor.name,
+            module: descriptor.module,
+            kind: descriptor.kind,
+            mode: descriptor.mode,
+            access: descriptor.access,
+            key: descriptor.key,
+            ownership: Ownership::Unowned,
+            params: embedded(descriptor.params),
+            result: embedded(descriptor.result),
+            ui: descriptor.ui.map(UiDef::compiled),
+            limits: Limits::default(),
+            class: DEFAULT_CLASS.to_owned(),
+            resumable: false,
+            internal: false,
+            exempt_from_read_only: false,
+            idempotency: descriptor.idempotency,
+            list: None,
+            handler,
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }

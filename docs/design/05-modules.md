@@ -107,7 +107,17 @@ Between process start and the first served request the kernel runs these steps, 
 3. Migrations: the kernel's own first, then every loaded module in graph order, before any port is
    opened and under a session lock ([04-storage.md](04-storage.md)).
 4. `init(&mut Registrar)` for every module in graph order: registration only, no I/O.
-5. Freeze of the registries. The kernel checks that every required service has a provider
+5. Discovery: every `ModuleSource` contribution receives a `Landscape` (the platform version, the
+   data directory, the loaded modules with their versions, the level of every registered function
+   and the database) and answers data modules, each an id, a version and an `init` over a
+   `Registrar`, and the ones it refused. This is the only step between migrations and start that
+   does I/O. A data module whose id is not a module id, is the id of a composed module or is
+   discovered twice is refused; the others are initialised after the compiled modules. When their
+   `init` or the freeze fails, each data module is tried alone on top of the ones already
+   accepted, and a failing one is refused with the error as its reason while the boot goes on.
+   The outcome of every data module is served as the `Extensions` service, and the accepted ones
+   join the module list of the registry.
+6. Freeze of the registries. The kernel checks that every required service has a provider
    and no service or invoker has two, applies patches to other modules' descriptors (a patch
    cannot weaken `access`; a field added by a patch must carry `store`), compiles condition
    expressions and verifies that every field name they mention exists, validates descriptors
@@ -124,8 +134,8 @@ Between process start and the first served request the kernel runs these steps, 
    that no bundle ships an asset id twice, and that no `ConfigTemplate` id is contributed twice
    across the loaded set. Menu groups are ordered by product in composition order, then by
    `order` within a bundle, with the platform group last. Every problem is collected and reported
-   in one error.
-6. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
+   in one error, which fails the boot when it comes from a compiled module.
+7. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
    spawned through `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's
    stop hook runs first, then the tasks it spawned are cancelled and awaited. A start hook that
    fails stops the modules already started and fails the boot.
@@ -936,6 +946,8 @@ function attribute ([06-host.md](06-host.md)).
 - Three rights: `observe` (after-only, any events, asynchronously from the outbox), `hook`
   (`before` with veto, not above the plugin's own level, never on `keel.*` or `auth.*`) and
   `patch`. A hook on `auth.*` is rejected at start.
+- A manifest that fails a check at start is refused, the kernel starts without the plugin and the
+  problem `plugin.refused` names it.
 - Storage `plugin.kv.*` with a namespace and a binding to a subject.
 - Manifest sections `settings`, `cron`, `problems` and `widgets`.
 - A separate uid, timeouts and a circuit breaker; a crashing daemon plugin does not take the

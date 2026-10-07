@@ -7,9 +7,9 @@ use keel_sdk::runtime::{
     StopHook, UiError, ViewDef,
 };
 use keel_sdk::system::{
-    AccountSource, AdvisoryLock, Backups, Caller, EventRelay, Features, Installation,
-    LanguageSource, LicenseKey, LimitSource, LiveEvents, OutboxSubscriber, ParamMasker,
-    PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
+    AccountSource, AdvisoryLock, Backups, Caller, EventRelay, Extension, Extensions, Features,
+    Installation, LanguageSource, LicenseKey, LimitSource, LiveEvents, OutboxSubscriber,
+    ParamMasker, PermissionCatalogue, PrincipalSource, SecretCipher, TaskRunner,
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
@@ -425,6 +425,7 @@ struct Freezer {
     locks: Arc<SessionLocks>,
     masks: Arc<MaskHandle>,
     backups: Arc<backup::Handle>,
+    extensions: Vec<Extension>,
 }
 
 impl Initialised {
@@ -464,6 +465,7 @@ impl Initialised {
             locks: Arc::new(SessionLocks::new()),
             masks: Arc::new(MaskHandle::new()),
             backups: Arc::new(backup::Handle::new()),
+            extensions: self.extensions,
         };
         let mut requirements = Vec::new();
         let mut hooks = Vec::new();
@@ -595,6 +597,7 @@ impl Freezer {
         services.provide(Arc::new(doctor::Handle::new()));
         services.provide(Arc::new(restart::Handle::new(graph.clock().now())));
         services.provide(Arc::new(SetupHandle::new()));
+        services.provide(Arc::new(Extensions::new(self.extensions.clone())));
         if !self.services.contains(&ServiceKey::of::<dyn Features>()) {
             services.provide::<dyn Features>(Arc::new(ProductFeatures::new(graph.products())));
         }
@@ -1142,6 +1145,15 @@ impl Freezer {
                 id: def.id.to_owned(),
                 version: def.version.to_owned(),
             })
+            .chain(
+                self.extensions
+                    .iter()
+                    .filter(|extension| extension.refused.is_none())
+                    .map(|extension| ModuleInfo {
+                        id: extension.id.clone(),
+                        version: extension.version.clone(),
+                    }),
+            )
             .collect();
         self.masks.fill(self.functions.values());
         let registry = Registry {

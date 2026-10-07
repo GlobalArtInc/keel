@@ -13,6 +13,7 @@ fn main() -> keel::ExitCode {
         .module(&keel_system::peers::MODULE)
         .module(&keel_system::svc::MODULE)
         .module(&keel_system::stats::MODULE)
+        .module(&keel_system::plugins::MODULE)
         .frontend(keel::embed_frontend!("../../frontend/dist/shell"));
     #[cfg(feature = "demo")]
     let runtime = runtime.product(&keel_demo::MANIFEST);

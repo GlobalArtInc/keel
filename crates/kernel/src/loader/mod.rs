@@ -1,4 +1,5 @@
 mod composition;
+mod extend;
 mod freeze;
 pub(crate) mod i18n;
 mod icons;
@@ -18,6 +19,8 @@ pub(crate) use i18n::leaves;
 pub use init::{InitError, Initialised};
 pub use lifecycle::{Kernel, StartError, StopError};
 pub use migrate::{ACTIVE, MigrateError, Migrated, ORPHANED};
+
+use keel_sdk::Db;
 
 use crate::backup::BackupError;
 use crate::storage::Storage;
@@ -42,7 +45,9 @@ impl Kernel {
     pub async fn boot(composition: Composition, storage: &Storage) -> Result<Kernel, BootError> {
         let graph = composition.resolve()?;
         graph.migrate(storage).await?;
-        let frozen = graph.init()?.freeze()?;
+        let frozen = graph
+            .load(Db::from_connection(storage.db().clone()))
+            .await?;
         Ok(frozen.start(storage.db().clone()).await?)
     }
 }

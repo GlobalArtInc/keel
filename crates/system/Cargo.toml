@@ -21,6 +21,7 @@ default = [
   "stats",
   "peers",
   "svc",
+  "plugins",
 ]
 audit = ["dep:tokio", "dep:tracing"]
 backup = ["tasks", "dep:tokio", "dep:tracing"]
@@ -38,6 +39,14 @@ peers = [
   "dep:tracing",
 ]
 notify = ["cron", "dep:lettre", "dep:minijinja", "dep:tokio", "dep:tracing"]
+plugins = [
+  "cron",
+  "notify",
+  "dep:jsonschema",
+  "dep:semver",
+  "dep:tokio",
+  "dep:tracing",
+]
 tasks = ["dep:tokio", "dep:tracing"]
 update = [
   "cron",

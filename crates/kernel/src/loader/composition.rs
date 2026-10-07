@@ -381,7 +381,7 @@ fn of_product(product: &Option<String>) -> String {
         .unwrap_or_default()
 }
 
-fn check_id(id: &str) -> Result<(), &'static str> {
+pub(super) fn check_id(id: &str) -> Result<(), &'static str> {
     let mut chars = id.chars();
     match chars.next() {
         None => return Err("it is empty"),
