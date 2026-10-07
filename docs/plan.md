@@ -7301,6 +7301,252 @@ are trusted code, and the review of M7 takes up plugins.
 - `hack/check-docs.sh` green; every "Done when" item of M6 ticked or marked operator-run;
   `keel --version` answers `0.4.0`.
 
+## M7 work breakdown
+
+M7 is split into twelve PR-sized steps in seven groups: the plugin host (1a to 1d) — the
+manifest registered through the same `Registrar`, the process under its own uid, the frames, and
+the three rights with the kv store — then the plugin SDKs (2); the stabilisation of `keel-sdk`
+1.0 and descriptor v1 (3a), before the first product's crates move to their own repository (3b)
+against the published `keel-v1.0.0` pre-release; the load test (4); the security review, which
+also closes the findings M4, M5 and M6 handed to it (5); the operator and developer documentation
+with the vocabulary audit (6a, 6b); and the closure with the tag `keel-v1.0.0` (7). The design
+of plugins is in [design/05-modules.md](design/05-modules.md) and the manifest and frames in
+[design/10-contracts.md](design/10-contracts.md); how a plugin process is started under its own
+uid by a kernel that runs as `keel`, and where a moved product's frontend library lives, are left
+open by the design, and the steps that meet them decide and record.
+
+### 1a. the plugin manifest and its registration
+
+**Goal.** The system module `plugins` (feature `plugins`, in the matrix): plugins are directories
+under `/var/lib/keel/plugins/<id>` with `keel-plugin.json`; at start the module reads each
+manifest, checks `protocol` (N and N-1), `requires` against the running version and the loaded
+modules, the `level`, and the rights — a `hook` on `keel.*` or `auth.*`, or on a function above
+the plugin's level, rejects the plugin at start with a problem, the kernel starting without it —
+and registers its `functions` (descriptors in the compiled shape, calls forwarded to the process
+in 1c), `settings`, `cron`, `menu`, `problems`, `widgets` and `i18n` through the same
+`Registrar`, so the frontend, the CLI, audit and the license see no difference; a plugin
+principal per plugin at its `level` in the root account. `plugin.list|get|enable|disable` for an
+admin, a change applied by a restart as products are.
+
+**Touches.** `crates/system/src/plugins/` (new), `crates/sdk/src/registrar.rs` (registration from
+data rather than code), `crates/kernel/src/loader/`, `contracts/`.
+
+**Out of scope.** Running the process (1b).
+
+**Acceptance.**
+
+- `crates/system/tests/system/plugins_manifest.rs`: `a_manifest_registers_its_functions_menu_settings_and_i18n`,
+  `a_hook_on_auth_is_rejected_at_start_and_the_kernel_starts_without_the_plugin`,
+  `a_plugin_requiring_a_missing_module_is_refused_with_a_problem`.
+
+### 1b. the plugin process: its own uid, modes, timeouts and the breaker
+
+**Goal.** A plugin process runs under its own operating-system account `kp_<id>` inside the
+installation's uid range, created on enable through the host executor; the kernel, which runs as
+`keel`, has the privileged side start it — the step decides between an `AgentOp` that spawns the
+process as the account and hands its stdin and stdout back over the agent socket with
+`SCM_RIGHTS`, and a per-plugin unit started by `systemctl`, and records it. Modes: `daemon` (one
+long process, restarted by `restart` with backoff) and `exec` (a process per frame). Every frame
+has a timeout; repeated timeouts or crashes open a circuit breaker that answers the plugin's
+functions with `unavailable` and raises a problem, closing again after a quiet period; a crashing
+plugin never takes the kernel down.
+
+**Touches.** `crates/system/src/plugins/`, `crates/host-agent/src/ops/` (the spawn), `crates/host/`,
+`deploy/agent.yaml` (the `plugins` section).
+
+**Out of scope.** The frames beyond a liveness exchange (1c).
+
+**Acceptance.**
+
+- `crates/system/tests/system/plugins_process.rs` with the in-process agent and a fixture plugin
+  script: `a_daemon_plugin_runs_under_its_own_account`, `a_crash_of_a_daemon_plugin_does_not_take_the_kernel_down_and_it_is_restarted`,
+  `repeated_timeouts_open_the_breaker_and_raise_a_problem`.
+
+### 1c. the frames: call, before and invoke
+
+**Goal.** The JSON Lines frames of [design/10-contracts.md](design/10-contracts.md): `call` of the
+plugin's own functions with the calling principal, answered in the envelope shape; `before` hooks
+on the functions of `rights.hook`, run outside the transaction with a timeout, a veto landing in
+the caller's envelope as a field error and enriched `params` accepted; `invoke` from the plugin
+while it handles a frame, run under the principal of the current call within the plugin's own
+scope; the frame size limit and the unknown-frame answer of the host protocol.
+
+**Touches.** `crates/system/src/plugins/`, `crates/kernel/src/dispatcher/` (the before-hook seam for external hooks).
+
+**Out of scope.** `observe`, `patch` and kv (1d).
+
+**Acceptance.**
+
+- `crates/system/tests/system/plugins_frames.rs`: `a_plugin_function_answers_through_a_call_frame`,
+  `a_before_hook_vetoes_a_delete_with_a_field_error`, `invoke_runs_under_the_callers_principal_within_the_plugin_scope`.
+
+### 1d. observe, patches and the kv store
+
+**Goal.** `rights.observe`: events matching the masks delivered to the plugin from the outbox
+after commit, at least once, with a cursor per plugin; `rights.patch` and `patches`: `add_field`
+inserts a field into the target function's descriptor (never weakening `access`), its value put
+into `Call.extra` and delivered to the plugin as `keel.patch.stored` after commit, and deletion of
+the owning row emitted for the plugin to clean up; `plugin.kv.get|set|delete|list` namespaced by
+plugin and bound to a subject, reachable only from the plugin's own frames.
+
+**Touches.** `crates/system/src/plugins/`, `crates/kernel/src/http/descriptors.rs` (the patch in the projection), `contracts/`.
+
+**Out of scope.** Patches other than `add_field`.
+
+**Acceptance.**
+
+- `crates/system/tests/system/plugins_patch.rs`: `a_patch_adds_a_field_to_the_zone_form_and_its_value_reaches_the_plugin_after_commit`,
+  `an_observed_event_arrives_once_per_cursor`, `kv_is_namespaced_by_plugin`.
+
+### 2. the plugin SDKs and the sample plugins
+
+**Goal.** A bash sample plugin under `examples/plugins/zone-guard` that adds a field to the zone
+form, vetoes the deletion of a zone carrying a marker with a field-level error and shows its own
+list in the menu, installed without a rebuild — the M7 "Done when"; the Python SDK
+`sdk/python/keel_plugin` (standard library only, a decorator per function and hook, the frame
+loop, `invoke`, kv) with a sample plugin and its tests; `keel-dev plugin check <dir>` validating a
+manifest against the running binary's descriptors.
+
+**Touches.** `examples/plugins/` (new), `sdk/python/` (new), `crates/dev/`, `hack/e2e.sh` (the bash plugin), `.github/workflows/ci.yml` (the Python tests).
+
+**Out of scope.** Publishing the Python package to a public index.
+
+**Acceptance.**
+
+- `frontend/e2e/plugin.spec.ts`: with the bash plugin installed, the zone form shows the field,
+  the delete is vetoed on the field, the plugin's list is in the menu; `python -m unittest` green
+  for the SDK.
+
+### 3a. keel-sdk 1.0 and descriptor v1
+
+**Goal.** The public surface of `keel-sdk` and `keel-types` reviewed item by item: what no product
+or plugin needs becomes private or moves under `keel_sdk::system`; enums a later release may
+grow become `#[non_exhaustive]`; builder methods replace public fields where a field would freeze
+a shape; the descriptor's `"keel": 1` frozen with the golden fixtures of `contracts/`;
+`cargo-semver-checks` extended from the facade to `keel-sdk` and `keel-types`; `CHANGELOG.md`
+with one section per product and the semver policy of [design/01-overview.md](design/01-overview.md)
+written as `docs/semver.md`; the workspace at `1.0.0-rc.1` and the tag `keel-v1.0.0-rc.1` pushed so
+3b can pin it.
+
+**Touches.** `crates/sdk/`, `crates/types/`, every caller of what changes, `CHANGELOG.md` (new),
+`docs/semver.md` (new), `.github/workflows/ci.yml`.
+
+**Out of scope.** `keel_sdk::system`, which stays exempt.
+
+**Acceptance.**
+
+- `cargo semver-checks` runs on `keel`, `keel-sdk` and `keel-types` in CI; the release candidate
+  tag exists; the conformance and descriptor dumps are unchanged by the review except where the
+  commit names a change.
+
+### 3b. the first product in its own repository
+
+**Goal.** The crates of `dns` (`products/dns` with its module crates) move to
+`GlobalArtInc/keel-dns`, depending on `keel` by the tag `keel-v1.0.0-rc.1`, with that
+repository's own CI (fmt, clippy, its tests against a testkit pulled by the same tag); `bin/keel`
+pulls them as git dependencies pinned by tag, the rehearsal job of M4 becoming the ordinary
+build; the frontend library of `dns` stays in this repository under `frontend/products/dns` or
+moves to Nexus as `@globalart/keel-dns` — the step decides and records it, and the closure (7)
+amends the documents. `panel` stays here.
+
+**Touches.** a new repository `GlobalArtInc/keel-dns` (created by the operator; the step prepares
+its content and CI), `bin/keel/Cargo.toml`, `products/dns/` (removed here), `hack/rehearsal.sh`,
+`.github/workflows/`.
+
+**Out of scope.** Moving `panel`.
+
+**Acceptance.**
+
+- `bin/keel` builds with `dns` pulled from `GlobalArtInc/keel-dns` by tag in CI; the `dns` tests
+  run green in that repository's CI.
+
+### 4. the load test
+
+**Goal.** A list of 100 000 zones answers in under 300 ms: `hack/load.sh` seeds 100 000 zones over
+one account and several, measures `dns.zone.list` with sorting, a filter and a search at the
+first, a middle and the last page, and fails above the threshold; the step fixes what the
+measurement shows — indexes for the declared sortable columns, keyset pagination behind the
+list contract where offsets are too slow, a bounded count — and runs weekly on the runner.
+
+**Touches.** `hack/load.sh` (new), the kernel's list implementation, the migrations that add
+indexes, `.github/workflows/load.yml` (new, weekly).
+
+**Out of scope.** Load on writes.
+
+**Acceptance.**
+
+- `hack/load.sh` reports every measured query under 300 ms on the runner.
+
+### 5. the security review of M7
+
+**Goal.** The review [design/06-host.md](design/06-host.md) schedules for M7 over plugins (the
+uid, the spawn, frames, hooks, patches, kv, the breaker) and over what M4 left without a fix: a
+timeout on every process the agent runs so a hung check cannot hold the lock, an allowlist for
+`host.pkg.*`, the channel refusing `http://` and a head manifest carrying an expiry, a bound on
+the number of entries the unpacker accepts, and `deny_unknown_fields` on the arguments of product
+operations; and over what M5 and M6 named as the subject of this review: a variable schema in the
+agent for the templates it renders, `PeerLinks` handing a link's token to any module compiled
+in, the pre-check of `dns-peer` writing the customer on the neighbour before the local
+transaction decides, and its task running with a widened scope; every finding fixed with a
+named test, the security checklist of the milestone closed.
+
+**Touches.** `crates/system/src/plugins/`, `crates/host-agent/`, `crates/release/`, `crates/keel/src/privileged/`, `crates/sdk/src/host.rs`, `crates/system/src/peers/`, `products/panel/crates/dns-peer/`.
+
+**Out of scope.** Third-party audits.
+
+**Acceptance.**
+
+- Every finding is a named test; the checklist in the closure lists none open.
+
+### 6a. the operator documentation
+
+**Goal.** `docs/operator/`: installing Keel with a product, enabling and disabling products, the
+license, users and access, backup and restore, updates and rollback, the host agent's policy,
+troubleshooting with `doctor` and `support-bundle`, and peers; written for someone who has never
+seen the project, every command in it run by `hack/check-docs.sh` against the binary where it can
+be run unprivileged.
+
+**Touches.** `docs/operator/` (new), `hack/check-docs.sh`.
+
+**Out of scope.** Translations of the documentation.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` executes the runnable commands of the operator documentation green.
+
+### 6b. the developer documentation and the vocabulary audit
+
+**Goal.** `docs/developer/`: writing a module with the SDK (functions, descriptors, hooks,
+contributions, host operations, migrations, tests with the testkit), a product bundle, a plugin
+in bash and in Python, and the semver policy; and `hack/check-vocabulary.sh`, run in CI, finding
+no borrowed product names or identifiers of other control panels anywhere in the repository.
+
+**Touches.** `docs/developer/` (new), `hack/check-vocabulary.sh` (new), `.github/workflows/ci.yml`.
+
+**Out of scope.** API reference beyond the generated OpenAPI.
+
+**Acceptance.**
+
+- The vocabulary check green in CI; the developer guide's sample module builds in CI.
+
+### 7. M7 closure and keel-v1.0.0
+
+**Goal.** The document pass (the plugin spawn, the frontend library decision, the pagination
+change, the M4 findings closed), the `## M7 exit checklist` with the "Done when" items ticked and
+the operator-run ones named (the first external operator installing `panel` from the
+documentation without help, the repository `GlobalArtInc/keel-dns`, the tag on the channel),
+`README.md`'s M7 row, the workspace and packages raised to `1.0.0` after grepping for the release
+candidate string, and the release binary carrying `dns` and `panel` at `1.0.0`.
+
+**Touches.** `docs/`, `README.md`, `CHANGELOG.md`, the versions.
+
+**Out of scope.** Code beyond the version bump.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` green; every "Done when" item of M7 ticked or marked operator-run;
+  `keel --version` answers `1.0.0`.
+
 ## How we work
 
 - The code lives in the monorepo `GlobalArtInc/keel` on the `main` branch until the SDK reaches
