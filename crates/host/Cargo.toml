@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 keel-sdk = { workspace = true }
+nix = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

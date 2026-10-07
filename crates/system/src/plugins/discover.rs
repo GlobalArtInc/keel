@@ -47,10 +47,14 @@ async fn load(
     row: &state::Model,
     landscape: &Landscape,
 ) -> std::result::Result<Plugin, (String, String)> {
-    let read = read(&root.join(&row.id))
+    let directory = root.join(&row.id);
+    let read = read(&directory)
         .await
         .map_err(|reason| (String::new(), reason))?;
     let mut faults = manifest::faults(&read.manifest, &row.id, landscape, &read.parsed);
+    if let Some(fault) = program(&directory, &read.manifest).await {
+        faults.push(fault);
+    }
     if read.manifest.level.as_str() != row.level {
         faults.push(format!(
             "it asks for the level {}, and it was enabled at {}; enable it again to grant the new level",
@@ -64,6 +68,26 @@ async fn load(
         manifest: read.manifest,
         dictionaries: read.dictionaries,
     })
+}
+
+async fn program(directory: &Path, manifest: &Manifest) -> Option<String> {
+    let program = manifest.run.cmd.first()?;
+    if !manifest::runnable(program) {
+        return None;
+    }
+    let file = match tokio::fs::canonicalize(directory).await {
+        Ok(home) => match tokio::fs::canonicalize(home.join(program)).await {
+            Ok(found) => {
+                found.starts_with(&home)
+                    && tokio::fs::metadata(&found)
+                        .await
+                        .is_ok_and(|metadata| metadata.is_file())
+            }
+            Err(_) => false,
+        },
+        Err(_) => false,
+    };
+    (!file).then(|| format!("the run command {program} is not a file inside the plugin directory"))
 }
 
 pub(super) async fn read(directory: &Path) -> std::result::Result<Read, String> {

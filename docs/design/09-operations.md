@@ -437,8 +437,12 @@ Every key is optional. `database` may instead be a TCP URL such as
 certificate under `<data_dir>/tls`. The values above for `log` are also its defaults. The defaults
 of `socket`, `data_dir` and `database` are fixed by the kernel, not by a product bundle. The
 enabled products are not a configuration key: they live in the database. Sections of modules
-(`host`, `plugins`) are added by their `ConfigSection` contributions; their keys are not fixed by
-this revision ([06-host.md](06-host.md)). The kernel keeps every top-level key it does not know as
+(`host`, `update`, `plugin`) are added by their `ConfigSection` contributions; their keys are not
+fixed by this revision ([06-host.md](06-host.md)), except those of `plugin`: `timeout_ms` (10000,
+the answer time of every frame), `failures` (5, the failures that open the breaker), `quiet_ms`
+(60000, the quiet period before the trial and the uptime after which a daemon's count of failures
+starts again), `liveness_ms` (30000) and `backoff_ms` (1000, the first pause before a restart,
+doubling up to `quiet_ms`). The kernel keeps every top-level key it does not know as
 a raw section for those contributions and matches them at freeze: a section is validated
 against the schema of the type the contribution names and a violation fails the start naming the
 file, the section and the path, an absent section becomes the type's default, a section claimed

@@ -4,6 +4,7 @@ mod frame;
 mod local;
 
 use keel_sdk::prelude::*;
+use keel_sdk::system::PluginLauncher;
 
 use api::HostExecutor;
 use config::{HostConfig, SECTION};
@@ -21,7 +22,8 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let local = Arc::new(Local::default());
     let started = Arc::clone(&local);
-    r.provide::<dyn HostExecutor>(local)
+    r.provide::<dyn HostExecutor>(local.clone())
+        .provide::<dyn PluginLauncher>(local)
         .contribute(ConfigSection::new::<HostConfig>(SECTION))
         .i18n("en", include_str!("../i18n/en.json"))
         .i18n("ru", include_str!("../i18n/ru.json"))
@@ -40,7 +42,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_module_provides_the_executor_its_section_and_its_dictionaries_and_nothing_else() {
+    fn the_module_provides_the_executor_the_launcher_its_section_and_its_dictionaries_and_nothing_else()
+     {
         let mut registrar = Registrar::new(MODULE.id);
         (MODULE.init)(&mut registrar).expect("init registers");
         let registrations = registrar
@@ -49,8 +52,9 @@ mod tests {
         assert!(registrations.functions.is_empty());
         assert!(registrations.menu.is_empty());
         assert!(registrations.requires.is_empty());
-        assert_eq!(registrations.provides.keys().count(), 1);
+        assert_eq!(registrations.provides.keys().count(), 2);
         assert!(registrations.provides.get::<dyn HostExecutor>().is_some());
+        assert!(registrations.provides.get::<dyn PluginLauncher>().is_some());
         let languages: Vec<&str> = registrations
             .i18n
             .iter()

@@ -197,7 +197,8 @@ of modules listed in its own `requires`; importing anything else is an error rep
 matrix "each system module alone, and the composition without each module in turn" plus the test
 "a composition of the kernel alone starts and answers on the socket". Hooks needed only by
 system modules (the `Authenticator` chain, `PrincipalSource`, `SecretCipher`,
-`SecondFactorSource`, `PreferenceSource`, `AuditSink`; later `TransportRegistry`,
+`SecondFactorSource`, `PreferenceSource`, `AuditSink`, `ModuleSource`, `PluginLauncher`; later
+`TransportRegistry`,
 `StorageSnapshot`, `OutboxSubscriber`) live in `keel_sdk::system`, which is `#[doc(hidden)]` and
 exempt from semver until 1.0. Details are in [05-modules.md](05-modules.md).
 

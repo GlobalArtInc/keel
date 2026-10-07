@@ -2426,6 +2426,7 @@ version = "0.4.0"
 dependencies = [
  "keel-sdk",
  "keel-testkit",
+ "nix",
  "schemars 1.2.2",
  "serde",
  "tempfile",
@@ -2681,6 +2682,7 @@ dependencies = [
  "insta",
  "ipnet",
  "jsonschema",
+ "keel-host",
  "keel-sdk",
  "keel-testkit",
  "lettre",

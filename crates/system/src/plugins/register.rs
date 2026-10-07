@@ -7,6 +7,7 @@ use keel_sdk::system::DataModule;
 use keel_sdk::types::{DESCRIPTOR_VERSION, Descriptor};
 
 use super::manifest::{FunctionSpec, Manifest};
+use super::process::{Live, Runtime};
 use crate::cron::api::CronJob;
 use crate::notify::api::ProblemSource;
 
@@ -29,8 +30,9 @@ pub(super) fn module(plugin: Plugin) -> DataModule {
 fn register(plugin: &Plugin, r: &mut Registrar) -> Result<()> {
     let manifest = &plugin.manifest;
     let id = manifest.id.as_str();
+    let runtime = Arc::new(Runtime::new(id, &manifest.run));
     for spec in &manifest.functions {
-        r.described(descriptor(id, spec), unavailable(id));
+        r.described(descriptor(id, spec), unavailable(id, &runtime));
     }
     for setting in &manifest.settings {
         let mut def = SettingDef::new(&setting.key, setting.schema.clone());
@@ -85,6 +87,18 @@ fn register(plugin: &Plugin, r: &mut Registrar) -> Result<()> {
     for (lang, text) in &plugin.dictionaries {
         r.i18n(lang, text);
     }
+    let started = Arc::clone(&runtime);
+    r.start(move |ctx| async move {
+        if let Ok(live) = ctx.require::<Live>() {
+            live.insert(&started);
+        }
+        started.start(&ctx);
+        Ok(())
+    })
+    .stop(move || async move {
+        runtime.stop().await;
+        Ok(())
+    });
     Ok(())
 }
 
@@ -107,11 +121,12 @@ fn descriptor(id: &str, spec: &FunctionSpec) -> Descriptor {
     }
 }
 
-fn unavailable(id: &str) -> ErasedHandler {
+fn unavailable(id: &str, runtime: &Arc<Runtime>) -> ErasedHandler {
     let plugin = id.to_owned();
+    let runtime = Arc::clone(runtime);
     Arc::new(move |_call| {
-        let plugin = plugin.clone();
-        Box::pin(async move { Err(unanswered(&plugin)) })
+        let refusal = runtime.refusal().unwrap_or_else(|| unanswered(&plugin));
+        Box::pin(async move { Err(refusal) })
     })
 }
 

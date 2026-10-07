@@ -42,7 +42,7 @@ On a host there are three kinds of process, plus local clients.
 |---------|----------|------------|-------------|
 | `keel serve` | uid `keel`; the unit grants no capability except `CAP_NET_BIND_SERVICE` | the TLS port (HTTP and SSE) and `/run/keel/core.sock` with peer-credential checks | Postgres over its unix socket; the privileged process over `/run/keel/agent.sock` (only while `host` is loaded); plugin processes over their stdio |
 | `keel privileged` | root | `/run/keel/agent.sock`; a connection is accepted only from uid `keel`, checked with `SO_PEERCRED` | nothing — it initiates no connection |
-| a plugin | a separate uid per plugin | its stdio, JSON Lines | the `serve` process only |
+| a plugin | a separate uid `kp_<id>` per plugin, started by `privileged` | its stdio, JSON Lines | the `serve` process, over the socket `privileged` hands to it; its stderr is a pipe `privileged` reads into bounded `plugin output` records (see "Audit") |
 
 The `serve` process is the kernel: the HTTP and SSE transports, the dispatcher, the Postgres
 connection, the modules, tasks and the outbox. It holds the client side of the agent protocol as a
@@ -64,7 +64,7 @@ on that socket yield a principal of level `owner`, whose call context records th
 `via: Socket` ([03-access.md](03-access.md)). The ctl socket is part of the kernel's transports
 ([02-functions.md](02-functions.md)).
 
-So the arrows are: plugin → `serve`; `ctl` and `install.sh` → `serve`; `serve` → `privileged`.
+So the arrows are: plugin → `serve`; plugin (stderr) → `privileged`; `ctl` and `install.sh` → `serve`; `serve` → `privileged`.
 Nobody else connects to the privileged process, and the privileged process never initiates a
 connection on a single host. In a cluster the direction of the transport is reversed — the
 node's agent initiates an mTLS connection to the kernel — but the protocol is the same, and a
@@ -123,10 +123,14 @@ enabled bundle names `host` in its `modules`, and product modules that need the 
 `keel-host` is linked into the kernel process. It contains:
 
 - the `HostExecutor` trait in `keel_host::api`. It is deliberately not part of `keel-sdk`: the
-  SDK knows nothing about hosts, and the cargo invariant "kernel does not depend on host" holds
-  without exceptions. A module obtains the executor with `call.require::<dyn HostExecutor>()`;
+  public SDK knows nothing about hosts, and the cargo invariant "kernel does not depend on host"
+  holds without exceptions. A module obtains the executor with `call.require::<dyn HostExecutor>()`;
   the registry freeze at start-up fails if a module requires the `host` service and no module
-  provides it ([05-modules.md](05-modules.md)).
+  provides it ([05-modules.md](05-modules.md)). The one host seam outside `keel_host::api` is
+  `PluginLauncher` with `PluginProcess` (create a plugin's account, spawn its process as that
+  account and hand its stdio back, stop it): the system module `plugin` may depend only on
+  `keel-sdk`, so the seam lives in the hidden `keel_sdk::system`, and `keel-host` provides it next
+  to `HostExecutor`.
 - two implementations of the trait: `Local`, which speaks over the unix socket `agent.sock`, and
   later `Remote`, which speaks the same protocol over mTLS gRPC to a node. The module code is
   identical for both.
@@ -199,6 +203,7 @@ and a policy that constrains it. There is no "run this command" operation with f
 | `host.quota.*` | disk quotas | `setquota` and `repquota`; `host.error.unavailable` on a host without them |
 | `host.exec` | run an external binary | only entries of `exec_allow`: a name runs without arguments, `name: [binary, arguments…]` with exactly that vector; with a `dest` the output goes into a fresh file of a root, created with `O_EXCL` and `O_NOFOLLOW`, owned by the calling uid with mode `0600` |
 | `host.home.*` | list, mkdir, rename, remove, chmod, read and write in the home of a product's account | the account under `user_prefix` with its uid and gid inside `uid_range`; the path joined under the home and canonicalised, a parent, an absolute path or a link leaving the home answering `host.error.policy` before anything runs; the work runs as that uid through `agent-exec --uid`, which starts the hidden worker `keel agent-home` from the policy's tool `keel` (`/proc/self/exe`), and the worker checks every path again, never follows a link at the last component and writes through a temporary; a transfer is staged in the root `transfer`, an upload only from a file the kernel's uid owns and a download owned by that uid with mode `0600`; a mode is three octal digits |
+| `host.plugin.*` | the process of a plugin: `account`, `spawn` and `stop`, built-in operations under the `plugins` section of the policy, sent by the kernel with the product `plugin` and the installation as actor | `account` creates `kp_<id>` (the `user_prefix` of `plugins` and the plugin id) through the code of `host.user.create`, uid and gid inside `uid_range`, home `/nonexistent`, shell `nologin`, and answers the existing account when it is there; `spawn` takes the plugin id and the run command, at most 64 arguments of at most 4096 bytes without a NUL, resolves its first word as a relative path canonicalised inside `<root>/<id>` to a regular file (an absolute path, a parent or a link leaving the directory answering `host.error.policy`), and starts `keel agent-exec --uid <uid> --policy <file> -- <program> <arguments>` from the tool `keel`, with a cleared environment, `/` as its working directory and a process group of its own; one end of a socket pair is the process's stdin and stdout, the other travels back with the answer `{ pid }` as `SCM_RIGHTS`, and when that answer cannot be sent the agent stops the process at once; its stderr is read by the agent (see "Audit"); at most 16 running and 16 ended processes are kept per plugin; `stop` sends `SIGKILL` to the process group of one pid or of every process of the plugin and answers how many were running and, for one pid, the exit code; a stop without a pid also runs `kill -s KILL -- -1` from the tool `kill` as the account through `agent-exec`, so a process that left its group ends too, and answers `host.error.exec_failed` with the output when that run exits non-zero for any reason other than `No such process` (nothing was left to kill); when the leader of a group ends, the agent kills what is left of the group while the ended leader still holds the pid (`waitid` with `WNOWAIT` and `WNOHANG` on Linux, checked again on every `SIGCHLD` and once a second, so a running process holds no thread) and reaps it afterwards, so the signal never reaches a group that reuses the pid; stopping the agent kills every plugin process |
 | `mariadb.exec` | MariaDB statements from a fixed set: `database.create`, `database.drop`, `user.create`, `user.password`, `user.drop`, `user.lock`, `user.unlock`, `grant`, `revoke`, `dump` and `import` | the statement rendered by the agent, never taken from a request; names under the product's `user_prefix`, at most 64 bytes of `[a-z0-9_-]`, quoted as identifiers and as `'name'@'localhost'`; underscores escaped in grants, where `_` and `%` are patterns; passwords escaped as literals after the script drops `NO_BACKSLASH_ESCAPES`, sent on stdin and redacted from a failure; the client always runs with `--sandbox` and `--default-character-set=utf8mb4`, the dump with `--skip-comments`; a dump is sealed with its digest, and `import` loads only a dump of the root `dumps` the agent itself wrote and sealed |
 
 ### Resource identifiers instead of paths
@@ -259,6 +264,7 @@ policy:
   services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"], postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"], vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"] }
   exec_allow: [certbot, quotatool, { mariadb: [mariadb, --batch, --sandbox, --skip-column-names] }, { mariadb-dump: [mariadb-dump, --single-transaction, --quick, --routines, --triggers, --events] }, { postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }, { mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }]
+  plugins: { root: /var/lib/keel/plugins, user_prefix: kp_ }
   products:
     bill: { drop_in_prefix: keel-bill- }
     dns: { drop_in_prefix: keel-dns- }
@@ -275,8 +281,9 @@ over `uid_range`.
 | `services` | units the service operations may act on, an entry carrying at most one `*` for a version |
 | `checks` | named validation commands with a fixed argument vector; `validate` in a request refers to a check by name |
 | `exec_allow` | entries `host.exec` and cron jobs may run: a binary name, or `name: [binary, arguments…]`; a name appearing twice fails the policy |
-| `tools` | the paths of the tools the agent runs, each with a default: `systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`, the `shells` file, `apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `cron_dir` and `keel`, the binary `host.home.*` re-executes, `/proc/self/exe` by default; the tests point them at stubs |
-| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `account_roots`, the file roots whose file names are account names under `user_prefix` instead of names under `drop_in_prefix` (the per-login files of vsftpd), each of them a file root of a product with a `user_prefix`; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section. |
+| `tools` | the paths of the tools the agent runs, each with a default: `systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`, the `shells` file, `apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `cron_dir`, `kill`, which `host.plugin.stop` runs under a plugin's account to end every process of it, and `keel`, the binary `host.home.*` re-executes, `/proc/self/exe` by default; the tests point them at stubs |
+| `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `account_roots`, the file roots whose file names are account names under `user_prefix` instead of names under `drop_in_prefix` (the per-login files of vsftpd), each of them a file root of a product with a `user_prefix`; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section; the `host.plugin.*` operations alone take the `plugins` section in its place, under the product `plugin`, which has no section. |
+| `plugins` | `{ root, user_prefix }`: `root`, the directory holding one directory per plugin, `/var/lib/keel/plugins` as shipped; `user_prefix`, the prefix of the plugin accounts, `kp_` as shipped, refused when it is a prefix of the `user_prefix` of a product or that one of it, so a plugin account is never a product's account; a plugin id longer than 29 characters gives no account name and its start fails; without the section every `host.plugin.*` operation answers `host.error.policy` |
 
 The placement rules hold for every file the agent writes. The root of `file_roots` is
 canonicalised; a symbolic link at the target is refused, and no path is followed or changed
@@ -342,6 +349,13 @@ side with the same request id ([05-modules.md](05-modules.md)), so the two trail
 agent touched for it and whether the validation passed. The frame fields that reach every record
 — the operation, the actor, the request id and the product — are capped at 1024 bytes each, and
 so is the detail a record carries.
+
+The stderr of a plugin process is a pipe the agent reads, never a descriptor it shares: each
+line becomes a record `plugin output` of its own with the fields `plugin`, `pid`, `cut` and
+`stderr`, the text escaped inside the field, so it can neither pass for an operation record nor
+splice into one. A line is cut at 4096 bytes, a plugin shows at most 64 lines a second across its
+processes, and the rest is counted into one `plugin output dropped` record with the number, so a
+noisy plugin cannot exhaust the journal's rate limit of the privileged unit.
 
 ## Impersonation
 
@@ -422,6 +436,11 @@ field the operation does not know with `host.error.args`. The answers
 of the catalogue are `created`, `removed`, `changed`, `entries` and `services`, as each operation
 fits.
 
+One answer carries a descriptor: the answer to `host.plugin.spawn` goes out with `sendmsg` and
+one `SCM_RIGHTS` control message holding the kernel's end of the plugin's socket pair; the client
+reads it with `recvmsg` and marks it close-on-exec. The agent closes its copy when the client
+sends its next line or hangs up.
+
 Streaming, progress and cancellation of long agent operations are not fixed by this revision; on
 the kernel side a long host operation is a task.
 
@@ -498,6 +517,7 @@ rather than by changing credentials in place. The full record is in
 | M2 | a thin agent spike in a separate bin crate, `keel-spike`, removed at the close of M4: socket with `SO_PEERCRED`, `host.user.create`, `host.template.apply` with validate and rollback on nginx under a policy in the shape of `agent.yaml`, every operation written to the journal with actor and request id; done when, on a VM, the spike creates an operating-system user and a vhost through the agent from an unprivileged uid and an invalid template rolls back — shown by the spike's own script on `keel-demo`; the spike depended on no workspace crate and was replaced by `keel-host-agent` in M4 |
 | M4 | `keel-host` in full — users, files, services, template, pkg, `AgentOp`, the `host` module; `privileged` with the `update` policy (check, apply, rollback, pre-update dump, anti-rollback); `dns` on bind; done when no process except `privileged` runs as root, a broken template rolls back without downtime, and an operation outside `file_roots` is refused and audited |
 | M5 | `host.user.modify`, `host.service.start`, `stop` and `status`, `host.exec` with a `dest`, `host.home.*` with the worker `keel agent-home`, `mariadb.exec`, `account_roots`, the `panel` section of the policy and its roots; done when `install.sh --product panel` installs the daemons of `panel` on a clean host and a site with a Let's Encrypt certificate set up by the wizard is served |
+| M7 | `host.plugin.account`, `spawn` and `stop`, the `plugins` section of the policy and the tool `kill`; a plugin runs as `kp_<id>` started by the agent, which hands its stdio back over the agent socket with `SCM_RIGHTS` rather than through a unit per plugin started by `systemctl`: the plugin speaks over its stdio to `serve`, which a unit gives only through socket activation and unit files the agent would have to write and remove; an `exec` plugin needs a process per frame, which a unit start per frame makes slow; the same path runs on macOS and in the tests through the in-process agent without systemd; and the end of the process shows as the end of its output. The kernel reaches the agent through `PluginLauncher` in `keel_sdk::system`, provided by `keel-host`, and never becomes root |
 | M8 | `Remote` executor, node PKI and enrolment, `keel-system::cluster`, `Invoker` |
 
 The order and the full done-when conditions are in [../plan.md](../plan.md).

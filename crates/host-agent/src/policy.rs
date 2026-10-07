@@ -20,6 +20,7 @@ const DEFAULT_APT_CACHE: &str = "apt-cache";
 const DEFAULT_SETQUOTA: &str = "setquota";
 const DEFAULT_REPQUOTA: &str = "repquota";
 const DEFAULT_CRON_DIR: &str = "/etc/cron.d";
+const DEFAULT_KILL: &str = "kill";
 const DEFAULT_KEEL: &str = "/proc/self/exe";
 const VERSION_WILDCARD: char = '*';
 
@@ -53,6 +54,14 @@ pub enum PolicyError {
     UidRange { from: u32, to: u32 },
     #[error("the tool {tool} has an empty path")]
     EmptyTool { tool: &'static str },
+    #[error("the plugins root is not an absolute path: {0}")]
+    PluginsRoot(PathBuf),
+    #[error("the user_prefix {0} of the plugins is not a prefix of an account name")]
+    PluginsPrefix(String),
+    #[error(
+        "the user_prefix {prefix} of the plugins overlaps the user_prefix of the product {product}"
+    )]
+    PluginsPrefixOverlap { product: String, prefix: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +85,8 @@ pub struct Policy {
     exec_allow: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     products: BTreeMap<String, Product>,
+    #[serde(default)]
+    plugins: Option<Plugins>,
     #[serde(default)]
     tools: Tools,
     #[serde(skip)]
@@ -106,6 +117,13 @@ pub(crate) struct Product {
     pub(crate) account_roots: Vec<String>,
     #[serde(default)]
     pub(crate) classes: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Plugins {
+    pub(crate) root: PathBuf,
+    pub(crate) user_prefix: String,
 }
 
 #[derive(Deserialize)]
@@ -167,6 +185,8 @@ pub(crate) struct Tools {
     pub(crate) repquota: PathBuf,
     #[serde(default = "default_cron_dir")]
     pub(crate) cron_dir: PathBuf,
+    #[serde(default = "default_kill")]
+    pub(crate) kill: PathBuf,
     #[serde(default = "default_keel")]
     pub(crate) keel: PathBuf,
 }
@@ -227,6 +247,10 @@ fn default_cron_dir() -> PathBuf {
     PathBuf::from(DEFAULT_CRON_DIR)
 }
 
+fn default_kill() -> PathBuf {
+    PathBuf::from(DEFAULT_KILL)
+}
+
 fn default_keel() -> PathBuf {
     PathBuf::from(DEFAULT_KEEL)
 }
@@ -248,6 +272,7 @@ impl Default for Tools {
             setquota: default_setquota(),
             repquota: default_repquota(),
             cron_dir: default_cron_dir(),
+            kill: default_kill(),
             keel: default_keel(),
         }
     }
@@ -331,6 +356,27 @@ impl Policy {
                 });
             }
         }
+        if let Some(plugins) = &policy.plugins {
+            if !plugins.root.is_absolute() {
+                return Err(PolicyError::PluginsRoot(plugins.root.clone()));
+            }
+            if !valid_user_prefix(&plugins.user_prefix) {
+                return Err(PolicyError::PluginsPrefix(plugins.user_prefix.clone()));
+            }
+            let own = plugins.user_prefix.as_str();
+            if let Some(product) = policy.products.iter().find_map(|(product, section)| {
+                section
+                    .user_prefix
+                    .as_deref()
+                    .is_some_and(|prefix| prefix.starts_with(own) || own.starts_with(prefix))
+                    .then_some(product)
+            }) {
+                return Err(PolicyError::PluginsPrefixOverlap {
+                    product: product.clone(),
+                    prefix: own.to_owned(),
+                });
+            }
+        }
         for (tool, path) in [
             ("systemctl", &policy.tools.systemctl),
             ("getent", &policy.tools.getent),
@@ -346,6 +392,7 @@ impl Policy {
             ("setquota", &policy.tools.setquota),
             ("repquota", &policy.tools.repquota),
             ("cron_dir", &policy.tools.cron_dir),
+            ("kill", &policy.tools.kill),
             ("keel", &policy.tools.keel),
         ] {
             if path.as_os_str().is_empty() {
@@ -361,6 +408,10 @@ impl Policy {
 
     pub(crate) fn product(&self, id: &str) -> Option<&Product> {
         self.products.get(id)
+    }
+
+    pub(crate) fn plugins(&self) -> Option<&Plugins> {
+        self.plugins.as_ref()
     }
 
     pub(crate) fn root(&self, name: &str) -> Option<&Path> {
@@ -540,6 +591,13 @@ policy:
         );
         assert_eq!(policy.tools().keel, Path::new("/proc/self/exe"));
         assert_eq!(
+            policy.plugins(),
+            Some(&Plugins {
+                root: PathBuf::from("/var/lib/keel/plugins"),
+                user_prefix: "kp_".to_owned(),
+            })
+        );
+        assert_eq!(
             policy
                 .exec("mariadb")
                 .and_then(<[String]>::first)
@@ -611,6 +669,7 @@ policy:
         assert_eq!(policy.tools().setquota, Path::new("setquota"));
         assert_eq!(policy.tools().repquota, Path::new("repquota"));
         assert_eq!(policy.tools().cron_dir, Path::new("/etc/cron.d"));
+        assert_eq!(policy.tools().kill, Path::new("kill"));
         assert_eq!(policy.tools().keel, Path::new("/proc/self/exe"));
         assert_eq!(policy.source(), None);
         assert!(matches!(
@@ -808,5 +867,61 @@ policy:
                 "{entry}"
             );
         }
+    }
+
+    #[test]
+    fn the_plugins_section_names_an_absolute_root_and_an_account_prefix() {
+        let policy = Policy::parse(
+            "policy:\n  plugins: { root: /var/lib/keel/plugins, user_prefix: kp_ }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            policy.plugins(),
+            Some(&Plugins {
+                root: PathBuf::from("/var/lib/keel/plugins"),
+                user_prefix: "kp_".to_owned(),
+            })
+        );
+        assert_eq!(Policy::parse("policy: {}\n").unwrap().plugins(), None);
+        assert!(matches!(
+            Policy::parse("policy:\n  plugins: { root: plugins, user_prefix: kp_ }\n").unwrap_err(),
+            PolicyError::PluginsRoot(root) if root == Path::new("plugins")
+        ));
+        for prefix in ["\"\"", "Kp_", "kp/"] {
+            let text = format!(
+                "policy:\n  plugins: {{ root: /var/lib/keel/plugins, user_prefix: {prefix} }}\n"
+            );
+            assert!(
+                matches!(
+                    Policy::parse(&text).unwrap_err(),
+                    PolicyError::PluginsPrefix(_)
+                ),
+                "{prefix}"
+            );
+        }
+        assert!(matches!(
+            Policy::parse("policy:\n  plugins: { root: /p, user_prefix: kp_, mode: x }\n")
+                .unwrap_err(),
+            PolicyError::Parse(_)
+        ));
+        for (plugins, panel) in [("hp_", "hp_"), ("h", "hp_"), ("hp_x", "hp_")] {
+            let text = format!(
+                "policy:\n  products: {{ panel: {{ user_prefix: {panel} }} }}\n  plugins: {{ root: /p, user_prefix: {plugins} }}\n"
+            );
+            assert!(
+                matches!(
+                    Policy::parse(&text).unwrap_err(),
+                    PolicyError::PluginsPrefixOverlap { product, prefix }
+                        if product == "panel" && prefix == plugins
+                ),
+                "{plugins} next to {panel}"
+            );
+        }
+        assert!(
+            Policy::parse(
+                "policy:\n  products: { panel: { user_prefix: hp_ } }\n  plugins: { root: /p, user_prefix: kp_ }\n"
+            )
+            .is_ok()
+        );
     }
 }

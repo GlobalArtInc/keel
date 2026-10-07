@@ -4,6 +4,7 @@ policy:
   services: [named, nginx, php*-fpm, postfix, dovecot, mariadb, vsftpd]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], php8.2-fpm.test: ["php-fpm8.2", "-t"], php8.3-fpm.test: ["php-fpm8.3", "-t"], php8.4-fpm.test: ["php-fpm8.4", "-t"], postfix.check: ["postfix", "check"], dovecot.check: ["doveconf", "-n"], vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"] }
   exec_allow: [certbot, quotatool, { mariadb: [mariadb, --batch, --sandbox, --skip-column-names] }, { mariadb-dump: [mariadb-dump, --single-transaction, --quick, --routines, --triggers, --events] }, { postmap: [postmap, "hash:/etc/postfix/keel/keel-panel-domains", "hash:/etc/postfix/keel/keel-panel-mailboxes", "hash:/etc/postfix/keel/keel-panel-aliases"] }, { mail.archive: [tar, --create, --file=-, --directory=/var/lib/keel-panel-mail, .] }]
+  plugins: { root: /var/lib/keel/plugins, user_prefix: kp_ }
   products:
     bill: { drop_in_prefix: keel-bill- }
     dns: { drop_in_prefix: keel-dns- }

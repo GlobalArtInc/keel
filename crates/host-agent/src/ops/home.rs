@@ -22,7 +22,7 @@ use crate::protocol::{
 
 const PATH_LIMIT: usize = 4096;
 const NAME_LIMIT: usize = 255;
-const AGENT_EXEC: &str = "agent-exec";
+pub(super) const AGENT_EXEC: &str = "agent-exec";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -261,7 +261,7 @@ fn locate(account: &Account<'_>, path: &str, follow: Follow) -> Result<String, F
     }
 }
 
-fn text(path: &Path) -> Result<String, Failure> {
+pub(super) fn text(path: &Path) -> Result<String, Failure> {
     path.to_str()
         .map(str::to_owned)
         .ok_or_else(|| Failure::policy(format!("{} is not a UTF-8 path", path.to_string_lossy())))

@@ -5,7 +5,9 @@ use std::sync::{Arc, OnceLock};
 use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 use keel_sdk::sea_orm::{ActiveModelTrait, EntityTrait, Set};
-use keel_sdk::system::{Extension, NewPrincipal, PrincipalSource, TaskRunner, TaskSpec};
+use keel_sdk::system::{
+    Extension, NewPrincipal, PluginLauncher, PrincipalSource, TaskRunner, TaskSpec,
+};
 
 use super::discover::{read, root};
 use super::entity::state;
@@ -217,6 +219,7 @@ pub(super) fn enable(shared: Shared) -> FunctionDef {
                         .param("level", manifest.level.as_str()));
                 }
                 let changed = grant(&call, &id, manifest.level).await?;
+                prepare_account(&call, &id);
                 finish(&call, &id, true, changed)
             }
         })
@@ -294,6 +297,23 @@ async fn grant(call: &Call<PluginPick>, id: &str, level: Level) -> Result<bool> 
     row.changed_by = Set(by);
     row.update(tx).await?;
     Ok(true)
+}
+
+fn prepare_account(call: &Call<PluginPick>, id: &str) {
+    let Ok(launcher) = call.require::<dyn PluginLauncher>() else {
+        tracing::info!(
+            plugin = id,
+            "no host agent is composed; the plugin gets no account of its own"
+        );
+        return;
+    };
+    let plugin = id.to_owned();
+    call.after_commit(move |context| async move {
+        if let Err(error) = launcher.account(&plugin, context.request_id()).await {
+            tracing::warn!(plugin, error = %error, "the account of the plugin could not be prepared; its start tries again");
+        }
+        Ok(())
+    });
 }
 
 fn finish(call: &Call<PluginPick>, id: &str, enabled: bool, changed: bool) -> Result<PluginChange> {

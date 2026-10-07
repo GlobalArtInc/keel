@@ -10,7 +10,7 @@ use keel_system::cron::api::{CronJob, Outcome, Scheduler};
 use keel_system::notify::POLL_JOB;
 use keel_system::notify::api::ProblemSource;
 use keel_system::plugins::{
-    DIRECTORY, DISABLE, ENABLE, ERROR_UNAVAILABLE, ERROR_UNKNOWN, FILE, GET, LIST, LOGIN_PREFIX,
+    DIRECTORY, DISABLE, ENABLE, ERROR_STOPPED, ERROR_UNKNOWN, FILE, GET, LIST, LOGIN_PREFIX,
     MODULE, PROBLEM_REFUSED,
 };
 use keel_testkit::{Harness, Reply, Who, tokio};
@@ -61,6 +61,8 @@ fn manifest() -> Value {
 fn install(dir: &Path, manifest: &Value) {
     let home = dir.join(DIRECTORY).join(ID);
     std::fs::create_dir_all(home.join("i18n")).expect("the plugin directory is created");
+    std::fs::create_dir_all(home.join("bin")).expect("the bin directory is created");
+    std::fs::write(home.join("bin/acme"), "#!/bin/sh\n").expect("the program is written");
     std::fs::write(home.join(FILE), manifest.to_string()).expect("the manifest is written");
     let en = json!({ "acme": {
         "sync": { "column": { "id": "Id" }, "list": { "title": "Synchronised zones" } },
@@ -264,9 +266,9 @@ async fn a_manifest_registers_its_functions_menu_settings_and_i18n() {
             json!({ "page": 1, "pageSize": 25 }),
         )
         .await;
-    let error = answered.error().expect("the plugin does not answer yet");
+    let error = answered.error().expect("the plugin does not answer");
     assert_eq!(error.code, ErrorCode::Unavailable);
-    assert_eq!(error.key, ERROR_UNAVAILABLE);
+    assert_eq!(error.key, ERROR_STOPPED);
     let refused = harness.call(Who::A1, "acme.renew.run", json!({})).await;
     assert_eq!(
         refused.error().map(|error| error.code),
@@ -325,6 +327,32 @@ async fn a_hook_on_auth_is_rejected_at_start_and_the_kernel_starts_without_the_p
         [format!("{PROBLEM_REFUSED} {ID} warning")]
     );
     harness.finish().await;
+}
+
+#[tokio::test]
+async fn a_run_command_that_is_no_file_of_the_plugin_directory_is_refused_at_start() {
+    for program in ["python3", "bin", "bin/missing"] {
+        let dir = TempDir::new().expect("a data dir");
+        let mut bare = manifest();
+        bare["run"]["cmd"] = json!([program, "main.py"]);
+        install(dir.path(), &bare);
+        let harness = enabled(dir.path()).await;
+        let reason = refusal(&harness).expect("the plugin is refused");
+        assert!(
+            reason.contains(&format!(
+                "the run command {program} is not a file inside the plugin directory"
+            )),
+            "{reason}"
+        );
+        assert!(harness.registry().function("acme.sync.list").is_none());
+        assert_eq!(row(&harness).await["status"], json!("refused"));
+        run(&harness, POLL_JOB).await;
+        assert_eq!(
+            open_problems(&harness).await,
+            [format!("{PROBLEM_REFUSED} {ID} warning")]
+        );
+        harness.finish().await;
+    }
 }
 
 #[tokio::test]

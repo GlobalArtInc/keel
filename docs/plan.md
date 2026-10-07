@@ -7487,10 +7487,16 @@ the number of entries the unpacker accepts, and `deny_unknown_fields` on the arg
 operations; and over what M5 and M6 named as the subject of this review: a variable schema in the
 agent for the templates it renders, `PeerLinks` handing a link's token to any module compiled
 in, the pre-check of `dns-peer` writing the customer on the neighbour before the local
-transaction decides, and its task running with a widened scope; every finding fixed with a
-named test, the security checklist of the milestone closed.
+transaction decides, and its task running with a widened scope; and the reach of a plugin
+account into its own directory, which 1b leaves open: `install.sh` keeps `/var/lib/keel` and
+`/var/lib/keel/plugins` at 0700 for `keel`, so `kp_<id>` cannot search its way to the program;
+`keel agent-exec` enters `<root>/<id>` while it is still root and runs the program by its path
+relative to that directory, so the account reaches its own files through its working directory
+and no other directory of the data tree is opened to it, with a test on the host VM that a plugin
+starts on a host installed by `install.sh`; every finding fixed with a named test, the security
+checklist of the milestone closed.
 
-**Touches.** `crates/system/src/plugins/`, `crates/host-agent/`, `crates/release/`, `crates/keel/src/privileged/`, `crates/sdk/src/host.rs`, `crates/system/src/peers/`, `products/panel/crates/dns-peer/`.
+**Touches.** `crates/system/src/plugins/`, `crates/host-agent/`, `crates/release/`, `crates/keel/src/privileged/`, `crates/keel/src/cli.rs` (`agent-exec`), `deploy/install.sh`, `hack/check-install.sh`, `hack/host-vm.sh`, `crates/sdk/src/host.rs`, `crates/system/src/peers/`, `products/panel/crates/dns-peer/`.
 
 **Out of scope.** Third-party audits.
 

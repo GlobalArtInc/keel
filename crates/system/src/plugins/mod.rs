@@ -1,7 +1,9 @@
+mod config;
 mod discover;
 mod entity;
 mod functions;
 mod manifest;
+mod process;
 mod register;
 
 use std::sync::{Arc, OnceLock};
@@ -13,6 +15,7 @@ use crate::notify::api::{ProblemSource, Raise, Severity};
 
 pub use functions::{DISABLE, ENABLE, ERROR_UNKNOWN, GET, LIST, LOGIN_PREFIX};
 pub use manifest::FILE;
+pub use process::{ERROR_FAILING, ERROR_STOPPED, PROBLEM_FAILING};
 pub use register::ERROR_UNAVAILABLE;
 
 pub const DIRECTORY: &str = "plugins";
@@ -35,10 +38,14 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let shared: functions::Shared = Arc::new(OnceLock::new());
     let started = shared.clone();
+    let live = Arc::new(process::Live::default());
     r.require::<dyn Clock>()
         .require::<dyn PrincipalSource>()
+        .provide::<process::Live>(live.clone())
+        .contribute(ConfigSection::new::<config::PluginConfig>(config::SECTION))
         .contribute(ModuleSource::new(discover::discover))
         .contribute(refusals(shared.clone()))
+        .contribute(failures(live))
         .function(functions::list(shared.clone()))
         .function(functions::get(shared.clone()))
         .function(functions::enable(shared))
@@ -93,6 +100,21 @@ fn refusals(shared: functions::Shared) -> ProblemSource {
     })
 }
 
+fn failures(live: Arc<process::Live>) -> ProblemSource {
+    ProblemSource::new(process::PROCESS_SOURCE, move |_db| {
+        let failing = live.failing();
+        async move {
+            failing
+                .into_iter()
+                .map(|(plugin, reason)| {
+                    Raise::new(PROBLEM_FAILING, &plugin, Severity::Warning)
+                        .params(json!({ "plugin": plugin, "reason": reason }))
+                })
+                .collect()
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,7 +153,13 @@ mod tests {
             .of::<ProblemSource>()
             .map(ProblemSource::id)
             .collect();
-        assert_eq!(sources, [PROBLEM_SOURCE]);
+        assert_eq!(sources, [PROBLEM_SOURCE, process::PROCESS_SOURCE]);
+        let sections: Vec<&str> = registrations
+            .contributions
+            .of::<ConfigSection>()
+            .map(ConfigSection::key)
+            .collect();
+        assert_eq!(sections, [config::SECTION]);
         let required: Vec<&str> = registrations
             .requires
             .iter()

@@ -18,13 +18,16 @@
     },
     "empty": "No plugin is installed in the plugins directory",
     "error": {
+      "failing": "The plugin {plugin} is paused after repeated failures and is tried again after a quiet period",
       "id": "{id} is not a plugin id",
       "level": "The plugin {id} asks for the level {level}, which a plugin may not hold",
       "manifest": "The manifest of the plugin {id} cannot be used: {reason}",
       "not_started": "The plugin module has not started",
+      "stopped": "The plugin {plugin} has stopped and is not restarted",
       "unavailable": "The plugin {plugin} does not answer yet",
       "unknown": "There is no plugin {id}"
     },
+    "failing": "The plugin {plugin} is failing: {reason}",
     "list": {
       "title": "Plugins"
     },

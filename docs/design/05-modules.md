@@ -334,7 +334,9 @@ Hooks needed only by system modules — `Authenticator` with `Client`, `Authenti
 `ManifestSource` with `ManifestPatch`, `ContextExt`, `AuditSink` with `AuditEvent`, `TaskRunner`
 with `TaskSpec` and `TaskSink`, `Caller` with `CallerOptions`, `LiveEvents` with `Frame`,
 `AdvisoryLock` with `LockGuard`, `ProblemCounter`, `OutboxSubscriber`, `EventRelay`, `Endpoint`
-with `EndpointRequest`, the function `peer_sees`, the registrar's `derive`, and later
+with `EndpointRequest`, `ModuleSource` with `DataModule`, `Discovery`, `Landscape` and
+`Extensions`, `PluginLauncher` with `PluginProcess`, the function `peer_sees`, the registrar's
+`derive`, and later
 `TransportRegistry` and `StorageSnapshot` — live in `keel_sdk::system`,
 marked `#[doc(hidden)]` and exempt from semver until 1.0. They are the seams behind which
 authentication, the transports, backup and the outbox consumers plug in; a product module has no
@@ -951,7 +953,14 @@ function attribute ([06-host.md](06-host.md)).
 - Storage `plugin.kv.*` with a namespace and a binding to a subject.
 - Manifest sections `settings`, `cron`, `problems` and `widgets`.
 - A separate uid, timeouts and a circuit breaker; a crashing daemon plugin does not take the
-  kernel down. Run modes are `daemon` and `exec`.
+  kernel down. Run modes are `daemon` and `exec`. The process runs as the operating-system
+  account `kp_<id>`, which `plugin.enable` creates through the host agent. An open breaker raises
+  the problem `plugin.failing` and answers the plugin's functions with `plugin.error.failing`; a
+  daemon that ended and is not restarted answers `plugin.error.stopped`; both are
+  `unavailable`. Every failure that finds the breaker open, whatever its cause, stops every
+  process of the account, and so does a daemon start that failed, since a daemon runs one process
+  and an agent may have started it with an answer that never arrived. A kernel stop ends a frame
+  that waits for its answer at once and counts as no failure.
 - A field added by a plugin's patch is stored through the `keel.patch.stored` event from the
   outbox after commit, at-least-once, and the plugin is idempotent by id. The manifest and the
   frame protocol are in [10-contracts.md](10-contracts.md).

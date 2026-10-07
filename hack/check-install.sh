@@ -114,6 +114,7 @@ check "deploy/agent.yaml carries the transfer root the file manager stages uploa
 check "deploy/agent.yaml names the check of vsftpd" grep -qF 'vsftpd.check: ["vsftpd", "/etc/vsftpd.conf", "-v"]' deploy/agent.yaml
 check "deploy/agent.yaml names the per-account files of vsftpd after the accounts of the panel" grep -qF 'panel: { user_prefix: hp_, account_roots: [ftp-users], classes: { backup: { archives: backups, homes: www, maildirs: maildirs, dumps: dumps } }, drop_in_prefix: keel-panel- }' deploy/agent.yaml
 check "deploy/agent.yaml carries the archive root of the site backups" grep -qF 'backups: /var/lib/keel-panel-backups }' deploy/agent.yaml
+check "deploy/agent.yaml runs every plugin under an account of its own from the plugins directory" grep -qF 'plugins: { root: /var/lib/keel/plugins, user_prefix: kp_ }' deploy/agent.yaml
 for version in 8.2 8.3 8.4; do
   check "deploy/agent.yaml carries the pool root of php$version-fpm" grep -qF "pools-$version: /etc/php/$version/fpm/pool.d" deploy/agent.yaml
   check "deploy/agent.yaml names the check of php$version-fpm" grep -qF "php$version-fpm.test: [\"php-fpm$version\", \"-t\"]" deploy/agent.yaml

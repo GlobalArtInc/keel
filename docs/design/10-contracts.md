@@ -643,7 +643,7 @@ manifest is `keel-plugin.json`.
 | `protocol` | the plugin protocol version; N and N-1 are accepted |
 | `id`, `version` | plugin identity; `id` is a module id (lowercase ASCII letters, digits and underscores), equals the name of the plugin's directory under `/var/lib/keel/plugins`, is neither `keel` nor `auth` nor reaches into their namespaces or a composed module's (`keel_x`, `dns_zone`), and prefixes every function, setting, cron job, problem source and dictionary key the plugin registers; the storage namespace and the plugin's principal `plugin-<id>` are bound to it; `version` is a semantic version |
 | `requires` | semver ranges on the platform and on the modules the plugin depends on |
-| `run` | how the process is started: `mode` (`daemon` or `exec`), `cmd`, `restart`; the process runs under its own uid with timeouts and a circuit breaker |
+| `run` | how the process is started: `mode` (`daemon` or `exec`), `cmd`, `restart`; `cmd` is the program and its arguments, the program a relative path inside the plugin directory (`./serve`, `bin/serve`), so a plugin written for an interpreter ships a launcher script that runs it, and an absolute path, a parent, or a word that resolves to no regular file inside the plugin directory (a bare `python3`) refuses the plugin at start; `restart` is `always`, `on-failure` (unless the process exited with 0) or `never`, `always` by default, and only a `daemon` takes it; the process runs under its own uid `kp_<id>` with timeouts and a circuit breaker |
 | `level` | the level of the plugin's principal, one of `service`, `user` and `admin`; it is granted when an admin enables the plugin, and a manifest asking for another level is refused until the plugin is enabled again; a hook may not act on a function above it |
 | `storage` | `kv` requests `plugin.kv.*` storage, namespaced by plugin and bound to a subject |
 | `rights.observe` | event masks the plugin receives asynchronously from the outbox, after commit; any event may be observed |
@@ -666,6 +666,8 @@ per line. `id` correlates a request with its response, `t` is the frame type.
 
 ```jsonl
 // keel → plugin (stdin), plugin → keel (stdout)
+{"id":"k-1","t":"ping"}
+{"id":"k-1","ok":true}
 {"id":"ev-7","t":"before","func":"dns.zone.delete","principal":{…},"params":{"id":"01J9…"}}
 {"id":"ev-7","ok":false,"error":{"key":"acme.error.linked","params":{"name":"a.org"},"field":"id"}}
 {"id":"c-12","t":"call","func":"acme.sync.list","principal":{…},"params":{"page":1,"pageSize":25}}
@@ -675,6 +677,7 @@ per line. `id` correlates a request with its response, `t` is the frame type.
 
 | Frame | Direction | Meaning |
 |-------|-----------|---------|
+| `t: ping` | kernel → plugin | the liveness frame, under an id of the kernel's own `k-<n>` space: sent to a `daemon` right after its start and every `liveness_ms`, and to an `exec` plugin once as its first process and as the trial after an open breaker; any frame carrying the same `id` within `timeout_ms` answers it, and a missing answer counts toward the breaker |
 | `t: before` | kernel → plugin | a `before` hook: runs outside the transaction with a timeout; the plugin answers `ok: true` (optionally with enriched `params`) or vetoes with `ok: false` and an error whose `key`, `params` and `field` land in the caller's envelope as a field error |
 | `t: call` | kernel → plugin | a call of one of the plugin's own functions, with the calling principal and parameters; the plugin answers with `ok` and `data` or `error` in the envelope shape |
 | `t: invoke` | plugin → kernel | while handling a frame, the plugin calls a kernel function under the principal of the current call and within the plugin's own scope; the kernel answers with an envelope frame under the same `id` |

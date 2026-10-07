@@ -1305,6 +1305,27 @@ mod tests {
         assert_eq!(args.policy, PathBuf::from("/tmp/agent.yaml"));
         assert_eq!(args.program, PathBuf::from("/usr/bin/id"));
         assert_eq!(args.args, ["-u", "--zero"]);
+        let cli = Cli::try_parse_from([
+            "keel",
+            "agent-exec",
+            "--uid",
+            "7",
+            "--",
+            "/srv/acme",
+            "--uid",
+            "0",
+            "--policy",
+            "/x",
+            "--help",
+        ])
+        .unwrap();
+        let Command::AgentExec(args) = cli.command else {
+            panic!("expected agent-exec");
+        };
+        assert_eq!(args.uid, 7);
+        assert_eq!(args.policy, PathBuf::from("/etc/keel/agent.yaml"));
+        assert_eq!(args.program, PathBuf::from("/srv/acme"));
+        assert_eq!(args.args, ["--uid", "0", "--policy", "/x", "--help"]);
         let cli = Cli::try_parse_from(["keel", "agent-exec", "--uid", "7", "/bin/true"]).unwrap();
         let Command::AgentExec(args) = cli.command else {
             panic!("expected agent-exec");

@@ -7,6 +7,7 @@ mod group;
 mod home;
 mod mariadb;
 mod pkg;
+pub(crate) mod plugin;
 mod quota;
 mod seal;
 mod service;
@@ -15,7 +16,7 @@ mod user;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -78,6 +79,7 @@ pub(crate) struct Context {
     compiled: BTreeMap<String, Template>,
     operations: BTreeMap<String, Operation>,
     serial: Mutex<()>,
+    processes: Arc<plugin::Processes>,
 }
 
 struct Call<'a> {
@@ -109,6 +111,7 @@ impl Context {
             compiled: BTreeMap::new(),
             operations: BTreeMap::new(),
             serial: Mutex::new(()),
+            processes: Arc::default(),
         }
     }
 
@@ -143,12 +146,23 @@ impl Context {
         Ok(())
     }
 
+    pub(crate) fn processes(&self) -> &plugin::Processes {
+        &self.processes
+    }
+
     pub(crate) fn class_of(&self, op: &str) -> Option<&str> {
         self.operations.get(op).map(Operation::class)
     }
 }
 
 pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Failure> {
+    if request.op == plugin::OP_ACCOUNT {
+        let _serial = context
+            .serial
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        return plugin::account(context, parse(&request.args)?);
+    }
     let product = context.policy.product(&request.product).ok_or_else(|| {
         Failure::policy(format!(
             "the product {} has no section in the policy",

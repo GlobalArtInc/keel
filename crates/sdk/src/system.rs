@@ -703,6 +703,21 @@ impl Extensions {
     }
 }
 
+#[derive(Debug)]
+pub struct PluginProcess {
+    pub pid: u32,
+    pub stdio: std::os::unix::net::UnixStream,
+}
+
+#[async_trait]
+pub trait PluginLauncher: Send + Sync {
+    async fn account(&self, plugin: &str, request_id: &str) -> Result<()>;
+
+    async fn spawn(&self, plugin: &str, cmd: &[String], request_id: &str) -> Result<PluginProcess>;
+
+    async fn stop(&self, plugin: &str, pid: Option<u32>, request_id: &str) -> Result<Option<i32>>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

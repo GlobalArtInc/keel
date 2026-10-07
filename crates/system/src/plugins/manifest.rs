@@ -221,6 +221,20 @@ fn closed(function: &str) -> bool {
         .any(|module| function.split('.').next() == Some(module))
 }
 
+pub(super) fn runnable(program: &str) -> bool {
+    let path = Path::new(program);
+    path.components()
+        .enumerate()
+        .all(|(index, component)| match component {
+            Component::Normal(_) => true,
+            Component::CurDir => index == 0,
+            _ => false,
+        })
+        && path
+            .components()
+            .any(|component| matches!(component, Component::Normal(_)))
+}
+
 pub(super) fn inside(path: &str) -> bool {
     let path = Path::new(path);
     !path.as_os_str().is_empty()
@@ -280,8 +294,12 @@ pub(super) fn faults(
             manifest.level
         ));
     }
-    if manifest.run.cmd.is_empty() {
-        faults.push("the run command is empty".to_owned());
+    match manifest.run.cmd.first() {
+        None => faults.push("the run command is empty".to_owned()),
+        Some(program) if !runnable(program) => faults.push(format!(
+            "the run command {program} is not a path inside the plugin directory"
+        )),
+        Some(_) => {}
     }
     if manifest.run.mode == RunMode::Exec && manifest.run.restart.is_some() {
         faults
@@ -680,6 +698,12 @@ mod tests {
             |value| value["run"]["cmd"] = json!([]),
             "the run command is empty",
         );
+        for program in ["/bin/sh", "../acme", "bin/../../x", ".", "", "./"] {
+            refused(
+                |value| value["run"]["cmd"] = json!([program, "--serve"]),
+                &format!("the run command {program} is not a path inside the plugin directory"),
+            );
+        }
         refused(
             |value| value["run"]["mode"] = json!("exec"),
             "an exec plugin runs a process per frame and takes no restart policy",

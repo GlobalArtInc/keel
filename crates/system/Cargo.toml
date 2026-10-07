@@ -112,6 +112,7 @@ tracing = { workspace = true, optional = true }
 axum = { workspace = true }
 futures = { workspace = true }
 insta = { workspace = true }
+keel-host = { workspace = true }
 keel-testkit = { workspace = true }
 proptest = { workspace = true }
 tar = { workspace = true }

@@ -50,6 +50,16 @@ pub(super) struct Get {
     name: String,
 }
 
+impl Create {
+    pub(super) fn plain(name: String) -> Self {
+        Self {
+            name,
+            shell: None,
+            home: None,
+        }
+    }
+}
+
 pub(super) fn create(call: &Call<'_>, args: Create) -> Result<Value, Failure> {
     call.account_name(&args.name)?;
     let range = call.uid_range()?;
