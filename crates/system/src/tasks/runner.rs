@@ -412,12 +412,12 @@ impl TaskRunner for Runner {
 
     async fn cancel(&self, id: Id) -> Result<()> {
         let shared = self.shared()?;
-        if let Some(sink) = shared.running_sink(id) {
-            sink.request_cancel();
-            return Ok(());
-        }
         let row = shared.load(id).await?;
         match state_of(&row)? {
+            TaskState::Running if let Some(sink) = shared.running_sink(id) => {
+                sink.request_cancel();
+                Ok(())
+            }
             TaskState::Queued => {
                 shared
                     .transition(
