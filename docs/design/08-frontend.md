@@ -230,15 +230,16 @@ are layouts chosen by the descriptor's `ui` block, not kinds of their own.
 | M3        | the `list`-widget slice of `dashboard`: the home screen at `/` renders one card per `list` widget of `/boot.dashboard` with the first rows of the list renderer in a compact mode and a link to the screen, a route without a function, so it counts for neither `views.json` nor the custom-views share; the multi-row form; the progress modal following a `TaskRef` |
 | M5        | `report`, `dashboard` in full (`stat` widgets, widget order), `tree`, `master-detail`, `stream` |
 
-The list renderer composes `phx-page-header`, `phx-data-table`, the selection bar, row actions,
-child screens and export (with `keel.export`) from the `ui` block: `search` fields; `columns` with a
+The list renderer composes `phx-page-header`, `phx-data-table` as one sheet, the toolbar pill,
+filter chips, row actions, child screens and export (with `keel.export`) from the `ui` block: `search` fields; `columns` with a
 `type` from the closed enum that maps explicitly onto `PhxColumn.type`, `sortable`, `primary`,
 `total`, `status` maps, `filter` with static options or a remote options function, and inline `edit`
 through the toggle the table renders and the cell editor of phoenix-ui for `status` (a select over
 the filter options and the map keys), `number` and `text` cells, the other types with `edit` staying
 read-only; the column order is bound to the preference `columns.<function>`, read through
-`settings.pref.get` at load and written on a header drag as `{ order: [...] }`, a composition
-without `settings.pref.*` keeping the declared order; `actions` with a `role` from `new`, `edit`,
+`settings.pref.get` at load and written on a header drag or a change of the column menu as
+`{ order, hidden }`, the older `{ order }` form being read as before, a composition without
+`settings.pref.*` keeping the declared order; `actions` with a `role` from `new`, `edit`,
 `delete`, `group`, `button`, `child`, `external`, `export`, `upload`, `download`, `refresh`,
 `confirm` (plain or `{ destructive, items, input }`), `hidden_if`, `default`; `row_actions`; an
 `empty` state with its action; `invalidate_on` patterns that trigger a refetch when a matching
@@ -247,6 +248,34 @@ already projected under the principal by the server, so a column or action above
 never reaches the renderer. A list opened with a `search` screen parameter takes it as the search
 text of its table and keeps it out of the scope, which is how a custom view opens a list narrowed to
 a value; the name is reserved for lists, being the member of `ListQuery` a scope key never carries.
+
+The actions of a list sit in the header, not in a bar over the table. A round search button
+(shown when `ui.search` is not empty) and a round sort button over the sortable columns come first,
+then one segmented pill: the action with the role `new` is the primary segment (when several
+actions carry it, every one comes first and only the first is primary), then the actions that make
+sense over a selection (the roles `edit`, `delete`, `group`, `button`, `child`, `download`, and
+every row action or bulk action with a `confirm`), icon-only when the role has an icon, then the
+remaining actions (`upload`, `external`, `refresh`) with a label, with a divider between the
+groups. A single-row action is enabled when exactly one row is selected and its `hidden_if` does
+not hide it for that row; a bulk action is enabled when at least one row is selected. The `export`
+formats, "Refresh" and "Copy link" live in the header's "⋮" menu; each export format is a menu
+item, so the menu carries no `data-format` attributes. The selection bar stays in `tree` only. The
+`data-action` attribute moves onto the pill segment, so the end-to-end specs find an action by it.
+
+Active column filters show as chips under the actions (`chipsOf` in `list/chips.ts` maps the
+filters and the static options of a column onto chips; a removed option shows its stored value);
+removing a chip drops the column's filter, the reset chip clears all of them, and a round reset
+button with the count of active filters appears in front of the pill only while a filter is
+active. The table renders as one sheet (`appearance="sheet"`) with the column menu: a column the
+user hides is written to the preference of the function, the primary column and the last visible
+column cannot be hidden, and the export still carries every column.
+
+A root list, the one at depth 0 of the screen tree (`KEEL_SCREEN_DEPTH`), keeps its search, sort,
+filters and page in the workspace tab it was opened in (`KeelWorkspace.listState` and
+`saveListState`, reached through the `KEEL_WORKSPACE` token so the renderer never imports the
+shell). A `search` screen parameter wins over the saved search and the saved sort, filters and page
+are then left out. Scroll and selection are not saved. A refresh of the tab strip refetches a root
+list.
 
 The column mapping is `COLUMN_TYPES` in `columns.ts`: `text`, `number`, `link`, `status` and
 `toggle` map onto the `PhxColumn.type` of the same name; `date` onto `date`, formatted in UTC so
@@ -337,6 +366,30 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   nested one inside the other. The level label is `product.<id>.level.<level>` while one product
   is enabled and `keel.level.<level>` otherwise, a product key without a translation falling back
   to the platform key.
+- The workspace of open pages is `KeelWorkspace` over `PhxTabsService`, the source of truth of the
+  tab strip (`phx-tab-bar`). Every `NavigationEnd` on `/f/:func` opens or activates a tab whose id
+  is the path and the query parameters sorted by key, without `selected` (that is the master-detail
+  choice, not another page); the full last URL, `selected` included, is the tab's `url`. The root
+  `/` with widgets is a pinned `home` tab, and the login, logout and unknown routes, the modals and
+  the drawers create none. A tab is titled by its menu entry (the function name when the menu has
+  none), and an object tab by the label `KeelNavigation.object` gives it; a title the screen
+  resolves later is not applied yet. A page opened from another page
+  (`KeelNavigation.screen` or `.object`: a child action, a link, a row action) carries one level of
+  breadcrumb, the opener's title, announced through `expectChild` just before the navigation; a
+  page opened from the menu, the address bar or the history carries none. Closing the active tab
+  activates its neighbour, and the last one leads to `/`; "close others" and "close all" keep the
+  pinned tab. At most 20 unpinned tabs stay open: the 21st evicts the unpinned inactive tab used
+  longest ago, with its saved list state. The state lives in
+  `localStorage['keel.workspace.v1.' + principal.id]` (a principal acting as another has its own),
+  survives a logout, and is read defensively: a value that is not JSON, of another version or of
+  another shape is an empty workspace. On restore the tab of the current URL becomes the active
+  one. Nothing is synchronised between browser tabs and nothing is sent to the server. Below 640 px
+  the strip is hidden and the page header detaches from it (`workspace.visible()` is false); the
+  navigation goes through the menu. Only the list renderer is refreshed by the strip's refresh
+  button for now; `tree`, `report` and `object` follow later.
+- The sidebar is compact (`density="compact"`, 200 px wide, the rail 56 px). In an installation of
+  one product the group captions are not printed (the groups keep their accessible names); with
+  several products each product keeps its heading.
 - The rail carries notifications, tasks, help and the user menu: the login and level, the language
   switch between the languages the catalogue serves, writing `settings.pref.set { key: "lang" }`
   and reloading the catalogue in place; the theme switch on `phx-theme-settings`, writing
@@ -492,6 +545,7 @@ Additions to phoenix-ui are delivered in batches tied to milestones:
 | M2        | `phx-selection-bar`; remote mode of `phx-select` (options from `searchChange`, `loading`, `more`); `phx-tags-field`; `phx-number-field` (stepper, unit, unlimited) |
 | M3        | `phx-datetime-field`; `select` and `number` types in `PhxCellEditService`; `columnOrder` on `phx-list-table`; a searchable remote mode of `phx-column-filter`; the accessible name of a control inside `phx-form-row`; the heading level of the table's empty state under a page title; `stopPropagation` of the native `search` event in `phx-searchbar` |
 | M5        | entry point `@globalart/phoenix-ui/code` (CodeMirror 6 with nginx, bind and ini modes); `phx-log-view` (tail, ANSI); `phx-key-value-field`; `phx-transfer-list`; time axis and tooltips on `phx-chart` |
+| 0.5.0     | the workspace chrome: `primary` and `menu` on `phxToolbarButton` with grouped overflow; `appearance="sheet"` and the column menu (`columnsMenu`, `hiddenColumns`) on `phx-list-table` and `phx-data-table`; the `phxTabBarStart` slot, the shortened breadcrumb chain and the context menu of `phx-tab-bar`; `density="compact"` on `phx-sidebar`; `badge` on `phxIconButton`; moving wave background of the full-screen layout; the 13 px secondary text token |
 
 What does not go into phoenix-ui, because it depends on descriptors, preferences or the call
 protocol, is code of `/renderer` and `/forms`:
