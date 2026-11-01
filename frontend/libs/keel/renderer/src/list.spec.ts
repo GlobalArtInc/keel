@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { ApplicationRef } from '@angular/core';
+import { ApplicationRef, signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import {
@@ -14,6 +14,8 @@ import { OPTIONS_LIMIT } from '@globalart/keel/forms';
 import type { Boot, Choices, Descriptor, Envelope, Event as KeelEvent } from '@globalart/keel/meta';
 import {
   INVALIDATE_DEBOUNCE_MS,
+  KEEL_SCREEN_DEPTH,
+  KEEL_WORKSPACE,
   KeelActionRunner,
   KeelListComponent,
   maskMatches,
@@ -22,10 +24,12 @@ import {
   searchOf,
   toColumn,
   usableZone,
+  type KeelWorkspaceHost,
   type Row,
 } from '@globalart/keel/renderer';
 import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
 import { PhxTabsService, PhxToastService, providePhoenixIcons } from '@globalart/phoenix-ui';
+import { EMPTY } from 'rxjs';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 
@@ -134,10 +138,23 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   fixture.detectChanges();
 }
 
+function workspaceOf(shown: WritableSignal<boolean>): KeelWorkspaceHost {
+  return {
+    activeId: () => null,
+    visible: () => shown(),
+    expectChild: () => undefined,
+    retitle: () => undefined,
+    refreshes: EMPTY,
+    listState: () => null,
+    saveListState: () => undefined,
+  };
+}
+
 async function render(
   mock: KeelMockClient,
   descriptor: Descriptor = LIST,
   params?: Record<string, unknown>,
+  extra: Provider[] = [],
 ): Promise<ComponentFixture<KeelListComponent>> {
   TestBed.configureTestingModule({
     imports: [KeelListComponent],
@@ -149,6 +166,7 @@ async function render(
         provide: KEEL_EVENT_SOURCE,
         useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
       },
+      ...extra,
     ],
   });
   await TestBed.inject(KeelBoot).load();
@@ -243,6 +261,28 @@ describe('the list renderer', () => {
     TestBed.inject(PhxToastService).closeAll();
     TestBed.inject(KeelEvents).close();
     TestBed.resetTestingModule();
+  });
+
+  it('the header of a root list joins the tab bar only while the workspace is visible', async () => {
+    const shown = signal(true);
+    const fixture = await render(client(), LIST, undefined, [
+      { provide: KEEL_SCREEN_DEPTH, useValue: 0 },
+      { provide: KEEL_WORKSPACE, useValue: workspaceOf(shown) },
+    ]);
+    const header: HTMLElement = fixture.nativeElement.querySelector('phx-page-header');
+    expect(header.classList.contains('attached')).toBe(true);
+    shown.set(false);
+    fixture.detectChanges();
+    expect(header.classList.contains('attached')).toBe(false);
+  });
+
+  it('the header of a list nested under a screen never joins the tab bar', async () => {
+    const fixture = await render(client(), LIST, undefined, [
+      { provide: KEEL_SCREEN_DEPTH, useValue: 1 },
+      { provide: KEEL_WORKSPACE, useValue: workspaceOf(signal(true)) },
+    ]);
+    const header: HTMLElement = fixture.nativeElement.querySelector('phx-page-header');
+    expect(header.classList.contains('attached')).toBe(false);
   });
 
   it('the list renderer builds the table from the descriptor', async () => {

@@ -44,6 +44,7 @@ import {
   type Observable,
 } from 'rxjs';
 import { KeelActionComponent } from './action/action.component';
+import { KEEL_SCREEN_DEPTH } from './depth';
 import { KeelFormScreenComponent } from './form/form-screen.component';
 import { KeelListComponent } from './list/list.component';
 import { KeelMasterDetailComponent } from './master-detail/master-detail.component';
@@ -129,6 +130,10 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
     params[key] = values.length === 1 ? values[0] : values;
   }
   return schema === undefined ? params : typedParams(params, schema);
+}
+
+function nestedDepth(): number {
+  return (inject(KEEL_SCREEN_DEPTH, { optional: true, skipSelf: true }) ?? -1) + 1;
 }
 
 @Component({
@@ -257,6 +262,7 @@ export function paramsOf(query: ParamMap, schema?: unknown): Record<string, unkn
       min-height: 0;
     }
   `,
+  providers: [{ provide: KEEL_SCREEN_DEPTH, useFactory: nestedDepth }],
   host: {
     '[attr.data-screen]': 'func()',
     '[attr.data-phase]': 'state().phase',

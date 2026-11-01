@@ -76,6 +76,8 @@ import { columnsOf, totalsOf, type ColumnTotal } from '../columns';
 import { describeError } from '../messages';
 import { MULTI_TITLE_KEY, isMultiForm, openMultiForm } from '../multi/multi-form.component';
 import { KeelNavigation } from '../navigation';
+import { KEEL_SCREEN_DEPTH } from '../depth';
+import { KEEL_WORKSPACE } from '../workspace';
 import {
   EXPORT_FUNCTION,
   actionOf,
@@ -143,7 +145,12 @@ const LINK_FAILED_KEY = 'keel.list.linkFailed';
         (rowClick)="onRowClick($event)"
       />
     } @else {
-      <phx-page-header [title]="title()" [menuItems]="menuItems()" (menuSelect)="runMenu($event)">
+      <phx-page-header
+        [title]="title()"
+        [menuItems]="menuItems()"
+        [attached]="depth === 0 && (workspace?.visible() ?? false)"
+        (menuSelect)="runMenu($event)"
+      >
         <div phxToolbar class="header-tools">
           @if (searchable()) {
             <phx-searchbar [value]="tableSearch()" (search)="searchTable($event)" />
@@ -302,6 +309,8 @@ export class KeelListComponent {
 
   readonly picked = output<string>();
 
+  protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
+  protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);

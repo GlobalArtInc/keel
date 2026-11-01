@@ -13,6 +13,7 @@ const ADMIN = 'p-admin';
 const OTHER = 'p-other';
 const KEY = (id: string): string => `keel.workspace.v1.${id}`;
 const WIDGETS = KEEL_BOOT.one.dashboard;
+const WINDOW_WIDTH = window.innerWidth;
 
 const MESSAGES: Record<string, string> = {
   'keel.shell.home.title': 'Overview',
@@ -127,6 +128,7 @@ describe('the open pages workspace', () => {
     TestBed.resetTestingModule();
     jest.restoreAllMocks();
     localStorage.clear();
+    window.innerWidth = WINDOW_WIDTH;
   });
 
   it('a screen opens a tab keyed by its path and sorted query without selected, keeping the full url', async () => {
@@ -277,5 +279,18 @@ describe('the open pages workspace', () => {
     await settle();
     expect(ids()).toEqual(['home']);
     expect(url()).toBe('/');
+  });
+
+  it('is visible with tabs open in a window wider than 640 px and follows a resize', async () => {
+    const keel = workspace();
+    expect(keel.visible()).toBe(false);
+    await go('/f/dns.zone.list');
+    expect(keel.visible()).toBe(true);
+    window.innerWidth = 640;
+    window.dispatchEvent(new Event('resize'));
+    expect(keel.visible()).toBe(false);
+    window.innerWidth = 641;
+    window.dispatchEvent(new Event('resize'));
+    expect(keel.visible()).toBe(true);
   });
 });

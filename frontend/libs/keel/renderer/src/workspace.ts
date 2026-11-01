@@ -11,6 +11,7 @@ export interface WorkspaceListState {
 
 export interface KeelWorkspaceHost {
   activeId(): string | null;
+  visible(): boolean;
   expectChild(openerId: string | null, label?: string): void;
   retitle(id: string, title: string): void;
   readonly refreshes: Observable<void>;

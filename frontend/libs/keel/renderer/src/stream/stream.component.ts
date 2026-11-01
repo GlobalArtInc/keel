@@ -17,6 +17,8 @@ import {
   STREAM_LIVE_KEY,
   STREAM_RECONNECT_KEY,
 } from '../messages';
+import { KEEL_SCREEN_DEPTH } from '../depth';
+import { KEEL_WORKSPACE } from '../workspace';
 
 type StreamPhase = 'live' | 'ended' | 'failed';
 
@@ -33,7 +35,7 @@ const LOG_HEIGHT = 480;
     PhxLogViewComponent,
   ],
   template: `
-    <phx-page-header [title]="title()">
+    <phx-page-header [title]="title()" [attached]="depth === 0 && (workspace?.visible() ?? false)">
       @if (phase() === 'live') {
         <phx-badge phxActions color="success">{{ liveLabel() }}</phx-badge>
       } @else {
@@ -78,6 +80,8 @@ export class KeelStreamComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
 
+  protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
+  protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly client = inject(KeelClient);
   private readonly i18n = inject(KeelI18n);
   private readonly dates = inject(KeelDates);

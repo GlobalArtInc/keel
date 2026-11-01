@@ -22,6 +22,8 @@ import {
 } from '../list/actions';
 import { RETRY_KEY, describeError } from '../messages';
 import { KeelNavigation } from '../navigation';
+import { KEEL_SCREEN_DEPTH } from '../depth';
+import { KEEL_WORKSPACE } from '../workspace';
 import { KeelPropsComponent } from './props.component';
 
 export type ObjectState =
@@ -42,7 +44,7 @@ const NO_ROW: Row = {};
   ],
   template: `
     @if (title(); as title) {
-      <phx-page-header [title]="title">
+      <phx-page-header [title]="title" [attached]="depth === 0 && (workspace?.visible() ?? false)">
         @for (action of toolbar(); track action.id) {
           <button
             phxActions
@@ -91,6 +93,8 @@ export class KeelObjectComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
 
+  protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
+  protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly client = inject(KeelClient);
   private readonly i18n = inject(KeelI18n);
   private readonly boot = inject(KeelBoot);

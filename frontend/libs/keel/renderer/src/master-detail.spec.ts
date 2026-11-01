@@ -5,9 +5,10 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
 import type { Boot, Descriptor, Envelope } from '@globalart/keel/meta';
-import { KeelScreenComponent } from '@globalart/keel/renderer';
+import { KEEL_SCREEN_DEPTH, KeelScreenComponent } from '@globalart/keel/renderer';
 import { KeelMockClient } from '@globalart/keel/testing';
 import { providePhoenixIcons } from '@globalart/phoenix-ui';
+import { By } from '@angular/platform-browser';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 const DUMP = resolve(__dirname, '../../../../../contracts/dump');
@@ -101,6 +102,14 @@ function zoneRows(element: HTMLElement): HTMLElement[] {
 
 describe('keel-master-detail', () => {
   afterEach(() => TestBed.resetTestingModule());
+
+  it('the master list sits at the screen depth and the detail one level below it', async () => {
+    const { harness } = await open(client(), `/f/${ZONES}?selected=${ZONE}`);
+    const depthOf = (selector: string): number =>
+      harness.fixture.debugElement.query(By.css(selector)).injector.get(KEEL_SCREEN_DEPTH);
+    expect(depthOf('keel-master-detail keel-list.master')).toBe(0);
+    expect(depthOf('keel-master-detail .detail keel-list')).toBe(1);
+  });
 
   it('master_detail_keeps_the_selection_in_the_route', async () => {
     const first = client();

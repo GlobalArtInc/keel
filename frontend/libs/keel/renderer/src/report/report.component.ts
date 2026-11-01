@@ -42,6 +42,8 @@ import { toColumn, usableZone, type ColumnTotal } from '../columns';
 import { EXPORT_FUNCTION } from '../list/actions';
 import { KeelExports, formatKeyOf } from '../list/export';
 import { APPLY_KEY, EXPORT_KEY, REPORT_EMPTY_KEY, RETRY_KEY, describeError } from '../messages';
+import { KEEL_SCREEN_DEPTH } from '../depth';
+import { KEEL_WORKSPACE } from '../workspace';
 import {
   CHART_TYPES,
   answerOf,
@@ -101,7 +103,10 @@ const NO_CHARTS: readonly ChartState[] = [];
     KeelPageComponent,
   ],
   template: `
-    <phx-page-header [title]="title()" />
+    <phx-page-header
+      [title]="title()"
+      [attached]="depth === 0 && (workspace?.visible() ?? false)"
+    />
     @if (form().fields.length > 0) {
       <phx-panel class="params">
         <div class="fields">
@@ -253,6 +258,8 @@ export class KeelReportComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
 
+  protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
+  protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);

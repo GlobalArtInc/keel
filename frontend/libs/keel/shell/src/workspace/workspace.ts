@@ -23,7 +23,7 @@ import {
   type PhxSort,
   type PhxTab,
 } from '@globalart/phoenix-ui';
-import { Subject, filter, type Observable } from 'rxjs';
+import { Subject, filter, fromEvent, type Observable } from 'rxjs';
 import { HOME_URL, hasDashboard } from '../guard';
 import { menuEntries, type MenuEntry } from '../layout/sidebar';
 
@@ -34,6 +34,7 @@ const HOME_TITLE_KEY = 'keel.shell.home.title';
 const WORKSPACE_STORAGE_PREFIX = 'keel.workspace.v1.';
 const HOME_ICON: PhxIconName = 'layout-dashboard';
 const SELECTED_PARAM = 'selected';
+const MOBILE_MAX_WIDTH = 640;
 
 export interface WorkspaceTabData {
   url: string;
@@ -187,6 +188,7 @@ export class KeelWorkspace implements KeelWorkspaceHost {
   private readonly i18n = inject(KeelI18n);
   private readonly tabs = inject(PhxTabsService);
   private readonly lists = signal<Record<string, WorkspaceListState>>({});
+  private readonly width = signal(window.innerWidth);
   private readonly refreshed = new Subject<void>();
   private readonly storageKey = computed(() => {
     const principal = this.boot.principal();
@@ -218,6 +220,9 @@ export class KeelWorkspace implements KeelWorkspaceHost {
     this.router.events.pipe(filter(isAbandoned), takeUntilDestroyed()).subscribe(() => {
       this.expected = null;
     });
+    fromEvent(window, 'resize')
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.width.set(window.innerWidth));
   }
 
   openFunc(entry: MenuEntry): Promise<boolean> {
@@ -266,6 +271,10 @@ export class KeelWorkspace implements KeelWorkspaceHost {
 
   activeId(): string | null {
     return this.tabs.activeId();
+  }
+
+  visible(): boolean {
+    return this.tabs.tabs().length > 0 && this.width() > MOBILE_MAX_WIDTH;
   }
 
   expectChild(openerId: string | null, label?: string): void {

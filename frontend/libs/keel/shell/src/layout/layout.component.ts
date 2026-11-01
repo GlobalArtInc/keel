@@ -58,7 +58,7 @@ export function plainClick(event: MouseEvent): boolean {
   ],
   template: `
     <phx-layout [storageKey]="storageKey">
-      <phx-sidebar phxSidebar [label]="menuLabel()">
+      <phx-sidebar phxSidebar density="compact" [label]="menuLabel()">
         <phx-brand-logo [src]="brand().logo" [alt]="brand().name">
           @if (brand().logo === null) {
             <span phxLogoFull class="brand">{{ brand().name }}</span>
@@ -72,7 +72,12 @@ export function plainClick(event: MouseEvent): boolean {
             [attr.data-product]="section.product"
           >
             @for (group of section.groups; track group.id) {
-              <phx-sidebar-group class="group" [label]="group.label" [attr.data-group]="group.id">
+              <phx-sidebar-group
+                class="group"
+                [label]="group.headed ? group.label : null"
+                [ariaLabel]="group.headed ? null : group.label"
+                [attr.data-group]="group.id"
+              >
                 @for (entry of group.items; track entry.func) {
                   <phx-sidebar-item
                     [label]="entry.label"
@@ -135,6 +140,10 @@ export function plainClick(event: MouseEvent): boolean {
       :host {
         height: 100dvh;
       }
+    }
+    phx-layout {
+      --phx-sidebar-width: 200px;
+      --phx-rail-width: 56px;
     }
     .brand {
       font: var(--phx-heading-18);

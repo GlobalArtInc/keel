@@ -45,6 +45,8 @@ import {
 import { invalidations } from '../list/invalidate';
 import { describeError } from '../messages';
 import { KeelNavigation } from '../navigation';
+import { KEEL_SCREEN_DEPTH } from '../depth';
+import { KEEL_WORKSPACE } from '../workspace';
 import { levelQuery, nodesOf, parentOf, rowOf } from './tree';
 
 type TreeRoots =
@@ -68,7 +70,7 @@ const EMPTY_ICON: PhxIconName = 'folder';
     PhxEmptyComponent,
   ],
   template: `
-    <phx-page-header [title]="title()">
+    <phx-page-header [title]="title()" [attached]="depth === 0 && (workspace?.visible() ?? false)">
       @for (action of toolbar(); track action.id) {
         <button
           phxActions
@@ -137,6 +139,8 @@ export class KeelTreeComponent {
   readonly descriptor = input.required<Descriptor>();
   readonly params = input<Record<string, unknown>>({});
 
+  protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
+  protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);

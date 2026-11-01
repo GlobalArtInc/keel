@@ -28,6 +28,7 @@ export {
   VIEW_MISSING_KEY,
   describeError,
 } from './messages';
+export { KEEL_SCREEN_DEPTH } from './depth';
 export { KeelScreenComponent, paramsOf, typedParams } from './screen';
 export type { ScreenState } from './screen';
 export { objectRows } from './object/rows';

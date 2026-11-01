@@ -14,6 +14,7 @@ import {
   sidebarOf,
 } from '@globalart/keel/shell';
 import { KeelMockClient } from '@globalart/keel/testing';
+import { PhxSidebarComponent } from '@globalart/phoenix-ui';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 
@@ -108,6 +109,12 @@ function eyebrowOf(group: HTMLElement): string | null {
   return group.querySelector(':scope > .eyebrow')?.textContent?.trim() ?? null;
 }
 
+function nameOf(group: HTMLElement): string | null {
+  return (
+    group.querySelector(':scope > [role="group"]')?.getAttribute('aria-label') ?? eyebrowOf(group)
+  );
+}
+
 function sectionsOf(fixture: ComponentFixture<unknown>): ShownSection[] {
   const element: HTMLElement = fixture.nativeElement;
   return [...element.querySelectorAll<HTMLElement>('phx-sidebar-group.section')].map((section) => ({
@@ -115,7 +122,7 @@ function sectionsOf(fixture: ComponentFixture<unknown>): ShownSection[] {
     label: eyebrowOf(section),
     groups: [...section.querySelectorAll<HTMLElement>('phx-sidebar-group.group')].map((group) => ({
       id: group.dataset['group'] ?? '',
-      label: eyebrowOf(group),
+      label: nameOf(group),
       items: [...group.querySelectorAll('phx-sidebar-item a')].map(
         (item) => `${item.querySelector('.label')?.textContent} ${item.getAttribute('href')}`,
       ),
@@ -174,6 +181,17 @@ describe('the sidebar rule', () => {
     expect(levelShown(fixture)).toBe('Partner');
   });
 
+  it('one product draws no group headings, names its groups for assistive technology and packs the sidebar', async () => {
+    const fixture = await render(oneProduct());
+    const element: HTMLElement = fixture.nativeElement;
+    const groups = [...element.querySelectorAll<HTMLElement>('phx-sidebar-group.group')];
+    expect(groups.map((group) => eyebrowOf(group))).toEqual([null, null]);
+    expect(groups.map((group) => nameOf(group))).toEqual(['DNS', 'System']);
+    const sidebar = fixture.debugElement.query(By.directive(PhxSidebarComponent))
+      .componentInstance as PhxSidebarComponent;
+    expect(sidebar.density()).toBe('compact');
+  });
+
   it('two products show a heading per product in boot order with the platform group last and the platform brand', async () => {
     const boot = twoProducts();
     boot.menu.reverse();
@@ -185,6 +203,9 @@ describe('the sidebar rule', () => {
     ]);
     expect(brandShown(fixture)).toEqual({ alt: null, text: 'Keel' });
     expect(fixture.nativeElement.querySelector('phx-brand-logo img')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelectorAll('phx-sidebar-group.group > .eyebrow'),
+    ).toHaveLength(3);
     expect(levelShown(fixture)).toBe('Reseller');
   });
 

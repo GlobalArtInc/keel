@@ -28,6 +28,7 @@ export interface MenuEntry {
 export interface SidebarGroup {
   id: string;
   label: string;
+  headed: boolean;
   items: MenuEntry[];
 }
 
@@ -61,12 +62,17 @@ export function platformGroups(menu: readonly BootMenuGroup[]): BootMenuGroup[] 
   return menu.filter((group) => group.product === null || group.product === undefined);
 }
 
-function menuGroups(groups: readonly BootMenuGroup[], label: Translate): SidebarGroup[] {
+function menuGroups(
+  groups: readonly BootMenuGroup[],
+  headed: boolean,
+  label: Translate,
+): SidebarGroup[] {
   return groups
     .filter((group) => group.items.length > 0)
     .map((group) => ({
       id: group.id,
       label: label(group.label),
+      headed,
       items: menuEntries(group.items, label),
     }));
 }
@@ -80,7 +86,7 @@ function productSection(
   return {
     product: product.id,
     label: headed ? label(product.name) : null,
-    groups: menuGroups(productGroups(menu, product.id), label),
+    groups: menuGroups(productGroups(menu, product.id), headed, label),
   };
 }
 
@@ -92,7 +98,7 @@ export function sidebarOf(boot: Boot, label: Translate): SidebarSection[] {
   const platform: SidebarSection = {
     product: null,
     label: null,
-    groups: menuGroups(platformGroups(boot.menu), label),
+    groups: menuGroups(platformGroups(boot.menu), headed, label),
   };
   return [...products, platform].filter((section) => section.groups.length > 0);
 }
