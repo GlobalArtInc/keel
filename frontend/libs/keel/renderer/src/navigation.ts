@@ -2,6 +2,7 @@ import { Location } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { PhxTabsService, type PhxTab } from '@globalart/phoenix-ui';
+import { KEEL_WORKSPACE } from './workspace';
 
 export const SCREEN_PATH = 'f';
 
@@ -19,6 +20,7 @@ export class KeelNavigation {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   private readonly tabs = inject(PhxTabsService);
+  private readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
 
   url(target: ScreenTarget): string {
     const tree = this.router.createUrlTree([`/${SCREEN_PATH}`, target.screen], {
@@ -28,16 +30,26 @@ export class KeelNavigation {
   }
 
   screen(target: ScreenTarget): Promise<boolean> {
-    return this.router.navigateByUrl(this.url(target));
+    return this.child(this.url(target));
   }
 
   object(target: ScreenTarget, label: string): Promise<boolean> {
     const url = this.url(target);
-    this.tabs.open(objectTab(url, target, label));
-    return this.router.navigateByUrl(url);
+    if (this.workspace === null) {
+      this.tabs.open(objectTab(url, target, label));
+    }
+    return this.child(url, label);
   }
 
   back(): void {
     this.location.back();
+  }
+
+  private child(url: string, label?: string): Promise<boolean> {
+    const host = this.workspace;
+    if (host !== null) {
+      host.expectChild(host.activeId(), label);
+    }
+    return this.router.navigateByUrl(url);
   }
 }

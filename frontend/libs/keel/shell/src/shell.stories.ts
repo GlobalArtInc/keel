@@ -491,3 +491,36 @@ export const About: Story = {
     );
   },
 };
+
+function menuItem(root: HTMLElement, func: string): HTMLElement {
+  const item = root.querySelector<HTMLElement>(`phx-sidebar-item[data-func="${func}"]`);
+  if (item === null) {
+    throw new Error(`no menu item ${func}`);
+  }
+  return item;
+}
+
+function titleLink(root: HTMLElement): HTMLElement {
+  const link = root.querySelector<HTMLElement>('.body .row [data-column="title"] a');
+  if (link === null) {
+    throw new Error('no title link');
+  }
+  return link;
+}
+
+export const Workspace: Story = {
+  decorators: [withKeel({ boot: KEEL_BOOT.one, calls: CALLS, routes: routesTo('note.list') })],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText('Renew the certificates');
+    await userEvent.click(titleLink(canvasElement));
+    await waitFor(() =>
+      expect(canvasElement.querySelector('[role="tab"] .tab__parent')).not.toBeNull(),
+    );
+    await userEvent.click(menuItem(canvasElement, 'keel.account.list'));
+    await waitFor(() =>
+      expect(canvasElement.querySelectorAll('[role="tab"]').length).toBeGreaterThanOrEqual(3),
+    );
+    await expect(canvasElement.querySelectorAll('[role="tab"] .tab__parent')).toHaveLength(1);
+  },
+};

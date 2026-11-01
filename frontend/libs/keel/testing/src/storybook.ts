@@ -16,8 +16,9 @@ import {
   type EventSourceLike,
 } from '@globalart/keel/client';
 import { isObject } from '@globalart/keel/forms';
+import { KEEL_WORKSPACE } from '@globalart/keel/renderer';
 import type { Boot, Descriptor, Messages } from '@globalart/keel/meta';
-import { GUEST_LANG, applyBrand, provideKeelLabels } from '@globalart/keel/shell';
+import { GUEST_LANG, KeelWorkspace, applyBrand, provideKeelLabels } from '@globalart/keel/shell';
 import { PhxThemeService } from '@globalart/phoenix-ui';
 import { catalogueOf, type DumpLevel, type KeelDump } from './dump';
 import { KeelMockClient, type CannedAnswer } from './mock-client';
@@ -153,6 +154,7 @@ export function keelStoryProviders(
     ),
     provideLocationMocks(),
     provideKeelLabels(),
+    { provide: KEEL_WORKSPACE, useExisting: KeelWorkspace },
     provideAppInitializer(async () => {
       const boot = inject(KeelBoot);
       const i18n = inject(KeelI18n);

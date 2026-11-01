@@ -72,6 +72,8 @@ export type { Frame, TaskOpener } from './tasks/follow';
 export { KeelDownloads } from './tasks/download';
 export { TASK_DETAILS_KEY } from './tasks/progress.component';
 export type { ScreenTarget } from './navigation';
+export { KEEL_WORKSPACE } from './workspace';
+export type { KeelWorkspaceHost, WorkspaceListState } from './workspace';
 export {
   CELL_EDIT_TYPES,
   COLUMN_TYPES,

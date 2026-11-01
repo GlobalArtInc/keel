@@ -7,21 +7,26 @@ import { describeError } from '@globalart/keel/renderer';
 import {
   PhxBannerComponent,
   PhxBrandLogoComponent,
+  PhxIconButtonComponent,
   PhxLayoutComponent,
   PhxSidebarComponent,
   PhxSidebarGroupComponent,
   PhxSidebarItemComponent,
+  PhxTabBarComponent,
   PhxTextButtonComponent,
   PhxToastService,
 } from '@globalart/phoenix-ui';
 import { KeelRailComponent } from '../rail/rail.component';
 import { KeelSu } from '../rail/su';
+import { KeelWorkspace } from '../workspace/workspace';
 import { brandOf, sidebarOf, type MenuEntry } from './sidebar';
 
 export const MENU_KEY = 'menu.system';
 export const ACTING_AS_KEY = 'keel.shell.acting_as.banner';
 export const ACTING_EXIT_KEY = 'keel.shell.acting_as.exit';
 export const SIDEBAR_STORAGE_KEY = 'keel-sidebar-collapsed';
+export const TABS_LABEL_KEY = 'keel.shell.workspace.tabs';
+export const REFRESH_LABEL_KEY = 'keel.shell.workspace.refresh';
 
 const NO_BRAND: BootBrand = { name: '', hue: 0, chroma: 0 };
 
@@ -46,6 +51,8 @@ export function plainClick(event: MouseEvent): boolean {
     PhxSidebarItemComponent,
     PhxBrandLogoComponent,
     PhxBannerComponent,
+    PhxIconButtonComponent,
+    PhxTabBarComponent,
     PhxTextButtonComponent,
     KeelRailComponent,
   ],
@@ -83,6 +90,24 @@ export function plainClick(event: MouseEvent): boolean {
         }
       </phx-sidebar>
       <keel-rail phxRail />
+      <phx-tab-bar
+        phxTabBar
+        [label]="tabsLabel()"
+        (activate)="workspace.activate($event)"
+        (close)="workspace.close($event)"
+        (closeOthers)="workspace.closeOthers($event)"
+        (closeAll)="workspace.closeAll()"
+      >
+        <button
+          phxTabBarStart
+          phxIconButton
+          type="button"
+          icon="rotate-cw"
+          [label]="refreshLabel()"
+          [title]="refreshLabel()"
+          (click)="workspace.refresh()"
+        ></button>
+      </phx-tab-bar>
       @if (actor()) {
         <phx-banner class="acting" status="warning" role="status" data-acting-as>
           {{ actingText() }}
@@ -143,6 +168,7 @@ export class KeelLayoutComponent {
   private readonly toasts = inject(PhxToastService);
   private readonly busy = signal(false);
 
+  protected readonly workspace = inject(KeelWorkspace);
   protected readonly storageKey = SIDEBAR_STORAGE_KEY;
   readonly leaving = this.busy.asReadonly();
   readonly sections = computed(() => {
@@ -159,6 +185,8 @@ export class KeelLayoutComponent {
     this.i18n.t(ACTING_AS_KEY, { login: this.boot.principal()?.login ?? '' }),
   );
   protected readonly exitLabel = computed(() => this.i18n.t(ACTING_EXIT_KEY));
+  protected readonly tabsLabel = computed(() => this.i18n.t(TABS_LABEL_KEY));
+  protected readonly refreshLabel = computed(() => this.i18n.t(REFRESH_LABEL_KEY));
 
   isActive(entry: MenuEntry): boolean {
     return this.router.isActive(entry.url, {
@@ -174,7 +202,7 @@ export class KeelLayoutComponent {
       return;
     }
     event.preventDefault();
-    void this.router.navigateByUrl(entry.url);
+    void this.workspace.openFunc(entry);
   }
 
   async exit(): Promise<void> {

@@ -155,6 +155,8 @@ export {
 } from './rail/act-as.component';
 export type { ActAsState, PrincipalRow } from './rail/act-as.component';
 export { KeelSu } from './rail/su';
+export { KeelWorkspace } from './workspace/workspace';
+export type { WorkspaceListState } from '@globalart/keel/renderer';
 export {
   KeelNotFoundComponent,
   NOT_FOUND_HOME_KEY,
