@@ -10,22 +10,51 @@ export const PREF_GET = 'settings.pref.get';
 export const PREF_SET = 'settings.pref.set';
 export const COLUMNS_PREFIX = 'columns.';
 export const ORDER_MEMBER = 'order';
+export const HIDDEN_MEMBER = 'hidden';
 
 interface Pref {
   key: string;
   value?: unknown;
 }
 
+export interface ColumnPref {
+  order: string[] | null;
+  hidden: string[] | null;
+}
+
 export function columnsKeyOf(func: string): string {
   return `${COLUMNS_PREFIX}${func}`;
 }
 
-export function orderOf(value: unknown): string[] | null {
+function membersOf(value: unknown, member: string): string[] | null {
   if (typeof value !== 'object' || value === null) {
     return null;
   }
-  const order = (value as Record<string, unknown>)[ORDER_MEMBER];
-  return Array.isArray(order) && order.every((key) => typeof key === 'string') ? order : null;
+  const members = (value as Record<string, unknown>)[member];
+  return Array.isArray(members) && members.every((key) => typeof key === 'string') ? members : null;
+}
+
+export function orderOf(value: unknown): string[] | null {
+  return membersOf(value, ORDER_MEMBER);
+}
+
+export function hiddenOf(value: unknown): string[] | null {
+  return membersOf(value, HIDDEN_MEMBER);
+}
+
+export function prefOf(value: unknown): ColumnPref {
+  return { order: orderOf(value), hidden: hiddenOf(value) };
+}
+
+export function valueOf(pref: ColumnPref): Record<string, string[]> {
+  const value: Record<string, string[]> = {};
+  if (pref.order !== null) {
+    value[ORDER_MEMBER] = [...pref.order];
+  }
+  if (pref.hidden !== null) {
+    value[HIDDEN_MEMBER] = [...pref.hidden];
+  }
+  return value;
 }
 
 export function reordered(declared: readonly string[], order: readonly string[]): string[] {
@@ -46,21 +75,21 @@ export class KeelColumnOrders {
     return names.has(PREF_GET) && names.has(PREF_SET);
   }
 
-  async load(func: string): Promise<string[] | null> {
+  async load(func: string): Promise<ColumnPref> {
     if (!(await this.available())) {
-      return null;
+      return prefOf(null);
     }
     const envelope = await this.call<Pref>(PREF_GET, { key: columnsKeyOf(func) });
-    return envelope.ok ? orderOf(envelope.data.value) : null;
+    return prefOf(envelope.ok ? envelope.data.value : null);
   }
 
-  async save(func: string, order: readonly string[]): Promise<void> {
+  async save(func: string, pref: ColumnPref): Promise<void> {
     if (!(await this.available())) {
       return;
     }
     const envelope = await this.call(PREF_SET, {
       key: columnsKeyOf(func),
-      value: { [ORDER_MEMBER]: [...order] },
+      value: valueOf(pref),
     });
     if (!envelope.ok) {
       this.toasts.danger(describeError(this.i18n, envelope.error));

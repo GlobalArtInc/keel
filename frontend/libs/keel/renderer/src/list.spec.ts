@@ -30,6 +30,7 @@ import {
 import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
 import { PhxTabsService, PhxToastService, providePhoenixIcons } from '@globalart/phoenix-ui';
 import { EMPTY } from 'rxjs';
+import { PREF_GET, PREF_SET, columnsKeyOf } from './list/order';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 
@@ -118,6 +119,30 @@ function ok(data: unknown, requestId = 'req-ok'): Envelope {
 
 function page(rows: readonly Row[], totals: Record<string, unknown> | null = null): Envelope {
   return ok({ data: rows, total: rows.length, totals });
+}
+
+const PREFS: Descriptor[] = [PREF_GET, PREF_SET].map((name) => ({
+  ...LIST,
+  name,
+  module: 'settings',
+  kind: name === PREF_GET ? 'get' : 'form',
+  mode: name === PREF_GET ? 'read' : 'write',
+  key: null,
+  ui: null,
+}));
+
+function prefClient(stored: unknown): KeelMockClient {
+  return new KeelMockClient({
+    boot: BOOT,
+    descriptors: [LIST, ...PREFS],
+    catalogue: { lang: 'en', messages: MESSAGES },
+    answers: {
+      'dns.zone.list': page(ZONES, { records: 8 }),
+      'keel.account.options': ok(ACCOUNTS),
+      [PREF_GET]: ok({ key: columnsKeyOf(LIST.name), value: stored }),
+      [PREF_SET]: ok({ key: columnsKeyOf(LIST.name) }),
+    },
+  });
 }
 
 function client(fixtures: { descriptors?: Descriptor[] } = {}): KeelMockClient {
@@ -732,6 +757,27 @@ describe('the list renderer', () => {
       search: 'b.org',
       scope: { view: 'mine' },
     });
+  });
+
+  it('a pref written before hidden existed keeps its order and hides nothing', async () => {
+    const mock = prefClient({ order: ['status', 'name'] });
+    const fixture = await render(mock);
+    const list = fixture.componentInstance;
+    expect(list.order()).toEqual(['status', 'name']);
+    expect(list.hiddenColumns()).toBeNull();
+    expect(list.visibleColumns()).toEqual(['status', 'name']);
+  });
+
+  it('hiding a column writes the hidden keys next to the order and drops the column', async () => {
+    const mock = prefClient({ order: ['status', 'name'] });
+    const fixture = await render(mock);
+    const element: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance['hideColumns'](['records']);
+    await settle(fixture);
+    expect(mock.callsOf(PREF_SET).map((call) => call.params)).toEqual([
+      { key: 'columns.dns.zone.list', value: { order: ['status', 'name'], hidden: ['records'] } },
+    ]);
+    expect(element.querySelector('[role="columnheader"][data-column="records"]')).toBeNull();
   });
 });
 

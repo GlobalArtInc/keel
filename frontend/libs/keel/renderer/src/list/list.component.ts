@@ -34,7 +34,10 @@ import type {
   InlineEdit,
 } from '@globalart/keel/meta';
 import {
+  PHX_LABELS,
   PhxDataTableComponent,
+  PhxFilterChipListComponent,
+  PhxIconButtonComponent,
   PhxListTableComponent,
   PhxModalService,
   PhxPageHeaderComponent,
@@ -51,6 +54,7 @@ import {
   type PhxColumn,
   type PhxColumnFilter,
   type PhxDataTablePage,
+  type PhxFilterChip,
   type PhxIconName,
   type PhxRowAction,
   type PhxRowActionEvent,
@@ -92,9 +96,10 @@ import {
   toolbarActionsOf,
   type RowScope,
 } from './actions';
+import { chipsOf, type ChipOptions } from './chips';
 import { KeelExports, exportQueryOf, formatKeyOf, formatsOf } from './export';
 import { invalidations } from './invalidate';
-import { KeelColumnOrders, reordered } from './order';
+import { type ColumnPref, KeelColumnOrders, reordered } from './order';
 import { scopeOf, searchOf } from './scope';
 
 export interface ReadonlyToggle {
@@ -114,12 +119,15 @@ const REFRESH_KEY = 'keel.action.refresh';
 const COPY_LINK_KEY = 'keel.list.copyLink';
 const LINK_COPIED_KEY = 'keel.list.linkCopied';
 const LINK_FAILED_KEY = 'keel.list.linkFailed';
+const CHIP_OPTIONS: ChipOptions = { separator: ', ' };
 
 @Component({
   selector: 'keel-list',
   imports: [
     PhxPageHeaderComponent,
     PhxDataTableComponent,
+    PhxFilterChipListComponent,
+    PhxIconButtonComponent,
     PhxListTableComponent,
     PhxSearchbarComponent,
     PhxSortButtonComponent,
@@ -161,6 +169,17 @@ const LINK_FAILED_KEY = 'keel.list.linkFailed';
               [sort]="sortList()"
               (change)="sortTable($event)"
             />
+          }
+          @if (tableFilters().length > 0) {
+            <button
+              phxIconButton
+              type="button"
+              icon="funnel-x"
+              [label]="labels.resetFilters"
+              [title]="labels.resetFilters"
+              [badge]="tableFilters().length"
+              (click)="clearFilters()"
+            ></button>
           }
           @if (hasPill()) {
             <phx-toolbar class="pill">
@@ -222,9 +241,20 @@ const LINK_FAILED_KEY = 'keel.list.linkFailed';
             </phx-toolbar>
           }
         </div>
+        @if (chips().length > 0) {
+          <phx-filter-chip-list
+            phxFilters
+            delimiter="="
+            [filters]="chips()"
+            (remove)="removeChip($event)"
+            (reset)="clearFilters()"
+          />
+        }
       </phx-page-header>
       @for (fetch of [fetch()]; track fetch) {
         <phx-data-table
+          appearance="sheet"
+          columnsMenu
           [columns]="columns()"
           [fetch]="fetch"
           [rowKey]="key()"
@@ -233,6 +263,8 @@ const LINK_FAILED_KEY = 'keel.list.linkFailed';
           [(search)]="tableSearch"
           [(sort)]="tableSort"
           [(filters)]="tableFilters"
+          [hiddenColumns]="hiddenColumns()"
+          (hiddenColumnsChange)="hideColumns($event)"
           [columnOrder]="order()"
           (columnOrderChange)="reorder($event)"
           [selectable]="selectable()"
@@ -289,7 +321,7 @@ const LINK_FAILED_KEY = 'keel.list.linkFailed';
     }
     .total {
       padding: 4px 10px;
-      font: var(--phx-text-12-single);
+      font: var(--phx-text-13-single);
       color: var(--phx-ink-muted);
       background-color: var(--phx-tonal);
       border-radius: var(--phx-radius-full);
@@ -324,6 +356,7 @@ export class KeelListComponent {
   private readonly injector = inject(Injector);
   private readonly exports = inject(KeelExports);
   private readonly orders = inject(KeelColumnOrders);
+  protected readonly labels = inject(PHX_LABELS);
   private readonly remotes = signal<ReadonlyMap<string, RemoteOptions>>(new Map());
   private readonly refreshes = new Subject<void>();
   private readonly known = new Map<RowKey, Row>();
@@ -346,6 +379,7 @@ export class KeelListComponent {
   readonly tableSort = signal<PhxSort | null>(null);
   readonly tableFilters = signal<PhxColumnFilter[]>([]);
   readonly order = signal<string[] | null>(null);
+  readonly hiddenColumns = signal<string[] | null>(null);
   readonly exporting = signal(false);
   readonly fetch = computed<KeelListFetch<Row>>(() =>
     listFetch<Row>(this.descriptor().name, this.scope(), this.client),
@@ -400,6 +434,9 @@ export class KeelListComponent {
       choices: (func) => remotes.get(func)?.choices() ?? null,
     });
   });
+  readonly chips = computed<PhxFilterChip[]>(() =>
+    chipsOf(this.columns(), this.tableFilters(), CHIP_OPTIONS),
+  );
   readonly totals = computed<ColumnTotal[]>(() =>
     totalsOf(this.descriptor(), this.fetch().totals(), {
       messages: this.i18n.messages(),
@@ -520,7 +557,9 @@ export class KeelListComponent {
       untracked(() => {
         this.tableSort.set(null);
         this.tableFilters.set([]);
-        void this.loadOrder(name);
+        this.order.set(null);
+        this.hiddenColumns.set(null);
+        void this.loadPref(name);
       });
     });
   }
@@ -561,14 +600,38 @@ export class KeelListComponent {
   protected reorder(order: string[] | null): void {
     this.order.set(order);
     if (order !== null) {
-      void this.orders.save(this.descriptor().name, order);
+      void this.orders.save(this.descriptor().name, { order, hidden: this.hiddenColumns() });
     }
   }
 
-  private async loadOrder(name: string): Promise<void> {
+  protected hideColumns(hidden: string[] | null): void {
+    this.hiddenColumns.set(hidden);
+    const pref: ColumnPref = { order: this.order(), hidden };
+    void this.orders.save(this.descriptor().name, pref);
+  }
+
+  protected removeChip(chip: PhxFilterChip): void {
+    this.applyFilters(this.tableFilters().filter((filter) => filter.key !== chip.key));
+  }
+
+  protected clearFilters(): void {
+    this.applyFilters([]);
+  }
+
+  private applyFilters(filters: PhxColumnFilter[]): void {
+    this.tableFilters.set(filters);
+    const table = this.table();
+    if (table !== undefined) {
+      table.filters.set(filters);
+      table.reset();
+    }
+  }
+
+  private async loadPref(name: string): Promise<void> {
     const stored = await this.orders.load(name);
     if (this.descriptor().name === name) {
-      this.order.set(stored);
+      this.order.set(stored.order);
+      this.hiddenColumns.set(stored.hidden);
     }
   }
 
