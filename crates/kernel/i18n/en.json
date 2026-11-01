@@ -258,6 +258,11 @@
       "service": "Service",
       "user": "User"
     },
+    "list": {
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "linkFailed": "The link could not be copied"
+    },
     "login": "Login",
     "logs": {
       "stream": {

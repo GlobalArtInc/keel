@@ -148,9 +148,9 @@ keelTest.describe('notes', () => {
       await row.locator('.cell_check label').click();
       await expect(row).toHaveAttribute('aria-selected', 'true');
     }
-    const bar = page.locator('phx-selection-bar [role="toolbar"]');
-    await expect(bar).toContainText('2');
-    await bar.getByRole('button', { name: 'Delete' }).click();
+    const pill = page.locator('keel-list[data-list="note.list"] phx-toolbar');
+    await expect(pill.locator('button[data-action="delete"]')).toBeEnabled();
+    await pill.locator('button[data-action="delete"]').click();
 
     const confirm = page.getByRole('alertdialog');
     await expect(confirm).toContainText('Gamma');
@@ -231,9 +231,9 @@ keelTest.describe('notes', () => {
         await row.locator('.cell_check label').click();
         await expect(row).toHaveAttribute('aria-selected', 'true');
       }
-      const bar = page.locator('phx-selection-bar [role="toolbar"]');
-      await expect(bar).toContainText('2');
-      await bar.getByRole('button', { name: 'Edit', exact: true }).click();
+      const pill = page.locator('keel-list[data-list="note.list"] phx-toolbar');
+      await expect(pill.locator('button[data-action="edit"]')).toBeEnabled();
+      await pill.locator('button[data-action="edit"]').click();
 
       const modal = page.getByRole('dialog', { name: 'Edit 2 rows' });
       await expect(modal).toBeVisible();
@@ -276,9 +276,9 @@ keelTest.describe('notes', () => {
       await page.goto(NOTE_LIST);
       await expect(rows(page)).toHaveCount(1 + IMPORTED.length);
       const list = page.locator('keel-list[data-list="note.list"]');
-      await list.locator('button[data-action="export"]').click();
-      const menu = page.getByRole('menu', { name: 'Export' });
-      await expect(menu.getByRole('menuitem')).toHaveText(['CSV', 'JSON']);
+      await list.locator('phx-page-header .actions > button').click();
+      const menu = page.getByRole('menu');
+      await expect(menu.getByRole('menuitem')).toHaveText(['CSV', 'JSON', 'Refresh', 'Copy link']);
       const pending = page.waitForEvent('download');
       await menu.getByRole('menuitem', { name: 'CSV' }).click();
       const download = await pending;

@@ -125,12 +125,10 @@ async function openModal(fixture: ComponentFixture<KeelListComponent>): Promise<
   fixture.componentInstance.selection.set(new Set(['z1', 'z2']));
   await settle(fixture);
   const element: HTMLElement = fixture.nativeElement;
-  const buttons = [...element.querySelectorAll<HTMLButtonElement>('phx-selection-bar button')];
-  const edit = must(
-    buttons.find((button) => button.textContent?.trim() === 'Edit'),
-    'edit in the selection bar',
-  );
-  edit.click();
+  must(
+    element.querySelector<HTMLButtonElement>('phx-toolbar button[data-action="edit"]'),
+    'edit in the toolbar pill',
+  ).click();
   await settle(fixture);
   await settle(fixture);
   return must(overlay('keel-multi-form')[0], 'multi form modal');
@@ -151,7 +149,7 @@ describe('the multi-row form', () => {
     TestBed.inject(PhxToastService).closeAll();
   });
 
-  it('the selection bar offers edit when the form has ui.multi and the modal posts ids, fields and mask for the toggled fields alone', async () => {
+  it('the toolbar pill offers edit when the form has ui.multi and the modal posts ids, fields and mask for the toggled fields alone', async () => {
     const mock = client().answer('dns.zone.edit', ok({ updated: 2 }));
     const fixture = await render(mock);
     expect(isMultiForm(MULTI)).toBe(true);
@@ -159,8 +157,9 @@ describe('the multi-row form', () => {
     expect(isMultiForm({ ...EDIT, ui: { ...(EDIT.ui ?? { title: '' }), multi: [] } })).toBe(false);
     expect(multiDescriptorOf(MULTI).ui?.pages).toEqual([]);
     expect(fixture.componentInstance.selectable()).toBe(true);
-    expect(fixture.componentInstance.bulk().map((item) => item.id)).toEqual([
+    expect(fixture.componentInstance.selectionActions().map((action) => action.id)).toEqual([
       'edit',
+      'records',
       'suspend',
       'delete',
     ]);

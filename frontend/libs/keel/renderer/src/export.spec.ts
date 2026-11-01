@@ -48,8 +48,14 @@ const MESSAGES = {
     },
   },
   keel: {
+    action: { refresh: 'Refresh' },
     export: { format: { csv: 'CSV', json: 'JSON' } },
     error: { request: '{message} (request {id})', unavailable: 'Temporarily unavailable' },
+    list: {
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
+      linkFailed: 'The link could not be copied',
+    },
     shell: { tasks: { details: 'Details' } },
   },
   phx: { cancel: 'Cancel' },
@@ -112,15 +118,30 @@ function must<T>(value: T | null | undefined, what: string): T {
   return value;
 }
 
+function openMenu(element: HTMLElement): void {
+  must(
+    element.querySelector<HTMLButtonElement>('phx-page-header .actions > button'),
+    'more',
+  ).click();
+}
+
+function itemNamed(name: string): HTMLElement {
+  return must(
+    overlay('phx-dropdown-item').find((item) => item.textContent?.trim() === name),
+    `${name} item`,
+  );
+}
+
 describe('the export button', () => {
   beforeEach(() => QuietEventSource.reset());
 
   afterEach(() => {
     TestBed.inject(PhxModalService).closeAll();
     TestBed.inject(PhxToastService).closeAll();
+    Reflect.deleteProperty(navigator, 'clipboard');
   });
 
-  it('the export dropdown lists the formats and posts keel.export with the table’s query and the visible columns in order', async () => {
+  it('the more menu lists the formats and posts keel.export with the table’s query and the visible columns in order', async () => {
     const mock = client().file(EXPORT_FUNCTION, {
       ok: true,
       file: { blob: new Blob(['name\n']), filename: 'zones.csv' },
@@ -137,14 +158,15 @@ describe('the export button', () => {
     list.order.set(['status', 'name', 'unknown']);
     await settle(fixture);
 
-    must(
-      element.querySelector<HTMLButtonElement>('button[data-action="export"]'),
-      'button',
-    ).click();
+    openMenu(element);
     await settle(fixture);
     const items = overlay('phx-dropdown-item');
-    expect(items.map((item) => item.textContent?.trim())).toEqual(['CSV', 'JSON']);
-    expect(items.map((item) => item.getAttribute('data-format'))).toEqual(['csv', 'json']);
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'CSV',
+      'JSON',
+      'Refresh',
+      'Copy link',
+    ]);
 
     must(items[1], 'json item').click();
     await settle(fixture);
@@ -166,6 +188,32 @@ describe('the export button', () => {
     ]);
     expect(overlay('phx-dropdown-item')).toHaveLength(0);
     click.mockRestore();
+  });
+
+  it('the more menu reloads the table on Refresh', async () => {
+    const mock = client();
+    const fixture = await render(mock);
+    const element: HTMLElement = fixture.nativeElement;
+    const listed = mock.callsOf('dns.zone.list').length;
+
+    openMenu(element);
+    await settle(fixture);
+    itemNamed('Refresh').click();
+    await settle(fixture);
+    expect(mock.callsOf('dns.zone.list')).toHaveLength(listed + 1);
+  });
+
+  it('the more menu copies the page address on Copy link', async () => {
+    const writeText = jest.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const fixture = await render(client());
+    const element: HTMLElement = fixture.nativeElement;
+
+    openMenu(element);
+    await settle(fixture);
+    itemNamed('Copy link').click();
+    fixture.detectChanges();
+    expect(writeText).toHaveBeenCalledWith(location.href);
   });
 
   it('a TaskRef answer opens the progress modal and a file answer is handed to the browser', async () => {

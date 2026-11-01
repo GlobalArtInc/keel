@@ -11,6 +11,7 @@ import {
   output,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -33,19 +34,19 @@ import type {
   InlineEdit,
 } from '@globalart/keel/meta';
 import {
-  PhxButtonComponent,
   PhxDataTableComponent,
-  PhxDropdownComponent,
-  PhxDropdownItemComponent,
-  PhxDropdownTriggerDirective,
   PhxListTableComponent,
   PhxModalService,
   PhxPageHeaderComponent,
-  PhxSelectionBarComponent,
+  type PhxPageHeaderMenuItem,
+  PhxSearchbarComponent,
+  PhxSortButtonComponent,
   PhxTableCellDirective,
   PhxToastService,
   PhxToggleComponent,
-  type PhxButtonAppearance,
+  PhxToolbarButtonComponent,
+  PhxToolbarComponent,
+  PhxToolbarDividerComponent,
   type PhxCellChange,
   type PhxColumn,
   type PhxColumnFilter,
@@ -54,8 +55,8 @@ import {
   type PhxRowAction,
   type PhxRowActionEvent,
   type PhxRowEvent,
-  type PhxSelectionAction,
   type PhxSort,
+  type PhxSortField,
 } from '@globalart/phoenix-ui';
 import {
   Subject,
@@ -78,14 +79,14 @@ import { KeelNavigation } from '../navigation';
 import {
   EXPORT_FUNCTION,
   actionOf,
-  appearanceOf,
-  bulkActionsOf,
   defaultActionOf,
   emptyActionOf,
   iconOf,
   isHidden,
+  isSelectionBulk,
   rowActionsOf,
   screenParamsOf,
+  selectionActionsOf,
   toolbarActionsOf,
   type RowScope,
 } from './actions';
@@ -105,20 +106,26 @@ export type CompactRows = { phase: 'loading' } | { phase: 'loaded'; rows: Row[];
 
 const DEFAULT_EMPTY_ICON: PhxIconName = 'plus';
 const COMPACT_LOADING: CompactRows = { phase: 'loading' };
+const REFRESH_ITEM = 'refresh';
+const COPY_LINK_ITEM = 'copy-link';
+const REFRESH_KEY = 'keel.action.refresh';
+const COPY_LINK_KEY = 'keel.list.copyLink';
+const LINK_COPIED_KEY = 'keel.list.linkCopied';
+const LINK_FAILED_KEY = 'keel.list.linkFailed';
 
 @Component({
   selector: 'keel-list',
   imports: [
     PhxPageHeaderComponent,
-    PhxButtonComponent,
-    PhxDropdownComponent,
-    PhxDropdownItemComponent,
-    PhxDropdownTriggerDirective,
-    PhxSelectionBarComponent,
     PhxDataTableComponent,
     PhxListTableComponent,
+    PhxSearchbarComponent,
+    PhxSortButtonComponent,
     PhxTableCellDirective,
     PhxToggleComponent,
+    PhxToolbarComponent,
+    PhxToolbarButtonComponent,
+    PhxToolbarDividerComponent,
   ],
   template: `
     @if (compact() !== null) {
@@ -136,57 +143,86 @@ const COMPACT_LOADING: CompactRows = { phase: 'loading' };
         (rowClick)="onRowClick($event)"
       />
     } @else {
-      <phx-page-header [title]="title()">
-        @for (action of toolbar(); track action.id) {
-          @if (action.role === 'export') {
-            <button
-              phxActions
-              [phxButton]="appearanceOf(action)"
-              type="button"
-              [icon]="iconOf(action)"
-              [attr.data-action]="action.id"
-              [phxDropdownTrigger]="formats"
-              [disabled]="exporting()"
-            >
-              {{ labelOf(action) }}
-            </button>
-            <phx-dropdown #formats menu align="end" [label]="labelOf(action)">
-              @for (format of formatsOf(action); track format) {
-                <phx-dropdown-item
-                  [attr.data-format]="format"
-                  (select)="formats.select(); export(action, format)"
-                >
-                  {{ formatLabel(format) }}
-                </phx-dropdown-item>
-              }
-            </phx-dropdown>
-          } @else {
-            <button
-              phxActions
-              [phxButton]="appearanceOf(action)"
-              type="button"
-              [icon]="iconOf(action)"
-              [attr.data-action]="action.id"
-              (click)="run(action)"
-            >
-              {{ labelOf(action) }}
-            </button>
+      <phx-page-header [title]="title()" [menuItems]="menuItems()" (menuSelect)="runMenu($event)">
+        <div phxToolbar class="header-tools">
+          @if (searchable()) {
+            <phx-searchbar [value]="tableSearch()" (search)="searchTable($event)" />
           }
-        }
+          @if (sortFields().length > 0) {
+            <phx-sort-button
+              [fields]="sortFields()"
+              [sort]="sortList()"
+              (change)="sortTable($event)"
+            />
+          }
+          @if (hasPill()) {
+            <phx-toolbar class="pill">
+              @for (action of newActions(); track action.id) {
+                <button
+                  phxToolbarButton
+                  type="button"
+                  [primary]="$first"
+                  [icon]="iconOf(action)"
+                  [attr.data-action]="action.id"
+                  (click)="run(action)"
+                >
+                  {{ labelOf(action) }}
+                </button>
+              }
+              @if (newActions().length > 0 && selectionActions().length > 0) {
+                <phx-toolbar-divider />
+              }
+              @for (action of selectionActions(); track action.id) {
+                @if (iconOf(action) === null) {
+                  <button
+                    phxToolbarButton
+                    type="button"
+                    [disabled]="!selectionEnabled(action)"
+                    [attr.data-action]="action.id"
+                    (click)="runSelection(action)"
+                  >
+                    {{ labelOf(action) }}
+                  </button>
+                } @else {
+                  <button
+                    phxToolbarButton
+                    type="button"
+                    [icon]="iconOf(action)"
+                    [label]="labelOf(action)"
+                    [title]="labelOf(action)"
+                    [disabled]="!selectionEnabled(action)"
+                    [attr.data-action]="action.id"
+                    (click)="runSelection(action)"
+                  ></button>
+                }
+              }
+              @if (
+                otherActions().length > 0 && newActions().length + selectionActions().length > 0
+              ) {
+                <phx-toolbar-divider />
+              }
+              @for (action of otherActions(); track action.id) {
+                <button
+                  phxToolbarButton
+                  type="button"
+                  [icon]="iconOf(action)"
+                  [attr.data-action]="action.id"
+                  (click)="run(action)"
+                >
+                  {{ labelOf(action) }}
+                </button>
+              }
+            </phx-toolbar>
+          }
+        </div>
       </phx-page-header>
-      <phx-selection-bar
-        [count]="selection().size"
-        [actions]="bulk()"
-        (action)="runBulk($event)"
-        (clear)="clearSelection()"
-      />
       @for (fetch of [fetch()]; track fetch) {
         <phx-data-table
           [columns]="columns()"
           [fetch]="fetch"
           [rowKey]="key()"
           [label]="title()"
-          [searchable]="searchable()"
+          [searchable]="false"
           [(search)]="tableSearch"
           [(sort)]="tableSort"
           [(filters)]="tableFilters"
@@ -231,6 +267,16 @@ const COMPACT_LOADING: CompactRows = { phase: 'loading' };
       gap: 16px;
       min-height: 0;
     }
+    .header-tools {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .pill {
+      margin-left: auto;
+    }
     .totals {
       display: contents;
     }
@@ -272,6 +318,7 @@ export class KeelListComponent {
   private readonly remotes = signal<ReadonlyMap<string, RemoteOptions>>(new Map());
   private readonly refreshes = new Subject<void>();
   private readonly known = new Map<RowKey, Row>();
+  private readonly table = viewChild(PhxDataTableComponent);
 
   readonly selection = signal<Set<RowKey>>(new Set());
   readonly reload = merge(
@@ -361,26 +408,51 @@ export class KeelListComponent {
       (action) => action.role !== 'export' || this.exportable(),
     ),
   );
-  readonly bulkActions = computed(() => bulkActionsOf(this.descriptor()));
   readonly multiEdit = computed(() =>
     this.multiForm() === null ? null : editActionOf(this.descriptor()),
   );
-  readonly selectable = computed(() => this.bulkActions().length > 0 || this.multiEdit() !== null);
-  readonly bulk = computed<PhxSelectionAction[]>(() => {
-    const edit = this.multiEdit();
-    const actions = edit === null ? this.bulkActions() : [edit, ...this.bulkActions()];
-    return actions.map((action) => {
-      const item: PhxSelectionAction = {
-        id: action.id,
-        label: this.labelOf(action),
-        appearance: appearanceOf(action),
-      };
-      const icon = iconOf(action);
-      if (icon !== null) {
-        item.icon = icon;
-      }
-      return item;
-    });
+  readonly exportAction = computed(
+    () => this.toolbar().find((action) => action.role === 'export') ?? null,
+  );
+  readonly menuItems = computed<PhxPageHeaderMenuItem[]>(() => {
+    const action = this.exportAction();
+    const formats =
+      action === null
+        ? []
+        : formatsOf(action).map((format) => ({
+            id: format,
+            label: this.formatLabel(format),
+            disabled: this.exporting(),
+          }));
+    return [
+      ...formats,
+      { id: REFRESH_ITEM, label: this.i18n.t(REFRESH_KEY) },
+      { id: COPY_LINK_ITEM, label: this.i18n.t(COPY_LINK_KEY) },
+    ];
+  });
+  readonly newActions = computed(() => this.toolbar().filter((action) => action.role === 'new'));
+  readonly selectionActions = computed(() =>
+    selectionActionsOf(this.descriptor(), this.multiEdit()),
+  );
+  readonly otherActions = computed(() => {
+    const selection = this.selectionActions();
+    return this.toolbar().filter(
+      (action) => action.role !== 'new' && action.role !== 'export' && !selection.includes(action),
+    );
+  });
+  readonly hasPill = computed(
+    () =>
+      this.newActions().length + this.selectionActions().length + this.otherActions().length > 0,
+  );
+  readonly selectable = computed(() => this.selectionActions().length > 0);
+  readonly sortFields = computed<PhxSortField[]>(() =>
+    this.columns()
+      .filter((column) => column.sortable === true)
+      .map((column) => ({ key: column.key, label: column.label })),
+  );
+  readonly sortList = computed<PhxSort[]>(() => {
+    const sort = this.tableSort();
+    return sort === null ? [] : [sort];
   });
   readonly rowActions = computed<PhxRowAction<Row>[]>(() => {
     const scope = this.rowScope();
@@ -444,10 +516,6 @@ export class KeelListComponent {
     });
   }
 
-  protected formatsOf(action: Action): readonly ExportFormat[] {
-    return formatsOf(action);
-  }
-
   protected formatLabel(format: ExportFormat): string {
     return this.i18n.t(formatKeyOf(format));
   }
@@ -503,12 +571,32 @@ export class KeelListComponent {
     return iconOf(action);
   }
 
-  protected appearanceOf(action: Action): PhxButtonAppearance {
-    return appearanceOf(action);
-  }
-
   refresh(): void {
     this.refreshes.next();
+  }
+
+  protected runMenu(item: PhxPageHeaderMenuItem): void {
+    if (item.id === REFRESH_ITEM) {
+      this.refresh();
+      return;
+    }
+    if (item.id === COPY_LINK_ITEM) {
+      this.copyLink();
+      return;
+    }
+    const action = this.exportAction();
+    const format =
+      action === null ? undefined : formatsOf(action).find((candidate) => candidate === item.id);
+    if (action !== null && format !== undefined) {
+      void this.export(action, format);
+    }
+  }
+
+  private copyLink(): void {
+    void navigator.clipboard.writeText(location.href).then(
+      () => this.toasts.success(this.i18n.t(LINK_COPIED_KEY)),
+      () => this.toasts.danger(this.i18n.t(LINK_FAILED_KEY)),
+    );
   }
 
   protected firstRowsOf(state: CompactRows): Row[] {
@@ -570,16 +658,41 @@ export class KeelListComponent {
     }
   }
 
-  protected runBulk(item: PhxSelectionAction): void {
-    const action = actionOf(this.descriptor(), item.id);
-    if (action === null) {
-      return;
-    }
+  protected runSelection(action: Action): void {
     if (action === this.multiEdit()) {
       void this.editSelected();
       return;
     }
     this.run(action, this.selectedRows());
+  }
+
+  protected selectionEnabled(action: Action): boolean {
+    if (isSelectionBulk(action, this.multiEdit())) {
+      return this.selection().size > 0;
+    }
+    const [row] = this.selectedRows();
+    return (
+      this.selection().size === 1 && row !== undefined && !isHidden(action, row, this.rowScope())
+    );
+  }
+
+  protected searchTable(search: string): void {
+    this.tableSearch.set(search);
+    const table = this.table();
+    if (table !== undefined) {
+      table.search.set(search);
+      table.reset();
+    }
+  }
+
+  protected sortTable(sort: PhxSort[]): void {
+    const next = sort[0] ?? null;
+    this.tableSort.set(next);
+    const table = this.table();
+    if (table !== undefined) {
+      table.sort.set(next);
+      table.reset();
+    }
   }
 
   async editSelected(): Promise<void> {

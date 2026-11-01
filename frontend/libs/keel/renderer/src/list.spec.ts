@@ -86,6 +86,12 @@ const MESSAGES = {
       request: '{message} (request {id})',
       unavailable: 'Temporarily unavailable',
     },
+    export: { format: { csv: 'CSV', json: 'JSON' } },
+    list: {
+      copyLink: 'Copy link',
+      linkCopied: 'Link copied',
+      linkFailed: 'The link could not be copied',
+    },
     value: { true: 'Yes', false: 'No' },
   },
 };
@@ -197,6 +203,39 @@ function withoutEdit(descriptor: Descriptor): Descriptor {
   };
 }
 
+const NOTHING_SELECTED = ['create:on', 'edit:off', 'records:off', 'suspend:off', 'delete:off'];
+
+function pill(element: HTMLElement): HTMLButtonElement[] {
+  return [
+    ...must(element.querySelector('phx-toolbar'), 'toolbar').querySelectorAll<HTMLButtonElement>(
+      'button[data-action]',
+    ),
+  ];
+}
+
+function availability(element: HTMLElement): string[] {
+  return pill(element).map(
+    (button) => `${button.getAttribute('data-action')}:${button.disabled ? 'off' : 'on'}`,
+  );
+}
+
+function recordsHiddenWhenSuspended(descriptor: Descriptor): Descriptor {
+  const ui = descriptor.ui;
+  const suspend = (ui?.actions ?? []).find((action) => action.id === 'suspend');
+  if (!ui || suspend === undefined) {
+    throw new Error('the descriptor has no suspend action');
+  }
+  return {
+    ...descriptor,
+    ui: {
+      ...ui,
+      actions: (ui.actions ?? []).map((action) =>
+        action.id === 'records' ? { ...action, hidden_if: suspend.hidden_if } : action,
+      ),
+    },
+  };
+}
+
 describe('the list renderer', () => {
   beforeEach(() => QuietEventSource.reset());
 
@@ -214,9 +253,7 @@ describe('the list renderer', () => {
 
     expect(element.getAttribute('data-list')).toBe('dns.zone.list');
     expect(element.querySelector('phx-page-header .title__text')?.textContent).toBe('Zones');
-    expect(texts(element.querySelectorAll('phx-page-header button[data-action]'))).toEqual([
-      'New zone',
-    ]);
+    expect(availability(element)).toEqual(NOTHING_SELECTED);
     expect(mock.calls.map((call) => [call.func, call.params])).toEqual([
       ['keel.account.options', { limit: OPTIONS_LIMIT }],
       ['dns.zone.list', { page: 1, pageSize: 25 }],
@@ -252,7 +289,7 @@ describe('the list renderer', () => {
       'DNSSEC',
       'Account',
     ]);
-    expect(element.querySelector('phx-list-searchbar')).not.toBeNull();
+    expect(element.querySelector('phx-searchbar')).not.toBeNull();
 
     expect(rows(element)).toHaveLength(2);
     expect(texts(element.querySelectorAll('.body .row [data-column="name"] a.link'))).toEqual([
@@ -409,26 +446,106 @@ describe('the list renderer', () => {
     expect(TestBed.inject(Router).url).toBe('/f/dns.zone.edit?id=z1');
   });
 
-  it('a delete from the selection bar hands the selected rows to the runner and reloads', async () => {
+  it('the toolbar pill enables the selection actions by the number of selected rows', async () => {
+    const fixture = await render(client());
+    const element: HTMLElement = fixture.nativeElement;
+
+    expect(fixture.componentInstance.selectable()).toBe(true);
+    expect(availability(element)).toEqual(NOTHING_SELECTED);
+
+    must(
+      rows(element)[0].querySelector<HTMLInputElement>('.cell_check input'),
+      'first row',
+    ).click();
+    fixture.detectChanges();
+    expect(availability(element)).toEqual([
+      'create:on',
+      'edit:on',
+      'records:on',
+      'suspend:on',
+      'delete:on',
+    ]);
+
+    must(
+      rows(element)[1].querySelector<HTMLInputElement>('.cell_check input'),
+      'second row',
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selection()).toEqual(new Set(['z1', 'z2']));
+    expect(availability(element)).toEqual([
+      'create:on',
+      'edit:off',
+      'records:off',
+      'suspend:on',
+      'delete:on',
+    ]);
+  });
+
+  it('a sort chosen in the header sorts the fetch', async () => {
+    const mock = client();
+    const fixture = await render(mock);
+    const element: HTMLElement = fixture.nativeElement;
+
+    must(
+      element.querySelector<HTMLButtonElement>('phx-sort-button button.button'),
+      'sort button',
+    ).click();
+    await settle(fixture);
+    refresh(fixture);
+    must(overlay('.row__toggle')[0], 'name row').click();
+    await settle(fixture);
+    expect(fixture.componentInstance.tableSort()).toEqual({ key: 'name', dir: 'asc' });
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({
+      page: 1,
+      pageSize: 25,
+      sort: { key: 'name', dir: 'asc' },
+    });
+  });
+
+  it('a single action is off while the selected row hides it', async () => {
+    const fixture = await render(
+      client({ descriptors: [recordsHiddenWhenSuspended(LIST)] }),
+      recordsHiddenWhenSuspended(LIST),
+    );
+    const element: HTMLElement = fixture.nativeElement;
+
+    must(
+      rows(element)[1].querySelector<HTMLInputElement>('.cell_check input'),
+      'second row',
+    ).click();
+    fixture.detectChanges();
+    expect(availability(element)).toContain('records:off');
+
+    must(
+      rows(element)[1].querySelector<HTMLInputElement>('.cell_check input'),
+      'second row',
+    ).click();
+    must(
+      rows(element)[0].querySelector<HTMLInputElement>('.cell_check input'),
+      'first row',
+    ).click();
+    fixture.detectChanges();
+    expect(availability(element)).toContain('records:on');
+  });
+
+  it('a delete from the toolbar pill hands the selected rows to the runner and reloads', async () => {
     const mock = client().answer('dns.zone.delete', ok({ deleted: 2 }));
     const fixture = await render(mock);
     const element: HTMLElement = fixture.nativeElement;
     const runner = TestBed.inject(KeelActionRunner);
     const run = jest.spyOn(runner, 'run');
 
-    expect(fixture.componentInstance.selectable()).toBe(true);
-    expect(element.querySelector('phx-selection-bar .bar')).toBeNull();
     for (const row of rows(element)) {
       must(row.querySelector<HTMLInputElement>('.cell_check input'), 'row checkbox').click();
     }
     fixture.detectChanges();
     expect(fixture.componentInstance.selection()).toEqual(new Set(['z1', 'z2']));
-    const bar = must(element.querySelector('phx-selection-bar .bar'), 'selection bar');
-    expect(bar.querySelector('.count')?.textContent).toBe('Selected: 2');
-    expect(texts(bar.querySelectorAll('.actions button'))).toEqual(['Suspend', 'Delete']);
 
     const listed = mock.callsOf('dns.zone.list').length;
-    must(bar.querySelectorAll<HTMLButtonElement>('.actions button')[1], 'delete button').click();
+    must(
+      pill(element).find((button) => button.getAttribute('data-action') === 'delete'),
+      'delete button',
+    ).click();
     refresh(fixture);
     expect(run).toHaveBeenCalledTimes(1);
     expect(run.mock.calls[0][0]).toEqual({
@@ -450,7 +567,7 @@ describe('the list renderer', () => {
     expect(deleted[0].params).toEqual({ ids: ['z1', 'z2'] });
     expect(mock.callsOf('dns.zone.list')).toHaveLength(listed + 1);
     expect(fixture.componentInstance.selection().size).toBe(0);
-    expect(element.querySelector('phx-selection-bar .bar')).toBeNull();
+    expect(availability(element)).toEqual(NOTHING_SELECTED);
   });
 
   it('a burst of data.invalidate frames matching invalidate_on refetches the table once', async () => {
@@ -518,9 +635,36 @@ describe('the list renderer', () => {
     const again = await render(client({ descriptors: [LIST, exporter] }));
     await settle(again);
     expect(again.componentInstance.exportable()).toBe(true);
-    expect(
-      texts((again.nativeElement as HTMLElement).querySelectorAll('button[data-action]')),
-    ).toEqual(['New zone', 'Export']);
+    must(
+      (again.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        'phx-page-header .actions > button',
+      ),
+      'more button',
+    ).click();
+    await settle(again);
+    expect(texts(overlay('phx-dropdown-item'))).toEqual(['CSV', 'JSON', 'Refresh', 'Copy link']);
+  });
+
+  it('the round search button sends its text to the fetch after the debounce', async () => {
+    const mock = client();
+    const fixture = await render(mock);
+    const element: HTMLElement = fixture.nativeElement;
+
+    must(element.querySelector<HTMLButtonElement>('phx-searchbar button'), 'search button').click();
+    await settle(fixture);
+    const input = must(
+      element.querySelector<HTMLInputElement>('phx-searchbar input'),
+      'search input',
+    );
+    input.value = 'b.org';
+    input.dispatchEvent(new Event('input'));
+    await new Promise((done) => setTimeout(done, 350));
+    await settle(fixture);
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({
+      page: 1,
+      pageSize: 25,
+      search: 'b.org',
+    });
   });
 
   it('a search screen parameter fills the search box and stays out of the scope', async () => {
@@ -529,9 +673,7 @@ describe('the list renderer', () => {
     const element: HTMLElement = fixture.nativeElement;
     expect(fixture.componentInstance.scope()).toEqual({ view: 'mine' });
     expect(fixture.componentInstance.search()).toBe('a.org');
-    expect(element.querySelector<HTMLInputElement>('phx-list-searchbar input')?.value).toBe(
-      'a.org',
-    );
+    expect(element.querySelector<HTMLInputElement>('phx-searchbar input')?.value).toBe('a.org');
     expect(mock.callsOf('dns.zone.list').map((call) => call.params)).toEqual([
       { page: 1, pageSize: 25, search: 'a.org', scope: { view: 'mine' } },
     ]);
@@ -543,9 +685,7 @@ describe('the list renderer', () => {
 
     fixture.componentRef.setInput('params', { search: 'b.org', view: 'mine' });
     await settle(fixture);
-    expect(element.querySelector<HTMLInputElement>('phx-list-searchbar input')?.value).toBe(
-      'b.org',
-    );
+    expect(element.querySelector<HTMLInputElement>('phx-searchbar input')?.value).toBe('b.org');
     expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({
       page: 1,
       pageSize: 25,

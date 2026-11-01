@@ -10,6 +10,14 @@ import type { PhxButtonAppearance, PhxIconName } from '@globalart/phoenix-ui';
 import { ROW_PLACEHOLDER, keyOf, substitute, type Row } from '../action/runner';
 
 export const BULK_ROLES: readonly ActionRole[] = ['delete', 'group'];
+export const SELECTION_ROLES: readonly ActionRole[] = [
+  'edit',
+  'delete',
+  'group',
+  'button',
+  'child',
+  'download',
+];
 export const EXPORT_FUNCTION = 'keel.export';
 
 const ROLE_ICONS: Readonly<Partial<Record<ActionRole, PhxIconName>>> = {
@@ -53,6 +61,25 @@ export function rowActionsOf(descriptor: Descriptor): Action[] {
 
 export function bulkActionsOf(descriptor: Descriptor): Action[] {
   return actionsOf(descriptor).filter(isBulk);
+}
+
+export function selectionActionsOf(descriptor: Descriptor, multiEdit: Action | null): Action[] {
+  const found = new Set<Action>(
+    rowActionsOf(descriptor).filter(
+      (action) => SELECTION_ROLES.includes(action.role) || Boolean(action.confirm),
+    ),
+  );
+  for (const action of bulkActionsOf(descriptor)) {
+    found.add(action);
+  }
+  if (multiEdit !== null) {
+    found.add(multiEdit);
+  }
+  return [...found];
+}
+
+export function isSelectionBulk(action: Action, multiEdit: Action | null): boolean {
+  return isBulk(action) || action === multiEdit;
 }
 
 export function toolbarActionsOf(descriptor: Descriptor): Action[] {
