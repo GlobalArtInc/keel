@@ -26,10 +26,11 @@ import {
   usableZone,
   type KeelWorkspaceHost,
   type Row,
+  type WorkspaceListState,
 } from '@globalart/keel/renderer';
 import { KeelMockClient, QuietEventSource } from '@globalart/keel/testing';
 import { PhxTabsService, PhxToastService, providePhoenixIcons } from '@globalart/phoenix-ui';
-import { EMPTY } from 'rxjs';
+import { EMPTY, Subject } from 'rxjs';
 import { PREF_GET, PREF_SET, columnsKeyOf } from './list/order';
 
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
@@ -162,6 +163,56 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   await new Promise((done) => setTimeout(done, 0));
   fixture.detectChanges();
 }
+
+interface SavedList {
+  id: string;
+  state: WorkspaceListState;
+}
+
+interface FakeWorkspace {
+  host: KeelWorkspaceHost;
+  saves: SavedList[];
+  refreshed: Subject<void>;
+}
+
+function fakeWorkspace(
+  tab: string | null,
+  lists: Record<string, WorkspaceListState> = {},
+): FakeWorkspace {
+  const saves: SavedList[] = [];
+  const refreshed = new Subject<void>();
+  const host: KeelWorkspaceHost = {
+    activeId: () => tab,
+    visible: () => true,
+    expectChild: () => undefined,
+    retitle: () => undefined,
+    refreshes: refreshed.asObservable(),
+    listState: (id) => lists[id] ?? null,
+    saveListState: (id, state) => {
+      saves.push({ id, state });
+      lists[id] = state;
+    },
+  };
+  return { host, saves, refreshed };
+}
+
+function rootOf(workspace: FakeWorkspace, depth = 0): Provider[] {
+  return [
+    { provide: KEEL_SCREEN_DEPTH, useValue: depth },
+    { provide: KEEL_WORKSPACE, useValue: workspace.host },
+  ];
+}
+
+function longList(): KeelMockClient {
+  return client().answer('dns.zone.list', ok({ data: ZONES, total: 60, totals: null }));
+}
+
+const SAVED: WorkspaceListState = {
+  search: 'b.org',
+  sort: { key: 'name', dir: 'asc' },
+  filters: [{ key: 'status', value: 'active' }],
+  page: 2,
+};
 
 function workspaceOf(shown: WritableSignal<boolean>): KeelWorkspaceHost {
   return {
@@ -308,6 +359,132 @@ describe('the list renderer', () => {
     ]);
     const header: HTMLElement = fixture.nativeElement.querySelector('phx-page-header');
     expect(header.classList.contains('attached')).toBe(false);
+  });
+
+  it('a root list takes the search, sort, filters and page of its tab from the first fetch on', async () => {
+    const mock = longList();
+    const fixture = await render(
+      mock,
+      LIST,
+      undefined,
+      rootOf(fakeWorkspace('tab-1', { 'tab-1': SAVED })),
+    );
+    await settle(fixture);
+    const list = fixture.componentInstance;
+    expect(list.tableSearch()).toBe('b.org');
+    expect(list.tableSort()).toEqual({ key: 'name', dir: 'asc' });
+    expect(list.tableFilters()).toEqual([{ key: 'status', value: 'active' }]);
+    expect(mock.callsOf('dns.zone.list')[0]?.params).toMatchObject({ page: 1, search: 'b.org' });
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toMatchObject({
+      page: 2,
+      search: 'b.org',
+    });
+  });
+
+  it('a search screen parameter wins and the saved sort, filters and page stay out', async () => {
+    const mock = longList();
+    const fixture = await render(
+      mock,
+      LIST,
+      { search: 'a.org' },
+      rootOf(fakeWorkspace('tab-1', { 'tab-1': SAVED })),
+    );
+    await settle(fixture);
+    const list = fixture.componentInstance;
+    expect(list.tableSearch()).toBe('a.org');
+    expect(list.tableSort()).toBeNull();
+    expect(list.tableFilters()).toEqual([]);
+    expect(mock.callsOf('dns.zone.list').map((call) => call.params)).toEqual([
+      { page: 1, pageSize: 25, search: 'a.org' },
+    ]);
+  });
+
+  it('a change of search, sort or page is kept in the state of the tab', async () => {
+    const workspace = fakeWorkspace('tab-1');
+    const fixture = await render(longList(), LIST, undefined, rootOf(workspace));
+    fixture.componentInstance['searchTable']('b.org');
+    await settle(fixture);
+    expect(workspace.saves.at(-1)).toEqual({
+      id: 'tab-1',
+      state: { search: 'b.org', sort: null, filters: [], page: 1 },
+    });
+    fixture.componentInstance['sortTable']([{ key: 'name', dir: 'desc' }]);
+    await settle(fixture);
+    fixture.componentInstance['table']()?.goTo(2);
+    await settle(fixture);
+    expect(workspace.saves.at(-1)).toEqual({
+      id: 'tab-1',
+      state: { search: 'b.org', sort: { key: 'name', dir: 'desc' }, filters: [], page: 2 },
+    });
+  });
+
+  it('a refresh of the workspace refetches a root list', async () => {
+    const workspace = fakeWorkspace('tab-1');
+    const mock = client();
+    const fixture = await render(mock, LIST, undefined, rootOf(workspace));
+    const before = mock.callsOf('dns.zone.list').length;
+    workspace.refreshed.next();
+    await settle(fixture);
+    expect(mock.callsOf('dns.zone.list')).toHaveLength(before + 1);
+  });
+
+  it('a list nested under a screen neither restores nor saves the state of the tab', async () => {
+    const workspace = fakeWorkspace('tab-1', { 'tab-1': SAVED });
+    const fixture = await render(longList(), LIST, undefined, rootOf(workspace, 1));
+    await settle(fixture);
+    expect(fixture.componentInstance.tableSearch()).toBe('');
+    fixture.componentInstance['searchTable']('x');
+    await settle(fixture);
+    expect(workspace.saves).toEqual([]);
+  });
+
+  it('the reset chip clears every column filter and refetches without them', async () => {
+    const mock = client();
+    const fixture = await render(
+      mock,
+      LIST,
+      undefined,
+      rootOf(fakeWorkspace('tab-1', { 'tab-1': { ...SAVED, search: '', sort: null, page: 1 } })),
+    );
+    const element: HTMLElement = fixture.nativeElement;
+    expect(fixture.componentInstance.chips().map((chip) => chip.key)).toEqual(['status']);
+    must(element.querySelector<HTMLButtonElement>('.main_reset'), 'reset chip').click();
+    await settle(fixture);
+    expect(fixture.componentInstance.tableFilters()).toEqual([]);
+    expect(element.querySelector('phx-filter-chip-list')).toBeNull();
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toEqual({ page: 1, pageSize: 25 });
+  });
+
+  it('the close button of a chip removes its column filter and the table fetches without it', async () => {
+    const mock = client();
+    const filters = [
+      { key: 'status', value: 'active' },
+      { key: 'account', value: 'acme' },
+    ];
+    const fixture = await render(
+      mock,
+      LIST,
+      undefined,
+      rootOf(
+        fakeWorkspace('tab-1', { 'tab-1': { ...SAVED, search: '', sort: null, page: 1, filters } }),
+      ),
+    );
+    const element: HTMLElement = fixture.nativeElement;
+    const chip = must(
+      [...element.querySelectorAll<HTMLElement>('phx-filter-chip')].find((node) =>
+        node.textContent?.includes('Status'),
+      ),
+      'status chip',
+    );
+    must(chip.querySelector<HTMLButtonElement>('.remove'), 'remove button').click();
+    await settle(fixture);
+    expect(fixture.componentInstance.tableFilters()).toEqual([{ key: 'account', value: 'acme' }]);
+    expect(fixture.componentInstance.chips().map((item) => item.key)).toEqual(['account']);
+    expect(mock.callsOf('dns.zone.list').at(-1)?.params).toMatchObject({
+      page: 1,
+      pageSize: 25,
+      filters: [{ key: 'account', value: 'acme' }],
+    });
   });
 
   it('the list renderer builds the table from the descriptor', async () => {

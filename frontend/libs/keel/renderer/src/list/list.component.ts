@@ -63,6 +63,7 @@ import {
   type PhxSortField,
 } from '@globalart/phoenix-ui';
 import {
+  EMPTY,
   Subject,
   catchError,
   combineLatest,
@@ -81,7 +82,7 @@ import { describeError } from '../messages';
 import { MULTI_TITLE_KEY, isMultiForm, openMultiForm } from '../multi/multi-form.component';
 import { KeelNavigation } from '../navigation';
 import { KEEL_SCREEN_DEPTH } from '../depth';
-import { KEEL_WORKSPACE } from '../workspace';
+import { KEEL_WORKSPACE, type WorkspaceListState } from '../workspace';
 import {
   EXPORT_FUNCTION,
   actionOf,
@@ -343,6 +344,10 @@ export class KeelListComponent {
 
   protected readonly depth = inject(KEEL_SCREEN_DEPTH, { optional: true }) ?? -1;
   protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
+  private readonly root = this.depth === 0;
+  private listTab: string | null = null;
+  private restored = false;
+  private pendingPage: number | null = null;
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
   private readonly i18n = inject(KeelI18n);
@@ -366,6 +371,7 @@ export class KeelListComponent {
   readonly reload = merge(
     this.refreshes,
     invalidations(this.events.dataInvalidate$, () => this.descriptor().ui?.invalidate_on ?? []),
+    this.root ? (this.workspace?.refreshes ?? EMPTY) : EMPTY,
   );
 
   readonly key = computed(() => keyOf(this.descriptor()));
@@ -559,8 +565,18 @@ export class KeelListComponent {
         this.tableFilters.set([]);
         this.order.set(null);
         this.hiddenColumns.set(null);
+        this.restoreState();
         void this.loadPref(name);
       });
+    });
+    effect(() => {
+      const state: WorkspaceListState = {
+        search: this.tableSearch(),
+        sort: this.tableSort(),
+        filters: this.tableFilters(),
+        page: this.pendingPage ?? this.table()?.page() ?? 1,
+      };
+      untracked(() => this.keepState(state));
     });
   }
 
@@ -625,6 +641,42 @@ export class KeelListComponent {
       table.filters.set(filters);
       table.reset();
     }
+  }
+
+  private restoreState(): void {
+    const tab = this.workspace?.activeId() ?? null;
+    if (!this.root || this.restored || tab === null || this.workspace === null) {
+      return;
+    }
+    this.restored = true;
+    this.listTab = tab;
+    if (Object.hasOwn(this.params(), 'search')) {
+      return;
+    }
+    const saved = this.workspace.listState(tab);
+    if (saved === null) {
+      return;
+    }
+    this.tableSearch.set(saved.search);
+    this.tableSort.set(saved.sort);
+    this.tableFilters.set(saved.filters);
+    this.pendingPage = saved.page > 1 ? saved.page : null;
+  }
+
+  private keepState(state: WorkspaceListState): void {
+    if (this.listTab !== null && this.workspace !== null) {
+      this.workspace.saveListState(this.listTab, state);
+    }
+  }
+
+  private restorePage(): void {
+    const table = this.table();
+    if (this.pendingPage === null || table === undefined) {
+      return;
+    }
+    const page = this.pendingPage;
+    this.pendingPage = null;
+    table.goTo(page);
   }
 
   private async loadPref(name: string): Promise<void> {
@@ -847,6 +899,7 @@ export class KeelListComponent {
       const value = row[key];
       this.known.set(typeof value === 'number' ? value : String(value), row);
     }
+    this.restorePage();
   }
 
   private columnOf(key: string): Column | null {
