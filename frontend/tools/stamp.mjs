@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const REGISTRY = 'https://nexus.globalart.hu/repository/npm-hosted/';
+const REGISTRY = 'https://astrum.globalart.hu/repository/npm-hosted/';
 const ENTRY_POINTS = [
   'meta',
   'client',

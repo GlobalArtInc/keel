@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "keel"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "clap",
@@ -2267,7 +2267,7 @@ dependencies = [
 
 [[package]]
 name = "keel-bin"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-demo",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "keel-client"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "axum-server",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "keel-conformance"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2327,7 +2327,7 @@ dependencies = [
 
 [[package]]
 name = "keel-demo"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2340,7 +2340,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dev"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "chrono",
@@ -2363,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-dns-records",
@@ -2377,7 +2377,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns-local"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-hosting-web",
@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns-peer"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-client",
@@ -2396,7 +2396,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns-records"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-dns-zones",
@@ -2404,7 +2404,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns-templates"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-dns-records",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "keel-dns-zones"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2422,7 +2422,7 @@ dependencies = [
 
 [[package]]
 name = "keel-host"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel-sdk",
  "keel-testkit",
@@ -2437,7 +2437,7 @@ dependencies = [
 
 [[package]]
 name = "keel-host-agent"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel-kernel",
  "keel-sdk",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-backup"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "croner",
  "keel",
@@ -2478,7 +2478,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-db"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-ftp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2498,7 +2498,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-mail"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "argon2",
  "keel",
@@ -2508,7 +2508,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-services"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2517,7 +2517,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-ssl"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "instant-acme",
@@ -2532,7 +2532,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-users"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "keel",
@@ -2541,7 +2541,7 @@ dependencies = [
 
 [[package]]
 name = "keel-hosting-web"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-host",
@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "keel-kernel"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2595,7 +2595,7 @@ dependencies = [
 
 [[package]]
 name = "keel-panel"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel",
  "keel-dns",
@@ -2623,7 +2623,7 @@ dependencies = [
 
 [[package]]
 name = "keel-release"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -2641,7 +2641,7 @@ dependencies = [
 
 [[package]]
 name = "keel-sdk"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2661,7 +2661,7 @@ dependencies = [
 
 [[package]]
 name = "keel-sdk-probe"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "keel-sdk",
  "keel-testkit",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "keel-system"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "argon2",
  "axum",
@@ -2706,7 +2706,7 @@ dependencies = [
 
 [[package]]
 name = "keel-testkit"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "chrono",
@@ -2728,7 +2728,7 @@ dependencies = [
 
 [[package]]
 name = "keel-types"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "regex",

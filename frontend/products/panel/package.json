@@ -1,6 +1,6 @@
 {
   "name": "@globalart/keel-panel",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "The KeelPanel product package: the panel product id, its brand, its menu group icon and the file manager and configuration editor views for the shell",
   "repository": {

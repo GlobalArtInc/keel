@@ -154,4 +154,4 @@ export {
 } from './multi/multi-form.component';
 export type { GroupBody, MultiFormRequest, MultiOutcome } from './multi/multi-form.component';
 
-export const KEEL_RENDERER_VERSION = '0.4.0';
+export const KEEL_RENDERER_VERSION = '0.5.0';

@@ -16,4 +16,4 @@ export {
 } from './i18n';
 export type { DerivedKey, Messages } from './i18n';
 
-export const KEEL_META_VERSION = '0.4.0';
+export const KEEL_META_VERSION = '0.5.0';

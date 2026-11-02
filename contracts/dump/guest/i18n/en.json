@@ -260,6 +260,11 @@
         "service": "Service",
         "user": "User"
       },
+      "list": {
+        "copyLink": "Copy link",
+        "linkCopied": "Link copied",
+        "linkFailed": "The link could not be copied"
+      },
       "login": "Login",
       "logs": {
         "stream": {
@@ -542,6 +547,10 @@
           "failed": "The confirmation link is not valid",
           "pending": "Confirming the address",
           "title": "Confirm the email address"
+        },
+        "workspace": {
+          "refresh": "Refresh",
+          "tabs": "Open pages"
         }
       },
       "state": "State",
@@ -579,6 +588,7 @@
       "addToFavourites": "Add to favourites",
       "allLevels": "All levels",
       "apply": "Apply",
+      "apps": "Applications",
       "ascending": "Ascending",
       "available": "Available",
       "back": "Back",
@@ -591,8 +601,10 @@
       "clear": "Clear",
       "close": "Close",
       "closeAll": "Close all",
+      "closeOthers": "Close others",
       "collapse": "Collapse",
       "collapseAll": "Collapse all",
+      "columns": "Columns",
       "confirm": "Confirm",
       "copied": "Copied",
       "copy": "Copy",
@@ -654,11 +666,13 @@
       "pin": "Pin",
       "previousMonth": "Previous month",
       "previousPage": "Previous page",
+      "refresh": "Refresh",
       "remove": "Remove",
       "removeFile": "Remove file",
       "removeFromFavourites": "Remove from favourites",
       "required": "Required",
       "reset": "Reset",
+      "resetFilters": "Reset filters",
       "resizeColumn": "Resize column",
       "resume": "Resume",
       "retry": "Retry",
@@ -667,6 +681,7 @@
       "selectAll": "Select all",
       "selectRow": "Select row",
       "selected": "Selected",
+      "showColumn": "Show column",
       "showLess": "Show less",
       "showMore": "Show more",
       "showNotifications": "Show notifications",
