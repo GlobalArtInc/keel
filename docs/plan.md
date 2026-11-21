@@ -7457,8 +7457,10 @@ recorded in [design/09-operations.md](design/09-operations.md).
 **Goal.** Three holes a customer of a hosted installation can reach. `dns.zone.create` refuses a
 zone whose name lies inside a zone of another account, unless the account of that zone is the
 caller's or one of its ancestors, the way a reseller hands a subzone to its customer. `hosting-mail`
-accepts a domain with no zone on this installation only after a proof of control, a TXT record
-`keel-verify=<token>` read over DNS, and keeps the mail domain pending until then. An FTP user is
+lets a caller below administrator level add a mail domain only when the name equals or lies inside
+a zone of the caller's own account or of one of its ancestors; an administrator may add any name,
+taking the responsibility of the operator. A proof of control by a DNS record would need a
+resolver the modules do not have, and waits for a milestone that adds one. An FTP user is
 confined to a jail directory the user cannot change, with the writable directory of the site one
 level below, so a link the hosting user makes inside it cannot be followed out at login, and the
 agent refuses an FTP home whose path resolves outside `file_roots`.
@@ -7472,7 +7474,8 @@ agent refuses an FTP home whose path resolves outside `file_roots`.
 
 - under `products/dns/tests/`: `a_zone_inside_a_zone_of_another_account_is_refused` and
   `a_zone_inside_the_zone_of_an_ancestor_account_is_admitted`;
-- under `products/panel/tests/`: `a_mail_domain_without_a_zone_stays_pending_until_proved` and
+- under `products/panel/tests/`: `a_customer_cannot_add_a_mail_domain_outside_its_own_zones`,
+  `an_administrator_may_add_a_mail_domain_without_a_zone` and
   `an_ftp_home_resolving_outside_the_file_roots_is_refused`;
 - `hack/panel-vm.sh` gains a check, `an_ftp_login_does_not_follow_a_link_made_by_the_hosting_user`,
   run on the machine of step 6.
