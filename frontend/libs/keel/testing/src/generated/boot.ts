@@ -240,13 +240,6 @@ export const BOOT_ONE: Boot = {
           icon: 'key',
         },
         {
-          path: 'system/plugins',
-          label: 'plugin.list.title',
-          func: 'plugin.list',
-          kind: 'list',
-          icon: 'puzzle',
-        },
-        {
           path: 'system/peers',
           label: 'peer.list.title',
           func: 'peer.list',

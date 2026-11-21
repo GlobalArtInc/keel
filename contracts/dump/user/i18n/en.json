@@ -1202,49 +1202,6 @@
         "valid": "Valid"
       }
     },
-    "plugin": {
-      "action": {
-        "disable": "Disable",
-        "enable": "Enable"
-      },
-      "column": {
-        "enabled": "Enabled",
-        "id": "Plugin",
-        "level": "Level",
-        "reason": "Reason",
-        "status": "Status",
-        "version": "Version"
-      },
-      "confirm": {
-        "disable": "Disable the plugin {id}? The service restarts without it; its principal and its stored data stay in place, and it can be enabled again.",
-        "enable": "Enable the plugin {id}? The service restarts to load it, and its principal holds the level its manifest asks for."
-      },
-      "empty": "No plugin is installed in the plugins directory",
-      "error": {
-        "answer": "The plugin {plugin} gave an answer that cannot be used",
-        "failing": "The plugin {plugin} is paused after repeated failures and is tried again after a quiet period",
-        "frame": "The plugin {plugin} sent a frame the kernel does not take",
-        "id": "{id} is not a plugin id",
-        "invoke": "The plugin {plugin} may not call {function}",
-        "level": "The plugin {id} asks for the level {level}, which a plugin may not hold",
-        "manifest": "The manifest of the plugin {id} cannot be used: {reason}",
-        "not_started": "The plugin module has not started",
-        "stopped": "The plugin {plugin} has stopped and is not restarted",
-        "too_large": "A frame of the plugin {plugin} is above {limit} bytes",
-        "unavailable": "The plugin {plugin} does not answer yet",
-        "unknown": "There is no plugin {id}"
-      },
-      "failing": "The plugin {plugin} is failing: {reason}",
-      "list": {
-        "title": "Plugins"
-      },
-      "refused": "The plugin {plugin} was not loaded: {reason}",
-      "status": {
-        "loaded": "Loaded",
-        "refused": "Refused",
-        "unloaded": "Not loaded"
-      }
-    },
     "settings": {
       "action": {
         "set": "Change"

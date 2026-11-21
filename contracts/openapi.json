@@ -18434,404 +18434,6 @@
         }
       }
     },
-    "/api/v1/call/plugin.disable": {
-      "post": {
-        "operationId": "plugin.disable",
-        "tags": [
-          "plugin"
-        ],
-        "x-keel": {
-          "kind": "action",
-          "mode": "write",
-          "access": {
-            "level": "admin"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "title": "PluginPick",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
-                  }
-                },
-                "required": [
-                  "id"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The call completed; data is shaped by the result schema of the function.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    },
-                    "data": {
-                      "title": "PluginChange",
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "changed": {
-                          "type": "boolean"
-                        },
-                        "restart": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "changed",
-                        "restart"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "ok",
-                    "data",
-                    "meta"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/call/plugin.enable": {
-      "post": {
-        "operationId": "plugin.enable",
-        "tags": [
-          "plugin"
-        ],
-        "x-keel": {
-          "kind": "action",
-          "mode": "write",
-          "access": {
-            "level": "admin"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "title": "PluginPick",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
-                  }
-                },
-                "required": [
-                  "id"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The call completed; data is shaped by the result schema of the function.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    },
-                    "data": {
-                      "title": "PluginChange",
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "changed": {
-                          "type": "boolean"
-                        },
-                        "restart": {
-                          "type": "boolean"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "changed",
-                        "restart"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "ok",
-                    "data",
-                    "meta"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/call/plugin.get": {
-      "post": {
-        "operationId": "plugin.get",
-        "tags": [
-          "plugin"
-        ],
-        "x-keel": {
-          "kind": "get",
-          "mode": "read",
-          "access": {
-            "level": "admin"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "title": "PluginPick",
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]{0,63}$"
-                  }
-                },
-                "required": [
-                  "id"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The call completed; data is shaped by the result schema of the function.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    },
-                    "data": {
-                      "title": "PluginDetail",
-                      "type": "object",
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "version": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "level": {
-                          "anyOf": [
-                            {
-                              "$ref": "#/components/schemas/Level"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "enabled": {
-                          "type": "boolean"
-                        },
-                        "status": {
-                          "$ref": "#/components/schemas/plugin.get.result.Status"
-                        },
-                        "reason": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "mode": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "storage": {
-                          "type": "boolean"
-                        },
-                        "functions": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "observe": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "hook": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "patch": {
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "enabled",
-                        "status",
-                        "storage",
-                        "functions",
-                        "observe",
-                        "hook",
-                        "patch"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "ok",
-                    "data",
-                    "meta"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/call/plugin.list": {
-      "post": {
-        "operationId": "plugin.list",
-        "tags": [
-          "plugin"
-        ],
-        "x-keel": {
-          "kind": "list",
-          "mode": "read",
-          "access": {
-            "level": "admin"
-          }
-        },
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ListQuery"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The call completed; data is shaped by the result schema of the function.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    },
-                    "data": {
-                      "title": "Page_PluginRow",
-                      "type": "object",
-                      "properties": {
-                        "data": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "#/components/schemas/PluginRow"
-                          }
-                        },
-                        "total": {
-                          "type": "integer",
-                          "format": "uint64",
-                          "minimum": 0
-                        },
-                        "totals": {
-                          "type": [
-                            "object",
-                            "null"
-                          ],
-                          "additionalProperties": true
-                        }
-                      },
-                      "required": [
-                        "data",
-                        "total"
-                      ]
-                    },
-                    "meta": {
-                      "$ref": "#/components/schemas/Meta"
-                    }
-                  },
-                  "required": [
-                    "ok",
-                    "data",
-                    "meta"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/api/v1/call/settings.brand.delete": {
       "post": {
         "operationId": "settings.brand.delete",
@@ -23606,7 +23208,7 @@
             "type": "string"
           },
           "status": {
-            "$ref": "#/components/schemas/keel.doctor.run.result.Status"
+            "$ref": "#/components/schemas/Status"
           },
           "message": {
             "type": "string"
@@ -25056,47 +24658,6 @@
           }
         }
       },
-      "PluginRow": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "version": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "level": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Level"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "status": {
-            "$ref": "#/components/schemas/plugin.get.result.Status"
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "enabled",
-          "status"
-        ]
-      },
       "Principal": {
         "type": "object",
         "properties": {
@@ -25705,6 +25266,14 @@
           "desc"
         ]
       },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "warn",
+          "fail"
+        ]
+      },
       "Subscription": {
         "type": "object",
         "properties": {
@@ -26242,14 +25811,6 @@
           }
         ]
       },
-      "keel.doctor.run.result.Status": {
-        "type": "string",
-        "enum": [
-          "ok",
-          "warn",
-          "fail"
-        ]
-      },
       "keel.logs.tail.result.Entry": {
         "type": "object",
         "properties": {
@@ -26524,14 +26085,6 @@
           "source",
           "unread",
           "createdAt"
-        ]
-      },
-      "plugin.get.result.Status": {
-        "type": "string",
-        "enum": [
-          "loaded",
-          "refused",
-          "unloaded"
         ]
       },
       "stats.keys.result.Scope": {
