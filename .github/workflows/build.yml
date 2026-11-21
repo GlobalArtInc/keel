@@ -75,7 +75,7 @@ jobs:
         run: pnpm build
 
       - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin
+        run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin --no-default-features --features dns,panel
 
       - name: The binary is static
         run: |
