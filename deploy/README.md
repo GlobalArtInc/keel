@@ -22,7 +22,7 @@ root boundary in [../docs/design/06-host.md](../docs/design/06-host.md).
 ## Installing
 
 ```
-curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product demo --yes
+curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product dns --yes
 ```
 
 The script is bash; piped into a plain `sh` it stops at once and prints this line instead of
@@ -50,6 +50,9 @@ Flags:
 
 The installer prints the https address, the certificate fingerprint and the one-time setup link
 at the end. Every step announces itself with `==>`; a failure names the step and exits non-zero.
+
+The binary of the channel and the artifact of the Build workflow carry `dns` and `panel` and no
+`demo`; a plain `cargo build --release -p keel-bin` carries the default features, `demo` among them.
 
 A build that is not on the channel, the artifact `keel-<sha>-x86_64-linux-musl.tar.zst` of the
 Build workflow (`gh run download --repo GlobalArtInc/keel --name keel-x86_64-linux-musl`) or a
