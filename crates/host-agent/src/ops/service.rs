@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::Call;
-use crate::policy::{is_pattern, service_matches};
+use crate::policy::{is_pattern, service_matches, tool};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_RELOAD_FAILED, ERROR_VALIDATE_FAILED, Failure};
 
@@ -48,8 +48,7 @@ pub(super) fn start(call: &Call<'_>, args: Action) -> Result<Value, Failure> {
 
 pub(super) fn stop(call: &Call<'_>, args: Unit) -> Result<Value, Failure> {
     call.service(&args.name)?;
-    control(call, "stop", &args.name)
-        .map_err(|detail| Failure::new(ERROR_RELOAD_FAILED, detail))?;
+    control(call, "stop", &args.name).map_err(|failure| failure.rekeyed(ERROR_RELOAD_FAILED))?;
     Ok(json!({ "name": args.name, "stop": true }))
 }
 
@@ -57,9 +56,10 @@ fn act(call: &Call<'_>, verb: &str, args: Action) -> Result<Value, Failure> {
     call.service(&args.name)?;
     if let Some(check) = &args.validate {
         let argv = call.check(check)?;
-        check_passes(argv).map_err(|detail| Failure::new(ERROR_VALIDATE_FAILED, detail))?;
+        check_passes(call, check, argv)
+            .map_err(|failure| failure.rekeyed(ERROR_VALIDATE_FAILED))?;
     }
-    control(call, verb, &args.name).map_err(|detail| Failure::new(ERROR_RELOAD_FAILED, detail))?;
+    control(call, verb, &args.name).map_err(|failure| failure.rekeyed(ERROR_RELOAD_FAILED))?;
     Ok(json!({ "name": args.name, verb: true }))
 }
 
@@ -71,7 +71,7 @@ pub(super) fn list(call: &Call<'_>, (): ()) -> Result<Value, Failure> {
     }
     let mut argv: Vec<&str> = vec!["is-active"];
     argv.extend(units.iter().map(String::as_str));
-    let output = process::run(systemctl, &argv)?;
+    let output = process::run(systemctl, &argv, call.policy.timeout(tool::SYSTEMCTL))?;
     let text = process::stdout(&output);
     let states: Vec<&str> = text.lines().collect();
     if states.len() != units.len() {
@@ -102,7 +102,7 @@ pub(super) fn status(call: &Call<'_>, (): ()) -> Result<Value, Failure> {
     }
     let mut argv: Vec<&str> = vec!["show", TIMESTAMP_UNIX, PROPERTIES];
     argv.extend(units.iter().map(String::as_str));
-    let output = process::run(systemctl, &argv)?;
+    let output = process::run(systemctl, &argv, call.policy.timeout(tool::SYSTEMCTL))?;
     if !output.status.success() {
         return Err(Failure::new(
             ERROR_EXEC_FAILED,
@@ -132,11 +132,10 @@ pub(super) fn status(call: &Call<'_>, (): ()) -> Result<Value, Failure> {
 }
 
 fn units(call: &Call<'_>) -> Result<Vec<String>, Failure> {
-    let systemctl = &call.policy.tools().systemctl;
     let mut units: Vec<String> = Vec::new();
     for entry in call.policy.services() {
         if is_pattern(entry) {
-            for unit in installed(systemctl, entry)? {
+            for unit in installed(call, entry)? {
                 if !units.contains(&unit) {
                     units.push(unit);
                 }
@@ -197,7 +196,8 @@ fn described(name: &str, properties: &BTreeMap<&str, &str>) -> Value {
     })
 }
 
-fn installed(systemctl: &Path, entry: &str) -> Result<Vec<String>, Failure> {
+fn installed(call: &Call<'_>, entry: &str) -> Result<Vec<String>, Failure> {
+    let systemctl = &call.policy.tools().systemctl;
     let pattern = format!("{entry}{SERVICE_SUFFIX}");
     let output = process::run(
         systemctl,
@@ -207,6 +207,7 @@ fn installed(systemctl: &Path, entry: &str) -> Result<Vec<String>, Failure> {
             "--type=service",
             pattern.as_str(),
         ],
+        call.policy.timeout(tool::SYSTEMCTL),
     )?;
     if !output.status.success() {
         return Err(Failure::new(
@@ -223,26 +224,36 @@ fn installed(systemctl: &Path, entry: &str) -> Result<Vec<String>, Failure> {
         .collect())
 }
 
-pub(super) fn check_passes(argv: &[String]) -> Result<(), String> {
+pub(super) fn check_passes(call: &Call<'_>, name: &str, argv: &[String]) -> Result<(), Failure> {
     let (program, rest) = argv
         .split_first()
-        .ok_or_else(|| "the check has no command".to_owned())?;
-    let program = std::path::Path::new(program);
-    let output = process::run(program, rest).map_err(|failure| failure.detail)?;
+        .ok_or_else(|| Failure::new(ERROR_EXEC_FAILED, "the check has no command"))?;
+    let program = Path::new(program);
+    let output = process::run(program, rest, call.policy.timeout(name))?;
     if output.status.success() {
         Ok(())
     } else {
-        Err(process::detail(program, &output))
+        Err(Failure::new(
+            ERROR_EXEC_FAILED,
+            process::detail(program, &output),
+        ))
     }
 }
 
-pub(super) fn control(call: &Call<'_>, verb: &str, unit: &str) -> Result<(), String> {
+pub(super) fn control(call: &Call<'_>, verb: &str, unit: &str) -> Result<(), Failure> {
     let systemctl = &call.policy.tools().systemctl;
-    let output = process::run(systemctl, [verb, unit]).map_err(|failure| failure.detail)?;
+    let output = process::run(
+        systemctl,
+        [verb, unit],
+        call.policy.timeout(tool::SYSTEMCTL),
+    )?;
     if output.status.success() {
         Ok(())
     } else {
-        Err(process::detail(systemctl, &output))
+        Err(Failure::new(
+            ERROR_EXEC_FAILED,
+            process::detail(systemctl, &output),
+        ))
     }
 }
 

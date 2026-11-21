@@ -2,6 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::unix::fs::{OpenOptionsExt, fchown};
 use std::path::Path;
+use std::time::Duration;
 
 use nix::fcntl::OFlag;
 use serde::Deserialize;
@@ -29,11 +30,12 @@ pub(super) fn exec(call: &Call<'_>, args: Exec) -> Result<Value, Failure> {
     let (program, rest) = argv
         .split_first()
         .ok_or_else(|| Failure::policy(format!("the entry {} has no binary", args.name)))?;
+    let timeout = call.policy.timeout(&args.name);
     if let Some(dest) = &args.dest {
-        let bytes = capture(call, dest, Path::new(program), rest, false)?;
+        let bytes = capture(call, dest, Path::new(program), rest, false, timeout)?;
         return Ok(json!({ "bytes": bytes }));
     }
-    let output = process::succeed(Path::new(program), rest)?;
+    let output = process::succeed(Path::new(program), rest, timeout)?;
     Ok(json!({ "output": process::stdout(&output) }))
 }
 
@@ -43,9 +45,10 @@ pub(super) fn capture(
     program: &Path,
     args: &[String],
     sealed: bool,
+    timeout: Duration,
 ) -> Result<u64, Failure> {
     capture_with(call, dest, sealed, |file| {
-        process::into_file(program, args, file).map(drop)
+        process::into_file(program, args, file, timeout).map(drop)
     })
 }
 

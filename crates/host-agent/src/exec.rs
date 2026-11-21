@@ -63,7 +63,7 @@ fn account(policy: &Policy, target: &Target) -> Result<User, ExecError> {
             to: range.to,
         });
     }
-    let account = Accounts::new(&policy.tools().getent)
+    let account = Accounts::new(policy)
         .user(&target.uid.to_string())
         .map_err(|failure| ExecError::Lookup {
             uid: target.uid,

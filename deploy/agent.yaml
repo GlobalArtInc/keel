@@ -8,3 +8,5 @@ policy:
     bill: { drop_in_prefix: keel-bill- }
     dns: { drop_in_prefix: keel-dns- }
     panel: { user_prefix: hp_, account_roots: [ftp-users], classes: { backup: { archives: backups, homes: www, maildirs: maildirs, dumps: dumps } }, drop_in_prefix: keel-panel- }
+  timeouts: { default_seconds: 120, tools: { apt_get: 1800, certbot: 600, keel: 600, mariadb: 3600, mariadb-dump: 3600, mail.archive: 3600 } }
+  packages: { allow: [curl, ca-certificates, openssl, zstd, postgresql, nginx, php-fpm, mariadb-server, mariadb-client, postfix, dovecot-core, dovecot-imapd, dovecot-lmtpd, vsftpd, libpam-pwdfile] }

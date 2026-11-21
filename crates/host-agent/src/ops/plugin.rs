@@ -19,7 +19,7 @@ use super::home::{AGENT_EXEC, text};
 use super::user::{self, Create, inside};
 use super::{Call, Context, parse, valid_account_name};
 use crate::accounts::{Accounts, User};
-use crate::policy::{Plugins, Product};
+use crate::policy::{Plugins, Product, tool};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_NOT_FOUND, Failure, Request};
 
@@ -178,14 +178,14 @@ pub(crate) fn sweep(context: &Context, plugin: &str) -> Result<(), Failure> {
         return Ok(());
     };
     let name = account_name(plugins, plugin)?;
-    let Some(user) = Accounts::new(&context.policy.tools().getent).user(&name)? else {
+    let Some(user) = Accounts::new(&context.policy).user(&name)? else {
         return Ok(());
     };
     let mut argv = exec_argv(context, &user)?;
     argv.push(text(&context.policy.tools().kill)?);
     argv.extend(SWEEP.iter().map(|word| (*word).to_owned()));
     let keel = &context.policy.tools().keel;
-    let output = process::run(keel, &argv)?;
+    let output = process::run(keel, &argv, context.policy.timeout(tool::KILL))?;
     if output.status.success() || nothing_left(&output.stderr) {
         return Ok(());
     }
@@ -261,14 +261,12 @@ pub(crate) fn prepare(context: &Context, request: &Request) -> Result<Prepared, 
     let args: Spawn = parse(&request.args)?;
     let plugins = section(context)?;
     let name = account_name(plugins, &args.plugin)?;
-    let user = Accounts::new(&context.policy.tools().getent)
-        .user(&name)?
-        .ok_or_else(|| {
-            Failure::new(
-                ERROR_NOT_FOUND,
-                format!("{name} is not an account of this host"),
-            )
-        })?;
+    let user = Accounts::new(&context.policy).user(&name)?.ok_or_else(|| {
+        Failure::new(
+            ERROR_NOT_FOUND,
+            format!("{name} is not an account of this host"),
+        )
+    })?;
     let mut argv = exec_argv(context, &user)?;
     if args.cmd.len() > ARG_LIMIT
         || args

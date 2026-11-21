@@ -42,8 +42,10 @@ by deploy/install.sh, run as root. It expects $UNIT running the
 binary of this step, built with the demo bundle, and python3 for the client.
 It keeps the installed policy as $POLICY_BACKUP, writes a proof
 policy with the same uid_range (named.check, the notes root $NOTES_DIR,
-the check note.digest, an exec_allow entry keel.version and a demo section
-granted the policy class note) and restarts $UNIT; --cleanup puts
+the check note.digest, an exec_allow entry keel.version, a packages
+allowlist of $PROOF_PACKAGE and of the three names $PROOF_PACKAGE-, $PROOF_PACKAGE+ and
+$PROOF_PACKAGE. that the refusal checks send, and a demo section granted the policy class
+note) and restarts $UNIT; --cleanup puts
 the installed policy back. It installs bind9 from the distribution when no
 named is present and records that for --cleanup. As the user keel it sends frames of
 the agent protocol to $SOCKET: an operating-system user is created
@@ -218,6 +220,7 @@ policy:
   services: [named, nginx, php8.3-fpm]
   checks: { nginx.test: ["nginx", "-t"], named.check: ["named-checkconf", "-z"], note.digest: ["grep", "-q", "Notes", "$NOTES_DIR/$DIGEST_FILE"] }
   exec_allow: [certbot, quotatool, { keel.version: ["$KEEL", "--version"] }]
+  packages: { allow: ["$PROOF_PACKAGE", "$PROOF_PACKAGE-", "$PROOF_PACKAGE+", "$PROOF_PACKAGE."] }
   products:
     bill: { drop_in_prefix: keel-bill- }
     demo: { user_prefix: kd_, drop_in_prefix: keel-demo-, classes: { note: { root: notes } } }

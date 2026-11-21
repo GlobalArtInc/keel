@@ -16,6 +16,7 @@ pub(crate) const ERROR_EXEC_FAILED: &str = "host.error.exec_failed";
 pub(crate) const ERROR_IO: &str = "host.error.io";
 pub(crate) const ERROR_UNAVAILABLE: &str = "host.error.unavailable";
 pub(crate) const ERROR_EXISTS: &str = "host.error.exists";
+pub(crate) const ERROR_TIMEOUT: &str = "host.error.timeout";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -68,6 +69,14 @@ impl Failure {
 
     pub(crate) fn io(what: impl std::fmt::Display, error: &std::io::Error) -> Self {
         Self::new(ERROR_IO, format!("{what}: {error}"))
+    }
+
+    pub(crate) fn rekeyed(self, key: &str) -> Self {
+        if self.key == ERROR_TIMEOUT {
+            self
+        } else {
+            Self::new(key, self.detail)
+        }
     }
 }
 

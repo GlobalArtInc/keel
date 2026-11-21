@@ -149,7 +149,9 @@ enabled bundle names `host` in its `modules`, and product modules that need the 
   `unavailable` is `unavailable`, and any other key, a product operation's own included, is
   `internal`. The client adds `host.error.unreachable` (the socket is missing, refuses, or closes
   without an answer, which is how the agent turns away a peer it does not admit) and
-  `host.error.timeout`, both `unavailable`.
+  `host.error.timeout`, both `unavailable`; the agent answers `host.error.timeout` itself when a
+  process it runs outlasts its limit of the `timeouts` section, so a limit above the client
+  timeout is never reached by a caller that waits for the answer.
 - the `host` module, `keel_host::MODULE` — an ordinary `ModuleDef` with id `host`. It registers
   `dyn HostExecutor` as a service and reads its own section of `config.yaml` through
   `ConfigSection`: `socket` (absolute, default `/run/keel/agent.sock`) and `timeout_seconds`
@@ -198,7 +200,7 @@ and a policy that constrains it. There is no "run this command" operation with f
 | `host.fs.*` | files and directories | path policy from `file_roots`; writes go through a temporary file and rename |
 | `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → swap → validate → reload → rollback, the check running with the file in place; see "Configuration templates" |
 | `host.service.*` | reload, restart, list, and since M5 start, stop and status | only units named in `services`, an entry carrying at most one `*` that stands for a version of digits and dots (`php*-fpm`), expanded over `systemctl list-unit-files`; `systemctl` is executed as a process, without D-Bus, so the binary stays a musl static build; start and reload take an optional check; status runs one `systemctl show --timestamp=unix` for `LoadState`, `ActiveState`, `MemoryCurrent` and `ActiveEnterTimestamp` and answers `name`, `state`, `installed`, `memory` in bytes (`null` without accounting) and `since`, the start in unix seconds (`null` unless active) |
-| `host.pkg.*` | packages: install, remove, get, refresh | `apt-get` with a fixed argument vector and `APT::Cmd::Pattern-Only=true`, each name taken as that package and never as a pattern or a trailing `+` or `-` action; `changes` lists every requested package whose installed version moved, read from `dpkg-query` before and after; no allowlist in M4 |
+| `host.pkg.*` | packages: install, remove, get, refresh | `apt-get` with a fixed argument vector and `APT::Cmd::Pattern-Only=true`, each name taken as that package and never as a pattern or a trailing `+` or `-` action, and only a package of `packages.allow`; `changes` lists every requested package whose installed version moved, read from `dpkg-query` before and after |
 | `host.cron.*` | scheduled jobs on the host | drop-ins in `/etc/cron.d` under the product's `drop_in_prefix`, mode `0644`, written through a temporary file and a rename; a job runs an entry of `exec_allow`, never a command, as `keel` or as one of the product's own users, never as root; five fields or a nickname |
 | `host.quota.*` | disk quotas | `setquota` and `repquota`; `host.error.unavailable` on a host without them |
 | `host.exec` | run an external binary | only entries of `exec_allow`: a name runs without arguments, `name: [binary, arguments…]` with exactly that vector; with a `dest` the output goes into a fresh file of a root, created with `O_EXCL` and `O_NOFOLLOW`, owned by the calling uid with mode `0600` |
@@ -239,7 +241,9 @@ adds libvirt operations, a data-centre product adds ipmi operations, and neither
 host.op::<VmCreateArgs, VmRef>("vm.libvirt.create", &args).await?;
 ```
 
-Product operations follow the same rules as built-in ones: typed arguments, resource identifiers
+Product operations follow the same rules as built-in ones: typed arguments, in which an unknown
+field is an error whatever attributes the product's type carries (a flattened field, a map value
+and an enum tagged internally or left untagged are not checked), resource identifiers
 rather than free paths or argument vectors, a policy class the agent checks the call against, and
 a journald record per call. The policy class (`vm` in the example) is the name under which the
 policy constrains the operation: the product's section of `agent.yaml` grants it under
@@ -269,6 +273,8 @@ policy:
     bill: { drop_in_prefix: keel-bill- }
     dns: { drop_in_prefix: keel-dns- }
     panel: { user_prefix: hp_, account_roots: [ftp-users], classes: { backup: { archives: backups, homes: www, maildirs: maildirs, dumps: dumps } }, drop_in_prefix: keel-panel- }
+  timeouts: { default_seconds: 120, tools: { apt_get: 1800, certbot: 600, keel: 600, mariadb: 3600, mariadb-dump: 3600, mail.archive: 3600 } }
+  packages: { allow: [curl, ca-certificates, openssl, zstd, postgresql, nginx, php-fpm, mariadb-server, mariadb-client, postfix, dovecot-core, dovecot-imapd, dovecot-lmtpd, vsftpd, libpam-pwdfile] }
 ```
 
 This is `deploy/agent.yaml` as the release ships it; the installer writes the range it allotted
@@ -283,6 +289,8 @@ over `uid_range`.
 | `exec_allow` | entries `host.exec` and cron jobs may run: a binary name, or `name: [binary, arguments…]`; a name appearing twice fails the policy |
 | `tools` | the paths of the tools the agent runs, each with a default: `systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`, the `shells` file, `apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `cron_dir`, `kill`, which `host.plugin.stop` runs under a plugin's account to end every process of it, and `keel`, the binary `host.home.*` re-executes, `/proc/self/exe` by default; the tests point them at stubs |
 | `products` | a section per product id: `user_prefix`, the prefix of the operating-system user names the agent creates and manages for that product; `drop_in_prefix`, the prefix of that product's own files in include directories; `account_roots`, the file roots whose file names are account names under `user_prefix` instead of names under `drop_in_prefix` (the per-login files of vsftpd), each of them a file root of a product with a `user_prefix`; `classes`, the policy classes of its `AgentOp` contributions. The agent applies the section named by the `product` field of the request and refuses a request whose product has no section; the `host.plugin.*` operations alone take the `plugins` section in its place, under the product `plugin`, which has no section. |
+| `timeouts` | `{ default_seconds, tools }`: the seconds every process an operation runs may take, `default_seconds` for all but the tools named in `tools`, 120 when the section is missing. A tool is named as the policy names it: a check, an entry of `exec_allow`, or one of the tools the agent runs (`systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`, `apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `kill`, `keel`); a name the policy does not know, zero and more than 86400 fail the policy. When the time passes the process and its process group are killed, the lock is released, and the operation answers `host.error.timeout`, which its journal line carries as the outcome. A tool whose stdout and stderr together exceed 16 MiB, the frame limit of the client, is killed and answers `host.error.io`; a tool that exits while a descendant still holds its pipes returns what it wrote after a grace of 2 seconds, the agent logs a warning, and the descendant is left running |
+| `packages` | `{ allow }`: the package names `host.pkg.install`, `remove` and `get` accept, each a valid package name; a request naming another package is refused with `host.error.policy` before any tool runs, and without the section no package is allowed |
 | `plugins` | `{ root, user_prefix }`: `root`, the directory holding one directory per plugin, `/var/lib/keel/plugins` as shipped; `user_prefix`, the prefix of the plugin accounts, `kp_` as shipped, refused when it is a prefix of the `user_prefix` of a product or that one of it, so a plugin account is never a product's account; a plugin id longer than 29 characters gives no account name and its start fails; without the section every `host.plugin.*` operation answers `host.error.policy` |
 
 The placement rules hold for every file the agent writes. The root of `file_roots` is
@@ -294,8 +302,9 @@ a directory; nothing carries the setuid bit, a file carries no setgid bit and ne
 other-write bit, and a directory carries the other-write bit only with the sticky bit. A file the
 agent reads for `host.fs.read`, `host.fs.write` or `host.template.apply` is read up to 8 MiB and
 refused beyond. Operations run one at a time behind one lock, every tool runs with a cleared
-environment and a fixed `PATH`, and account lookups go through `getent` as a process, so the
-static build is not tied to the C library's name service. A service name starting with `-` never
+environment, a fixed `PATH` and a process group of its own, which a timeout kills whole, and
+account lookups go through `getent` as a process, so the static build is not tied to the C
+library's name service. A service name starting with `-` never
 reaches `systemctl`.
 
 Everything outside the policy is refused. The agent does not hold a copy of the kernel's principal
@@ -473,15 +482,22 @@ world-writable placements, unbounded reads, the frame fields in the journal, the
 read twice by path, a request moving to an older version, the unpacker counting the ustar size
 where tar reads the PAX size, and group or other write bits in an archive. The frame parser and
 the manifest verifier are fuzzed by bounded property tests (`proptest`) in the ordinary test run,
-since the runner has no nightly toolchain for a coverage-guided fuzzer. Left without a fix, and
-recorded in the M4 exit checklist of [../plan.md](../plan.md): a process the agent runs has no
-timeout, so a hung check holds the lock for every later operation; `host.pkg.*` has no allowlist;
-the owner of a placement may be any account of the host, since `bind` has to own zone files; the
-channel admits `http://` and a head manifest carries no expiry, so a man in the middle can replay
-an older signed head or withhold one, but not forge one; the unpacker has no bound on the number
-of entries, a finding that needs the signing key; and the arguments of a product operation are the
-product's types, which the SDK does not hold to `deny_unknown_fields`, the subject of the M7
-review.
+since the runner has no nightly toolchain for a coverage-guided fuzzer. Four findings it recorded
+as left open are closed since, each with a named test: a process an operation runs had no timeout, so
+a hung check held the lock for every later operation (`timeouts`,
+`a_process_past_its_timeout_is_killed_and_the_lock_released`); `host.pkg.*` had no allowlist
+(`packages`, `a_package_outside_the_allowlist_is_refused_and_journalled`); the unpacker had no
+bound on the number of entries, a finding that needs the signing key (at most 1024, counted before
+anything is extracted, `an_archive_with_too_many_entries_is_refused_by_the_unpacker`); and the
+arguments of a product operation are the product's types, which the SDK did not hold to
+`deny_unknown_fields` (`AgentOp` decodes them so that an unknown field is an error, in a struct
+reached through structs, options, sequences, tuples and externally tagged enums, and not inside a
+map value, a flattened field or an enum tagged internally or left untagged,
+`an_operation_with_an_unknown_argument_is_refused`). Left without a fix, and recorded in the M4
+exit checklist of [../plan.md](../plan.md): the owner of a placement may be any account of the
+host, since `bind` has to own zone files; and the channel admits `http://` and a head manifest
+carries no expiry, so a man in the middle can replay an older signed head or withhold one, but
+not forge one.
 
 The review of M5 went over the modules of `panel`, the license and the reset links. It fixed, each
 with a named test: overrides that could make nginx open or write any file, claim other names or

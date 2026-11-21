@@ -132,7 +132,13 @@ pub(super) fn exec(call: &Call<'_>, statement: Statement) -> Result<Value, Failu
 fn run(call: &Call<'_>, statement: &str, secret: Option<&str>) -> Result<Value, Failure> {
     let (program, args) = client(call)?;
     let script = format!("{SESSION}\n{statement}\n");
-    process::feed(program, &args, script.as_bytes()).map_err(|failure| redact(failure, secret))?;
+    process::feed(
+        program,
+        &args,
+        script.as_bytes(),
+        call.policy.timeout(CLIENT),
+    )
+    .map_err(|failure| redact(failure, secret))?;
     Ok(json!({}))
 }
 
@@ -140,7 +146,7 @@ fn dump(call: &Call<'_>, database: &str, dest: &Dest) -> Result<Value, Failure> 
     let (program, base) = entry(call, DUMP)?;
     let mut args = pinned(base, &[SKIP_COMMENTS, CHARSET]);
     args.push(database.to_owned());
-    let bytes = super::exec::capture(call, dest, program, &args, true)?;
+    let bytes = super::exec::capture(call, dest, program, &args, true, call.policy.timeout(DUMP))?;
     Ok(json!({ "bytes": bytes }))
 }
 
@@ -160,7 +166,7 @@ fn import(call: &Call<'_>, database: &str, source: &Dest) -> Result<Value, Failu
         .map_err(|error| Failure::io(path.display(), &error))?;
     seal::verify(&path, &mut file)?;
     args.push(database.to_owned());
-    process::from_file(program, &args, file)?;
+    process::from_file(program, &args, file, call.policy.timeout(CLIENT))?;
     Ok(json!({}))
 }
 

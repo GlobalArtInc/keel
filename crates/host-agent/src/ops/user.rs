@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{Call, Dest};
 use crate::accounts::User;
-use crate::policy::UidRange;
+use crate::policy::{UidRange, tool};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_NOT_FOUND, Failure};
 
@@ -95,7 +95,11 @@ pub(super) fn create(call: &Call<'_>, args: Create) -> Result<Value, Failure> {
             (group.gid, false)
         }
         None => {
-            process::succeed(&tools.groupadd, ["--gid", &id_text, &args.name])?;
+            process::succeed(
+                &tools.groupadd,
+                ["--gid", &id_text, &args.name],
+                call.policy.timeout(tool::GROUPADD),
+            )?;
             (id, true)
         }
     };
@@ -108,9 +112,15 @@ pub(super) fn create(call: &Call<'_>, args: Create) -> Result<Value, Failure> {
         None => argv.extend(["--home-dir", NO_HOME, "--no-create-home"]),
     }
     argv.push(&args.name);
-    if let Err(failure) = process::succeed(&tools.useradd, &argv) {
+    if let Err(failure) =
+        process::succeed(&tools.useradd, &argv, call.policy.timeout(tool::USERADD))
+    {
         if group_created {
-            let _ = process::run(&tools.groupdel, [args.name.as_str()]);
+            let _ = process::run(
+                &tools.groupdel,
+                [args.name.as_str()],
+                call.policy.timeout(tool::GROUPDEL),
+            );
         }
         return Err(failure);
     }
@@ -171,12 +181,16 @@ pub(super) fn delete(call: &Call<'_>, args: Delete) -> Result<Value, Failure> {
         argv.push("--remove");
     }
     argv.push(&args.name);
-    process::succeed(&tools.userdel, &argv)?;
+    process::succeed(&tools.userdel, &argv, call.policy.timeout(tool::USERDEL))?;
     if let Some(group) = accounts.group(&args.name)?
         && range.contains(group.gid)
         && group.members.is_empty()
     {
-        process::succeed(&tools.groupdel, [args.name.as_str()])?;
+        process::succeed(
+            &tools.groupdel,
+            [args.name.as_str()],
+            call.policy.timeout(tool::GROUPDEL),
+        )?;
     }
     Ok(json!({ "removed": true }))
 }
@@ -208,7 +222,11 @@ pub(super) fn modify(call: &Call<'_>, args: Modify) -> Result<Value, Failure> {
         None => {}
     }
     argv.push(&args.name);
-    process::succeed(&call.policy.tools().usermod, &argv)?;
+    process::succeed(
+        &call.policy.tools().usermod,
+        &argv,
+        call.policy.timeout(tool::USERMOD),
+    )?;
     let user = accounts
         .user(&args.name)?
         .ok_or_else(|| absent(&args.name))?;

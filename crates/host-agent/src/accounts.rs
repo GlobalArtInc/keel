@@ -1,5 +1,4 @@
-use std::path::Path;
-
+use crate::policy::{Policy, tool};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, Failure};
 
@@ -22,12 +21,12 @@ pub(crate) struct Group {
 }
 
 pub(crate) struct Accounts<'a> {
-    getent: &'a Path,
+    policy: &'a Policy,
 }
 
 impl<'a> Accounts<'a> {
-    pub(crate) fn new(getent: &'a Path) -> Self {
-        Self { getent }
+    pub(crate) fn new(policy: &'a Policy) -> Self {
+        Self { policy }
     }
 
     pub(crate) fn user(&self, key: &str) -> Result<Option<User>, Failure> {
@@ -56,14 +55,15 @@ impl<'a> Accounts<'a> {
     ) -> Result<Vec<T>, Failure> {
         let mut args = vec![database, "--"];
         args.extend(key);
-        let output = process::run(self.getent, &args)?;
+        let getent = &self.policy.tools().getent;
+        let output = process::run(getent, &args, self.policy.timeout(tool::GETENT))?;
         if !output.status.success() {
             if output.status.code() == Some(NOT_FOUND) && key.is_some() {
                 return Ok(Vec::new());
             }
             return Err(Failure::new(
                 ERROR_EXEC_FAILED,
-                process::detail(self.getent, &output),
+                process::detail(getent, &output),
             ));
         }
         Ok(process::stdout(&output).lines().filter_map(parse).collect())

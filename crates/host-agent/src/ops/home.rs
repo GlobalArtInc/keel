@@ -3,6 +3,7 @@ use std::io;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
+use std::time::Duration;
 
 use nix::fcntl::OFlag;
 use serde::Deserialize;
@@ -15,6 +16,7 @@ use crate::home::{
     CHMOD, EXIT_EXISTS, EXIT_IO, EXIT_KIND, EXIT_NOT_FOUND, EXIT_OUTSIDE, EXIT_USAGE, HOME_FLAG,
     LIST, MKDIR, READ, REMOVE, RENAME, SUBCOMMAND, WRITE, parse_mode,
 };
+use crate::policy::tool;
 use crate::process;
 use crate::protocol::{
     ERROR_ARGS, ERROR_EXEC_FAILED, ERROR_EXISTS, ERROR_IO, ERROR_NOT_FOUND, ERROR_POLICY, Failure,
@@ -89,6 +91,7 @@ pub(super) fn list(call: &Call<'_>, args: Folder) -> Result<Value, Failure> {
     let output = settle(process::run(
         &call.policy.tools().keel,
         worker(call, &account, LIST, &[&dir])?,
+        limit(call),
     )?)?;
     serde_json::from_slice(&output.stdout)
         .map_err(|error| Failure::new(ERROR_EXEC_FAILED, format!("{SUBCOMMAND} {LIST}: {error}")))
@@ -124,7 +127,11 @@ pub(super) fn chmod(call: &Call<'_>, args: Chmod) -> Result<Value, Failure> {
     let path = locate(&account, &args.path, Follow::Target)?;
     let mut operands = worker(call, &account, CHMOD, &[&path])?;
     operands.push(format!("{mode:03o}"));
-    settle(process::run(&call.policy.tools().keel, operands)?)?;
+    settle(process::run(
+        &call.policy.tools().keel,
+        operands,
+        limit(call),
+    )?)?;
     Ok(json!({}))
 }
 
@@ -134,7 +141,14 @@ pub(super) fn read(call: &Call<'_>, args: Read) -> Result<Value, Failure> {
     let argv = worker(call, &account, READ, &[&path])?;
     let keel = &call.policy.tools().keel;
     let bytes = capture_with(call, &args.dest, false, |file| {
-        settle(process::redirected(keel, &argv, Stdio::null(), file)?).map(drop)
+        settle(process::redirected(
+            keel,
+            &argv,
+            Stdio::null(),
+            file,
+            limit(call),
+        )?)
+        .map(drop)
     })?;
     Ok(json!({ "bytes": bytes }))
 }
@@ -154,6 +168,7 @@ pub(super) fn write(call: &Call<'_>, args: Write) -> Result<Value, Failure> {
         &argv,
         input,
         Stdio::piped(),
+        limit(call),
     )?)?;
     Ok(json!({ "bytes": bytes }))
 }
@@ -302,8 +317,13 @@ fn run(
     settle(process::run(
         &call.policy.tools().keel,
         worker(call, account, op, operands)?,
+        limit(call),
     )?)?;
     Ok(json!({}))
+}
+
+fn limit(call: &Call<'_>) -> Duration {
+    call.policy.timeout(tool::KEEL)
 }
 
 fn settle(output: Output) -> Result<Output, Failure> {
