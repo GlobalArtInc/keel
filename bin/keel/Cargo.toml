@@ -16,13 +16,14 @@ demo = ["dep:keel-demo"]
 demo-host = ["demo", "keel-demo/host"]
 dns = ["dep:keel-dns"]
 panel = ["dep:keel-panel"]
+plugins = ["keel-system/plugins"]
 
 [dependencies]
 keel = { workspace = true }
 keel-demo = { workspace = true, optional = true }
 keel-dns = { workspace = true, optional = true }
 keel-panel = { workspace = true, optional = true }
-keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup", "peers", "svc", "stats", "plugins"] }
+keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "webhooks", "license", "update", "backup", "peers", "svc", "stats"] }
 
 [dev-dependencies]
 keel-testkit = { workspace = true }

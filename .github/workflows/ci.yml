@@ -189,6 +189,9 @@ jobs:
       - name: The binary with the panel bundle alone
         run: cargo build -p keel-bin --no-default-features --features panel
 
+      - name: The binary with the plugin host
+        run: cargo check -p keel-bin --features plugins
+
       - name: Build the binary with the demo bundle
         run: cargo build -p keel-bin
 

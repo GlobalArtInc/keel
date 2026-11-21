@@ -590,13 +590,7 @@ policy:
             Some(Path::new("/var/lib/keel-panel-transfer"))
         );
         assert_eq!(policy.tools().keel, Path::new("/proc/self/exe"));
-        assert_eq!(
-            policy.plugins(),
-            Some(&Plugins {
-                root: PathBuf::from("/var/lib/keel/plugins"),
-                user_prefix: "kp_".to_owned(),
-            })
-        );
+        assert_eq!(policy.plugins(), None);
         assert_eq!(
             policy
                 .exec("mariadb")

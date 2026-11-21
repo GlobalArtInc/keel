@@ -846,4 +846,76 @@ mod demo {
         );
         site.finish().await;
     }
+
+    #[cfg(not(feature = "plugins"))]
+    #[tokio::test]
+    async fn a_binary_without_the_plugins_feature_has_no_plugin_functions() {
+        let site = site().await;
+        let log_file = std::fs::File::create(site.dir.path().join("serve.log"))
+            .expect("the log file is created");
+        let stderr = log_file.try_clone().expect("the log file handle is cloned");
+        let mut serve = tokio::process::Command::from(site.command(&["serve"]))
+            .stdout(Stdio::from(log_file))
+            .stderr(stderr)
+            .kill_on_drop(true)
+            .spawn()
+            .expect("keel serve starts");
+        wait_for_socket(&site.socket, &mut serve).await;
+
+        let created = site.ok(&[
+            "ctl",
+            "keel.principal.create",
+            "login=root",
+            "level=admin",
+            "account=00000000000000000000000000",
+        ]);
+        let created: Value = serde_json::from_str(&created).expect("an envelope");
+        let id = created["data"]["id"].as_str().expect("a principal id");
+        site.ok(&[
+            "ctl",
+            "auth.password.set",
+            &format!("principal={id}"),
+            "password=correct horse battery",
+        ]);
+        let login = json!({ "login": "root", "password": "correct horse battery" });
+        let (status, head, body) =
+            fetch(&site, "POST", "/api/v1/call/auth.login", &login.to_string()).await;
+        assert_eq!(status, 200, "{body}");
+        let cookie = header_of(&head, "set-cookie")
+            .and_then(|value| value.split(';').next())
+            .expect("a session cookie");
+        let response = client(&site)
+            .get(format!("https://{}/api/v1/functions", site.listen))
+            .header("host", "keel.test")
+            .header("cookie", cookie)
+            .send()
+            .await
+            .expect("the listener answers over TLS");
+        assert_eq!(response.status().as_u16(), 200);
+        let functions: Value = response.json().await.expect("a JSON list");
+        let names: Vec<&str> = functions
+            .as_array()
+            .expect("a list of descriptors")
+            .iter()
+            .map(|function| function["name"].as_str().expect("a name"))
+            .collect();
+        assert!(names.contains(&"keel.principal.create"), "{names:?}");
+        let plugins: Vec<&&str> = names
+            .iter()
+            .filter(|name| name.starts_with("plugin."))
+            .collect();
+        assert!(plugins.is_empty(), "{plugins:?}");
+
+        let pid = serve.id().expect("the service has a pid").to_string();
+        let signalled = Command::new("kill")
+            .args(["-TERM", &pid])
+            .status()
+            .expect("kill runs");
+        assert!(signalled.success());
+        tokio::time::timeout(Duration::from_secs(30), serve.wait())
+            .await
+            .expect("keel serve stops on SIGTERM")
+            .expect("the exit status is read");
+        site.finish().await;
+    }
 }
