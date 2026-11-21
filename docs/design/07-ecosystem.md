@@ -886,9 +886,30 @@ there; `add_records` places the MX and SPF records of a mail domain into the zon
 name within the account and answers `false`, without an error, when there is none; `open` answers
 the address the zone of a site opens at.
 
+Two rules keep one customer from taking the names of another on an installation. They compare
+accounts only and prove nothing about who registered a domain. Let T be the account a zone or a
+mail domain is created for, and a non-root ancestor a proper ancestor of T that is not the root
+account, since the root account is the operator and its zones do not open to customers.
+
+- `dns.zone.create` and `dns.zone.check` refuse a zone whose name lies inside a zone of an account
+  other than T, unless a non-root ancestor of T owns that zone (`dns.zone.error.inside_foreign_zone`).
+  A zone of T itself is fine. A parent of an existing foreign zone may still be created. An
+  administrator or an owner is exempt and takes the responsibility.
+- Below administrator level `hosting-mail` admits a mail domain only if its name equals a zone of T
+  or lies strictly inside a zone of T or of a non-root ancestor of T. The apex of the zone of an
+  ancestor and a name covered only by a zone of the root account are refused with
+  `hosting.mail.domain.error.unproven`, also when the installation has no `dns` module. A name
+  inside a zone of an account that is neither T nor an ancestor of T is refused with
+  `hosting.mail.domain.error.foreign_zone`. An administrator or an owner adds any name, subject to
+  `foreign` as before.
+
+`hosting-mail` asks `dns.zone.claim` for the second rule: `covered` answers the admission and
+`contested` a zone of an account outside the line of T and its ancestors; `foreign` keeps its
+meaning for sites.
+
 | Implementation | Where DNS lives | How it reaches it |
 |---|---|---|
-| `dns-local` | the `dns` product enabled on the same installation | `call.invoke` of `dns.zone.create`, `dns.zone.list`, `dns.record.create` and the read `dns.zone.claim { name, account? } → { foreign }` inside the hosting call's transaction, under the same principal, so the site and its zone commit together and the zone's after-commit apply runs after the outer commit; the account is passed only when the site belongs to another account than the caller's own (`own_account`), since that parameter of `dns.zone.create` is reserved to resellers and admins; a field error of the zone lands on the hosting form, the zone name on `domain` and any other zone field on `dnsZone`; `open` answers the path `/f/dns.zone.list?search=<domain>` of the installation |
+| `dns-local` | the `dns` product enabled on the same installation | `call.invoke` of `dns.zone.create`, `dns.zone.list`, `dns.record.create` and the read `dns.zone.claim { name, account? } → { foreign, covered, contested }` inside the hosting call's transaction, under the same principal, so the site and its zone commit together and the zone's after-commit apply runs after the outer commit; the account is passed only when the site belongs to another account than the caller's own (`own_account`), since that parameter of `dns.zone.create` is reserved to resellers and admins; a field error of the zone lands on the hosting form, the zone name on `domain` and any other zone field on `dnsZone`; `open` answers the path `/f/dns.zone.list?search=<domain>` of the installation |
 | `dns-peer` | a paired installation offering `dns` | `keel-client` calls to the neighbour with the link's token and `X-Keel-On-Behalf-Of` of the site's customer: a pre-check before the transaction, the zone itself after commit in a task, so the zone is owned by the same customer on both sides; `open` hands the customer over with a one-time key |
 
 A hosting installation always has one of the two, because the bridge falls to `remote` when
@@ -969,7 +990,8 @@ shows the detail or the key of a failed apply, since neither a `Text` column nor
 translated. No function retries a zone; recreating the site or creating the zone on the neighbour
 are the remedies. Through a peer `foreign` and `add_records` keep their answers of M5, `false`, so
 the zones of the neighbour stand behind neither the foreign-zone rule of sites and mail domains nor
-the MX and SPF records of a mail domain.
+the MX and SPF records of a mail domain. For the same reason a customer adds no mail domain on an
+installation paired to a neighbour, since none of its zones stands on this installation.
 
 **Opening the zone.** `hosting-web` owns `hosting.site.open_zone { id }`, a read action with the
 access of `hosting.site.get` that answers `{ url }` as a `once` member and stands behind the row

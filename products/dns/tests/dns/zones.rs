@@ -374,3 +374,217 @@ async fn deleting_the_account_removes_its_zones_and_their_files() {
     );
     harness.finish().await;
 }
+
+#[tokio::test]
+async fn a_zone_inside_a_zone_of_another_account_is_refused() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    create(&harness, Who::A1, "example.com").await;
+
+    let refused = harness
+        .call(
+            Who::A2,
+            "dns.zone.create",
+            json!({ "name": "a.b.Example.com" }),
+        )
+        .await;
+    let error = refused.error().expect("the parent zone is foreign");
+    assert_eq!(error.code, ErrorCode::Validation, "{error:?}");
+    assert_eq!(error.fields[0].path, "name");
+    assert_eq!(
+        error.fields[0].key.as_deref(),
+        Some("dns.zone.error.inside_foreign_zone")
+    );
+    assert_eq!(error.fields[0].params["name"], json!("a.b.example.com"));
+    let checked = harness
+        .call(
+            Who::A2,
+            "dns.zone.check",
+            json!({ "name": "a.example.com" }),
+        )
+        .await;
+    assert_eq!(
+        checked
+            .error()
+            .and_then(|error| error.fields[0].key.as_deref()),
+        Some("dns.zone.error.inside_foreign_zone")
+    );
+
+    create(&harness, Who::A2, "notexample.com").await;
+    create(&harness, Who::A1, "deep.shop.example").await;
+    create(&harness, Who::A2, "shop.example").await;
+    assert_eq!(
+        rows(&harness, "SELECT name FROM dns_zone ORDER BY name").await,
+        [
+            "deep.shop.example",
+            "example.com",
+            "notexample.com",
+            "shop.example"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_zone_inside_the_zone_of_an_ancestor_account_is_admitted() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let a1 = harness.fixtures().accounts.a1;
+    create(&harness, Who::Reseller, "example.com").await;
+    create(&harness, Who::A1, "example.org").await;
+
+    let handed = create(&harness, Who::A1, "shop.example.com").await;
+    let own = create(&harness, Who::A1, "www.example.org").await;
+    let on_behalf = harness
+        .call(
+            Who::Reseller,
+            "dns.zone.create",
+            json!({ "name": "mail.example.com", "account": a1 }),
+        )
+        .await;
+    data(&on_behalf);
+    for id in [handed, own] {
+        assert_eq!(
+            rows(
+                &harness,
+                &format!("SELECT account_id FROM dns_zone WHERE id = '{id}'")
+            )
+            .await,
+            [a1.to_string()]
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_zone_inside_a_zone_of_a_descendant_account_is_refused() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    create(&harness, Who::A1, "customer.example").await;
+
+    let refused = harness
+        .call(
+            Who::Reseller,
+            "dns.zone.create",
+            json!({ "name": "www.customer.example" }),
+        )
+        .await;
+    assert_eq!(
+        refused
+            .error()
+            .and_then(|error| error.fields[0].key.as_deref()),
+        Some("dns.zone.error.inside_foreign_zone")
+    );
+}
+
+#[tokio::test]
+async fn a_zone_created_for_a_customer_is_judged_by_the_customer_account() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let a1 = harness.fixtures().accounts.a1;
+    create(&harness, Who::Reseller, "reseller.example").await;
+    create(&harness, Who::A2, "other.example").await;
+
+    let refused = harness
+        .call(
+            Who::Reseller,
+            "dns.zone.create",
+            json!({ "name": "www.other.example", "account": a1 }),
+        )
+        .await;
+    assert_eq!(
+        refused
+            .error()
+            .and_then(|error| error.fields[0].key.as_deref()),
+        Some("dns.zone.error.inside_foreign_zone")
+    );
+    let handed = harness
+        .call(
+            Who::Admin,
+            "dns.zone.create",
+            json!({ "name": "www.reseller.example", "account": a1 }),
+        )
+        .await;
+    assert_eq!(data(&handed)["accountId"], json!(a1.to_string()));
+    let on_behalf = harness
+        .call(
+            Who::Reseller,
+            "dns.zone.create",
+            json!({ "name": "mail.reseller.example", "account": a1 }),
+        )
+        .await;
+    assert_eq!(data(&on_behalf)["accountId"], json!(a1.to_string()));
+}
+
+#[tokio::test]
+async fn a_customer_cannot_create_a_zone_inside_a_zone_of_the_root_account() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let root = harness.fixtures().accounts.root;
+    let operator = create(&harness, Who::Admin, "operator.example").await;
+    assert_eq!(
+        rows(
+            &harness,
+            &format!("SELECT account_id FROM dns_zone WHERE id = '{operator}'")
+        )
+        .await,
+        [root.to_string()]
+    );
+
+    for who in [Who::Reseller, Who::A1, Who::Unrelated] {
+        let refused = harness
+            .call(
+                who,
+                "dns.zone.create",
+                json!({ "name": "shop.operator.example" }),
+            )
+            .await;
+        assert_eq!(
+            refused
+                .error()
+                .and_then(|error| error.fields[0].key.as_deref()),
+            Some("dns.zone.error.inside_foreign_zone")
+        );
+    }
+    create(&harness, Who::Admin, "shop.operator.example").await;
+}
+
+#[tokio::test]
+async fn an_administrator_may_create_a_zone_for_a_customer_inside_a_root_zone() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let a1 = harness.fixtures().accounts.a1;
+    create(&harness, Who::Admin, "operator.example").await;
+    let params = json!({ "name": "www.operator.example", "account": a1 });
+
+    let free = harness
+        .call(Who::Admin, "dns.zone.check", params.clone())
+        .await;
+    assert_eq!(data(&free), &json!({ "name": "www.operator.example" }));
+    let refused = harness
+        .call(Who::Reseller, "dns.zone.create", params.clone())
+        .await;
+    assert_eq!(
+        refused
+            .error()
+            .and_then(|error| error.fields[0].key.as_deref()),
+        Some("dns.zone.error.inside_foreign_zone")
+    );
+    let handed = harness.call(Who::Admin, "dns.zone.create", params).await;
+    assert_eq!(data(&handed)["accountId"], json!(a1.to_string()));
+}
+
+#[tokio::test]
+async fn a_reseller_creates_for_its_customer_inside_the_customers_own_zone() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let a1 = harness.fixtures().accounts.a1;
+    create(&harness, Who::A1, "customer.example").await;
+
+    let created = harness
+        .call(
+            Who::Reseller,
+            "dns.zone.create",
+            json!({ "name": "www.customer.example", "account": a1 }),
+        )
+        .await;
+    assert_eq!(data(&created)["accountId"], json!(a1.to_string()));
+}

@@ -501,19 +501,24 @@ not forge one.
 
 The review of M5 went over the modules of `panel`, the license and the reset links. It fixed, each
 with a named test: overrides that could make nginx open or write any file, claim other names or
-close the server block, and a pool override opening a section of its own; a site, an alias or a
-mail domain claiming a name inside a zone of another account (`DnsProvider::foreign`); a client
-charset from the host's option files undoing the escaping of MariaDB literals, and a name reaching
-a comment line of a dump; reset links outliving a password set another way, a replaced address or
-a principal raised to owner; and an older signed lease replacing a newer one. The lease verifier,
-the template inputs and the MariaDB statement builder are covered by bounded property tests. Left
-without a fix, and recorded in the M5 exit checklist: an FTP directory is confined by name, and the
-hosting user can turn it into a link that vsftpd follows at login, with no more than that user's
-rights; a name with no zone on the installation needs no proof of control, so a mail domain for a
-foreign name receives the mail this host sends there; `dns.zone.create` admits a zone inside a zone
-of another account; the agent renders a template with the variables the kernel sends, so a
-compromised kernel reaches the override lines unchecked, a variable schema in the agent belonging
-to the M7 review; and an offline lease cannot tell a clock set back before the first start.
+close the server block, and a pool override opening a section of its own; a site, an alias or a mail
+domain claiming a name inside a zone of another account (`DnsProvider::foreign`); a mail domain
+below administrator level for a name outside the zones of its own account and of its non-root
+ancestors (`hosting.mail.domain.error.unproven`); a zone created below administrator level inside a
+zone of another account, unless a non-root ancestor owns it (`dns.zone.error.inside_foreign_zone`);
+a client charset from the host's option files undoing the escaping of MariaDB literals, and a name
+reaching a comment line of a dump; reset links outliving a password set another way, a replaced
+address or a principal raised to owner; and an older signed lease replacing a newer one. The lease
+verifier, the template inputs and the MariaDB statement builder are covered by bounded property
+tests. Left without a fix, and recorded in the M5 exit checklist: an FTP directory is confined by
+name, and the hosting user can turn it into a link that vsftpd follows at login, with no more than
+that user's rights; a zone for a name registered by someone else can still be created by any
+customer, since zone creation proves nothing about ownership, so the mail-domain rule stops the
+capture of names already on the installation by another customer but does not prove ownership of the
+registered domain, and a proof of control by a DNS lookup waits for a resolver; the agent renders a
+template with the variables the kernel sends, so a compromised kernel reaches the override lines
+unchecked, a variable schema in the agent belonging to the M7 review; and an offline lease cannot
+tell a clock set back before the first start.
 
 Self-update under root has its own risk: a compromise of the release signing key is a compromise
 of every installation. The measures are the offline key, `previous_keys` in the binary, and a

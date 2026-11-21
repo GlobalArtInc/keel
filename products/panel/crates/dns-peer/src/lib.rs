@@ -13,7 +13,8 @@ use keel_hosting_web::api::{AfterCommit, DnsProvider, Invoke, SiteZone, Sites, Z
 use neighbour::{Customer, Neighbour};
 
 pub use neighbour::{
-    ANSWER, CHECK_TIMEOUT, CLIENT, EXISTS, HANDOVER_TTL, ORIGIN_NAME, TEMPLATE, UNREACHABLE,
+    ANSWER, CHECK_TIMEOUT, CLIENT, EXISTS, HANDOVER_TTL, INSIDE_FOREIGN_ZONE, ORIGIN_NAME,
+    TEMPLATE, UNREACHABLE,
 };
 pub use problems::FAILED;
 pub use zone::{CLASS, CREATE};

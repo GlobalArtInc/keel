@@ -4,6 +4,7 @@
       "answer": "The neighbouring installation {url} answered outside the contract: {reason}",
       "client": "The call to the neighbouring installation could not be sent: {reason}",
       "exists": "The zone {name} already exists on the neighbouring installation",
+      "inside_foreign_zone": "The zone {name} lies inside a zone of another account on the neighbouring installation",
       "instance": "This installation has no instance id, so it cannot name its customers to the neighbouring installation",
       "not_started": "The dns-peer module has not started yet",
       "site": "The site {site} could not be read",

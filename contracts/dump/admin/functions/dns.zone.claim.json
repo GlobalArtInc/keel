@@ -46,10 +46,18 @@
     "properties": {
       "foreign": {
         "type": "boolean"
+      },
+      "covered": {
+        "type": "boolean"
+      },
+      "contested": {
+        "type": "boolean"
       }
     },
     "required": [
-      "foreign"
+      "foreign",
+      "covered",
+      "contested"
     ]
   }
 }

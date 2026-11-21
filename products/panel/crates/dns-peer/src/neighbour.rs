@@ -12,6 +12,7 @@ pub const UNREACHABLE: &str = "dns_peer.error.unreachable";
 pub const ANSWER: &str = "dns_peer.error.answer";
 pub const CLIENT: &str = "dns_peer.error.client";
 pub const EXISTS: &str = "dns_peer.error.exists";
+pub const INSIDE_FOREIGN_ZONE: &str = "dns_peer.error.inside_foreign_zone";
 pub const TEMPLATE: &str = "dns_peer.error.template";
 pub const HANDOVER_TTL: u32 = 60;
 const PRINCIPAL_UPSERT: &str = "keel.principal.upsert";
@@ -29,8 +30,9 @@ const SITE_DOMAIN: &str = "domain";
 const SITE_ZONE: &str = "dnsZone";
 const REASON_CAP: usize = 256;
 const TIMED_OUT: &str = "the neighbour did not answer in time";
-const RELAYED: [(&str, &str); 2] = [
+const RELAYED: [(&str, &str); 3] = [
     ("dns.zone.error.exists", EXISTS),
+    ("dns.zone.error.inside_foreign_zone", INSIDE_FOREIGN_ZONE),
     ("dns.zone.error.template", TEMPLATE),
 ];
 
