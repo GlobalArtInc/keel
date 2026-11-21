@@ -7417,7 +7417,7 @@ the release archive refuses an archive with more entries than a bound named in `
 The agent decodes the arguments of every product operation with `deny_unknown_fields`, so a
 misspelt or smuggled field is refused rather than ignored.
 
-**Touches.** `crates/host-agent/`, `crates/host/`, `crates/release/`, `crates/sdk/src/host.rs`,
+**Touches.** `crates/host-agent/`, `crates/host/`, `crates/keel/src/privileged/update.rs`, `crates/sdk/src/host.rs`,
 `deploy/agent.yaml`, `deploy/README.md`.
 
 **Out of scope.** A variable schema for rendered templates (M7 step 5).
@@ -7427,7 +7427,8 @@ misspelt or smuggled field is refused rather than ignored.
 - under `crates/host-agent/tests/`: `a_process_past_its_timeout_is_killed_and_the_lock_released`,
   `a_package_outside_the_allowlist_is_refused_and_journalled`,
   `an_operation_with_an_unknown_argument_is_refused`;
-- under `crates/release/tests/`: `an_archive_with_too_many_entries_is_refused_by_the_unpacker`.
+- in `crates/keel/src/privileged/update.rs`, where the unpacker lives:
+  `an_archive_with_too_many_entries_is_refused_by_the_unpacker`.
 
 ### 3b. The channel: https only and a head that expires
 
@@ -8745,7 +8746,8 @@ the security review left without a fix are listed last, unticked.
       the middle can replay an older signed head or withhold one, though not forge one; the
       unpacker has no bound on the number of entries, a finding that needs the signing key; the
       arguments of a product operation are the product's types, which the SDK does not hold to
-      `deny_unknown_fields`, the subject of the M7 review.
+      `deny_unknown_fields`, the subject of the M7 review. MVP step 3a closes the timeouts, the
+      allowlist, the entry bound and the strict arguments, and step 3b the channel items.
 
 ## M5 exit checklist
 
@@ -8968,7 +8970,9 @@ security review left without a fix, are listed last, unticked.
       account; the agent renders a template with the variables the kernel sends, so a
       compromised kernel reaches the override lines unchecked, a variable schema in the agent
       being the subject of the M7 review; an offline lease cannot tell a clock set back before the
-      first start.
+      first start. MVP step 3c closes the zone nesting and the FTP link, and the mail domain in
+      part: a customer can no longer take a name that lies in a zone of another account, while a
+      zone for a name someone else registered still proves nothing about its owner.
 
 ## M6 exit checklist
 
