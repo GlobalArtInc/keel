@@ -15,3 +15,8 @@ allowBuilds:
   lmdb: true
   msgpackr-extract: true
   unrs-resolver: false
+
+fetchRetries: 5
+fetchRetryMintimeout: 10000
+fetchRetryMaxtimeout: 60000
+fetchTimeout: 120000

@@ -60,6 +60,13 @@ jobs:
           corepack enable
           pnpm --version
 
+      - name: Cache the pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
       - name: Authenticate to the Astrum npm registry
         uses: ./.github/actions/astrum-npm-auth
         with:
