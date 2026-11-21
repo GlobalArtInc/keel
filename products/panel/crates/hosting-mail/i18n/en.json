@@ -19,7 +19,8 @@
         "empty": "No mail domains yet",
         "error": {
           "exists": "The mail domain {name} already exists",
-          "foreign_zone": "{name} lies in a DNS zone of another account"
+          "foreign_zone": "{name} lies in a DNS zone of another account",
+          "unproven": "{name} is not inside a DNS zone of your account, so its ownership cannot be shown"
         },
         "list": {
           "title": "Mail domains"

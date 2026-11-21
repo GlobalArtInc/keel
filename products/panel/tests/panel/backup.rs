@@ -11,7 +11,7 @@ use keel_system::cron::api::{Outcome, Scheduler};
 use keel_testkit::{Harness, Reply, Who, tokio};
 use tar::{Archive, EntryType};
 
-use crate::mail::mail;
+use crate::mail::{domain_of_a1, mail};
 use crate::support::{Site, composed, create, data, eventually, rows, state_becomes};
 
 const DOMAIN: &str = "shop.example.org";
@@ -166,12 +166,7 @@ async fn a_site_backup_contains_files_databases_and_mail_and_restores() {
     )
     .await;
     state_is(&harness, "hosting_database", &database, "active").await;
-    let domain = created(
-        &harness,
-        "hosting.mail.domain.create",
-        json!({ "name": DOMAIN }),
-    )
-    .await;
+    let domain = domain_of_a1(&harness, DOMAIN).await;
     state_is(&harness, "hosting_mail_domain", &domain, "active").await;
     let mailbox = created(
         &harness,

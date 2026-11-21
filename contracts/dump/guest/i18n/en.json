@@ -1420,6 +1420,7 @@
           "backup": "The zone file {file} could not be copied into the backup",
           "exists": "The zone {name} already exists",
           "id": "The stored id {id} of a zone is not an identifier",
+          "inside_foreign_zone": "The zone {name} lies inside a zone that belongs to another account",
           "log": "The zone history cannot be read without a database connection",
           "not_started": "The dns module has not started, so no name server is attached",
           "template": "The {type} record {name} of the template does not hold for this zone"
@@ -1980,7 +1981,8 @@
           "empty": "No mail domains yet",
           "error": {
             "exists": "The mail domain {name} already exists",
-            "foreign_zone": "{name} lies in a DNS zone of another account"
+            "foreign_zone": "{name} lies in a DNS zone of another account",
+            "unproven": "{name} is not inside a DNS zone of your account, so its ownership cannot be shown"
           },
           "list": {
             "title": "Mail domains"

@@ -6,6 +6,7 @@ use keel::sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
+use keel::types::ErrorCode;
 use keel_hosting_web::api::{DnsProvider, SiteZone, ZoneRecord};
 
 use crate::host::{Changed, Mail};
@@ -18,6 +19,9 @@ pub(crate) const OPTIONS: &str = "hosting.mail.domain.options";
 const MAX_OPTIONS: u32 = 100;
 const EXISTS: &str = "hosting.mail.domain.error.exists";
 const FOREIGN_ZONE: &str = "hosting.mail.domain.error.foreign_zone";
+const UNPROVEN: &str = "hosting.mail.domain.error.unproven";
+const CLAIM: &str = "dns.zone.claim";
+const NO_FUNCTION: &str = "keel.error.function_not_found";
 const MX_PRIORITY: u16 = 10;
 const SPF: &str = "\"v=spf1 mx -all\"";
 const APEX: &str = "@";
@@ -119,7 +123,9 @@ pub(crate) fn create(mail: Arc<Mail>) -> FunctionDef {
                 };
                 let invoke = |func: &str, params: Value| call.invoke(func, params);
                 let dns = call.require::<dyn DnsProvider>()?;
-                if dns.foreign(&invoke, &zone).await? {
+                if call.principal().level < Level::Admin {
+                    prove(&call, &name, account).await?;
+                } else if dns.foreign(&invoke, &zone).await? {
                     return Err(KeelError::validation(FOREIGN_ZONE)
                         .field("name")
                         .param("name", name));
@@ -248,6 +254,35 @@ fn mail_records(domain: &str) -> [ZoneRecord; 2] {
             priority: None,
         },
     ]
+}
+
+async fn prove(call: &Call<DomainCreate>, name: &str, account: Id) -> Result<()> {
+    let requested = (account != call.principal().account_id).then_some(account);
+    let answer = match call
+        .invoke(CLAIM, json!({ "name": name, "account": requested }))
+        .await
+    {
+        Ok(answer) => answer,
+        Err(error) if error.code() == ErrorCode::NotFound && error.key() == NO_FUNCTION => {
+            return Err(unproven(name));
+        }
+        Err(error) => return Err(error),
+    };
+    if answer["contested"].as_bool() != Some(false) {
+        return Err(KeelError::validation(FOREIGN_ZONE)
+            .field("name")
+            .param("name", name));
+    }
+    if answer["covered"].as_bool() != Some(true) {
+        return Err(unproven(name));
+    }
+    Ok(())
+}
+
+fn unproven(name: &str) -> KeelError {
+    KeelError::validation(UNPROVEN)
+        .field("name")
+        .param("name", name)
 }
 
 async fn refuse_taken<C: ConnectionTrait>(db: &C, name: &str) -> Result<()> {

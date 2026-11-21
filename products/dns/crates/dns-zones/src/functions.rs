@@ -28,6 +28,17 @@ const CLAIM: &str = "dns.zone.claim";
 const CHECK: &str = "dns.zone.check";
 const NAME_MAX: u32 = 253;
 const OWNERS: &str = "SELECT DISTINCT account_id FROM dns_zone WHERE name = ANY($1)";
+const OUTSIDE_TREE: &str = "SELECT 1 FROM dns_zone z WHERE z.name = ANY($1) AND z.account_id <> $2 \
+    AND NOT EXISTS (SELECT 1 FROM keel_account me JOIN keel_account up ON me.path LIKE up.path || '%' \
+    WHERE me.id = $2 AND up.id = z.account_id) LIMIT 1";
+const NOT_HANDED_OUT: &str = "SELECT 1 FROM dns_zone z WHERE z.name = ANY($1) AND z.account_id <> $2 \
+    AND NOT EXISTS (SELECT 1 FROM keel_account me JOIN keel_account up ON me.path LIKE up.path || '%' \
+    WHERE me.id = $2 AND up.id = z.account_id AND up.path <> '/') LIMIT 1";
+const COVERING: &str = "SELECT 1 FROM dns_zone z WHERE z.name = ANY($1) AND (z.account_id = $2 \
+    OR (z.name <> $3 AND EXISTS (SELECT 1 FROM keel_account me JOIN keel_account up \
+    ON me.path LIKE up.path || '%' WHERE me.id = $2 AND up.id = z.account_id AND up.id <> me.id \
+    AND up.path <> '/'))) LIMIT 1";
+const INSIDE_FOREIGN: &str = "dns.zone.error.inside_foreign_zone";
 
 const REFRESH: u32 = 10_800;
 const RETRY: u32 = 3_600;
@@ -221,6 +232,8 @@ struct Claim {
 #[schemars(crate = "keel::sdk::schemars")]
 struct Claimed {
     foreign: bool,
+    covered: bool,
+    contested: bool,
 }
 
 pub(crate) fn claim() -> FunctionDef {
@@ -233,17 +246,14 @@ pub(crate) fn claim() -> FunctionDef {
             let params = call.params();
             let account = call.resolve_account(params.account).await?.to_string();
             let name = params.name.trim_end_matches('.').to_ascii_lowercase();
-            let enclosing: Vec<String> = name
-                .match_indices('.')
-                .map(|(at, _)| name[at + 1..].to_owned())
-                .chain(std::iter::once(name.clone()))
-                .collect();
+            let mut enclosing = parents(&name);
+            enclosing.push(name.clone());
             let owners = call
                 .db()
                 .query_all(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     OWNERS,
-                    [enclosing.into()],
+                    [enclosing.clone().into()],
                 ))
                 .await?;
             let mut foreign = false;
@@ -251,7 +261,33 @@ pub(crate) fn claim() -> FunctionDef {
                 let owner: String = row.try_get("", "account_id")?;
                 foreign |= owner != account;
             }
-            Ok(Claimed { foreign })
+            let covered = call
+                .db()
+                .query_one(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    COVERING,
+                    [
+                        enclosing.clone().into(),
+                        account.clone().into(),
+                        name.into(),
+                    ],
+                ))
+                .await?
+                .is_some();
+            let contested = call
+                .db()
+                .query_one(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    OUTSIDE_TREE,
+                    [enclosing.into(), account.into()],
+                ))
+                .await?
+                .is_some();
+            Ok(Claimed {
+                foreign,
+                covered,
+                contested,
+            })
         })
 }
 
@@ -284,6 +320,7 @@ pub(crate) fn check() -> FunctionDef {
             let account = call.resolve_account(params.account).await?;
             let name = params.name.to_ascii_lowercase();
             refuse_taken(call.db(), &name).await?;
+            refuse_inside_foreign(&call, call.db(), &name, account).await?;
             let kept = zone::Entity::find()
                 .filter(zone::Column::AccountId.eq(account.to_string()))
                 .count(call.db())
@@ -338,6 +375,7 @@ pub(crate) fn create() -> FunctionDef {
             let account = call.resolve_account(params.account).await?;
             let name = params.name.to_ascii_lowercase();
             refuse_taken(tx, &name).await?;
+            refuse_inside_foreign(&call, tx, &name, account).await?;
             let template = match params.template {
                 Some(template) => Some(template),
                 None => default_template(tx, account).await?,
@@ -531,6 +569,36 @@ async fn refuse_taken<C: ConnectionTrait>(db: &C, name: &str) -> Result<()> {
         .await?;
     match taken {
         Some(_) => Err(KeelError::conflict(EXISTS)
+            .field("name")
+            .param("name", name)),
+        None => Ok(()),
+    }
+}
+
+fn parents(name: &str) -> Vec<String> {
+    name.match_indices('.')
+        .map(|(at, _)| name[at + 1..].to_owned())
+        .collect()
+}
+
+async fn refuse_inside_foreign<P, C: ConnectionTrait>(
+    call: &Call<P>,
+    db: &C,
+    name: &str,
+    account: Id,
+) -> Result<()> {
+    if call.principal().level >= Level::Admin {
+        return Ok(());
+    }
+    let foreign = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            NOT_HANDED_OUT,
+            [parents(name).into(), account.to_string().into()],
+        ))
+        .await?;
+    match foreign {
+        Some(_) => Err(KeelError::validation(INSIDE_FOREIGN)
             .field("name")
             .param("name", name)),
         None => Ok(()),

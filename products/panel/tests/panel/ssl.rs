@@ -19,7 +19,7 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
-use crate::mail::mail;
+use crate::mail::{domain_of_a1, mail};
 use crate::support::{Site, composed, create, data, eventually, rows, run_job, state_becomes};
 
 const DIRECTORY_VARIABLE: &str = "KEEL_TEST_ACME_URL";
@@ -609,12 +609,7 @@ async fn the_support_bundle_carries_no_secret_value() {
     let key = account_key(&harness).await;
     let url = harness.database().config().database.expose().to_owned();
 
-    let domain = created_id(
-        &harness,
-        "hosting.mail.domain.create",
-        json!({ "name": DOMAIN }),
-    )
-    .await;
+    let domain = domain_of_a1(&harness, DOMAIN).await;
     active_row(&harness, "hosting_mail_domain", &domain).await;
     let mailbox = created_id(
         &harness,
