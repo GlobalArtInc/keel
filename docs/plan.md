@@ -272,7 +272,8 @@ Scope:
 - What the M4 and M5 security reviews left without a fix and a customer of a hosted installation
   can reach: unbounded processes and packages in the host agent, the unpacker's entry count, the
   unchecked arguments of product operations, a zone inside a zone of another account, a mail
-  domain with no proof of control, and the FTP jail a hosting user can turn into a link.
+  domain with no proof of control. The FTP directory a hosting user can turn into a link stays open
+  and goes to M7 step 5.
 - The plugin host compiled out of the release binary.
 - Every operator-run item of the M4, M5 and M6 checklists run on clean Debian machines, with the
   findings fixed.
@@ -288,8 +289,7 @@ Done when:
 - the update from the button and its rollback keep the database, and a backup taken on one machine
   restores on another with the second factor working;
 - the release binary carries no `plugin.*` function and creates no plugin account;
-- every finding named in the scope is closed by a named test or, for the FTP jail, by a check on
-  the machine;
+- every finding named in the scope is closed by a named test;
 - `https://dl.globalart.hu/keel/stable/manifest.json` names the release, its head expires, and
   `keel-release verify` accepts it;
 - `hack/check-vocabulary.sh` is green in CI and `hack/check-docs.sh` runs the commands of
@@ -7453,9 +7453,9 @@ recorded in [design/09-operations.md](design/09-operations.md).
   `a_plain_http_channel_is_refused_without_the_rehearsal_flag`;
 - `hack/check-install.sh target/debug/keel` still installs from a rehearsal channel with the flag.
 
-### 3c. The products: zones, mail domains and the FTP jail
+### 3c. The products: zones and mail domains
 
-**Goal.** Three holes a customer of a hosted installation can reach. In the account tree the root
+**Goal.** Two holes a customer of a hosted installation can reach. In the account tree the root
 account is the operator of the installation and never counts as an ancestor below. `dns.zone.create`
 and `dns.zone.check` refuse, below administrator level, a zone whose name lies inside a zone of
 another account, unless the owner of that zone is a proper ancestor of the account the zone is
@@ -7467,13 +7467,15 @@ ancestor other than the root; an administrator may add any name, taking the resp
 operator. This stops one customer from capturing a name that is already on the installation; a
 zone can still be created for a name someone else registered, since creating a zone proves nothing
 about ownership, and a proof of control by a DNS lookup would need a resolver the modules do not
-have, so it waits for a milestone that adds one. An FTP user is
-confined to a jail directory the user cannot change, with the writable directory of the site one
-level below, so a link the hosting user makes inside it cannot be followed out at login, and the
-agent refuses an FTP home whose path resolves outside `file_roots`.
+have, so it waits for a milestone that adds one. The third finding of the review, an FTP directory
+the hosting user can turn into a link that vsftpd follows at login, is not closed here. The chroot
+of an FTP account is the user's own directory (`allow_writeable_chroot=YES` in the vsftpd
+configuration the installer writes), a root-owned jail would need a bind mount or a restructured
+home for the hosting user, and following the link takes code running as that user, who has the
+same rights through PHP; the fix gains no privilege and moves to M7 step 5.
 
 **Touches.** `products/dns/crates/dns-zones/`, `products/panel/crates/hosting-mail/`,
-`products/panel/crates/hosting-ftp/`, `crates/host-agent/` (the FTP home), `hack/panel-vm.sh`.
+`products/panel/crates/dns-peer/`.
 
 **Out of scope.** Delegation between installations (M7 step 5).
 
@@ -7486,10 +7488,8 @@ agent refuses an FTP home whose path resolves outside `file_roots`.
   `a_customer_cannot_create_a_zone_inside_a_zone_of_the_root_account`;
 - under `products/panel/tests/`: `a_customer_cannot_add_a_mail_domain_outside_its_own_zones`,
   `a_customer_cannot_take_the_apex_of_an_ancestor_zone_as_a_mail_domain`,
-  `an_administrator_may_add_a_mail_domain_without_a_zone` and
-  `an_ftp_home_resolving_outside_the_file_roots_is_refused`;
-- `hack/panel-vm.sh` gains a check, `an_ftp_login_does_not_follow_a_link_made_by_the_hosting_user`,
-  run on the machine of step 6.
+  `an_administrator_may_add_a_mail_domain_without_a_zone`;
+- the neighbour's refusal reaches the hosting form through `dns-peer` as a key.
 
 ### 4. The plugin host stays out of the release binary
 
@@ -7539,7 +7539,7 @@ automated test can.
 clean Debian 13 with bind, nginx and php-fpm; a site on a real domain with a Let's Encrypt
 certificate set up by the wizard and served over TLS; one login that sees both products after
 `keel product enable panel` on a host running `dns`; `hack/peers-vm.sh` on two machines, which is
-the beta of `peers`; the check of step 3c on the FTP jail. Findings are handled as in step 5.
+the beta of `peers`. Findings are handled as in step 5.
 
 **Touches.** Whatever the findings name.
 
@@ -8970,7 +8970,7 @@ security review left without a fix, are listed last, unticked.
       account; the agent renders a template with the variables the kernel sends, so a
       compromised kernel reaches the override lines unchecked, a variable schema in the agent
       being the subject of the M7 review; an offline lease cannot tell a clock set back before the
-      first start. MVP step 3c closes the zone nesting and the FTP link, and the mail domain in
+      first start. MVP step 3c closes the zone nesting, and the mail domain in
       part: a customer can no longer take a name that lies in a zone of another account, while a
       zone for a name someone else registered still proves nothing about its owner.
 
