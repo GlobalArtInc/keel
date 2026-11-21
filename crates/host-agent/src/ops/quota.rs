@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use super::Call;
 use super::user::inside;
+use crate::policy::tool;
 use crate::process;
 use crate::protocol::Failure;
 
@@ -58,7 +59,10 @@ pub(super) fn set(call: &Call<'_>, args: Set) -> Result<Value, Failure> {
         args.inodes.hard.to_string(),
         filesystem.display().to_string(),
     ];
-    process::checked(setquota, process::tool(setquota, argv, &[])?)?;
+    process::checked(
+        setquota,
+        process::tool(setquota, argv, &[], call.policy.timeout(tool::SETQUOTA))?,
+    )?;
     Ok(json!({ "user": args.user, "filesystem": filesystem.display().to_string() }))
 }
 
@@ -72,6 +76,7 @@ pub(super) fn list(call: &Call<'_>, args: List) -> Result<Value, Failure> {
             repquota,
             [OsStr::new("-u"), OsStr::new("-p"), filesystem.as_os_str()],
             &[],
+            call.policy.timeout(tool::REPQUOTA),
         )?,
     )?;
     let quotas: Vec<Value> = process::stdout(&output)

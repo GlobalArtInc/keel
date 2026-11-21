@@ -243,7 +243,7 @@ fn parse<T: DeserializeOwned>(value: &Value) -> Result<T, Failure> {
 
 impl Call<'_> {
     fn accounts(&self) -> Accounts<'_> {
-        Accounts::new(&self.policy.tools().getent)
+        Accounts::new(self.policy)
     }
 
     fn uid_range(&self) -> Result<UidRange, Failure> {

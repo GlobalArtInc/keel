@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::Serialize;
-use serde::de::DeserializeOwned;
+use serde::de::{
+    self, Deserialize, DeserializeOwned, DeserializeSeed, Deserializer, EnumAccess,
+    IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor,
+};
 use serde_json::Value;
 
 const ERROR_ARGS: &str = "host.error.args";
@@ -65,7 +68,7 @@ impl AgentOp {
         R: Serialize + JsonSchema,
     {
         let erased = move |scope: &dyn AgentScope, args: Value| {
-            let args = serde_json::from_value::<A>(args)
+            let args = A::deserialize(Strict(&args))
                 .map_err(|error| AgentOpError::new(ERROR_ARGS, error.to_string()))?;
             let result = handler(scope, args)?;
             serde_json::to_value(result)
@@ -118,6 +121,235 @@ impl fmt::Debug for AgentOp {
             .field("name", &self.name)
             .field("class", &self.class())
             .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Strict<'a>(&'a Value);
+
+struct Entries<'a> {
+    iter: serde_json::map::Iter<'a>,
+    pending: Option<&'a Value>,
+}
+
+struct Items<'a>(std::slice::Iter<'a, Value>);
+
+struct Tagged<'a> {
+    variant: &'a str,
+    value: &'a Value,
+}
+
+macro_rules! delegate {
+    ($($method:ident)*) => {
+        $(
+            fn $method<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+                self.0.$method(visitor)
+            }
+        )*
+    };
+}
+
+impl<'de> Deserializer<'de> for Strict<'de> {
+    type Error = serde_json::Error;
+
+    delegate! {
+        deserialize_any deserialize_bool deserialize_i8 deserialize_i16 deserialize_i32
+        deserialize_i64 deserialize_i128 deserialize_u8 deserialize_u16 deserialize_u32
+        deserialize_u64 deserialize_u128 deserialize_f32 deserialize_f64 deserialize_char
+        deserialize_str deserialize_string deserialize_bytes deserialize_byte_buf
+        deserialize_unit deserialize_map deserialize_identifier deserialize_ignored_any
+    }
+
+    fn deserialize_unit_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.0.deserialize_unit_struct(name, visitor)
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        match self.0 {
+            Value::Null => visitor.visit_none(),
+            inner => visitor.visit_some(Strict(inner)),
+        }
+    }
+
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
+        let Value::Array(items) = self.0 else {
+            return self.0.deserialize_seq(visitor);
+        };
+        let mut access = Items(items.iter());
+        let value = visitor.visit_seq(&mut access)?;
+        if access.0.as_slice().is_empty() {
+            Ok(value)
+        } else {
+            Err(de::Error::invalid_length(
+                items.len(),
+                &"fewer elements in array",
+            ))
+        }
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        let Value::Object(map) = self.0 else {
+            return self.0.deserialize_struct(name, fields, visitor);
+        };
+        if let Some(unknown) = map.keys().find(|key| !fields.contains(&key.as_str())) {
+            return Err(de::Error::unknown_field(unknown, fields));
+        }
+        let mut access = Entries {
+            iter: map.iter(),
+            pending: None,
+        };
+        let value = visitor.visit_map(&mut access)?;
+        if access.iter.len() == 0 {
+            Ok(value)
+        } else {
+            Err(de::Error::invalid_length(
+                map.len(),
+                &"fewer elements in map",
+            ))
+        }
+    }
+
+    fn deserialize_enum<V: Visitor<'de>>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        if let Value::Object(map) = self.0 {
+            let mut entries = map.iter();
+            if let (Some((variant, value)), None) = (entries.next(), entries.next()) {
+                return visitor.visit_enum(Tagged { variant, value });
+            }
+        }
+        self.0.deserialize_enum(name, variants, visitor)
+    }
+}
+
+impl<'de> MapAccess<'de> for Entries<'de> {
+    type Error = serde_json::Error;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, Self::Error> {
+        let Some((key, value)) = self.iter.next() else {
+            return Ok(None);
+        };
+        self.pending = Some(value);
+        let key =
+            <&str as IntoDeserializer<'de, serde_json::Error>>::into_deserializer(key.as_str());
+        seed.deserialize(key).map(Some)
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(
+        &mut self,
+        seed: V,
+    ) -> Result<V::Value, Self::Error> {
+        match self.pending.take() {
+            Some(value) => seed.deserialize(Strict(value)),
+            None => Err(de::Error::custom("a value was asked for before its key")),
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.iter.len())
+    }
+}
+
+impl<'de> SeqAccess<'de> for Items<'de> {
+    type Error = serde_json::Error;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, Self::Error> {
+        self.0
+            .next()
+            .map(|item| seed.deserialize(Strict(item)))
+            .transpose()
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.0.len())
+    }
+}
+
+impl<'de> EnumAccess<'de> for Tagged<'de> {
+    type Error = serde_json::Error;
+    type Variant = Strict<'de>;
+
+    fn variant_seed<V: DeserializeSeed<'de>>(
+        self,
+        seed: V,
+    ) -> Result<(V::Value, Self::Variant), Self::Error> {
+        let name =
+            <&str as IntoDeserializer<'de, serde_json::Error>>::into_deserializer(self.variant);
+        Ok((seed.deserialize(name)?, Strict(self.value)))
+    }
+}
+
+impl<'de> VariantAccess<'de> for Strict<'de> {
+    type Error = serde_json::Error;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        <()>::deserialize(self.0)
+    }
+
+    fn newtype_variant_seed<T: DeserializeSeed<'de>>(
+        self,
+        seed: T,
+    ) -> Result<T::Value, Self::Error> {
+        seed.deserialize(self)
+    }
+
+    fn tuple_variant<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.deserialize_seq(visitor)
+    }
+
+    fn struct_variant<V: Visitor<'de>>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        self.deserialize_struct("", fields, visitor)
     }
 }
 
@@ -233,6 +465,82 @@ mod tests {
             AgentOpError::new("host.error.policy", "no greeting")
         );
         assert!(format!("{op:?}").contains("vm.libvirt.create"));
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct Pin {
+        line: u32,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    enum Mark {
+        Line { at: u32 },
+        Note(Pin),
+        Off,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct Loose {
+        name: String,
+        #[serde(alias = "former")]
+        current: Option<Pin>,
+        pins: Vec<Pin>,
+        mark: Option<Mark>,
+    }
+
+    fn weight(mark: &Mark) -> u32 {
+        match mark {
+            Mark::Line { at } => *at,
+            Mark::Note(pin) => pin.line,
+            Mark::Off => 0,
+        }
+    }
+
+    fn count(_: &dyn AgentScope, args: Loose) -> Result<String, AgentOpError> {
+        let total = args.pins.iter().map(|pin| pin.line).sum::<u32>()
+            + args.current.map_or(0, |pin| pin.line)
+            + args.mark.as_ref().map_or(0, weight);
+        Ok(format!("{}:{total}", args.name))
+    }
+
+    #[test]
+    fn an_agent_op_refuses_an_unknown_field_at_any_depth_of_a_type_that_ignores_them() {
+        let op = AgentOp::new::<Loose, String>("vm.libvirt.count", count);
+        let scope = Scope(json!({}));
+        for accepted in [
+            json!({ "name": "a", "pins": [{ "line": 1 }], "mark": { "Line": { "at": 3 } } }),
+            json!({ "name": "a", "former": { "line": 1 }, "pins": [], "mark": "Off" }),
+            json!({ "name": "a", "pins": [], "mark": { "Note": { "line": 2 } } }),
+        ] {
+            assert!(op.run(&scope, accepted.clone()).is_ok(), "{accepted}");
+        }
+        for (refused, field) in [
+            (json!({ "name": "a", "pins": [], "extra": 1 }), "extra"),
+            (json!({ "name": "a", "pins": [{ "line": 1, "x": 2 }] }), "x"),
+            (
+                json!({ "name": "a", "current": { "line": 1, "y": 2 }, "pins": [] }),
+                "y",
+            ),
+            (
+                json!({ "name": "a", "pins": [], "mark": { "Line": { "at": 1, "z": 2 } } }),
+                "z",
+            ),
+            (
+                json!({ "name": "a", "pins": [], "mark": { "Note": { "line": 1, "w": 2 } } }),
+                "w",
+            ),
+        ] {
+            let error = op.run(&scope, refused.clone()).unwrap_err();
+            assert_eq!(error.key(), "host.error.args", "{refused}");
+            assert!(
+                error.detail().contains(&format!("unknown field `{field}`")),
+                "{refused}: {error}"
+            );
+        }
+        let error = op
+            .run(&scope, json!({ "name": 5, "pins": [] }))
+            .unwrap_err();
+        assert!(error.detail().contains("invalid type"), "{error}");
     }
 
     #[test]

@@ -34,7 +34,7 @@ pub(super) fn apply(call: &Call<'_>, args: Apply) -> Result<Value, Failure> {
     let target = call.resolve(&args.dest)?;
     let (text, compiled_check) = source(call, &args.template)?;
     let check = match args.validate.as_deref().or(compiled_check) {
-        Some(name) => Some(call.check(name)?),
+        Some(name) => Some((name, call.check(name)?)),
         None => None,
     };
     if let Some(service) = &args.reload {
@@ -60,20 +60,20 @@ pub(super) fn apply(call: &Call<'_>, args: Apply) -> Result<Value, Failure> {
         placement.mode,
         placement.owner,
     )?;
-    if let Some(argv) = check
-        && let Err(output) = check_passes(argv)
+    if let Some((name, argv)) = check
+        && let Err(failure) = check_passes(call, name, argv)
     {
         rollback(&target, previous.as_ref())?;
-        return Err(Failure::new(ERROR_VALIDATE_FAILED, output));
+        return Err(failure.rekeyed(ERROR_VALIDATE_FAILED));
     }
     if let Some(service) = &args.reload
-        && let Err(output) = control(call, "reload", service)
+        && let Err(failure) = control(call, "reload", service)
     {
         rollback(&target, previous.as_ref())?;
         if let Err(again) = control(call, "reload", service) {
-            tracing::warn!(service, error = %again, "the reload after the rollback failed too");
+            tracing::warn!(service, error = %again.detail, "the reload after the rollback failed too");
         }
-        return Err(Failure::new(ERROR_RELOAD_FAILED, output));
+        return Err(failure.rekeyed(ERROR_RELOAD_FAILED));
     }
     Ok(json!({ "changed": true }))
 }

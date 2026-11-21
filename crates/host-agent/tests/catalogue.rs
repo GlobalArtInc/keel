@@ -19,6 +19,7 @@ const DIGEST_TEMPLATE: &str = "note/digest.j2";
 const DIGEST_TEXT: &str = "{{ title }}\n{% for note in notes %}- {{ note }}\n{% endfor %}";
 const DIGEST_CHECK: &str = "note.digest";
 const DIGEST_STAT: &str = "note.digest.stat";
+const DIGEST_PEEK: &str = "note.digest.peek";
 const DIGEST_CLASS: &str = "note";
 const DIGEST_FILE: &str = "keel-demo-digest.txt";
 const CRON_FILE: &str = "keel-demo-recompute";
@@ -64,9 +65,45 @@ fn stat(scope: &dyn AgentScope, args: StatArgs) -> Result<Stat, AgentOpError> {
     })
 }
 
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "keel_sdk::schemars")]
+struct PeekArgs {
+    name: String,
+    #[serde(default)]
+    pinned: Option<Pin>,
+    #[serde(default)]
+    more: Vec<Pin>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Pin {
+    line: usize,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[schemars(crate = "keel_sdk::schemars")]
+struct Peek {
+    name: String,
+    lines: Vec<usize>,
+}
+
+fn peek(_: &dyn AgentScope, args: PeekArgs) -> Result<Peek, AgentOpError> {
+    Ok(Peek {
+        name: args.name,
+        lines: args
+            .pinned
+            .iter()
+            .chain(&args.more)
+            .map(|pin| pin.line)
+            .collect(),
+    })
+}
+
 fn note_init(r: &mut Registrar) -> keel_sdk::Result<()> {
     r.contribute(ConfigTemplate::new(DIGEST_TEMPLATE, DIGEST_TEXT).validate(DIGEST_CHECK))
-        .contribute(AgentOp::new::<StatArgs, Stat>(DIGEST_STAT, stat).policy(DIGEST_CLASS));
+        .contribute(AgentOp::new::<StatArgs, Stat>(DIGEST_STAT, stat).policy(DIGEST_CLASS))
+        .contribute(AgentOp::new::<PeekArgs, Peek>(DIGEST_PEEK, peek).policy(DIGEST_CLASS));
     Ok(())
 }
 
@@ -217,7 +254,7 @@ impl Site {
         .expect("the package archive");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, notes: {root}/notes, dumps: {root}/dumps }}\n  services: [named]\n  checks: {{ {DIGEST_CHECK}: [\"{root}/bin/digest-check\"], other.check: [\"{root}/bin/other-check\"] }}\n  exec_allow:\n    - uname\n    - {{ note.recompute: [/opt/keel/bin/current, ctl, note.recompute] }}\n    - {{ note.stamp: [/usr/bin/logger, -t, note, \"it's 100%\"] }}\n    - {{ certbot.renew: [\"{root}/bin/certbot\", renew, --quiet, --deploy-hook, \"systemctl reload nginx\"] }}\n    - {{ broken: [\"{root}/bin/broken\"] }}\n    - {{ mariadb: [\"{root}/bin/mariadb\", --batch] }}\n    - {{ mariadb-dump: [\"{root}/bin/mariadb-dump\", --single-transaction] }}\n  products:\n    demo: {{ user_prefix: kd_, drop_in_prefix: keel-demo-, classes: {{ {DIGEST_CLASS}: {{ root: notes }} }} }}\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    apt_get: {root}/bin/apt-get\n    dpkg_query: {root}/bin/dpkg-query\n    apt_cache: {root}/bin/apt-cache\n    setquota: {root}/bin/setquota\n    repquota: {root}/bin/repquota\n    cron_dir: {root}/cron.d\n",
+            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, notes: {root}/notes, dumps: {root}/dumps }}\n  services: [named]\n  checks: {{ {DIGEST_CHECK}: [\"{root}/bin/digest-check\"], other.check: [\"{root}/bin/other-check\"] }}\n  exec_allow:\n    - uname\n    - {{ note.recompute: [/opt/keel/bin/current, ctl, note.recompute] }}\n    - {{ note.stamp: [/usr/bin/logger, -t, note, \"it's 100%\"] }}\n    - {{ certbot.renew: [\"{root}/bin/certbot\", renew, --quiet, --deploy-hook, \"systemctl reload nginx\"] }}\n    - {{ broken: [\"{root}/bin/broken\"] }}\n    - {{ slow: [\"{root}/bin/slow\"] }}\n    - {{ mariadb: [\"{root}/bin/mariadb\", --batch] }}\n    - {{ mariadb-dump: [\"{root}/bin/mariadb-dump\", --single-transaction] }}\n  timeouts: {{ tools: {{ slow: 1 }} }}\n  packages: {{ allow: [bind9, curl, \"g++\", nosuch, nginx] }}\n  products:\n    demo: {{ user_prefix: kd_, drop_in_prefix: keel-demo-, classes: {{ {DIGEST_CLASS}: {{ root: notes }} }} }}\n    dns: {{ drop_in_prefix: keel-dns- }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    apt_get: {root}/bin/apt-get\n    dpkg_query: {root}/bin/dpkg-query\n    apt_cache: {root}/bin/apt-cache\n    setquota: {root}/bin/setquota\n    repquota: {root}/bin/repquota\n    cron_dir: {root}/cron.d\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -286,6 +323,9 @@ impl Site {
         });
         let mut stream = UnixStream::connect(&self.socket).expect("a connection");
         stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .expect("a read timeout");
+        stream
             .write_all(format!("{request}\n").as_bytes())
             .expect("the request is sent");
         let mut answer = String::new();
@@ -348,6 +388,11 @@ fn write_stubs(root: &Path) {
         root,
         "broken",
         "echo broken >> LOG\necho 'the certificate authority is unreachable' >&2\nexit 2\n",
+    );
+    stub(
+        root,
+        "slow",
+        "echo $$ > ROOT/slow.pid\nsleep 60 &\necho $! > ROOT/slow.child\nwait\n",
     );
     stub(
         root,
@@ -1299,4 +1344,106 @@ fn two_templates_with_one_id_fail_the_freeze() {
             "the configuration template {DIGEST_TEMPLATE} is contributed by both note and two"
         )]
     );
+}
+
+fn alive(pid: &str) -> bool {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid])
+        .output()
+        .expect("ps runs");
+    let state = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    !state.is_empty() && !state.starts_with('Z')
+}
+
+#[test]
+fn a_process_past_its_timeout_is_killed_and_the_lock_released() {
+    let mut site = Site::start("timeout");
+    let answer = site.call("host.exec", "dns", json!({ "name": "slow" }));
+    let detail = refused(&answer, "host.error.timeout");
+    assert!(
+        detail.ends_with("bin/slow did not finish within 1 s and was killed"),
+        "{detail}"
+    );
+    let line = site.audit_line(site.last_id());
+    assert!(line.contains("op=host.exec"), "{line}");
+    assert!(line.contains("outcome=host.error.timeout"), "{line}");
+    for file in ["slow.pid", "slow.child"] {
+        let pid = fs::read_to_string(site.root().join(file)).expect("a pid");
+        assert!(!alive(pid.trim()), "{file} {pid} survived the timeout");
+    }
+    let next = Instant::now();
+    let answer = site.call("host.exec", "dns", json!({ "name": "certbot.renew" }));
+    assert_eq!(
+        data(&answer)["output"],
+        "Congratulations, all renewals succeeded\n"
+    );
+    assert!(
+        next.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        next.elapsed()
+    );
+}
+
+#[test]
+fn a_package_outside_the_allowlist_is_refused_and_journalled() {
+    let mut site = Site::start("allowlist");
+    for (op, args) in [
+        (
+            "host.pkg.install",
+            json!({ "packages": ["openssh-server"] }),
+        ),
+        (
+            "host.pkg.install",
+            json!({ "packages": ["bind9", "openssh-server"] }),
+        ),
+        (
+            "host.pkg.remove",
+            json!({ "packages": ["curl", "openssh-server"] }),
+        ),
+        ("host.pkg.get", json!({ "name": "openssh-server" })),
+    ] {
+        let answer = site.call(op, "dns", args);
+        let detail = refused(&answer, "host.error.policy");
+        assert!(
+            detail.contains("openssh-server is not in packages.allow"),
+            "{detail}"
+        );
+        let line = site.audit_line(site.last_id());
+        assert!(line.contains(&format!("op={op}")), "{line}");
+        assert!(line.contains("outcome=host.error.policy"), "{line}");
+    }
+    assert!(site.calls().is_empty(), "{:?}", site.calls());
+    let answer = site.call("host.pkg.install", "dns", json!({ "packages": ["bind9"] }));
+    assert_eq!(data(&answer)["changed"], json!(true));
+}
+
+#[test]
+fn an_operation_with_an_unknown_argument_is_refused() {
+    let mut site = Site::start("unknown");
+    let answer = site.call(
+        DIGEST_PEEK,
+        "demo",
+        json!({ "name": "d", "pinned": { "line": 1 }, "more": [{ "line": 2 }] }),
+    );
+    assert_eq!(data(&answer), &json!({ "name": "d", "lines": [1, 2] }));
+    for (args, field) in [
+        (json!({ "name": "d", "path": "/etc/shadow" }), "path"),
+        (
+            json!({ "name": "d", "pinned": { "line": 1, "owner": "root" } }),
+            "owner",
+        ),
+        (
+            json!({ "name": "d", "more": [{ "line": 1 }, { "line": 2, "mode": "4755" }] }),
+            "mode",
+        ),
+    ] {
+        let answer = site.call(DIGEST_PEEK, "demo", args.clone());
+        let detail = refused(&answer, "host.error.args");
+        assert!(
+            detail.contains(&format!("unknown field `{field}`")),
+            "{args}: {detail}"
+        );
+        let line = site.audit_line(site.last_id());
+        assert!(line.contains("outcome=host.error.args"), "{line}");
+    }
 }

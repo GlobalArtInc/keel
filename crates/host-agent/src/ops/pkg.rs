@@ -4,11 +4,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::Call;
+use crate::policy::{tool, valid_package};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, Failure};
 
 const PACKAGE_LIMIT: usize = 64;
-const NAME_LIMIT: usize = 128;
 const NONINTERACTIVE: [(&str, &str); 1] = [("DEBIAN_FRONTEND", "noninteractive")];
 const SHOW_FORMAT: &str = "--showformat=${Package}\\t${db:Status-Abbrev}\\t${Version}\\n";
 const INSTALL: [&str; 10] = [
@@ -63,20 +63,25 @@ pub(super) fn refresh(call: &Call<'_>, (): ()) -> Result<Value, Failure> {
     let apt_get = &call.policy.tools().apt_get;
     process::checked(
         apt_get,
-        process::tool(apt_get, ["update", "--quiet"], &NONINTERACTIVE)?,
+        process::tool(
+            apt_get,
+            ["update", "--quiet"],
+            &NONINTERACTIVE,
+            call.policy.timeout(tool::APT_GET),
+        )?,
     )?;
     Ok(json!({ "refreshed": true }))
 }
 
 pub(super) fn get(call: &Call<'_>, args: Get) -> Result<Value, Failure> {
-    let names = checked_names(std::slice::from_ref(&args.name))?;
+    let names = checked_names(call, std::slice::from_ref(&args.name))?;
     let versions = query(call, &names)?;
     let version = versions.get(&args.name).cloned().flatten();
     Ok(json!({ "name": args.name, "version": version }))
 }
 
 fn change(call: &Call<'_>, packages: &[String], action: Action) -> Result<Value, Failure> {
-    let names = checked_names(packages)?;
+    let names = checked_names(call, packages)?;
     if let Some(name) = names.iter().find(|name| name.ends_with('-')) {
         return Err(Failure::policy(format!(
             "apt-get reads the trailing - of {name} as a removal"
@@ -106,7 +111,15 @@ fn change(call: &Call<'_>, packages: &[String], action: Action) -> Result<Value,
         .iter()
         .map(|part| (*part).to_owned())
         .chain(names.iter().cloned());
-    process::checked(apt_get, process::tool(apt_get, argv, &NONINTERACTIVE)?)?;
+    process::checked(
+        apt_get,
+        process::tool(
+            apt_get,
+            argv,
+            &NONINTERACTIVE,
+            call.policy.timeout(tool::APT_GET),
+        )?,
+    )?;
     let after = query(call, &names)?;
     let changes: Vec<Value> = names
         .iter()
@@ -119,7 +132,7 @@ fn change(call: &Call<'_>, packages: &[String], action: Action) -> Result<Value,
     Ok(json!({ "changed": !changes.is_empty(), "changes": changes }))
 }
 
-fn checked_names(packages: &[String]) -> Result<Vec<String>, Failure> {
+fn checked_names(call: &Call<'_>, packages: &[String]) -> Result<Vec<String>, Failure> {
     if packages.is_empty() || packages.len() > PACKAGE_LIMIT {
         return Err(Failure::args(format!(
             "a request names between 1 and {PACKAGE_LIMIT} packages"
@@ -134,6 +147,11 @@ fn checked_names(packages: &[String]) -> Result<Vec<String>, Failure> {
             names.push(name.clone());
         }
     }
+    if let Some(name) = names.iter().find(|name| !call.policy.allows_package(name)) {
+        return Err(Failure::policy(format!(
+            "the package {name} is not in packages.allow of the policy"
+        )));
+    }
     Ok(names)
 }
 
@@ -141,7 +159,12 @@ fn available(call: &Call<'_>, name: &str) -> Result<bool, Failure> {
     let apt_cache = &call.policy.tools().apt_cache;
     let output = process::checked(
         apt_cache,
-        process::tool(apt_cache, ["pkgnames", name], &[])?,
+        process::tool(
+            apt_cache,
+            ["pkgnames", name],
+            &[],
+            call.policy.timeout(tool::APT_CACHE),
+        )?,
     )?;
     Ok(process::stdout(&output).lines().any(|line| line == name))
 }
@@ -151,7 +174,7 @@ fn query(call: &Call<'_>, names: &[String]) -> Result<Versions, Failure> {
     let argv = ["--show".to_owned(), SHOW_FORMAT.to_owned()]
         .into_iter()
         .chain(names.iter().cloned());
-    let output = process::tool(dpkg_query, argv, &[])?;
+    let output = process::tool(dpkg_query, argv, &[], call.policy.timeout(tool::DPKG_QUERY))?;
     if !matches!(output.status.code(), Some(0 | 1)) {
         return Err(Failure::new(
             ERROR_EXEC_FAILED,
@@ -175,17 +198,6 @@ fn installed(line: &str) -> Option<(&str, &str)> {
     let status = fields.next()?;
     let version = fields.next()?;
     (status.as_bytes().get(1) == Some(&b'i') && !version.is_empty()).then_some((name, version))
-}
-
-fn valid_package(name: &str) -> bool {
-    let mut chars = name.chars();
-    name.len() >= 2
-        && name.len() <= NAME_LIMIT
-        && chars
-            .next()
-            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
-        && chars
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '+' | '-' | '.'))
 }
 
 #[cfg(test)]

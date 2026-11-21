@@ -87,7 +87,7 @@ impl Agent {
     }
 
     pub fn for_user(policy: Policy, user: &str, templates: PathBuf) -> Result<Self, AgentError> {
-        let found = Accounts::new(&policy.tools().getent)
+        let found = Accounts::new(&policy)
             .user(user)
             .map_err(|failure| AgentError::Lookup {
                 user: user.to_owned(),

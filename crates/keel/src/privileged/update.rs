@@ -15,6 +15,7 @@ use super::request::Request;
 const MANIFEST_LIMIT: u64 = 1024 * 1024;
 const ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
 const UNPACKED_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+const ENTRIES_LIMIT: usize = 1024;
 const REFUSED_MODE_BITS: u32 = 0o7022;
 const BINARY: &str = "keel";
 const MANIFEST: &str = "manifest.json";
@@ -111,6 +112,8 @@ pub(crate) enum UpdateError {
     EntryMode { path: PathBuf, mode: u32 },
     #[error("the archive unpacks to more than {0} bytes")]
     TooLarge(u64),
+    #[error("the archive carries more than {0} entries")]
+    TooManyEntries(usize),
     #[error("could not read the archive: {0}")]
     Archive(#[source] io::Error),
     #[error("could not {action} {path}: {source}")]
@@ -475,7 +478,28 @@ fn write_replacing(dest: &Path, content: &[u8], mode: u32) -> Result<(), UpdateE
     fs::rename(&staged, dest).map_err(io_error("replace", dest))
 }
 
+fn survey(archive: &Path, limit: u64) -> Result<(), UpdateError> {
+    let file = fs::File::open(archive).map_err(io_error("open", archive))?;
+    let decoder = zstd::Decoder::new(file).map_err(UpdateError::Archive)?;
+    let mut tar = tar::Archive::new(decoder);
+    let mut entries = 0usize;
+    let mut unpacked = 0u64;
+    for entry in tar.entries().map_err(UpdateError::Archive)? {
+        let entry = entry.map_err(UpdateError::Archive)?;
+        entries += 1;
+        if entries > ENTRIES_LIMIT {
+            return Err(UpdateError::TooManyEntries(ENTRIES_LIMIT));
+        }
+        unpacked = unpacked.saturating_add(entry.size());
+        if unpacked > limit {
+            return Err(UpdateError::TooLarge(limit));
+        }
+    }
+    Ok(())
+}
+
 fn unpack(archive: &Path, dest: &Path, limit: u64) -> Result<(), UpdateError> {
+    survey(archive, limit)?;
     fs::create_dir_all(dest).map_err(io_error("create", dest))?;
     let file = fs::File::open(archive).map_err(io_error("open", archive))?;
     let decoder = zstd::Decoder::new(file).map_err(UpdateError::Archive)?;
@@ -705,6 +729,32 @@ mod tests {
         let roomy = dir.path().join("roomy");
         unpack(&archive, &roomy, 8192).unwrap();
         assert_eq!(fs::metadata(roomy.join("big")).unwrap().len(), 4096);
+    }
+
+    #[test]
+    fn an_archive_with_too_many_entries_is_refused_by_the_unpacker() {
+        let dir = tempfile::tempdir().unwrap();
+        let names: Vec<String> = (1..ENTRIES_LIMIT)
+            .map(|index| format!("files/{index}"))
+            .collect();
+        let mut entries: Vec<(&str, EntryType, &[u8])> =
+            vec![("keel", EntryType::Regular, &b"#!/bin/sh\n"[..])];
+        entries.extend(
+            names
+                .iter()
+                .map(|name| (name.as_str(), EntryType::Regular, &b"x"[..])),
+        );
+        assert_eq!(entries.len(), ENTRIES_LIMIT);
+        let at_limit = archive_with(&entries, dir.path());
+        unpack(&at_limit, &dir.path().join("at"), UNPACKED_LIMIT).unwrap();
+        entries.push(("one-more", EntryType::Regular, &b"x"[..]));
+        let over = archive_with(&entries, dir.path());
+        let out = dir.path().join("over");
+        assert!(matches!(
+            unpack(&over, &out, UNPACKED_LIMIT),
+            Err(UpdateError::TooManyEntries(ENTRIES_LIMIT))
+        ));
+        assert!(!out.exists());
     }
 
     #[test]

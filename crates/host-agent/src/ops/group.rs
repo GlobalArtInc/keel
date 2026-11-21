@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use super::Call;
 use super::user::{free_id, inside};
 use crate::accounts::Group;
+use crate::policy::tool;
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_NOT_FOUND, Failure};
 
@@ -36,7 +37,11 @@ pub(super) fn create(call: &Call<'_>, args: Named) -> Result<Value, Failure> {
         ))
     })?;
     let tools = call.policy.tools();
-    process::succeed(&tools.groupadd, ["--gid", &id.to_string(), &args.name])?;
+    process::succeed(
+        &tools.groupadd,
+        ["--gid", &id.to_string(), &args.name],
+        call.policy.timeout(tool::GROUPADD),
+    )?;
     match accounts.group(&args.name)? {
         Some(group) => Ok(describe(&group, true)),
         None => Err(Failure::new(
@@ -57,7 +62,11 @@ pub(super) fn delete(call: &Call<'_>, args: Named) -> Result<Value, Failure> {
         return Ok(json!({ "removed": false }));
     };
     inside(range, group.gid, &args.name)?;
-    process::succeed(&call.policy.tools().groupdel, [args.name.as_str()])?;
+    process::succeed(
+        &call.policy.tools().groupdel,
+        [args.name.as_str()],
+        call.policy.timeout(tool::GROUPDEL),
+    )?;
     Ok(json!({ "removed": true }))
 }
 

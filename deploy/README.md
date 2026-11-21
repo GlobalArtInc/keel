@@ -210,7 +210,9 @@ outside the policy is refused with `host.error.policy` and appears there too:
   entry may carry one `*` standing for a version of digits and dots, so `php*-fpm` admits
   `php8.4-fpm` and nothing else, and the list shows the installed units such an entry matches;
 - `host.pkg.*` over `apt-get`, `apt-cache` and `dpkg-query`, with each name taken as that package
-  and never as a pattern or a trailing `+` or `-` action;
+  and never as a pattern or a trailing `+` or `-` action, and only for the packages listed under
+  `packages.allow`: a request naming another package is refused with `host.error.policy` before
+  any tool runs, and a policy without the section allows no package;
 - `host.cron.*` writing the product's drop-ins under `/etc/cron.d`, whose jobs run an entry of
   `exec_allow` as `keel` or as the product's own users;
 - `host.quota.*` over `setquota` and `repquota`, answering `host.error.unavailable` on a host
@@ -234,11 +236,51 @@ default `/run/keel/agent.sock` and 60 seconds; the kernel connects only when a m
 an agent error reaches the form as its key (`host.error.*`) with the tool's output as the detail.
 While no enabled product loads `host`, `keel doctor` reports the agent as not in use.
 
+Every process an operation runs has a time limit, so a tool that never exits cannot hold the
+lock all operations take; a plugin the agent spawns is a long-lived service by design, not a
+process of an operation, and has no limit. When the limit passes, the process and its process group are killed, the
+lock is released, the operation answers `host.error.timeout` and its journal line carries that
+outcome. The limits are the `timeouts` section: `default_seconds`, 120 when the section is
+missing, and `tools`, a map from a tool to its own seconds. A tool is named as the policy names it:
+a check such as `nginx.test`, an entry of `exec_allow` such as `certbot`, or one of the tools the
+agent runs, `systemctl`, `getent`, `useradd`, `userdel`, `groupadd`, `groupdel`, `usermod`,
+`apt_get`, `dpkg_query`, `apt_cache`, `setquota`, `repquota`, `kill` and `keel`; a name the policy
+does not know, a limit of zero and one over 86400 seconds are refused when the policy is read. The
+limit holds for each process, so an operation that runs several may take their sum. The release
+ships:
+
+| Tool | Seconds | Used by |
+|---|---|---|
+| `apt_get` | 1800 | `host.pkg.install`, `host.pkg.remove`, `host.pkg.refresh` |
+| `certbot` | 600 | `host.exec` of the entry `certbot` |
+| `keel` | 600 | `host.home.*`, the helper that lists, reads and writes a hosting user's files for the file manager |
+| `mariadb` | 3600 | the statements and the `import` of `mariadb.exec` |
+| `mariadb-dump` | 3600 | the `dump` statement of `mariadb.exec` |
+| `mail.archive` | 3600 | `host.exec` of the entry `mail.archive`, the archive of the maildirs |
+| every other tool, check and entry | 120 | `default_seconds` |
+
+The kernel's own `host.timeout_seconds` (60 by default, at most 3600) also bounds how long a
+caller waits for an answer, whatever the limit of a tool in this table.
+
+A tool whose output, stdout and stderr together, exceeds 16 MiB, the frame limit of the client, is
+killed and answers `host.error.io`. A tool that exits while a descendant still holds its output
+pipes returns what it wrote after a grace of 2 seconds and the agent logs a warning; the
+descendant itself is left running.
+
+A host installed earlier keeps its own `/etc/keel/agent.yaml`, which an update never touches: add
+the `timeouts` and `packages` sections of the shipped `deploy/agent.yaml` by hand, otherwise
+`host.pkg.*` refuses every package and every tool is cut at 120 seconds. A process killed at its
+limit can leave work half-applied: a killed `apt-get` may need `dpkg --configure -a`, and a killed
+`mariadb` import leaves the part of the dump it had loaded.
+
 `agent.yaml` is the operator's file: the installer writes it from the release's
 `deploy/agent.yaml` with the allotted `uid_range`, keeps an existing one, and an update never
-touches it. Its shared keys are `uid_range`, `file_roots`, `services`, `checks` and `exec_allow`;
-under `products`, one section per product id carries `user_prefix`, `drop_in_prefix` and
-`classes`. The file has no secret and travels verbatim in the support bundle.
+touches it. Its shared keys are `uid_range`, `file_roots`, `services`, `checks`, `exec_allow`,
+`timeouts` and `packages`; under `products`, one section per product id carries `user_prefix`,
+`drop_in_prefix` and `classes`. `packages: { allow: [...] }` lists the packages `host.pkg.*` may
+install, remove or read, and the release lists exactly those `install.sh` installs: `curl`,
+`ca-certificates`, `openssl`, `zstd`, `postgresql` and the packages of `panel` named above. The
+file has no secret and travels verbatim in the support bundle.
 
 ## Running KeelDNS
 
@@ -699,9 +741,12 @@ records.
   with no zone on this host needs no proof of control; a zone inside another account's zone; the
   template variables the agent takes from the kernel unchecked.
 - The terminal and VNC of the panel, and a sweep of the transfer files a crash leaves behind.
-- A timeout per tool in the agent, an allowlist of packages for `host.pkg.*`, a bound on the
-  owner of a placement, an expiry of the channel head, and a bound on the number of entries of an
-  archive: the findings of the M4 security review recorded without a fix.
+- A bound on the owner of a placement and an expiry of the channel head: the findings of the M4
+  security review recorded without a fix.
+- A stuck operation is bounded per process, not per operation; the global lock can be held for the
+  sum of the limits of the processes of one operation.
+- The allowlist of packages covers removal too: an admitted caller can remove any allowlisted
+  package, dependencies included.
 - The restore across a contract is run by hand after `rollback --restore`, as shown above.
 - Deleting an account whose principals hold passwords, sessions or settings fails with
   `keel.account.error.rows_remain` until the system modules contribute their `on_delete`.

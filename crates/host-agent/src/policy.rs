@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
@@ -23,6 +25,31 @@ const DEFAULT_CRON_DIR: &str = "/etc/cron.d";
 const DEFAULT_KILL: &str = "kill";
 const DEFAULT_KEEL: &str = "/proc/self/exe";
 const VERSION_WILDCARD: char = '*';
+const DEFAULT_TIMEOUT_SECONDS: u64 = 120;
+const MAX_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
+const PACKAGE_NAME_LIMIT: usize = 128;
+
+pub(crate) mod tool {
+    pub(crate) const SYSTEMCTL: &str = "systemctl";
+    pub(crate) const GETENT: &str = "getent";
+    pub(crate) const USERADD: &str = "useradd";
+    pub(crate) const USERDEL: &str = "userdel";
+    pub(crate) const GROUPADD: &str = "groupadd";
+    pub(crate) const GROUPDEL: &str = "groupdel";
+    pub(crate) const USERMOD: &str = "usermod";
+    pub(crate) const APT_GET: &str = "apt_get";
+    pub(crate) const DPKG_QUERY: &str = "dpkg_query";
+    pub(crate) const APT_CACHE: &str = "apt_cache";
+    pub(crate) const SETQUOTA: &str = "setquota";
+    pub(crate) const REPQUOTA: &str = "repquota";
+    pub(crate) const KILL: &str = "kill";
+    pub(crate) const KEEL: &str = "keel";
+
+    pub(super) const RUN: [&str; 14] = [
+        SYSTEMCTL, GETENT, USERADD, USERDEL, GROUPADD, GROUPDEL, USERMOD, APT_GET, DPKG_QUERY,
+        APT_CACHE, SETQUOTA, REPQUOTA, KILL, KEEL,
+    ];
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PolicyError {
@@ -62,6 +89,15 @@ pub enum PolicyError {
         "the user_prefix {prefix} of the plugins overlaps the user_prefix of the product {product}"
     )]
     PluginsPrefixOverlap { product: String, prefix: String },
+    #[error(
+        "the timeout {name} is not between 1 and {max} seconds",
+        max = MAX_TIMEOUT_SECONDS
+    )]
+    Timeout { name: String },
+    #[error("timeouts names {0}, which is not a check, an entry of exec_allow or a tool")]
+    TimeoutTool(String),
+    #[error("packages.allow carries {0}, which is not a package name")]
+    PackageName(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,8 +125,68 @@ pub struct Policy {
     plugins: Option<Plugins>,
     #[serde(default)]
     tools: Tools,
+    #[serde(default)]
+    timeouts: Timeouts,
+    #[serde(default)]
+    packages: Packages,
     #[serde(skip)]
     source: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct Timeouts {
+    #[serde(default = "default_timeout_seconds")]
+    default_seconds: u64,
+    #[serde(default, deserialize_with = "timeout_tools")]
+    tools: BTreeMap<String, u64>,
+}
+
+fn timeout_tools<'de, D>(deserializer: D) -> Result<BTreeMap<String, u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct Seconds;
+
+    impl<'de> Visitor<'de> for Seconds {
+        type Value = BTreeMap<String, u64>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a map from a tool to its seconds")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut tools = BTreeMap::new();
+            while let Some((name, seconds)) = map.next_entry::<String, u64>()? {
+                if tools.insert(name.clone(), seconds).is_some() {
+                    return Err(de::Error::custom(format!("timeouts names {name} twice")));
+                }
+            }
+            Ok(tools)
+        }
+    }
+
+    deserializer.deserialize_map(Seconds)
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self {
+            default_seconds: DEFAULT_TIMEOUT_SECONDS,
+            tools: BTreeMap::new(),
+        }
+    }
+}
+
+fn default_timeout_seconds() -> u64 {
+    DEFAULT_TIMEOUT_SECONDS
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct Packages {
+    #[serde(default)]
+    allow: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -377,6 +473,36 @@ impl Policy {
                 });
             }
         }
+        for (name, seconds) in
+            std::iter::once(("default_seconds", &policy.timeouts.default_seconds)).chain(
+                policy
+                    .timeouts
+                    .tools
+                    .iter()
+                    .map(|(name, seconds)| (name.as_str(), seconds)),
+            )
+        {
+            if !(1..=MAX_TIMEOUT_SECONDS).contains(seconds) {
+                return Err(PolicyError::Timeout {
+                    name: name.to_owned(),
+                });
+            }
+        }
+        if let Some(name) = policy.timeouts.tools.keys().find(|name| {
+            !policy.checks.contains_key(name.as_str())
+                && !policy.exec_allow.contains_key(name.as_str())
+                && !tool::RUN.contains(&name.as_str())
+        }) {
+            return Err(PolicyError::TimeoutTool(name.clone()));
+        }
+        if let Some(name) = policy
+            .packages
+            .allow
+            .iter()
+            .find(|name| !valid_package(name))
+        {
+            return Err(PolicyError::PackageName(name.clone()));
+        }
         for (tool, path) in [
             ("systemctl", &policy.tools.systemctl),
             ("getent", &policy.tools.getent),
@@ -443,6 +569,31 @@ impl Policy {
     pub(crate) fn tools(&self) -> &Tools {
         &self.tools
     }
+
+    pub(crate) fn timeout(&self, tool: &str) -> Duration {
+        Duration::from_secs(
+            self.timeouts
+                .tools
+                .get(tool)
+                .copied()
+                .unwrap_or(self.timeouts.default_seconds),
+        )
+    }
+
+    pub(crate) fn allows_package(&self, name: &str) -> bool {
+        self.packages.allow.iter().any(|allowed| allowed == name)
+    }
+}
+
+pub(crate) fn valid_package(name: &str) -> bool {
+    let mut chars = name.chars();
+    name.len() >= 2
+        && name.len() <= PACKAGE_NAME_LIMIT
+        && chars
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
+        && chars
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '+' | '-' | '.'))
 }
 
 fn valid_unit_name(name: &str) -> bool {
@@ -651,6 +802,115 @@ policy:
             policy.product("panel").unwrap().user_prefix.as_deref(),
             Some("hp_")
         );
+        for (tool, seconds) in [
+            ("apt_get", 1800),
+            ("certbot", 600),
+            ("keel", 600),
+            ("mariadb", 3600),
+            ("mariadb-dump", 3600),
+            ("mail.archive", 3600),
+            ("nginx.test", 120),
+            ("systemctl", 120),
+        ] {
+            assert_eq!(policy.timeout(tool), Duration::from_secs(seconds), "{tool}");
+        }
+        for package in [
+            "curl",
+            "ca-certificates",
+            "openssl",
+            "zstd",
+            "postgresql",
+            "nginx",
+            "php-fpm",
+            "mariadb-server",
+            "mariadb-client",
+            "postfix",
+            "dovecot-core",
+            "dovecot-imapd",
+            "dovecot-lmtpd",
+            "vsftpd",
+            "libpam-pwdfile",
+        ] {
+            assert!(policy.allows_package(package), "{package}");
+        }
+        assert!(!policy.allows_package("openssh-server"));
+        assert_eq!(policy.packages.allow.len(), 15);
+    }
+
+    #[test]
+    fn the_timeouts_section_gives_a_tool_its_seconds_and_every_other_tool_the_default() {
+        let policy = Policy::parse("policy: {}\n").unwrap();
+        assert_eq!(policy.timeout("nginx.test"), Duration::from_secs(120));
+        let policy = Policy::parse(
+            "policy:\n  checks: { nginx.test: [nginx, -t] }\n  exec_allow: [certbot]\n  timeouts: { default_seconds: 30, tools: { certbot: 600, nginx.test: 5, apt_get: 1800 } }\n",
+        )
+        .unwrap();
+        assert_eq!(policy.timeout("certbot"), Duration::from_secs(600));
+        assert_eq!(policy.timeout("nginx.test"), Duration::from_secs(5));
+        assert_eq!(policy.timeout("apt_get"), Duration::from_secs(1800));
+        assert_eq!(policy.timeout("systemctl"), Duration::from_secs(30));
+        let policy = Policy::parse("policy:\n  timeouts: { tools: { keel: 9 } }\n").unwrap();
+        assert_eq!(policy.timeout("getent"), Duration::from_secs(120));
+        assert_eq!(policy.timeout("keel"), Duration::from_secs(9));
+    }
+
+    #[test]
+    fn a_timeout_that_is_not_a_positive_bounded_number_of_seconds_or_names_no_tool_is_refused() {
+        for text in [
+            "policy:\n  timeouts: { default_seconds: 0 }\n",
+            "policy:\n  timeouts: { default_seconds: 86401 }\n",
+            "policy:\n  timeouts: { default_seconds: -1 }\n",
+            "policy:\n  exec_allow: [certbot]\n  timeouts: { tools: { certbot: 0 } }\n",
+            "policy:\n  exec_allow: [certbot]\n  timeouts: { tools: { certbot: 18446744073709551615 } }\n",
+            "policy:\n  timeouts: { default_seconds: 5, retries: 2 }\n",
+        ] {
+            assert!(Policy::parse(text).is_err(), "{text}");
+        }
+        assert!(matches!(
+            Policy::parse("policy:\n  timeouts: { default_seconds: 0 }\n").unwrap_err(),
+            PolicyError::Timeout { name } if name == "default_seconds"
+        ));
+        assert!(matches!(
+            Policy::parse("policy:\n  timeouts: { tools: { certbot: 600 } }\n").unwrap_err(),
+            PolicyError::TimeoutTool(name) if name == "certbot"
+        ));
+        assert!(Policy::parse("policy:\n  timeouts: { default_seconds: 86400 }\n").is_ok());
+    }
+
+    #[test]
+    fn a_tool_named_twice_in_the_timeouts_fails_the_policy_as_it_does_in_exec_allow() {
+        let error = Policy::parse(
+            "policy:\n  exec_allow: [certbot]\n  timeouts: { tools: { certbot: 600, certbot: 30 } }\n",
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&error, PolicyError::Parse(source) if source.to_string().contains("certbot")),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_packages_section_lists_the_packages_the_agent_may_touch_and_no_section_lists_none() {
+        let policy = Policy::parse("policy: {}\n").unwrap();
+        assert!(!policy.allows_package("nginx"));
+        let policy = Policy::parse("policy:\n  packages: { allow: [nginx, \"g++\"] }\n").unwrap();
+        assert!(policy.allows_package("nginx"));
+        assert!(policy.allows_package("g++"));
+        assert!(!policy.allows_package("nginx-extras"));
+        assert!(!policy.allows_package("ngin"));
+        assert!(
+            !Policy::parse("policy:\n  packages: { allow: [] }\n")
+                .unwrap()
+                .allows_package("nginx")
+        );
+        assert!(matches!(
+            Policy::parse("policy:\n  packages: { allow: [nginx, \"Bad Name\"] }\n").unwrap_err(),
+            PolicyError::PackageName(name) if name == "Bad Name"
+        ));
+        assert!(matches!(
+            Policy::parse("policy:\n  packages: { allow: [nginx], deny: [x] }\n").unwrap_err(),
+            PolicyError::Parse(_)
+        ));
     }
 
     #[test]
