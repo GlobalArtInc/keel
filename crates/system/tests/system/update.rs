@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::extract::{Path as UrlPath, State};
@@ -17,8 +17,9 @@ use keel_sdk::types::{ScreenResult, TaskState};
 use keel_system::tasks::api::Drain;
 use keel_system::update::{
     APPLY, BACKUPS_DIRECTORY, CHANNEL_KEY, CHECK, DUMP_EXTENSION, DUMP_MANIFEST, ERROR_CHANNEL,
-    ERROR_CONTRACT, ERROR_CONTRACT_UNKNOWN, ERROR_MIN_UPGRADE_FROM, ERROR_NO_PREVIOUS,
-    ERROR_UP_TO_DATE, MODULE, REQUEST_FILE, ROLLBACK, SECTION,
+    ERROR_CONTRACT, ERROR_CONTRACT_UNKNOWN, ERROR_HEAD_EXPIRED, ERROR_HEAD_NO_EXPIRY,
+    ERROR_MIN_UPGRADE_FROM, ERROR_NO_PREVIOUS, ERROR_UP_TO_DATE, MODULE, REQUEST_FILE, ROLLBACK,
+    SECTION,
 };
 use keel_testkit::{Harness, Reply, Who, tokio};
 use tokio::net::TcpListener;
@@ -158,14 +159,31 @@ async fn serve_file(
     }
 }
 
-fn signed(version: &str, min_upgrade_from: &str, contract: u32, notes: &str) -> Vec<u8> {
-    let manifest = json!({
+fn fresh() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("the clock is after the epoch")
+        .as_secs()
+        + 3_600
+}
+
+fn signed(
+    version: &str,
+    min_upgrade_from: &str,
+    contract: u32,
+    notes: &str,
+    expires_at: Option<u64>,
+) -> Vec<u8> {
+    let mut manifest = json!({
         "version": version,
         "sha256": "00",
         "min_upgrade_from": min_upgrade_from,
         "contract": contract,
         "notes": notes,
     });
+    if let Some(expires_at) = expires_at {
+        manifest["expires_at"] = json!(expires_at);
+    }
     json!({
         "payload": STANDARD.encode(manifest.to_string()),
         "signature": STANDARD.encode([7u8; 64]),
@@ -202,6 +220,7 @@ impl Channel {
                 min_upgrade_from,
                 contract,
                 &format!("Release {version} on {channel}"),
+                Some(fresh()),
             ),
         );
     }
@@ -214,6 +233,7 @@ impl Channel {
                 min_upgrade_from,
                 contract,
                 &format!("Release {version}"),
+                None,
             ),
         );
     }
@@ -239,7 +259,10 @@ async fn boot(channel: &Channel) -> Harness {
         .module(&keel_system::cron::MODULE)
         .module(&MODULE)
         .module(&PROBE)
-        .section(SECTION, json!({ "channel_url": channel.url() }))
+        .section(
+            SECTION,
+            json!({ "channel_url": channel.url(), "insecure_rehearsal_channel": true }),
+        )
         .boot()
         .await
 }
@@ -414,6 +437,120 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
 
     let refused = harness.call(Who::Reseller, CHECK, json!({})).await;
     assert_eq!(refused.status(), 403);
+    harness.finish().await;
+}
+
+fn serve_redirecting_channel(head: Vec<u8>) -> std::net::SocketAddr {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let addr = listener.local_addr().expect("an address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let head = head.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                let redirect = |host: &str, to: &str| {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://{host}:{}/{to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        addr.port()
+                    )
+                    .into_bytes()
+                };
+                let response = match path.as_str() {
+                    "/ch/stable/manifest.json" => {
+                        redirect("127.0.0.1", "real/stable/manifest.json")
+                    }
+                    "/ch/beta/manifest.json" => redirect("localhost", "real/beta/manifest.json"),
+                    "/real/stable/manifest.json" | "/real/beta/manifest.json" => {
+                        let mut answer = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            head.len()
+                        )
+                        .into_bytes();
+                        answer.extend_from_slice(&head);
+                        answer
+                    }
+                    _ => {
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec()
+                    }
+                };
+                let _ = stream.write_all(&response);
+            });
+        }
+    });
+    addr
+}
+
+#[tokio::test]
+async fn a_redirect_of_a_rehearsal_channel_is_followed_on_the_same_host_and_refused_to_another() {
+    let addr = serve_redirecting_channel(signed(
+        &NEXT,
+        RUNNING,
+        1,
+        "behind a redirect",
+        Some(fresh()),
+    ));
+    let harness = Harness::new()
+        .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&MODULE)
+        .module(&PROBE)
+        .section(
+            SECTION,
+            json!({ "channel_url": format!("http://{addr}/ch/"), "insecure_rehearsal_channel": true }),
+        )
+        .boot()
+        .await;
+
+    let followed = harness.call(Who::Admin, CHECK, json!({})).await;
+    assert_eq!(data(&followed)["available"], json!(NEXT.as_str()));
+
+    choose_channel(&harness, "beta");
+    let refused = harness.call(Who::Admin, CHECK, json!({})).await;
+    let error = refused
+        .error()
+        .expect("a redirect to another host is refused");
+    assert_eq!(error.key, ERROR_CHANNEL);
+    let reason = error.params["reason"].as_str().expect("a reason");
+    assert!(reason.contains("the redirect changes the host"), "{reason}");
+    harness.finish().await;
+}
+
+#[tokio::test]
+async fn check_refuses_a_head_without_an_expiry_and_one_that_expired() {
+    let channel = Channel::serve().await;
+    channel.version(RUNNING, "0.0.1", 1);
+    let harness = boot(&channel).await;
+    let url = format!("{}stable/manifest.json", channel.url());
+    let head = |expires_at| signed(&NEXT, RUNNING, 1, "head", expires_at);
+
+    channel.publish("stable/manifest.json", head(None));
+    let missing = harness.call(Who::Admin, CHECK, json!({})).await;
+    let error = missing
+        .error()
+        .expect("a head without an expiry is refused");
+    assert_eq!(error.key, ERROR_HEAD_NO_EXPIRY);
+    assert_eq!(error.params["url"], json!(url));
+
+    channel.publish("stable/manifest.json", head(Some(1)));
+    let expired = harness.call(Who::Admin, CHECK, json!({})).await;
+    let error = expired.error().expect("an expired head is refused");
+    assert_eq!(error.key, ERROR_HEAD_EXPIRED);
+    assert_eq!(error.params["url"], json!(url));
+    assert_eq!(
+        error.params["expiresAt"],
+        json!("1970-01-01T00:00:01+00:00")
+    );
+
+    channel.publish("stable/manifest.json", head(Some(fresh())));
+    let checked = harness.call(Who::Admin, CHECK, json!({})).await;
+    assert_eq!(data(&checked)["available"], json!(NEXT.as_str()));
     harness.finish().await;
 }
 
@@ -628,7 +765,10 @@ async fn rollback_writes_a_rollback_request() {
     assert!(!harness.data_dir().join(REQUEST_FILE).exists());
     assert!(!drain.is_quiesced().expect("the runner started"));
 
-    channel.head("stable", RUNNING, "0.0.9", 1);
+    channel.publish(
+        "stable/manifest.json",
+        signed(RUNNING, "0.0.9", 1, "an expired head", Some(1)),
+    );
     let (id, state) = run_task(&harness, ROLLBACK).await;
     assert_eq!(
         state,
@@ -679,7 +819,10 @@ async fn the_daily_check_raises_update_available_and_the_running_version_clears_
         .module(&keel_system::notify::MODULE)
         .module(&MODULE)
         .module(&PROBE)
-        .section(SECTION, json!({ "channel_url": channel.url() }))
+        .section(
+            SECTION,
+            json!({ "channel_url": channel.url(), "insecure_rehearsal_channel": true }),
+        )
         .boot()
         .await;
     let scheduler = harness

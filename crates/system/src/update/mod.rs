@@ -24,8 +24,8 @@ pub use apply::{
     ERROR_CONTRACT, ERROR_CONTRACT_UNKNOWN, ERROR_MIN_UPGRADE_FROM, ERROR_NO_PREVIOUS,
     ERROR_UP_TO_DATE,
 };
-pub use channel::{ERROR_CHANNEL, ERROR_MANIFEST};
-pub use config::{CHANNEL_URL, ERROR_CHANNEL_URL, SECTION};
+pub use channel::{ERROR_CHANNEL, ERROR_HEAD_EXPIRED, ERROR_HEAD_NO_EXPIRY, ERROR_MANIFEST};
+pub use config::{CHANNEL_URL, ERROR_CHANNEL_INSECURE, ERROR_CHANNEL_URL, SECTION};
 pub use dump::{
     DIRECTORY as BACKUPS_DIRECTORY, MANIFEST as DUMP_MANIFEST, TABLE_EXTENSION as DUMP_EXTENSION,
 };
@@ -73,7 +73,6 @@ fn init(r: &mut Registrar) -> Result<()> {
         .i18n("en", include_str!("../../i18n/update/en.json"))
         .i18n("ru", include_str!("../../i18n/update/ru.json"))
         .start(move |ctx| async move {
-            ctx.config::<UpdateConfig>()?.base()?;
             if started.set(ctx.db()).is_err() {
                 tracing::warn!("the update module was started twice; the first pool stands");
             }

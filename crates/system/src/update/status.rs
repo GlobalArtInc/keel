@@ -1,3 +1,4 @@
+use keel_sdk::chrono::{DateTime, Utc};
 use keel_sdk::prelude::*;
 use keel_sdk::schemars::JsonSchema;
 use keel_sdk::serde::{Deserialize, Serialize};
@@ -45,6 +46,7 @@ pub(super) struct Site {
     pub(super) running: Version,
     pub(super) channel: Channel,
     pub(super) source: Source,
+    pub(super) now: DateTime<Utc>,
 }
 
 pub(super) async fn site<P: Send + Sync>(call: &Call<P>) -> Result<Site> {
@@ -56,16 +58,18 @@ pub(super) async fn site<P: Send + Sync>(call: &Call<P>) -> Result<Site> {
     })?;
     let channel: Channel = call.setting(CHANNEL_KEY).await?;
     let config = call.config::<UpdateConfig>()?;
-    let source = Source::new(&config.base()?)?;
+    let source = Source::new(&config.base()?, config.insecure_rehearsal_channel)?;
+    let now = call.require::<dyn Clock>()?.now();
     Ok(Site {
         running,
         channel,
         source,
+        now,
     })
 }
 
 pub(super) async fn status(site: &Site, db: &Db) -> Result<Status> {
-    let head = site.source.head(site.channel).await?;
+    let head = site.source.fresh_head(site.channel, site.now).await?;
     let running_contract = site
         .source
         .manifest(&site.running)
@@ -173,6 +177,7 @@ mod tests {
             min_upgrade_from: Version::parse(min_upgrade_from).unwrap(),
             contract,
             notes: "Notes".into(),
+            expires_at: None,
         }
     }
 

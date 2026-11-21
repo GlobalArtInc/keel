@@ -2314,10 +2314,13 @@
       },
       "error": {
         "channel": "The release channel at {url} could not be read: {reason}",
+        "channel_insecure": "The channel address {url} in the update section is plain http; a release channel is read over https, and insecure_rehearsal_channel admits http for a rehearsal channel only",
         "channel_url": "The channel address {url} in the update section is not an http or https address",
         "contract": "The change from {running} (contract {runningContract}) to {target} (contract {targetContract}) crosses a contract boundary; roll back with a restore from the privileged command line",
         "contract_unknown": "The channel has no manifest for version {version}, so its contract is unknown",
         "dump": "The pre-update dump failed: {reason}",
+        "head_expired": "The head of the channel at {url} expired at {expiresAt}; an expired head is not trusted, so try again later or use another channel",
+        "head_no_expiry": "The head of the channel at {url} carries no expiry; a head without one is not trusted, so try again later or use another channel",
         "history": "The recorded run {id} names the version {version}, which does not parse",
         "inline": "The update runs as a task; call it through the task runner",
         "manifest": "The channel answered something that is not a release manifest at {url}: {reason}",

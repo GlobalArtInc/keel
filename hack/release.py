@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -43,6 +44,11 @@ SEMVER = re.compile(
 )
 CHUNK = 1024 * 1024
 TIMEOUT = 120
+CHANNELS = ("stable", "beta")
+EXPIRES_DAYS = 30
+EXPIRES_DAYS_MIN = 1
+EXPIRES_DAYS_MAX = 365
+SECONDS_PER_DAY = 86400
 
 
 class Failure(Exception):
@@ -248,8 +254,9 @@ class Tool:
         contract: int,
         notes: Path,
         out: Path,
+        expires_at: int | None = None,
     ) -> None:
-        self.run(
+        args = [
             "sign",
             "--key",
             str(key),
@@ -265,12 +272,35 @@ class Tool:
             str(notes),
             "--out",
             str(out),
-        )
+        ]
+        if expires_at is not None:
+            args += ["--expires-at", str(expires_at)]
+        self.run(*args)
 
-    def verify(self, manifest: Path, key: Path | None) -> None:
+    def refresh(
+        self, key: Path, head: Path, verify_key: Path | None, expires_at: int, out: Path
+    ) -> None:
+        args = [
+            "refresh",
+            "--key",
+            str(key),
+            "--head",
+            str(head),
+            "--expires-at",
+            str(expires_at),
+            "--out",
+            str(out),
+        ]
+        if verify_key is not None:
+            args += ["--verify-key", str(verify_key)]
+        self.run(*args)
+
+    def verify(self, manifest: Path, key: Path | None, head: bool = False) -> None:
         args = ["verify", str(manifest)]
         if key is not None:
             args += ["--key", str(key)]
+        if head:
+            args.append("--head")
         self.run(*args)
 
 
@@ -416,12 +446,38 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"as versions/<ver>/keel-<ver>-{ARCHIVE_TARGET}.tar.zst, write its .sha256, sign the "
             "manifest with keel-release, upload the four objects and install.sh to the raw "
             f"repository and read them back through {CHANNEL_URL} when that name answers. A tag "
-            "with a pre-release suffix lands on the beta channel, any other on stable."
+            "with a pre-release suffix lands on the beta channel, any other on stable. The head "
+            "of the channel carries an expires_at inside the signed manifest; the manifest of the "
+            "version carries none. --refresh <channel> signs the current head again with a new "
+            "expires_at and changes nothing else."
         ),
     )
     add = parser.add_argument
-    add("--tag", required=True, help=f"the release tag, {TAG_PREFIX}<semver>")
-    add("--binary", required=True, type=Path, help="the keel binary built for the target")
+    add("--tag", help=f"the release tag, {TAG_PREFIX}<semver>; required unless --refresh")
+    add(
+        "--binary",
+        type=Path,
+        help="the keel binary built for the target; required unless --refresh",
+    )
+    add(
+        "--refresh",
+        choices=CHANNELS,
+        help=(
+            "sign the current head of this channel again with a new expires_at: read it from "
+            "the raw repository --astrum-url with the deploy account, verify its signature, "
+            "upload it over the same object; a beta channel without a head is reported and left "
+            "alone, a stable channel without one is a failure"
+        ),
+    )
+    add(
+        "--expires-days",
+        type=int,
+        default=EXPIRES_DAYS,
+        help=(
+            f"days from now to the expires_at of the head, between {EXPIRES_DAYS_MIN} and "
+            f"{EXPIRES_DAYS_MAX} (default {EXPIRES_DAYS})"
+        ),
+    )
     add("--notes-file", type=Path, help="the release notes; default: the tag's annotation")
     add("--key", type=Path, help=f"the secret release key; default: the text in {KEY_VARIABLE}")
     add(
@@ -482,6 +538,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--out belongs to --dry-run")
     if args.zstd_level < 1 or args.zstd_level > 19:
         parser.error("--zstd-level is between 1 and 19")
+    if args.expires_days < EXPIRES_DAYS_MIN or args.expires_days > EXPIRES_DAYS_MAX:
+        parser.error(f"--expires-days is between {EXPIRES_DAYS_MIN} and {EXPIRES_DAYS_MAX}")
+    if args.refresh is None:
+        if args.tag is None or args.binary is None:
+            parser.error("--tag and --binary are required unless --refresh is given")
+    else:
+        for name in ("tag", "binary", "notes_file", "replace"):
+            if getattr(args, name):
+                parser.error(f"--{name.replace('_', '-')} does not belong to --refresh")
     return args
 
 
@@ -494,8 +559,64 @@ def store_for(args: argparse.Namespace):
     return Http(args.astrum_url, args.astrum_user, password)
 
 
+def same_but_expiry(head: dict, other: dict) -> bool:
+    return {key: value for key, value in head.items() if key != "expires_at"} == {
+        key: value for key, value in other.items() if key != "expires_at"
+    }
+
+
+def refresh(args: argparse.Namespace) -> int:
+    channel = args.refresh
+    head_path = f"{channel}/manifest.json"
+    tool = Tool([str(args.keel_release)] if args.keel_release is not None else KEEL_RELEASE)
+    store = store_for(args)
+    current = store.get(head_path)
+    if current is None:
+        message = (
+            f"{store.describe(head_path)} does not exist; "
+            f"the {channel} channel has no head to refresh"
+        )
+        if channel == "stable":
+            raise Failure(message)
+        say(message)
+        return 0
+    with tempfile.TemporaryDirectory(prefix="keel-refresh-") as work_name:
+        work = Path(work_name)
+        key = key_file(args.key, work)
+        source = work / "head-source.json"
+        source.write_bytes(current)
+        tool.verify(source, args.verify_key)
+        before = payload_of(current)
+        was = before.get("expires_at")
+        was_text = "no expires_at" if was is None else f"expires_at {was}"
+        say(f"the {channel} head names {before['version']} and verifies, with {was_text}")
+        expires_at = int(time.time()) + args.expires_days * SECONDS_PER_DAY
+        renewed = work / "head.json"
+        tool.refresh(key, source, args.verify_key, expires_at, renewed)
+        tool.verify(renewed, args.verify_key, head=True)
+        head_bytes = renewed.read_bytes()
+        after = payload_of(head_bytes)
+        if after.get("expires_at") != expires_at or not same_but_expiry(before, after):
+            raise Failure("the refreshed head differs from the current one in more than expires_at")
+        if store.get(head_path) != current:
+            raise Failure(
+                f"{store.describe(head_path)} changed while it was being refreshed; "
+                "nothing was uploaded, run the refresh again"
+            )
+        store.put(head_path, head_bytes, "application/json")
+        if store.get(head_path) != head_bytes:
+            raise Failure(f"{store.describe(head_path)} read back differs from what was uploaded")
+        say(
+            f"{head_path} still names {after['version']}, now with expires_at {expires_at} "
+            f"({args.expires_days} days)"
+        )
+    return 0
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    if args.refresh is not None:
+        return refresh(args)
     version = version_of_tag(args.tag)
     channel = channel_of(version)
     contract, floor = read_channel_file(args.channel_file)
@@ -565,21 +686,37 @@ def main(argv: list[str]) -> int:
         signed = payload_of(manifest_bytes)
         if signed["version"] != version or signed["sha256"] != digest:
             raise Failure("the signed manifest does not describe the packaged archive")
+        if "expires_at" in signed:
+            raise Failure("the manifest of the version carries an expires_at; it never expires")
+        expires_at = int(time.time()) + args.expires_days * SECONDS_PER_DAY
+        head_file = work / "head.json"
+        tool.sign(key, version, archive, floor, contract, notes_path, head_file, expires_at)
+        head_bytes = head_file.read_bytes()
+        tool.verify(head_file, args.verify_key, head=True)
+        head_signed = payload_of(head_bytes)
+        if head_signed.get("expires_at") != expires_at or not same_but_expiry(
+            head_signed, signed
+        ):
+            raise Failure("the head does not carry the manifest of the version and an expires_at")
         lines = len(notes.splitlines())
         say(f"signed the manifest of {version} ({lines} line{'s' if lines != 1 else ''} of notes)")
+        say(
+            f"signed the {channel} head of {version} expiring at {expires_at} "
+            f"({args.expires_days} days)"
+        )
 
         sha256_bytes = f"{digest}  {name}\n".encode()
         store.put(paths["archive"], archive.read_bytes(), "application/octet-stream")
         store.put(paths["sha256"], sha256_bytes, "text/plain")
         store.put(paths["manifest"], manifest_bytes, "application/json")
-        store.put(paths["head"], manifest_bytes, "application/json")
+        store.put(paths["head"], head_bytes, "application/json")
         store.put(paths["installer"], installer, "text/x-shellscript")
 
         reader = store if args.dry_run else reader_for(args.channel_url, store, paths["manifest"])
         expectations = {
             "sha256": sha256_bytes,
             "manifest": manifest_bytes,
-            "head": manifest_bytes,
+            "head": head_bytes,
             "installer": installer,
         }
         for label, expected in expectations.items():

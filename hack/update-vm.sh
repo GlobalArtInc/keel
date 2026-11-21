@@ -115,7 +115,9 @@ prepare() {
   cargo run -q -p keel-release -- sign --key "$out/keys/release.key" --version "$version" --archive "$archive" \
     --min-upgrade-from "$installed" --contract 1 --notes "update rehearsal of $version over $installed" \
     --out "$out/channel/versions/$version/manifest.json" >/dev/null
-  cp "$out/channel/versions/$version/manifest.json" "$out/channel/stable/manifest.json"
+  cargo run -q -p keel-release -- sign --key "$out/keys/release.key" --version "$version" --archive "$archive" \
+    --min-upgrade-from "$installed" --contract 1 --notes "update rehearsal of $version over $installed" \
+    --expires-at "$(($(date +%s) + 30 * 86400))" --out "$out/channel/stable/manifest.json" >/dev/null
   cargo run -q -p keel-release -- sign --key "$out/keys/release.key" --version "$installed" --archive "$archive" \
     --min-upgrade-from 0.0.1 --contract 1 --notes "manifest of the installed version for the rehearsal" \
     --out "$out/manifests/$installed.json" >/dev/null
@@ -298,12 +300,13 @@ stop_channel_server() {
 }
 
 point_kernel_at_channel() {
-  if grep -q '^update:' "$CONFIG"; then
-    say "$CONFIG already carries an update section; it is left as it is"
-    return 0
-  fi
-  cp -p "$CONFIG" "$CONFIG_BACKUP"
-  printf 'update: { channel_url: http://127.0.0.1:%s/ }\n' "$CHANNEL_PORT" >> "$CONFIG"
+  local edited
+  [ -f "$CONFIG_BACKUP" ] || cp -p "$CONFIG" "$CONFIG_BACKUP"
+  edited=$(mktemp)
+  awk '/^update:/ { skip = 1; next } skip && (/^[[:space:]]/ || /^$/) { next } { skip = 0; print }' "$CONFIG" >"$edited"
+  printf 'update: { channel_url: http://127.0.0.1:%s/, insecure_rehearsal_channel: true }\n' "$CHANNEL_PORT" >>"$edited"
+  cat "$edited" >"$CONFIG"
+  rm -f "$edited"
   systemctl restart keel.service
   say "pointed the update section of $CONFIG at the rehearsal channel and restarted keel.service"
 }
@@ -347,7 +350,7 @@ kernel() {
   cat >"$DROP_IN" <<EOF
 [Service]
 ExecStart=
-ExecStart=$OPT/bin/current privileged update --from-request --channel-url http://127.0.0.1:$CHANNEL_PORT/ --release-key $dir/keys/release.pub
+ExecStart=$OPT/bin/current privileged update --from-request --channel-url http://127.0.0.1:$CHANNEL_PORT/ --insecure-rehearsal-channel --release-key $dir/keys/release.pub
 EOF
   systemctl daemon-reload
   say "wrote $DROP_IN pointing the oneshot at the rehearsal channel"

@@ -495,9 +495,7 @@ reached through structs, options, sequences, tuples and externally tagged enums,
 map value, a flattened field or an enum tagged internally or left untagged,
 `an_operation_with_an_unknown_argument_is_refused`). Left without a fix, and recorded in the M4
 exit checklist of [../plan.md](../plan.md): the owner of a placement may be any account of the
-host, since `bind` has to own zone files; and the channel admits `http://` and a head manifest
-carries no expiry, so a man in the middle can replay an older signed head or withhold one, but
-not forge one.
+host, since `bind` has to own zone files.
 
 The review of M5 went over the modules of `panel`, the license and the reset links. It fixed, each
 with a named test: overrides that could make nginx open or write any file, claim other names or

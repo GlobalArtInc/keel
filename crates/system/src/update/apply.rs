@@ -261,7 +261,7 @@ async fn rollback_target(site: &Site, db: &Db) -> Result<Version> {
         .ok_or_else(|| {
             KeelError::conflict(ERROR_NO_PREVIOUS).param("running", site.running.to_string())
         })?;
-    let head = site.source.head(site.channel).await?;
+    let (head, _) = site.source.head(site.channel).await?;
     if previous < head.min_upgrade_from {
         return Err(KeelError::conflict(ERROR_MIN_UPGRADE_FROM)
             .param("running", site.running.to_string())

@@ -58,6 +58,8 @@ products=""
 binary=""
 channel=$DEFAULT_CHANNEL
 channel_url=$DEFAULT_CHANNEL_URL
+channel_url_unsafe='[^][A-Za-z0-9._~:/@%+=,;-]'
+insecure_rehearsal_channel=0
 requested_version=""
 release_key_file=""
 listen=$DEFAULT_LISTEN
@@ -98,7 +100,12 @@ ${PANEL_UNITS[*]} and $PANEL_PHP_UNITS.
 
   --product <id>[,<id>]   product bundles to enable (required), for example demo
   --channel <name>        the release channel, stable or beta (default $DEFAULT_CHANNEL)
-  --channel-url <url>     the release channel's address (default $DEFAULT_CHANNEL_URL)
+  --channel-url <url>     the release channel's address, https (default $DEFAULT_CHANNEL_URL)
+  --insecure-rehearsal-channel
+                          admit a plain http:// --channel-url for a rehearsal channel on a
+                          network you trust, and write update.channel_url and
+                          update.insecure_rehearsal_channel: true into $ETC/config.yaml;
+                          never for a release channel
   --version <ver>         a version of the channel instead of its head
   --release-key <file>    a public key file in place of the embedded one, for a rehearsal channel
   --binary <path|url>     a keel binary or tar.zst artifact of the Build workflow, or an
@@ -215,6 +222,7 @@ parse_args() {
       --channel=*) channel=${1#*=}; shift ;;
       --channel-url) [ $# -ge 2 ] || fail "--channel-url needs a value"; channel_url=$2; shift 2 ;;
       --channel-url=*) channel_url=${1#*=}; shift ;;
+      --insecure-rehearsal-channel) insecure_rehearsal_channel=1; shift ;;
       --version) [ $# -ge 2 ] || fail "--version needs a value"; requested_version=$2; shift 2 ;;
       --version=*) requested_version=${1#*=}; shift ;;
       --release-key) [ $# -ge 2 ] || fail "--release-key needs a value"; release_key_file=$2; shift 2 ;;
@@ -250,8 +258,16 @@ parse_args() {
   esac
   case $channel_url in
     https://*) ;;
-    http://*) say "warning: the channel $channel_url is reached over plain http; the manifest signature still protects the release" ;;
-    *) fail "--channel-url must be an https:// or http:// address, not \"$channel_url\"" ;;
+    http://*)
+      if [ "$insecure_rehearsal_channel" -ne 1 ]; then
+        fail "--channel-url $channel_url is plain http; a release channel is read over https. A rehearsal channel on a network you trust is named explicitly with --insecure-rehearsal-channel"
+      fi
+      if [[ $channel_url =~ $channel_url_unsafe ]]; then
+        fail "--channel-url $channel_url carries a character that is not written into $ETC/config.yaml; use letters, digits and . _ ~ : / @ % + = , ; - [ ]"
+      fi
+      say "warning: the channel $channel_url is reached over plain http; the manifest signature still protects the release"
+      ;;
+    *) fail "--channel-url must be an https:// address, not \"$channel_url\"" ;;
   esac
   channel_url=${channel_url%/}/
   if [ -n "$requested_version" ] && ! [[ $requested_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -442,6 +458,30 @@ json_string() {
   sed -nE "s/^[[:space:]]*\"$field\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*$/\1/p" "$file" | head -n 1
 }
 
+json_number() {
+  local file=$1 field=$2
+  sed -nE "s/^[[:space:]]*\"$field\"[[:space:]]*:[[:space:]]*([0-9]+)[[:space:]]*,?[[:space:]]*$/\1/p" "$file" | head -n 1
+}
+
+utc_text() {
+  date -u -d "@$1" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || printf '%s seconds since the Unix epoch\n' "$1"
+}
+
+check_head_fresh() {
+  local payload=$1 now=$2 channel_name=$3
+  local expires_at
+  if ! [[ $now =~ ^[0-9]{1,18}$ ]]; then
+    fail "the clock of this host gave \"$now\" instead of the time in seconds, so the head of the $channel_name channel cannot be checked for expiry and is refused"
+  fi
+  expires_at=$(json_number "$payload" expires_at)
+  if ! [[ $expires_at =~ ^[0-9]{1,18}$ ]]; then
+    fail "the head of the $channel_name channel carries no usable expires_at; a head without an expiry is refused. Try again later, when the channel has been published again, or use another channel with --channel or --channel-url"
+  fi
+  if ! [ "$expires_at" -gt "$now" ]; then
+    fail "the head of the $channel_name channel expired at $(utc_text "$expires_at"); an expired head is refused. Try again later, when the channel has been refreshed, or use another channel with --channel or --channel-url"
+  fi
+}
+
 verify_signed() {
   local file=$1 key=$2 out=$3
   local work
@@ -501,6 +541,9 @@ fetch_from_channel() {
   begin "verifying the Ed25519 signature of the release manifest"
   if ! verify_signed "$tmp/manifest.json" "$RELEASE_KEY" "$tmp/payload.json"; then
     fail "the release manifest at $manifest_url is not signed by the release key; nothing was unpacked"
+  fi
+  if [ -z "$requested_version" ]; then
+    check_head_fresh "$tmp/payload.json" "$(date +%s)" "$channel"
   fi
   version=$(json_string "$tmp/payload.json" version)
   local sha256
@@ -726,6 +769,20 @@ release_file() {
   say "the release does not carry $name; taken from $fallback"
 }
 
+render_config() {
+  if [ "$listen" != "$DEFAULT_LISTEN" ]; then
+    printf 'listen: "%s"\n' "$listen"
+  fi
+  if [ "$pg_port" != "5432" ]; then
+    printf 'database: "postgres:///keel?host=%s&port=%s"\n' "$PG_SOCKET_DIR" "$pg_port"
+  fi
+  if [ "$insecure_rehearsal_channel" -eq 1 ]; then
+    case $channel_url in
+      http://*) printf 'update:\n  channel_url: "%s"\n  insecure_rehearsal_channel: true\n' "$channel_url" ;;
+    esac
+  fi
+}
+
 install_files() {
   begin "installing the release under $OPT/versions/$version"
   install -d -m 0755 -o root -g root "$OPT/versions" "$OPT/bin"
@@ -742,14 +799,7 @@ install_files() {
   install -d -m 0750 -o root -g keel "$ETC" "$ETC/templates"
   install -d -m 0700 -o keel -g keel "$LIB" "$LIB/tls" "$LIB/backups" "$LIB/plugins" "$LIB/tasks"
   begin "writing $ETC/config.yaml"
-  {
-    if [ "$listen" != "$DEFAULT_LISTEN" ]; then
-      printf 'listen: "%s"\n' "$listen"
-    fi
-    if [ "$pg_port" != "5432" ]; then
-      printf 'database: "postgres:///keel?host=%s&port=%s"\n' "$PG_SOCKET_DIR" "$pg_port"
-    fi
-  } >"$ETC/config.yaml"
+  render_config >"$ETC/config.yaml"
   chown root:keel "$ETC/config.yaml"
   chmod 0640 "$ETC/config.yaml"
   if [ -s "$ETC/config.yaml" ]; then

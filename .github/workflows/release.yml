@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-channel
   cancel-in-progress: false
 
 env:
@@ -111,8 +111,11 @@ jobs:
       - name: The binary is within the cap of hack/size-cap
         run: hack/check-size.sh target/x86_64-unknown-linux-musl/release/keel
 
+      - name: Build keel-release
+        run: cargo build -p keel-release
+
       - name: Sign, upload and read back the release
         env:
           KEEL_RELEASE_KEY: ${{ secrets.KEEL_RELEASE_KEY }}
           KEEL_RELEASE_ASTRUM_PASSWORD: ${{ secrets.KEEL_RELEASE_ASTRUM_PASSWORD }}
-        run: python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel
+        run: python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel --keel-release target/debug/keel-release

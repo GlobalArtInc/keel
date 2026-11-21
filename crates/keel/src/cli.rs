@@ -266,6 +266,11 @@ pub(crate) struct UpdateArgs {
     pub(crate) request: PathBuf,
     #[arg(long, default_value = keel_release::CHANNEL_URL, value_name = "URL|DIR")]
     pub(crate) channel_url: String,
+    #[arg(
+        long,
+        help = "Admit a plain http:// channel address; for a rehearsal channel on a network the operator trusts, never for the release channel"
+    )]
+    pub(crate) insecure_rehearsal_channel: bool,
     #[arg(long, default_value = privileged::DEFAULT_OPT, value_name = "DIR")]
     pub(crate) opt: PathBuf,
     #[arg(long, default_value = privileged::DEFAULT_UNIT_DIR, value_name = "DIR")]
@@ -885,7 +890,7 @@ async fn run_update(args: UpdateArgs) -> Result<(), PrivilegedError> {
         unit_dir: args.unit_dir,
         systemctl: args.systemctl,
         keys,
-        source: Source::parse(&args.channel_url)?,
+        source: Source::parse(&args.channel_url, args.insecure_rehearsal_channel)?,
     };
     match args.action {
         Some(UpdateAction::Rollback { restore }) => {
@@ -1217,6 +1222,7 @@ mod tests {
             PathBuf::from("/var/lib/keel/update.request")
         );
         assert_eq!(update.channel_url, "https://dl.globalart.hu/keel/");
+        assert!(!update.insecure_rehearsal_channel);
         assert_eq!(update.opt, PathBuf::from("/opt/keel"));
         assert_eq!(update.unit_dir, PathBuf::from("/etc/systemd/system"));
         assert_eq!(update.systemctl, PathBuf::from("systemctl"));
@@ -1230,6 +1236,7 @@ mod tests {
             "/tmp/r",
             "--channel-url",
             "/tmp/channel",
+            "--insecure-rehearsal-channel",
             "--opt",
             "/tmp/opt",
             "--unit-dir",
@@ -1253,6 +1260,7 @@ mod tests {
         assert!(!update.from_request);
         assert_eq!(update.request, PathBuf::from("/tmp/r"));
         assert_eq!(update.channel_url, "/tmp/channel");
+        assert!(update.insecure_rehearsal_channel);
         assert_eq!(update.opt, PathBuf::from("/tmp/opt"));
         assert_eq!(update.unit_dir, PathBuf::from("/tmp/units"));
         assert_eq!(update.systemctl, PathBuf::from("/tmp/systemctl"));

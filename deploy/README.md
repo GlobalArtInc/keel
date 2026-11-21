@@ -40,7 +40,8 @@ Flags:
 |---|---|---|
 | `--product <id>[,<id>]` | bundles to enable; the binary must carry each of them | required |
 | `--channel <name>` | the release channel to read, `stable` or `beta` | `stable` |
-| `--channel-url <url>` | the address of the channel; `http://` is admitted for a rehearsal channel with a warning, the signature protects the release either way | `https://dl.globalart.hu/keel/` |
+| `--channel-url <url>` | the address of the channel, `https://`; a plain `http://` address is refused unless `--insecure-rehearsal-channel` names it a rehearsal | `https://dl.globalart.hu/keel/` |
+| `--insecure-rehearsal-channel` | admit an `http://` `--channel-url` for a rehearsal channel on a network you trust, with a warning (the signature protects the release either way, but not against an old signed head replayed until it expires), and write `update: { channel_url: <that address>, insecure_rehearsal_channel: true }` into `/etc/keel/config.yaml`; with an `https://` address it writes nothing about the rehearsal | off |
 | `--version <ver>` | a version of the channel (`versions/<ver>/manifest.json`) instead of the head | the head of the channel |
 | `--release-key <file>` | a public key file (`ed25519 <base64> [comment]`) in place of the embedded key, for a rehearsal channel signed with a rehearsal pair | the embedded key |
 | `--binary <path\|url>` | a bare `keel` binary or the tar.zst artifact of the Build workflow, or an https URL of either, in place of the channel; a `.sha256` file next to it is verified, no manifest signature is | the channel |
@@ -75,7 +76,13 @@ whole directory is copied; a release archive carries all of them under `deploy/`
    the embedded key before anything is unpacked: the envelope's `payload` and `signature` are
    decoded, the key is wrapped into an SPKI document, and `openssl pkeyutl -verify -rawin`
    checks the signature over the payload bytes, exactly what `keel-release verify` checks.
-   A manifest that does not verify ends the installer with nothing unpacked. The verified
+   A manifest that does not verify ends the installer with nothing unpacked. A head, that is
+   the manifest read without `--version`, must also carry an `expires_at`, whole seconds since
+   the Unix epoch inside the signed payload, that lies after `date +%s`; otherwise the installer
+   stops, again with nothing unpacked, and prints either `carries no usable expires_at` or `expired at
+   <instant>` followed by the advice to try again later, when the channel has been refreshed, or
+   to use another channel (`--channel`, `--channel-url`) or a version of it (`--version`, whose
+   manifest never expires). The verified
    payload names the version and the sha256 of the archive; the installer downloads
    `versions/<ver>/keel-<ver>-x86_64-linux-musl.tar.zst`, checks it against that sha256 with
    `sha256sum`, unpacks the whole archive under `/opt/keel/staging`, requires `keel` at its
@@ -489,7 +496,10 @@ revive an expired lease.
 
 The screen "Updates" of the system group shows the running version and the head of the channel
 the setting `update.channel` names (`stable` or `beta`), read from the `update.channel_url` key of
-`config.yaml` (default `https://dl.globalart.hu/keel/`); a daily job raises the problem
+`config.yaml` (default `https://dl.globalart.hu/keel/`, read over https alone: with a plain
+`http://` address the update functions answer `update.error.channel_insecure` and the rest of the
+service runs on, unless `update.insecure_rehearsal_channel: true` stands beside it, which is for a
+rehearsal channel only); a daily job raises the problem
 `update.available`. Its button, or the command below, runs `update.apply` as a task: it drains the
 task queue, takes the pre-update dump with `COPY … TO STDOUT` into
 `/var/lib/keel/backups/pre-update-<version>-<instant>/`, one file per table, and writes
@@ -502,7 +512,10 @@ runuser -u keel -- keel update rollback
 ```
 
 `keel-update.service` reads the version, the channel and the requesting principal from the request
-and nothing else, downloads `versions/<ver>/manifest.json` and the archive, verifies the Ed25519
+and nothing else, reads the head of the channel and refuses it, with nothing downloaded or
+changed, when its signature fails or it is expired or carries no `expires_at` (the unit's
+journal says `expired at <instant>` or `carries no expires_at`), downloads
+`versions/<ver>/manifest.json` and the archive, verifies the Ed25519
 signature of the manifest against the release key compiled into the binary, the archive's sha256
 against the manifest and the version against `min_upgrade_from` of the channel head, unpacks into
 `/opt/keel/versions/<ver>/`, switches `bin/current` and keeps the version it left as
@@ -521,8 +534,46 @@ systemctl start keel
 ```
 
 `--restore` stops `keel.service` instead of restarting it and prints the restore the operator
-runs next. The channel's `http://` addresses are admitted for a rehearsal channel with a warning:
-the signature protects what is installed either way.
+runs next.
+
+The heads of the two channels expire. `hack/release.py` signs every head with an `expires_at` 30
+days ahead (`--expires-days`, 1 to 365) and the workflow `refresh-channel.yml` signs the current
+heads again every Monday at 04:17 UTC, and on demand from the Actions tab, with
+`hack/release.py --refresh stable` and `--refresh beta`: it reads the head from the raw repository
+with the deploy account, a missing `beta` head is reported and skipped, a missing `stable` head
+fails the step, and the `beta` step runs even when the `stable` one failed. `keel-release` is built
+in a step without secrets; the key and the deploy account are the repository secrets
+`KEEL_RELEASE_KEY` and `KEEL_RELEASE_ASTRUM_PASSWORD` of the release workflow, handed only to the
+two refresh steps. The workflow and `release.yml` share the concurrency group `release-channel`,
+so a release and a refresh never run at once (GitHub keeps one waiting run per group: a run that
+is replaced while it waits is started again from the Actions tab). An installation that meets an
+expired head keeps running the version it runs: `keel update check` and the screen "Updates"
+answer `update.error.head_expired` (`update.error.head_no_expiry` for a head without the field),
+no update is offered or applied until the channel is refreshed, and nothing else changes. A
+rollback to `bin/previous` does not need a fresh head (it still needs the channel to answer;
+`keel privileged update rollback` needs neither). The same refresh is run by hand when the
+workflow cannot run:
+
+```
+KEEL_RELEASE_KEY="$(cat release.key)" KEEL_RELEASE_ASTRUM_PASSWORD=… python3 hack/release.py --refresh stable
+```
+
+Two operational notes. Heads published before the release that introduces `expires_at` carry no
+expiry and the new clients refuse them: after that release every head it did not touch, typically
+`beta` when the release is a stable one, must be refreshed once with `workflow_dispatch` of
+`refresh-channel.yml`. And GitHub disables the scheduled workflows of a public repository after 60
+days without activity in it: the heads then stop being refreshed, and each expires at most 30 days
+after its last refresh, so a repository that may go quiet needs the refresh run by hand.
+
+A channel is read over https alone. A plain `http://` address, in `install.sh --channel-url`, in
+`update.channel_url` or in `keel privileged update --channel-url`, is refused unless it is named a
+rehearsal: `--insecure-rehearsal-channel` of the installer and of `keel privileged update`,
+`update.insecure_rehearsal_channel: true` in `config.yaml`. Outside a rehearsal a redirect that
+leaves https or changes the host is not followed. A head that has expired is refused; that is the
+whole defence against a replayed head, and within its window an old signed head is still accepted.
+The root side takes the version to install from the request and checks it against its own signed
+manifest, without binding it to the version the verified head names. The signature protects what
+is installed over plain http as well.
 
 ## Doctor and the support bundle
 
@@ -559,8 +610,9 @@ lists there. The kernel starts without the file, and an empty file is the same a
 | `trusted_proxies` | `[]` | CIDRs of reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Host` the kernel believes; a bare address stands for its `/32` or `/128` |
 | `log` | `{ level: info, format: json }` | `tracing` level and output format; `json` lines go to the journal under systemd, `text` is for a terminal |
 
-Unknown top-level keys are sections for modules (`ConfigSection`): `update: { channel_url }` of
-the `update` module, `host: { socket, timeout_seconds }` of the `host` module (see "The host
+Unknown top-level keys are sections for modules (`ConfigSection`): `update: { channel_url,
+insecure_rehearsal_channel }` of the `update` module (default `https://dl.globalart.hu/keel/` and
+`false`), `host: { socket, timeout_seconds }` of the `host` module (see "The host
 agent") and `dns: { zones_dir, include_dir, nameserver, hostmaster }` of KeelDNS (see "Running
 KeelDNS"). A section no loaded module
 claims is logged and ignored. A misspelt key inside `tls` or `log`, an unusable `listen` or
@@ -741,8 +793,9 @@ records.
   with no zone on this host needs no proof of control; a zone inside another account's zone; the
   template variables the agent takes from the kernel unchecked.
 - The terminal and VNC of the panel, and a sweep of the transfer files a crash leaves behind.
-- A bound on the owner of a placement and an expiry of the channel head: the findings of the M4
-  security review recorded without a fix.
+- A bound on the owner of a placement: a finding of the M4 security review recorded without a
+  fix. The other finding, the plain `http://` channel and the head that never expired, is closed
+  by the https-only channel and the `expires_at` of the head.
 - A stuck operation is bounded per process, not per operation; the global lock can be held for the
   sum of the limits of the processes of one operation.
 - The allowlist of packages covers removal too: an admitted caller can remove any allowlisted
@@ -755,8 +808,14 @@ records.
 ## Checks CI runs
 
 `hack/check-release.sh` packages the built binary with `hack/release.py --dry-run` into a
-directory, verifies the signed manifests, the archive and its digest, and feeds the dry run's
-channel to `keel privileged update --from-request` in a temporary tree with a stub `systemctl`.
+directory, verifies the signed manifests (the heads with `keel-release verify --head`, which
+refuses a manifest without an `expires_at`), the archive and its digest, checks that the heads
+carry an `expires_at` 30 days ahead and the manifests of the versions none, that
+`hack/release.py --refresh` signs a head again with a later `expires_at` and changes nothing else
+byte for byte, that a head whose payload was changed is not refreshed, that a `beta` channel without
+a head is skipped and a `stable` one without a head fails, that the refresh workflow builds
+`keel-release` without secrets and shares its concurrency group with the release workflow, and feeds the dry run's channel to `keel privileged update --from-request` in a
+temporary tree with a stub `systemctl`.
 `hack/check-install.sh` runs `bash -n` and shellcheck over the scripts, checks that `--help`
 prints the usage, that the four unit files exist, are installed and removed by the scripts, that
 `keel.service`, `keel-privileged.service` and `keel-update.path` are enabled, that
@@ -772,7 +831,14 @@ binary, that every subcommand and flag the units, the scripts and this README ca
 `config-sample.yaml` parses. Where an OpenSSL 1.1.1 or newer is on the path it also sources
 `install.sh` and runs its verification against a manifest signed with a rehearsal pair, which
 must be accepted, and against another key, a tampered signature, a tampered payload and a plain
-JSON file, which must be refused with no payload written; and it runs the uid allotment against
+JSON file, which must be refused with no payload written; it reads a rehearsal channel through
+`fetch_from_channel` with a stub in place of the download and requires a fresh head to reach the
+unpacking and an expired head, a head without an `expires_at`, the manifest of a version served
+in the place of the head and a `date` that prints nothing, no number or fails to stop before it,
+while a `--version` of the channel still reaches the unpacking under an expired head and a broken
+`date`; it requires `--channel-url` with an `http://` address to be refused without
+`--insecure-rehearsal-channel` and the `config.yaml` it renders to carry the channel and the
+setting for a rehearsal over `http://` and nothing for `https://`; and it runs the uid allotment against
 a stub `getent` and a subordinate range file. `hack/install-vm.sh` is the operator's proof on a
 fresh machine: it serves a rehearsal channel and the installer, checks that `curl | sh` stops
 with the bash line, runs `curl | bash -s -- --product demo` against them and checks the units,

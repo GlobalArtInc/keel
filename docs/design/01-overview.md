@@ -236,7 +236,7 @@ lists them with the product they belong to, not as a fixed path.
 | `crates/system` | `keel-system`: system modules, one cargo feature per module |
 | `crates/host` | `keel-host`: `HostExecutor` client and the `host` module |
 | `crates/host-agent` | `keel-host-agent`: the agent side, run as the `privileged` subcommand |
-| `crates/release` | `keel-release`: the release manifest, its Ed25519 signature and the verifier the root side and the facade share, the bin `keel-release` (`keygen`, `sign`, `verify`), the public release keys under `keys/` and `channel.json` with the `contract` and `min_upgrade_from` of the next release; from M4 |
+| `crates/release` | `keel-release`: the release manifest, its Ed25519 signature and the verifier the root side and the facade share, the bin `keel-release` (`keygen`, `sign`, `refresh`, `verify`), the public release keys under `keys/` and `channel.json` with the `contract` and `min_upgrade_from` of the next release; from M4 |
 | `crates/storage` | `keel-storage`: the S3 backup target and the encryption of remote archives, not built yet; the installation backup and the site archives of `panel` are written to local directories without it |
 | `crates/client` | `keel-client`: the Rust client of the wire contract, for a peer installation and the conformance suite: typed calls, credentials, on-behalf, keyed retries, a pinned certificate or the system roots, the pull feed as a stream; depends on `keel-types` alone; from M6 |
 | `crates/testkit` | `keel-testkit` |
