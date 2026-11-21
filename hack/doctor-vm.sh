@@ -62,7 +62,7 @@ esac
 for tool in runuser zstd tar python3; do
   command -v "$tool" >/dev/null || fail "$tool is not installed"
 done
-mkdir -p "$OUT"
+install -d -m 0777 "$OUT"
 rm -rf "$OUT/support"
 mkdir -p "$OUT/support"
 

@@ -107,8 +107,15 @@ wait_restarted() {
 }
 
 journal_has() {
-  local since=$1 text=$2
-  journalctl -u "$UNIT" --since "$since" --no-pager | grep -qF -- "$text"
+  local since=$1 text=$2 lines
+  for _ in $(seq 1 15); do
+    lines=$(journalctl -u "$UNIT" --since "$since" --no-pager)
+    if grep -qF -- "$text" <<<"$lines"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 product_state() {
@@ -143,7 +150,7 @@ switch() {
   local before pid since out
   before=$(restarts)
   pid=$(main_pid)
-  since=$(date -u '+%Y-%m-%d %H:%M:%S')
+  since=$(date '+%Y-%m-%d %H:%M:%S')
   out=$(mktemp)
   if as_keel product "$action" "$id" >"$out" 2>&1; then
     say "ok: keel product $action $id as the user keel"

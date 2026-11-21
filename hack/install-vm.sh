@@ -158,7 +158,7 @@ EOF
 }
 
 root_processes_of_keel() {
-  ps -eo user:32,args | awk '$1 == "root" && $2 ~ /(^|\/)keel$/ { $1 = ""; print }' | sed 's/^ *//'
+  ps -eo user:32,args | awk -v bin="$KEEL" '$1 == "root" && $2 == bin { $1 = ""; print }' | sed 's/^ *//'
 }
 
 run() {
@@ -201,10 +201,10 @@ run() {
   check "keel.service is Type=notify" test "$(systemctl show keel.service -p Type --value)" = "notify"
   check "keel.service has a 60 s watchdog" test "$(systemctl show keel.service -p WatchdogUSec --value)" = "1min"
   check "bin/current points at the installed version" test "$(readlink "$KEEL")" = "$OPT/versions/$version/keel"
-  check "the signed manifest is kept beside the version" cmp -s "$OPT/versions/$version/manifest.json" "$dir/channel/versions/$version/manifest.json"
+  check "the signed manifest is kept beside the version" cmp -s "$OPT/versions/$version/manifest.json" "$dir/channel/stable/manifest.json"
   check "the installed deploy directory carries the published install.sh" cmp -s "$OPT/versions/$version/deploy/install.sh" "$dir/channel/install.sh"
   check "root runs keel privileged and nothing else of keel" test "$(root_processes_of_keel)" = "$KEEL privileged --socket $RUN/agent.sock --policy $POLICY"
-  check "keel serve runs as the user keel" test "$(ps -eo user:32,args | awk '$2 ~ /(^|\/)keel$/ && $3 == "serve" { print $1 }')" = "keel"
+  check "keel serve runs as the user keel" test "$(ps -eo user:32,args | awk -v bin="$KEEL" '$2 == bin && $3 == "serve" { print $1 }')" = "keel"
   check "$POLICY carries the allotted uid range" grep -qE '^  uid_range: \{ from: [0-9]+, to: [0-9]+ \}$' "$POLICY"
   check "$POLICY carries the sections of bill, dns and panel" test "$(grep -cE '^    (bill|dns|panel): ' "$POLICY")" = "3"
   check "$POLICY is readable by root and the group keel alone" test "$(stat -c '%a %U %G' "$POLICY")" = "640 root keel"
