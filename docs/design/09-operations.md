@@ -470,7 +470,7 @@ Releases are published on a channel described by a signed `manifest.json` with `
 
 The channel lives at `https://dl.globalart.hu/keel/`, a host name compiled into the binary as the
 default `update.channel_url`. Behind that name stands a raw repository `keel-releases` of the
-Nexus at `nexus.globalart.hu`, reachable through a route of the cluster; the name is the contract
+Astrum Repository at `astrum.globalart.hu`, reachable through a route of the cluster; the name is the contract
 with every installation, the storage behind it is not, so the repository can move to an object
 store later without touching a single host. The layout:
 
@@ -491,7 +491,7 @@ may run is decided by its license, not by who can download the archive. Should d
 need to be restricted, the license server of M5 hands out tokens for the same URL.
 
 Publication is the release workflow of M4: a tag `keel-vX.Y.Z` builds the musl binary, signs the
-manifest with `hack/release.py` and uploads through the Nexus REST API under a deploy account
+manifest with `hack/release.py` and uploads through the REST API of Astrum under a deploy account
 `keel-release` whose secret reaches CI through `ci-cd sync-secrets`. The first releases sign in
 CI with the key held as a repository secret, which is enough while the only installations are
 our own; before the product is sold the signature moves to an offline machine, which changes

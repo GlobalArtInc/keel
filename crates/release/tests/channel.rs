@@ -69,8 +69,8 @@ fn the_release_workflow_triggers_on_release_tags_alone() {
         Value::from("${{ secrets.KEEL_RELEASE_KEY }}")
     );
     assert_eq!(
-        env[&Value::from("KEEL_RELEASE_NEXUS_PASSWORD")],
-        Value::from("${{ secrets.KEEL_RELEASE_NEXUS_PASSWORD }}")
+        env[&Value::from("KEEL_RELEASE_ASTRUM_PASSWORD")],
+        Value::from("${{ secrets.KEEL_RELEASE_ASTRUM_PASSWORD }}")
     );
     assert!(
         !WORKFLOW.contains("workflow_dispatch") && !WORKFLOW.contains("pull_request"),

@@ -78,7 +78,7 @@ else
   echo "actionlint is not installed; the trigger of $workflow is checked by the tests of keel-release"
 fi
 check "$workflow runs hack/release.py with the tag and the musl binary" grep -qF 'python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel' "$workflow"
-check "$workflow hands each of the two secrets to one step" test "$(grep -c 'secrets.KEEL_RELEASE_KEY\|secrets.KEEL_RELEASE_NEXUS_PASSWORD' "$workflow")" = "2"
+check "$workflow hands each of the two secrets to one step" test "$(grep -c 'secrets.KEEL_RELEASE_KEY\|secrets.KEEL_RELEASE_ASTRUM_PASSWORD' "$workflow")" = "2"
 check "$workflow refuses a tag without an annotation" grep -qF 'git cat-file -t "$GITHUB_REF_NAME"' "$workflow"
 check "$workflow checks the binary against the tag" grep -qF 'expected="keel ${GITHUB_REF_NAME#keel-v}"' "$workflow"
 
@@ -158,7 +158,7 @@ check "the two dry runs leave the layout of the design plus install.sh at the ro
 check "stable/manifest.json is the manifest of $version" cmp -s "$out/stable/manifest.json" "$out/versions/$version/manifest.json"
 check "beta/manifest.json is the manifest of $beta" cmp -s "$out/beta/manifest.json" "$out/versions/$beta/manifest.json"
 for object in "versions/$version/$archive" "versions/$version/$archive.sha256" "versions/$version/manifest.json" "stable/manifest.json" "install.sh"; do
-  check "the dry run names the PUT of $object" grep -qF "a publish would PUT https://nexus.globalart.hu/repository/keel-releases/keel/$object" "$tmp/stable.log"
+  check "the dry run names the PUT of $object" grep -qF "a publish would PUT https://astrum.globalart.hu/repository/keel-releases/keel/$object" "$tmp/stable.log"
 done
 published_key=$(sed -nE "s/^RELEASE_KEY='(.*)'$/\1/p" "$out/install.sh")
 check "the published install.sh carries the committed release key" test "$published_key" = "$(head -n 1 crates/release/keys/release.pub)"
@@ -230,7 +230,7 @@ check "a dry run below the stable head refuses to move it backwards" fails_with 
 check "a dry run whose floor is above its version is refused" fails_with "would admit nothing" dry_run --tag keel-v0.0.1
 check "a tag without the prefix is refused" fails_with "does not start with keel-v" dry_run --tag v0.1.0
 check "a tag that is not a semantic version is refused" fails_with "does not name a semantic version" dry_run --tag keel-v1.0
-check "a publish without the password is refused before anything is packaged" fails_with "KEEL_RELEASE_NEXUS_PASSWORD is not set" env -u KEEL_RELEASE_NEXUS_PASSWORD python3 hack/release.py --tag "keel-v$version" --binary "$keel" --notes-file "$tmp/notes.txt"
+check "a publish without the password is refused before anything is packaged" fails_with "KEEL_RELEASE_ASTRUM_PASSWORD is not set" env -u KEEL_RELEASE_ASTRUM_PASSWORD python3 hack/release.py --tag "keel-v$version" --binary "$keel" --notes-file "$tmp/notes.txt"
 
 if [ "$problems" -gt 0 ]; then
   echo "$problems problem(s)" >&2
