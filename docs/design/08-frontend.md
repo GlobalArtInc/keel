@@ -13,7 +13,7 @@ consumes are specified in [10-contracts.md](10-contracts.md); descriptors, field
 The frontend is layer L6 of the dependency graph described in [01-overview.md](01-overview.md). It
 consists of the npm library `@globalart/keel` with its entry points and of one shell application,
 `frontend/apps/shell`, whose build the `keel` binary embeds. Both are built on Angular 19 and
-phoenix-ui. `@globalart/keel` is published to Nexus next to phoenix-ui; the shell application is
+phoenix-ui. `@globalart/keel` is published to Astrum next to phoenix-ui; the shell application is
 not published, it is built in the repository and embedded (see "Embedding").
 
 Two things are explicitly outside this layer:
@@ -519,7 +519,7 @@ is rendered from descriptors. Which products a running installation has enabled 
 question: the shell registers the providers of the products `/boot.products` names and never loads
 the chunks of the others. A product whose crates move to their own
 repository ([01-overview.md](01-overview.md)) keeps its frontend library in this repository or
-publishes it to Nexus as `@globalart/keel-<id>`; which, is decided when it happens. A third-party
+publishes it to Astrum as `@globalart/keel-<id>`; which, is decided when it happens. A third-party
 composition built from the facade builds and embeds a shell of its own from the same sources.
 
 The `frontend/` directory is a pnpm workspace: `libs/keel` with the entry points, `apps/shell`,

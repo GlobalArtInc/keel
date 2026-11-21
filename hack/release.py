@@ -22,10 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 TAG_PREFIX = "keel-v"
 ARCHIVE_TARGET = "x86_64-linux-musl"
 CHANNEL_URL = "https://dl.globalart.hu/keel/"
-NEXUS_URL = "https://nexus.globalart.hu/repository/keel-releases/keel/"
-NEXUS_USER = "keel-release"
+ASTRUM_URL = "https://astrum.globalart.hu/repository/keel-releases/keel/"
+ASTRUM_USER = "keel-release"
 KEY_VARIABLE = "KEEL_RELEASE_KEY"
-PASSWORD_VARIABLE = "KEEL_RELEASE_NEXUS_PASSWORD"
+PASSWORD_VARIABLE = "KEEL_RELEASE_ASTRUM_PASSWORD"
 CHANNEL_FILE = ROOT / "crates" / "release" / "channel.json"
 UNIT_DIR = ROOT / "deploy" / "systemd"
 CONFIG_SAMPLE = ROOT / "deploy" / "config-sample.yaml"
@@ -463,10 +463,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     add("--zstd-level", type=int, default=19, help="the zstd compression level of the archive")
     add("--dry-run", action="store_true", help="write the layout under --out, upload nothing")
     add("--out", type=Path, help="the directory of the dry run")
-    add("--nexus-url", default=NEXUS_URL, help="the raw repository the objects are uploaded to")
+    add("--astrum-url", default=ASTRUM_URL, help="the raw repository the objects are uploaded to")
     add(
-        "--nexus-user",
-        default=NEXUS_USER,
+        "--astrum-user",
+        default=ASTRUM_USER,
         help=f"the deploy account; its password is {PASSWORD_VARIABLE}",
     )
     add(
@@ -487,11 +487,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def store_for(args: argparse.Namespace):
     if args.dry_run:
-        return Directory(args.out, args.nexus_url)
+        return Directory(args.out, args.astrum_url)
     password = os.environ.get(PASSWORD_VARIABLE, "")
     if not password:
         raise Failure(f"{PASSWORD_VARIABLE} is not set")
-    return Http(args.nexus_url, args.nexus_user, password)
+    return Http(args.astrum_url, args.astrum_user, password)
 
 
 def main(argv: list[str]) -> int:
