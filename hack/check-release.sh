@@ -77,7 +77,8 @@ if command -v actionlint >/dev/null 2>&1; then
 else
   echo "actionlint is not installed; the trigger of $workflow is checked by the tests of keel-release"
 fi
-check "$workflow runs hack/release.py with the tag and the musl binary" grep -qF 'python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel' "$workflow"
+check "$workflow runs hack/release.py with the tag, the musl binary and the keel-release it built" grep -qF 'python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel --keel-release target/debug/keel-release' "$workflow"
+check "$workflow builds keel-release in a step that holds neither of the two secrets, before the step that does" test "$(sed -n '/- name: Build keel-release/,/- name: Sign, upload and read back the release/p' "$workflow" | grep -c 'secrets\.KEEL_RELEASE\|env:')" = "0"
 check "$workflow hands each of the two secrets to one step" test "$(grep -c 'secrets.KEEL_RELEASE_KEY\|secrets.KEEL_RELEASE_ASTRUM_PASSWORD' "$workflow")" = "2"
 refresh_workflow=.github/workflows/refresh-channel.yml
 check "$refresh_workflow runs hack/release.py --refresh for both channels with the keel-release it built" test "$(grep -cE 'run: python3 hack/release.py --refresh (stable|beta) --keel-release target/debug/keel-release$' "$refresh_workflow")" = "2"

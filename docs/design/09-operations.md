@@ -579,7 +579,8 @@ CI with the key held as a repository secret, which is enough while the only inst
 our own; before the product is sold the signature moves to an offline machine, which changes
 where `hack/release.py` runs and nothing else. The workflow is `release.yml`, triggered by
 annotated `keel-v*` tags alone: it repeats the musl build, checks that the binary prints the
-version of the tag, and runs `hack/release.py`, which packages the binary with
+version of the tag, builds `keel-release` in a step that holds neither the key nor the password,
+and runs `hack/release.py` with that binary, which packages the binary with
 `config-sample.yaml` beside it and `install.sh`, `uninstall.sh`, `agent.yaml` and the unit files
 under `deploy/`, writes the `.sha256`, signs the manifest of the version and the head with their
 `expires_at` through `keel-release sign`, verifies both against the compiled keys (the head with

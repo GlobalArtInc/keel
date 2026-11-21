@@ -113,15 +113,17 @@ pub(super) struct Source {
     client: reqwest::Client,
 }
 
+fn plain_http_allowed(insecure_rehearsal: bool, base: &str) -> bool {
+    insecure_rehearsal && base.starts_with("http://")
+}
+
 fn redirect_refusal(
     from: &reqwest::Url,
     to: &reqwest::Url,
-    insecure_rehearsal: bool,
+    allow_plain_http: bool,
 ) -> Option<&'static str> {
-    if insecure_rehearsal {
-        return None;
-    }
-    if to.scheme() != "https" {
+    let scheme_kept = to.scheme() == "https" || (allow_plain_http && to.scheme() == "http");
+    if !scheme_kept {
         return Some("the redirect leaves https");
     }
     if from.host_str() != to.host_str()
@@ -132,7 +134,7 @@ fn redirect_refusal(
     None
 }
 
-fn redirect_policy(insecure_rehearsal: bool) -> reqwest::redirect::Policy {
+fn redirect_policy(allow_plain_http: bool) -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(move |attempt| {
         if attempt.previous().len() >= REDIRECT_LIMIT {
             return attempt.error(format!("more than {REDIRECT_LIMIT} redirects"));
@@ -140,7 +142,7 @@ fn redirect_policy(insecure_rehearsal: bool) -> reqwest::redirect::Policy {
         let Some(from) = attempt.previous().last() else {
             return attempt.error("a redirect without a request before it");
         };
-        match redirect_refusal(from, attempt.url(), insecure_rehearsal) {
+        match redirect_refusal(from, attempt.url(), allow_plain_http) {
             Some(reason) => {
                 let message = format!("{reason}: {from} to {}", attempt.url());
                 attempt.error(message)
@@ -156,7 +158,10 @@ impl Source {
             .user_agent(format!("keel/{}", crate::VERSION))
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(TIMEOUT)
-            .redirect(redirect_policy(insecure_rehearsal))
+            .redirect(redirect_policy(plain_http_allowed(
+                insecure_rehearsal,
+                base,
+            )))
             .build()
             .map_err(|error| {
                 KeelError::internal(ERROR_CHANNEL)
@@ -324,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn a_redirect_off_https_or_to_another_host_is_refused_unless_the_channel_is_a_rehearsal() {
+    fn a_redirect_off_https_or_to_another_host_is_refused_and_a_rehearsal_lifts_plain_http_alone() {
         let url = |text: &str| reqwest::Url::parse(text).unwrap();
         let from = url("https://dl.globalart.hu/keel/stable/manifest.json");
         assert_eq!(
@@ -359,18 +364,34 @@ mod tests {
             ),
             Some("the redirect changes the host")
         );
+        assert!(!plain_http_allowed(true, "https://dl.globalart.hu/keel/"));
+        assert!(!plain_http_allowed(false, "http://127.0.0.1:8080/keel/"));
+        assert!(plain_http_allowed(true, "http://127.0.0.1:8080/keel/"));
+        assert_eq!(
+            redirect_refusal(
+                &from,
+                &url("http://dl.globalart.hu/keel/stable/manifest.json"),
+                plain_http_allowed(true, "https://dl.globalart.hu/keel/")
+            ),
+            Some("the redirect leaves https"),
+            "the rehearsal setting with an https channel does not admit a redirect to http"
+        );
         let rehearsal = url("http://127.0.0.1:8080/keel/stable/manifest.json");
         assert_eq!(
-            redirect_refusal(&rehearsal, &url("http://localhost:9090/x"), false),
+            redirect_refusal(&rehearsal, &url("http://127.0.0.1:8080/other"), true),
+            None
+        );
+        assert_eq!(
+            redirect_refusal(&rehearsal, &url("http://127.0.0.1:8080/other"), false),
             Some("the redirect leaves https")
         );
         assert_eq!(
-            redirect_refusal(&rehearsal, &url("http://localhost:9090/x"), true),
-            None
+            redirect_refusal(&rehearsal, &url("http://localhost:8080/other"), true),
+            Some("the redirect changes the host")
         );
         assert_eq!(
-            redirect_refusal(&from, &url("http://mirror.example.org/x"), true),
-            None
+            redirect_refusal(&rehearsal, &url("http://127.0.0.1:9090/other"), true),
+            Some("the redirect changes the host")
         );
     }
 

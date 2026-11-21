@@ -58,6 +58,7 @@ products=""
 binary=""
 channel=$DEFAULT_CHANNEL
 channel_url=$DEFAULT_CHANNEL_URL
+channel_url_unsafe='[^][A-Za-z0-9._~:/@%+=,;-]'
 insecure_rehearsal_channel=0
 requested_version=""
 release_key_file=""
@@ -261,7 +262,7 @@ parse_args() {
       if [ "$insecure_rehearsal_channel" -ne 1 ]; then
         fail "--channel-url $channel_url is plain http; a release channel is read over https. A rehearsal channel on a network you trust is named explicitly with --insecure-rehearsal-channel"
       fi
-      if [[ $channel_url =~ [^][A-Za-z0-9._~:/@%+=,\;-] ]]; then
+      if [[ $channel_url =~ $channel_url_unsafe ]]; then
         fail "--channel-url $channel_url carries a character that is not written into $ETC/config.yaml; use letters, digits and . _ ~ : / @ % + = , ; - [ ]"
       fi
       say "warning: the channel $channel_url is reached over plain http; the manifest signature still protects the release"

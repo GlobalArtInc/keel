@@ -159,7 +159,7 @@ rendered_config() {
 
 refuses_odd_rehearsal_url() {
   local out
-  if out=$(bash deploy/install.sh --product demo --channel-url 'http://a"b/' --insecure-rehearsal-channel </dev/null 2>&1); then
+  if out=$(bash deploy/install.sh --product demo --channel-url "$1" --insecure-rehearsal-channel </dev/null 2>&1); then
     return 1
   fi
   grep -qF 'carries a character that is not written into' <<<"$out"
@@ -168,7 +168,11 @@ refuses_odd_rehearsal_url() {
 check "install.sh writes the channel and the rehearsal setting into config.yaml for a plain http channel named a rehearsal" test "$(rendered_config http://127.0.0.1:8098/ 1)" = "$(printf 'update:\n  channel_url: "http://127.0.0.1:8098/"\n  insecure_rehearsal_channel: true')"
 check "install.sh writes nothing about the rehearsal for an https channel even with the flag" test -z "$(rendered_config https://dl.example.org/keel/ 1)"
 check "install.sh writes nothing about the rehearsal without the flag" test -z "$(rendered_config https://dl.globalart.hu/keel/ 0)"
-check "install.sh refuses a rehearsal channel address it cannot write into config.yaml" refuses_odd_rehearsal_url
+check "install.sh refuses a rehearsal channel address with a double quote" refuses_odd_rehearsal_url 'http://a"b/'
+check "install.sh refuses a rehearsal channel address with a backslash" refuses_odd_rehearsal_url 'http://a\b/'
+check "install.sh refuses a rehearsal channel address with a single quote" refuses_odd_rehearsal_url "http://a'b/"
+check "install.sh refuses a rehearsal channel address with a space" refuses_odd_rehearsal_url 'http://a b/'
+check "install.sh refuses a rehearsal channel address with a dollar sign" refuses_odd_rehearsal_url 'http://a$b/'
 check "the deploy README names the rehearsal flag and the setting" test "$(grep -cF -e '--insecure-rehearsal-channel' -e 'insecure_rehearsal_channel' deploy/README.md)" -ge 2
 check "install-vm.sh names its plain http channel as a rehearsal" grep -qF -- '--channel-url "http://127.0.0.1:$CHANNEL_PORT/" --insecure-rehearsal-channel' hack/install-vm.sh
 check "update-vm.sh names its plain http channel as a rehearsal for the kernel and the root side" test "$(grep -cF -e 'insecure_rehearsal_channel: true' -e '--insecure-rehearsal-channel --release-key' hack/update-vm.sh)" = "2"

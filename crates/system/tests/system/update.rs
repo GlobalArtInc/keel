@@ -440,6 +440,88 @@ async fn check_compares_the_running_version_with_the_channel_head_and_reads_min_
     harness.finish().await;
 }
 
+fn serve_redirecting_channel(head: Vec<u8>) -> std::net::SocketAddr {
+    use std::io::{Read, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let addr = listener.local_addr().expect("an address");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let head = head.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..read]).into_owned();
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                let redirect = |host: &str, to: &str| {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://{host}:{}/{to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        addr.port()
+                    )
+                    .into_bytes()
+                };
+                let response = match path.as_str() {
+                    "/ch/stable/manifest.json" => {
+                        redirect("127.0.0.1", "real/stable/manifest.json")
+                    }
+                    "/ch/beta/manifest.json" => redirect("localhost", "real/beta/manifest.json"),
+                    "/real/stable/manifest.json" | "/real/beta/manifest.json" => {
+                        let mut answer = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            head.len()
+                        )
+                        .into_bytes();
+                        answer.extend_from_slice(&head);
+                        answer
+                    }
+                    _ => {
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .to_vec()
+                    }
+                };
+                let _ = stream.write_all(&response);
+            });
+        }
+    });
+    addr
+}
+
+#[tokio::test]
+async fn a_redirect_of_a_rehearsal_channel_is_followed_on_the_same_host_and_refused_to_another() {
+    let addr = serve_redirecting_channel(signed(
+        &NEXT,
+        RUNNING,
+        1,
+        "behind a redirect",
+        Some(fresh()),
+    ));
+    let harness = Harness::new()
+        .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&MODULE)
+        .module(&PROBE)
+        .section(
+            SECTION,
+            json!({ "channel_url": format!("http://{addr}/ch/"), "insecure_rehearsal_channel": true }),
+        )
+        .boot()
+        .await;
+
+    let followed = harness.call(Who::Admin, CHECK, json!({})).await;
+    assert_eq!(data(&followed)["available"], json!(NEXT.as_str()));
+
+    choose_channel(&harness, "beta");
+    let refused = harness.call(Who::Admin, CHECK, json!({})).await;
+    let error = refused
+        .error()
+        .expect("a redirect to another host is refused");
+    assert_eq!(error.key, ERROR_CHANNEL);
+    let reason = error.params["reason"].as_str().expect("a reason");
+    assert!(reason.contains("the redirect changes the host"), "{reason}");
+    harness.finish().await;
+}
+
 #[tokio::test]
 async fn check_refuses_a_head_without_an_expiry_and_one_that_expired() {
     let channel = Channel::serve().await;

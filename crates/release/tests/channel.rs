@@ -60,8 +60,30 @@ fn the_release_workflow_triggers_on_release_tags_alone() {
         .expect("a step runs hack/release.py");
     assert_eq!(
         publish["run"].as_str().unwrap().trim(),
-        "python3 hack/release.py --tag \"$GITHUB_REF_NAME\" --binary target/x86_64-unknown-linux-musl/release/keel"
+        "python3 hack/release.py --tag \"$GITHUB_REF_NAME\" --binary target/x86_64-unknown-linux-musl/release/keel --keel-release target/debug/keel-release"
     );
+    let steps = workflow["jobs"]["release"]["steps"].as_sequence().unwrap();
+    let build = steps
+        .iter()
+        .position(|step| step["name"].as_str() == Some("Build keel-release"))
+        .expect("a step builds keel-release");
+    let publish_at = steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|run| run.contains("hack/release.py"))
+        })
+        .unwrap();
+    assert!(
+        build < publish_at,
+        "keel-release is built before the secrets are handed out"
+    );
+    assert_eq!(
+        steps[build]["run"].as_str(),
+        Some("cargo build -p keel-release")
+    );
+    assert!(steps[build]["env"].is_null() && steps[build]["with"].is_null());
     let env = publish["env"]
         .as_mapping()
         .expect("the publish step has env");
