@@ -74,12 +74,6 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
-      - name: The committed dictionaries match the translation projects
-        if: env.KEEL_OWNLATE_TOKEN != ''
-        run: |
-          cargo run -p keel-dev -- i18n pull --out .
-          git diff --exit-code -- crates/kernel/i18n crates/host/i18n crates/system/i18n products/demo/i18n products/dns/i18n products/dns/crates/dns-zones/i18n products/dns/crates/dns-records/i18n products/dns/crates/dns-templates/i18n products/panel/i18n products/panel/crates/hosting-users/i18n
-
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-musl -p keel-bin
 
@@ -118,3 +112,29 @@ jobs:
       - name: Show the disk
         if: always()
         run: df -h /
+
+  dictionaries:
+    name: the committed dictionaries match the translation projects
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup show
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: dictionaries
+          cache-on-failure: true
+
+      - name: The committed dictionaries match the translation projects
+        if: env.KEEL_OWNLATE_TOKEN != ''
+        run: |
+          cargo run -p keel-dev -- i18n pull --out .
+          git diff --exit-code -- crates/kernel/i18n crates/host/i18n crates/system/i18n products/demo/i18n products/dns/i18n products/dns/crates/dns-zones/i18n products/dns/crates/dns-records/i18n products/dns/crates/dns-templates/i18n products/panel/i18n products/panel/crates/hosting-users/i18n
