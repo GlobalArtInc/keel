@@ -1,8 +1,8 @@
 # Plan
 
-This document orders the work: the milestones M0 to M8 with their scope and exit criteria, the
-breakdowns of M0 to M6 into PR-sized steps, the working rules of the repository, and the M0 to M6
-exit checklists. The design itself lives in `design/`; this document only says in which order it
+This document orders the work: the milestones M0 to M8 and the MVP between M6 and M7 with their
+scope and exit criteria, the breakdowns of M0 to M6 and of the MVP into PR-sized steps, the working
+rules of the repository, and the M0 to M6 exit checklists. The design itself lives in `design/`; this document only says in which order it
 is built and how each step is shown to be done. Nothing here carries a date or a duration.
 
 ## Milestones
@@ -248,6 +248,54 @@ Done when:
 - conformance is green against an installation with `dns` alone, with `panel` alone and with
   both enabled;
 - revoking a token breaks its calls with `401`.
+
+### MVP — the first public release
+
+M0 to M6 built the kernel, KeelDNS and KeelPanel, but nothing was ever released: no tag exists,
+the operator-run items of the M4, M5 and M6 checklists were never run on a machine, and the CI of
+`main` went red when the disk of the self-hosted runner filled. The MVP is the distance from built
+to installed by someone who is not the author: KeelDNS and KeelPanel on one host, from a signed
+release, with the documentation as the only help. It designs nothing new. It restores the rule
+above that M7 broke by starting the plugin host before a product shipped: plugin work stops after
+M7 step 1c until the release exists, and the plugin host built so far is compiled out of the
+release binary. Products in their own repositories, SDK 1.0 and the cluster stay in M7 and M8.
+`peers` and `svc` ship as a beta: they stay compiled in, the documentation tells the operator to
+pair only installations they run, and what the M6 review left without a fix stays recorded for M7
+step 5.
+
+Scope:
+
+- CI and Build on GitHub-hosted runners, green on `main`.
+- The release channel on Astrum instead of the deleted Nexus host, a head manifest that expires,
+  the production license key pair, and a signed release candidate on the beta channel before the
+  stable tag.
+- What the M4 and M5 security reviews left without a fix and a customer of a hosted installation
+  can reach: unbounded processes and packages in the host agent, the unpacker's entry count, the
+  unchecked arguments of product operations, a zone inside a zone of another account, a mail
+  domain with no proof of control, and the FTP jail a hosting user can turn into a link.
+- The plugin host compiled out of the release binary.
+- Every operator-run item of the M4, M5 and M6 checklists run on clean Debian machines, with the
+  findings fixed.
+- `docs/operator/` and the vocabulary check, pulled forward from M7 steps 6a and 6b.
+- A walk through the whole application by hand, and its list of findings handed to the owner.
+
+Done when:
+
+- CI and Build are green on `main` and no job runs on a self-hosted runner;
+- on a clean Debian 13, `install.sh --product dns` and `install.sh --product panel` install Keel
+  from the channel and no process other than `privileged` runs as root; a zone is served by bind,
+  and a site with a Let's Encrypt certificate on a real domain is served over TLS;
+- the update from the button and its rollback keep the database, and a backup taken on one machine
+  restores on another with the second factor working;
+- the release binary carries no `plugin.*` function and creates no plugin account;
+- every finding named in the scope is closed by a named test or, for the FTP jail, by a check on
+  the machine;
+- `https://dl.globalart.hu/keel/stable/manifest.json` names the release, its head expires, and
+  `keel-release verify` accepts it;
+- `hack/check-vocabulary.sh` is green in CI and `hack/check-docs.sh` runs the commands of
+  `docs/operator/`;
+- someone who is not the author installs `panel` from `docs/operator/` without help;
+- the owner has the list from the walk through the application and has decided what stays.
 
 ### M7 — Plugins, SDK 1.0, products in their own repositories
 
@@ -7300,6 +7348,264 @@ are trusted code, and the review of M7 takes up plugins.
 
 - `hack/check-docs.sh` green; every "Done when" item of M6 ticked or marked operator-run;
   `keel --version` answers `0.4.0`.
+
+## MVP work breakdown
+
+The MVP is split into twelve PR-sized steps in six groups: CI (1), the release channel (2, 3b, 7),
+what the security reviews left open (3a to 3c, 4), the machines (5, 6), the documentation (8) and
+the release itself (9, 10). Steps 3a and 3b both touch `crates/release/`, so 3a lands first; 3c
+and 4 touch other files and may run beside them. Steps 5 and 6 come after 3a to 4 so that the
+machines are run against the code that ships; step 8 comes after them so that the documentation
+describes what was run; step 7 comes before the release candidate of step 9 because the public half
+of the license key is compiled into the binary. The steps 3a to 3c close findings that M7 step 5
+lists, and step 8 delivers the operator documentation of M7 step 6a and the vocabulary check of
+step 6b; when M7 resumes, those steps keep only what is not closed here. Operator-run items name a
+machine or an account the repository cannot reach; each is ticked by hand in the exit checklist of
+step 10 with the transcript or the output that shows it.
+
+### 1. CI on GitHub-hosted runners
+
+**Goal.** Every job of `ci.yml`, `build.yml`, `release.yml` and `publish-npm.yml` runs on
+`ubuntu-24.04`. The disk of the self-hosted runner filled and failed Clippy, the service
+containers and the musl build, so the heavy jobs free the preinstalled toolchains first, build
+without incremental compilation and with line tables only, and keep the dependency build in
+`rust-cache`; the Rust toolchain comes from `rust-toolchain.toml`. The frontend reads
+`@globalart/phoenix-ui` from Astrum with the secrets `ASTRUM_USERNAME` and `ASTRUM_PASSWORD`
+through the composite action `.github/actions/astrum-npm-auth`, which masks the derived value
+before it writes it, and the Docker Hub images of the service containers are pulled with the
+`DOCKERHUB_*` secrets. A pull request from a fork has no secrets and fails the jobs that need
+them; CI does not serve outside contributors yet.
+
+**Touches.** `.github/workflows/`, `.github/actions/`, `frontend/.npmrc`, `README.md`.
+
+**Out of scope.** Splitting the job `check` into parallel jobs; the release channel (step 2).
+
+**Acceptance.**
+
+- CI and Build are green on `main`; `grep -rn self-hosted .github` finds nothing;
+  `hack/check-docs.sh` is green.
+
+### 2. The release channel on Astrum
+
+**Goal.** `hack/release.py` uploads to the raw repository `keel-releases` on
+`astrum.globalart.hu` instead of the deleted `nexus.globalart.hu`; the password variable becomes
+`KEEL_RELEASE_ASTRUM_PASSWORD` and `release.yml` passes the secret of that name; the log line,
+`deploy/README.md` and `hack/check-release.sh` follow. The channel stays readable anonymously at
+`https://dl.globalart.hu/keel/`. Operator-run: the raw repository, the role
+`keel-releases-reader` for anonymous reads and the route `dl.globalart.hu` on Astrum, the deploy
+account `keel-release` and the secret `KEEL_RELEASE_ASTRUM_PASSWORD`; `KEEL_RELEASE_KEY` exists.
+
+**Touches.** `hack/release.py`, `hack/check-release.sh`, `.github/workflows/release.yml`,
+`deploy/README.md`.
+
+**Out of scope.** The format of the manifest and its signature; the expiry of the head (3b).
+
+**Acceptance.**
+
+- `hack/check-release.sh target/debug/keel` is green with the renamed variable and no mention of
+  `nexus` remains in `hack/`, `deploy/` and `.github/`; a release candidate published to the beta
+  channel and read back by `keel-release verify` is the operator-run item of step 9.
+
+### 3a. The host agent: bounded processes, packages and arguments
+
+**Goal.** Every process the agent runs has a timeout from `agent.yaml` (a default of two minutes,
+overridable per tool) and is killed with its process group when it passes it, the serial lock
+released and the operation journalled as timed out, so a package manager that never exits cannot
+hold every later host operation. `host.pkg.*` accepts only the packages of an allowlist in the
+policy, which the shipped `deploy/agent.yaml` fills with what the bundles install. The unpacker of
+the release archive refuses an archive with more entries than a bound named in `keel-release`.
+The agent decodes the arguments of every product operation with `deny_unknown_fields`, so a
+misspelt or smuggled field is refused rather than ignored.
+
+**Touches.** `crates/host-agent/`, `crates/host/`, `crates/release/`, `crates/sdk/src/host.rs`,
+`deploy/agent.yaml`, `deploy/README.md`.
+
+**Out of scope.** A variable schema for rendered templates (M7 step 5).
+
+**Acceptance.**
+
+- under `crates/host-agent/tests/`: `a_process_past_its_timeout_is_killed_and_the_lock_released`,
+  `a_package_outside_the_allowlist_is_refused_and_journalled`,
+  `an_operation_with_an_unknown_argument_is_refused`;
+- under `crates/release/tests/`: `an_archive_with_too_many_entries_is_refused_by_the_unpacker`.
+
+### 3b. The channel: https only and a head that expires
+
+**Goal.** `install.sh`, `keel update` and `keel-release verify` read the production channel over
+`https://` only; `http://` is admitted for a rehearsal channel named explicitly with
+`--insecure-rehearsal-channel` and nothing else. The head manifest of a channel carries `expires`
+inside the signature, and the three refuse an expired head and a head older than the newest one
+the installation has seen. A workflow `refresh-channel.yml` re-signs the head of every channel
+weekly with a thirty-day window, the defaults the owner may change; the choice and the window are
+recorded in [design/09-operations.md](design/09-operations.md).
+
+**Touches.** `crates/release/`, `crates/keel/src/` (the updater and `keel-release`),
+`deploy/install.sh`, `deploy/README.md`, `hack/release.py`, `hack/check-install.sh`,
+`.github/workflows/refresh-channel.yml` (new), `docs/design/09-operations.md`.
+
+**Out of scope.** Pinning the certificate of the channel host.
+
+**Acceptance.**
+
+- under `crates/release/tests/`: `an_expired_head_manifest_is_refused`,
+  `an_older_head_than_the_newest_seen_is_refused`,
+  `a_plain_http_channel_is_refused_without_the_rehearsal_flag`;
+- `hack/check-install.sh target/debug/keel` still installs from a rehearsal channel with the flag.
+
+### 3c. The products: zones, mail domains and the FTP jail
+
+**Goal.** Three holes a customer of a hosted installation can reach. `dns.zone.create` refuses a
+zone whose name lies inside a zone of another account, unless the account of that zone is the
+caller's or one of its ancestors, the way a reseller hands a subzone to its customer. `hosting-mail`
+accepts a domain with no zone on this installation only after a proof of control, a TXT record
+`keel-verify=<token>` read over DNS, and keeps the mail domain pending until then. An FTP user is
+confined to a jail directory the user cannot change, with the writable directory of the site one
+level below, so a link the hosting user makes inside it cannot be followed out at login, and the
+agent refuses an FTP home whose path resolves outside `file_roots`.
+
+**Touches.** `products/dns/crates/dns-zones/`, `products/panel/crates/hosting-mail/`,
+`products/panel/crates/hosting-ftp/`, `crates/host-agent/` (the FTP home), `hack/panel-vm.sh`.
+
+**Out of scope.** Delegation between installations (M7 step 5).
+
+**Acceptance.**
+
+- under `products/dns/tests/`: `a_zone_inside_a_zone_of_another_account_is_refused` and
+  `a_zone_inside_the_zone_of_an_ancestor_account_is_admitted`;
+- under `products/panel/tests/`: `a_mail_domain_without_a_zone_stays_pending_until_proved` and
+  `an_ftp_home_resolving_outside_the_file_roots_is_refused`;
+- `hack/panel-vm.sh` gains a check, `an_ftp_login_does_not_follow_a_link_made_by_the_hosting_user`,
+  run on the machine of step 6.
+
+### 4. The plugin host stays out of the release binary
+
+**Goal.** `keel-bin` gets a cargo feature `plugins`, off by default and off in every release
+build, and `bin/keel/src/main.rs` composes `keel_system::plugins::MODULE` only with it, so the
+release binary carries no `plugin.*` function, runs no `keel agent-exec` path for a plugin
+account and creates no `kp_` account. The `system` matrix of CI keeps building the module with its
+feature, so M7 resumes from a working host; M7 step 5 reviews it and turns the feature on.
+
+**Touches.** `bin/keel/Cargo.toml`, `bin/keel/src/main.rs`, `.github/workflows/ci.yml`,
+`hack/prove-binary.sh`.
+
+**Out of scope.** Any change to the plugin host itself.
+
+**Acceptance.**
+
+- in the tests of `keel-bin`: `a_binary_without_the_plugins_feature_has_no_plugin_functions`;
+  `cargo build -p keel-bin --no-default-features --features dns` and the release build in
+  `build.yml` carry no plugin module.
+
+### 5. KeelDNS on clean machines
+
+**Goal.** Operator-run, with the fixes it finds. On a clean Debian 13 virtual machine, with the
+binary of the head of `main` served from a rehearsal channel, run `hack/install-vm.sh`,
+`hack/dns-vm.sh`, `hack/product-vm.sh`, `hack/update-vm.sh`, `hack/backup-vm.sh`,
+`hack/doctor-vm.sh` and `hack/host-vm.sh`, and start an installation with no `config.yaml` against
+the Postgres socket, the one item of the M0 checklist never run on a real host. Every failure is a
+commit of its own that fixes the cause and adds the test that would have caught it where an
+automated test can.
+
+**Touches.** Whatever the findings name; `hack/*-vm.sh` when a script was wrong.
+
+**Out of scope.** KeelPanel (step 6).
+
+**Acceptance.**
+
+- every script above ends green on the clean machine, its transcript kept for the checklist; the
+  operator-run items of the M4 checklist are ticked.
+
+### 6. KeelPanel on clean machines
+
+**Goal.** Operator-run, with the fixes it finds. `hack/panel-vm.sh` and `hack/bridge-vm.sh` on a
+clean Debian 13 with bind, nginx and php-fpm; a site on a real domain with a Let's Encrypt
+certificate set up by the wizard and served over TLS; one login that sees both products after
+`keel product enable panel` on a host running `dns`; `hack/peers-vm.sh` on two machines, which is
+the beta of `peers`; the check of step 3c on the FTP jail. Findings are handled as in step 5.
+
+**Touches.** Whatever the findings name.
+
+**Out of scope.** Anything about plugins.
+
+**Acceptance.**
+
+- the scripts end green with their transcripts kept; the operator-run items of the M5 and M6
+  checklists are ticked.
+
+### 7. The production license key and the size of the binary
+
+**Goal.** Operator-run. The production key pair is generated offline with
+`keel-dev license keygen`, the private half never leaves the owner's keeping, and the public half
+replaces `crates/release/keys/license.pub` in a commit of its own; a lease for the instance of
+`keel-demo` is issued with `keel-dev license issue` and installed with `keel license install`.
+With Build green, the size of the stripped musl binary with `dns` and `panel` is recorded against
+`hack/size-cap`.
+
+**Touches.** `crates/release/keys/license.pub`, `hack/size-cap` if the measurement asks for it.
+
+**Out of scope.** A license server.
+
+**Acceptance.**
+
+- `keel license install` accepts the lease on `keel-demo` and the license screen lists its
+  editions, so the production key verifies it; the size recorded in the checklist is under the cap.
+
+### 8. The operator documentation and the vocabulary check
+
+**Goal.** `docs/operator/`: installing Keel with a product, enabling and disabling products, the
+license, users and access, backup and restore, updates and rollback, the host agent's policy,
+troubleshooting with `doctor` and `support-bundle`, and `peers` as a beta; written for someone who
+has never seen the project and checked against what steps 5 and 6 ran, every command in it that
+can run unprivileged executed by `hack/check-docs.sh` against the binary. `hack/check-vocabulary.sh`
+runs in CI and finds no name or identifier of another control panel in the tree, and a run of it
+over `git log` is recorded in the checklist, since the repository is public.
+
+**Touches.** `docs/operator/` (new), `hack/check-docs.sh`, `hack/check-vocabulary.sh` (new),
+`.github/workflows/ci.yml`.
+
+**Out of scope.** Translations of the documentation; the developer guide (M7 step 6b).
+
+**Acceptance.**
+
+- `hack/check-docs.sh` executes the runnable commands of `docs/operator/` green; the vocabulary
+  check is green in CI.
+
+### 9. The release candidate and the walk through the application
+
+**Goal.** The workspace is raised to the release-candidate version and an annotated tag
+`keel-vX.Y.Z-rc.1` publishes to the beta channel; `keel-release verify` reads it back and the
+machines of steps 5 and 6 install and update from it. Then the whole application is walked by
+hand on the installed machines: every role the products know, every screen and every flow of
+`dns` and `panel`, at a narrow and at a wide width, with paired screenshots against the design,
+measured rather than judged by eye. The findings go to the owner as one list, each fixed in a
+commit of its own or recorded with the owner's decision.
+
+**Touches.** The version in `Cargo.toml` and `frontend/`, and what the findings name.
+
+**Out of scope.** The stable tag (step 10).
+
+**Acceptance.**
+
+- the beta channel's `manifest.json` names the candidate and `keel-release verify` accepts it; the
+  list of findings is in the checklist, each line fixed or decided; someone who is not the author
+  has installed `panel` from `docs/operator/` without help.
+
+### 10. MVP closure and the stable release
+
+**Goal.** The document pass over `docs/` and `deploy/README.md`, the `## MVP exit checklist` with
+every "Done when" item ticked or marked operator-run, a row for the MVP in the status table of
+`README.md`, the findings left without a fix named for M7, and, once the owner says so, the
+annotated stable tag, after which `https://dl.globalart.hu/keel/stable/manifest.json` names it and
+`keel-demo` is updated to it from the button.
+
+**Touches.** `docs/`, `README.md`, the versions.
+
+**Out of scope.** Code beyond the version bump.
+
+**Acceptance.**
+
+- `hack/check-docs.sh` is green; the stable manifest names the release and `keel-release verify`
+  accepts it; the tag is pushed only on the owner's word.
 
 ## M7 work breakdown
 
