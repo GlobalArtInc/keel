@@ -7454,13 +7454,19 @@ recorded in [design/09-operations.md](design/09-operations.md).
 
 ### 3c. The products: zones, mail domains and the FTP jail
 
-**Goal.** Three holes a customer of a hosted installation can reach. `dns.zone.create` refuses a
-zone whose name lies inside a zone of another account, unless the account of that zone is the
-caller's or one of its ancestors, the way a reseller hands a subzone to its customer. `hosting-mail`
-lets a caller below administrator level add a mail domain only when the name equals or lies inside
-a zone of the caller's own account or of one of its ancestors; an administrator may add any name,
-taking the responsibility of the operator. A proof of control by a DNS record would need a
-resolver the modules do not have, and waits for a milestone that adds one. An FTP user is
+**Goal.** Three holes a customer of a hosted installation can reach. In the account tree the root
+account is the operator of the installation and never counts as an ancestor below. `dns.zone.create`
+and `dns.zone.check` refuse, below administrator level, a zone whose name lies inside a zone of
+another account, unless the owner of that zone is a proper ancestor of the account the zone is
+created for, the way a reseller hands a subzone to its customer; a zone owned by the root account
+opens to nobody below administrator level, who may hand out subzones of the operator's zones.
+`hosting-mail` lets a caller below administrator level add a mail domain only when the name equals
+a zone of the target account or lies strictly inside a zone of the target account or of a proper
+ancestor other than the root; an administrator may add any name, taking the responsibility of the
+operator. This stops one customer from capturing a name that is already on the installation; a
+zone can still be created for a name someone else registered, since creating a zone proves nothing
+about ownership, and a proof of control by a DNS lookup would need a resolver the modules do not
+have, so it waits for a milestone that adds one. An FTP user is
 confined to a jail directory the user cannot change, with the writable directory of the site one
 level below, so a link the hosting user makes inside it cannot be followed out at login, and the
 agent refuses an FTP home whose path resolves outside `file_roots`.
@@ -7472,9 +7478,13 @@ agent refuses an FTP home whose path resolves outside `file_roots`.
 
 **Acceptance.**
 
-- under `products/dns/tests/`: `a_zone_inside_a_zone_of_another_account_is_refused` and
-  `a_zone_inside_the_zone_of_an_ancestor_account_is_admitted`;
+- under `products/dns/tests/`: `a_zone_inside_a_zone_of_another_account_is_refused`,
+  `a_zone_inside_the_zone_of_an_ancestor_account_is_admitted`,
+  `a_zone_inside_a_zone_of_a_descendant_account_is_refused`,
+  `a_zone_created_for_a_customer_is_judged_by_the_customer_account` and
+  `a_customer_cannot_create_a_zone_inside_a_zone_of_the_root_account`;
 - under `products/panel/tests/`: `a_customer_cannot_add_a_mail_domain_outside_its_own_zones`,
+  `a_customer_cannot_take_the_apex_of_an_ancestor_zone_as_a_mail_domain`,
   `an_administrator_may_add_a_mail_domain_without_a_zone` and
   `an_ftp_home_resolving_outside_the_file_roots_is_refused`;
 - `hack/panel-vm.sh` gains a check, `an_ftp_login_does_not_follow_a_link_made_by_the_hosting_user`,
@@ -7486,7 +7496,11 @@ agent refuses an FTP home whose path resolves outside `file_roots`.
 build, and `bin/keel/src/main.rs` composes `keel_system::plugins::MODULE` only with it, so the
 release binary carries no `plugin.*` function, runs no `keel agent-exec` path for a plugin
 account and creates no `kp_` account. The `system` matrix of CI keeps building the module with its
-feature, so M7 resumes from a working host; M7 step 5 reviews it and turns the feature on.
+feature, so M7 resumes from a working host; M7 step 5 reviews it and turns the feature on. The
+code of `keel privileged` that creates a plugin account and spawns its process stays compiled in
+and is refused by a policy without a `plugins` section, which the shipped `deploy/agent.yaml` no
+longer has; a host installed earlier keeps its own policy file, and a cargo feature in
+`keel-host-agent` that removes that code belongs to M7 step 5.
 
 **Touches.** `bin/keel/Cargo.toml`, `bin/keel/src/main.rs`, `.github/workflows/ci.yml`,
 `hack/prove-binary.sh`.
