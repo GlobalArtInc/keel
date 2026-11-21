@@ -68,7 +68,7 @@ prints the URL it uses, which is the path the `env -u` command below proves. The
 commands run in `frontend/` with the credentials of the private registry
 `@globalart/phoenix-ui` comes from in the user's `~/.npmrc`, the line
 `//astrum.globalart.hu/repository/npm-hosted/:_auth=<base64 of user:password>`, which CI writes
-from the secrets `ASTRUM_USERNAME` and `ASTRUM_PASSWORD`; `pnpm exec playwright install chromium`
+from the secrets `ASTRUM_NPM_USERNAME` and `ASTRUM_NPM_PASSWORD`; `pnpm exec playwright install chromium`
 is needed once for the browser suite:
 
 ```

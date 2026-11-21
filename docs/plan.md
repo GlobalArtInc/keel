@@ -7370,7 +7370,7 @@ step 10 with the transcript or the output that shows it.
 containers and the musl build, so the heavy jobs free the preinstalled toolchains first, build
 without incremental compilation and with line tables only, and keep the dependency build in
 `rust-cache`; the Rust toolchain comes from `rust-toolchain.toml`. The frontend reads
-`@globalart/phoenix-ui` from Astrum with the secrets `ASTRUM_USERNAME` and `ASTRUM_PASSWORD`
+`@globalart/phoenix-ui` from Astrum with the secrets `ASTRUM_NPM_USERNAME` and `ASTRUM_NPM_PASSWORD`
 through the composite action `.github/actions/astrum-npm-auth`, which masks the derived value
 before it writes it, and the Docker Hub images of the service containers are pulled with the
 `DOCKERHUB_*` secrets. A pull request from a fork has no secrets and fails the jobs that need

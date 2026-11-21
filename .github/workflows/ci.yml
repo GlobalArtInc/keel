@@ -154,8 +154,8 @@ jobs:
       - name: Authenticate to the Astrum npm registry
         uses: ./.github/actions/astrum-npm-auth
         with:
-          username: ${{ secrets.ASTRUM_USERNAME }}
-          password: ${{ secrets.ASTRUM_PASSWORD }}
+          username: ${{ secrets.ASTRUM_NPM_USERNAME }}
+          password: ${{ secrets.ASTRUM_NPM_PASSWORD }}
 
       - name: Install the frontend dependencies
         working-directory: frontend
@@ -430,8 +430,8 @@ jobs:
       - name: Authenticate to the Astrum npm registry
         uses: ./.github/actions/astrum-npm-auth
         with:
-          username: ${{ secrets.ASTRUM_USERNAME }}
-          password: ${{ secrets.ASTRUM_PASSWORD }}
+          username: ${{ secrets.ASTRUM_NPM_USERNAME }}
+          password: ${{ secrets.ASTRUM_NPM_PASSWORD }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -563,8 +563,8 @@ jobs:
       - name: Authenticate to the Astrum npm registry
         uses: ./.github/actions/astrum-npm-auth
         with:
-          username: ${{ secrets.ASTRUM_USERNAME }}
-          password: ${{ secrets.ASTRUM_PASSWORD }}
+          username: ${{ secrets.ASTRUM_NPM_USERNAME }}
+          password: ${{ secrets.ASTRUM_NPM_PASSWORD }}
 
       - name: Install the frontend dependencies
         working-directory: frontend
