@@ -243,6 +243,12 @@ jobs:
       - name: Documents against the code
         run: hack/check-docs.sh
 
+      - name: Vocabulary check proves itself
+        run: hack/check-vocabulary.sh --self-test
+
+      - name: Vocabulary
+        run: hack/check-vocabulary.sh
+
       - name: Find the baseline of the facade
         id: baseline
         env:
