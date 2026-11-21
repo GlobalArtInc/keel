@@ -244,7 +244,7 @@ jobs:
         run: hack/check-deps.sh
 
       - name: Documents against the code
-        run: hack/check-docs.sh
+        run: hack/check-docs.sh target/debug/keel
 
       - name: Vocabulary check proves itself
         run: hack/check-vocabulary.sh --self-test

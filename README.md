@@ -96,7 +96,7 @@ hack/e2e.sh target/debug/keel
 hack/peers-e2e.sh target/debug/keel
 hack/check-test-databases.sh
 hack/check-deps.sh
-hack/check-docs.sh
+hack/check-docs.sh target/debug/keel
 ```
 
 The job `frontend` runs the workspace's own checks in `frontend/`, the last command in

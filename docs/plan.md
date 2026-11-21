@@ -7897,7 +7897,7 @@ candidate string, and the release binary carrying `dns` and `panel` at `1.0.0`.
   target/debug/keel`, `cargo run -p keel-dev -- i18n missing --dump contracts/dump`, `pnpm exec
   playwright install chromium` once, `hack/e2e.sh target/debug/keel` and `hack/peers-e2e.sh
   target/debug/keel`, then `hack/check-test-databases.sh`, `hack/check-deps.sh` and
-  `hack/check-docs.sh`; the scripts that start the binary speak https to it with the certificate it
+  `hack/check-docs.sh target/debug/keel`; the scripts that start the binary speak https to it with the certificate it
   generates under the site's data directory. The job `frontend`, in `frontend/`: `pnpm install
   --frozen-lockfile`, `pnpm generate` followed by `git diff --exit-code`, `pnpm lint`, `pnpm
   format`, `pnpm test`, `pnpm build`, `pnpm build-storybook`, `pnpm exec http-server

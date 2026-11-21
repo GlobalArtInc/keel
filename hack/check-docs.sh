@@ -2,11 +2,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-python3 - <<'EOF'
+if [ $# -gt 1 ] || { [ $# -eq 1 ] && { [ ! -f "$1" ] || [ ! -x "$1" ]; }; }; then
+  echo "usage: hack/check-docs.sh [path/to/keel]" >&2
+  exit 2
+fi
+
+python3 - "$@" <<'EOF'
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 
 sys.stdout.reconfigure(line_buffering=True)
 problems = []
@@ -319,6 +326,94 @@ for command in listed:
     if command not in how:
         problems.append(f"the README lists {command}, which the section 'How we work' of docs/plan.md does not name")
 print(f"{len(listed)} commands of the README's check lists compared with ci.yml and 'How we work'")
+
+OPERATOR_FENCE = "```sh check"
+FENCE = "```"
+BLOCK_TIMEOUT = 60
+TAIL_LINES = 10
+TRAP = r'''trap 'printf "%s\n" "$BASH_COMMAND" > "$CHECK_DOCS_MARK"' ERR'''
+
+
+def operator_blocks():
+    blocks = []
+    for root, dirs, files in os.walk("docs/operator"):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith(".md"):
+                continue
+            path = os.path.join(root, name)
+            with open(path) as handle:
+                lines = handle.read().splitlines()
+            number = 0
+            index = 0
+            while index < len(lines):
+                if lines[index] != OPERATOR_FENCE:
+                    index += 1
+                    continue
+                number += 1
+                end = index + 1
+                while end < len(lines) and lines[end] != FENCE:
+                    end += 1
+                if end == len(lines):
+                    problems.append(f"{path}: block {number} is not closed")
+                    break
+                blocks.append((path, number, lines[index + 1 : end]))
+                index = end + 1
+    return blocks
+
+
+def run_block(binary, lines):
+    if not any(line.strip() for line in lines):
+        return "empty block", ""
+    with tempfile.TemporaryDirectory() as home:
+        bin_dir = os.path.join(home, "bin")
+        os.mkdir(bin_dir)
+        os.symlink(os.path.abspath(binary), os.path.join(bin_dir, "keel"))
+        script = os.path.join(home, "block.sh")
+        mark = os.path.join(home, "failed")
+        with open(script, "w") as handle:
+            handle.write(TRAP + "\n" + "\n".join(lines) + "\n")
+        env = {key: value for key, value in os.environ.items() if key != "KEEL_CONFIG"}
+        env.update(PATH=bin_dir + os.pathsep + os.environ["PATH"], HOME=home, CHECK_DOCS_MARK=mark)
+        process = subprocess.Popen(
+            ["bash", "-e", script],
+            cwd=home,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            text=True,
+        )
+        try:
+            output, _ = process.communicate(timeout=BLOCK_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            output, _ = process.communicate()
+            return f"timed out after {BLOCK_TIMEOUT} seconds", output
+        if process.returncode == 0:
+            return None
+        reason = ""
+        if os.path.exists(mark):
+            with open(mark) as handle:
+                reason = handle.read().strip()
+        return reason or f"exit status {process.returncode}", output
+
+
+binary = sys.argv[1] if len(sys.argv) > 1 else ""
+blocks = operator_blocks()
+if binary:
+    before = len(problems)
+    for path, number, lines in blocks:
+        failure = run_block(binary, lines)
+        if failure:
+            reason, output = failure
+            tail = "".join(f"\n    {line}" for line in output.splitlines()[-TAIL_LINES:])
+            problems.append(f"{path}: block {number} failed: {reason}{tail}")
+    if len(problems) == before:
+        print(f"{len(blocks)} command blocks of docs/operator/ executed")
+else:
+    print(f"{len(blocks)} command blocks of docs/operator/ found, run only with a binary")
 
 for problem in problems:
     print(problem, file=sys.stderr)

@@ -143,6 +143,23 @@ that is signed and has not expired.
 | The update says the head expired | the channel's head is re-signed weekly; try again later, or read `keel update check` |
 | You need help | `keel support-bundle`, then send the archive |
 
+## The commands of this guide
+
+Every command name used above exists in the binary of the version this guide ships with; the
+checks of the repository run these lines against it:
+
+```sh check
+keel --version
+keel product --help
+keel doctor --help
+keel backup --help
+keel restore --help
+keel update --help
+keel license --help
+keel support-bundle --help
+keel ctl --help
+```
+
 ## What is not in this release
 
 The plugin host and the cluster of nodes are not built into the release binary. Peers are a beta.
