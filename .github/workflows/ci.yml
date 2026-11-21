@@ -14,19 +14,22 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 1
-  CARGO_BUILD_JOBS: 6
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
   RUST_BACKTRACE: 1
 
 jobs:
   check:
     name: fmt, clippy, test
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 75
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
 
     services:
       postgres:
         image: postgres:16
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: keel
           POSTGRES_PASSWORD: keel
@@ -40,6 +43,9 @@ jobs:
           --health-start-period 120s
       mailpit:
         image: axllent/mailpit:v1.31.1
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         ports: ['1025', '8025']
         options: >-
           --health-cmd "/mailpit readyz"
@@ -61,29 +67,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Put cargo on the path
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Link the runner's build directory
-        run: |
-          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
-          mkdir -p "$dir"
-          rm -rf target
-          ln -sfn "$dir" target
-          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Install Rust toolchain
         run: |
+          rustup toolchain install
           rustup show
           rustc --version
           cargo --version
 
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: check
+          cache-on-failure: true
 
       - name: Find the IPv4 port of Postgres
         run: |
           port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
           test -n "$port"
           echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
+      - name: Install the Postgres client
+        run: command -v pg_isready >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client; }
 
       - name: Wait for Postgres
         run: |
@@ -131,7 +138,6 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
-
       - name: Install node
         uses: actions/setup-node@v4
         with:
@@ -145,10 +151,14 @@ jobs:
           corepack enable
           pnpm --version
 
+      - name: Authenticate to the Astrum npm registry
+        uses: ./.github/actions/astrum-npm-auth
+        with:
+          username: ${{ secrets.ASTRUM_USERNAME }}
+          password: ${{ secrets.ASTRUM_PASSWORD }}
+
       - name: Install the frontend dependencies
         working-directory: frontend
-        env:
-          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
 
       - name: Build the shell the binary embeds
@@ -202,6 +212,10 @@ jobs:
       - name: Every key the registry emits is translated in en and ru
         run: cargo run -p keel-dev -- i18n missing --dump contracts/dump
 
+      - name: Install the system libraries of chromium
+        working-directory: frontend
+        run: pnpm exec playwright install-deps chromium
+
       - name: Install chromium for the browser suite
         working-directory: frontend
         run: pnpm exec playwright install chromium
@@ -252,10 +266,14 @@ jobs:
           package: keel
           baseline-rev: ${{ steps.baseline.outputs.rev }}
 
+      - name: Show the disk
+        if: always()
+        run: df -h /
+
   system:
     name: keel-system with ${{ matrix.features }}
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
     strategy:
       fail-fast: false
@@ -289,6 +307,9 @@ jobs:
     services:
       postgres:
         image: postgres:16
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: keel
           POSTGRES_PASSWORD: keel
@@ -302,6 +323,9 @@ jobs:
           --health-start-period 120s
       mailpit:
         image: axllent/mailpit:v1.31.1
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         ports: ['1025', '8025']
         options: >-
           --health-cmd "/mailpit readyz"
@@ -314,26 +338,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Put cargo on the path
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Link the runner's build directory
-        run: |
-          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
-          mkdir -p "$dir"
-          rm -rf target
-          ln -sfn "$dir" target
-          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Install Rust toolchain
-        run: rustup show
+        run: |
+          rustup toolchain install
+          rustup show
 
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: system
+          save-if: ${{ github.ref == 'refs/heads/main' && matrix.features == 'auth' }}
+          cache-on-failure: true
 
       - name: Find the IPv4 port of Postgres
         run: |
           port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
           test -n "$port"
           echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
+      - name: Install the Postgres client
+        run: command -v pg_isready >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client; }
 
       - name: Wait for Postgres
         run: |
@@ -370,9 +397,13 @@ jobs:
       - name: No test database remains
         run: hack/check-test-databases.sh
 
+      - name: Show the disk
+        if: always()
+        run: df -h /
+
   frontend:
     name: frontend lint, format, test, build, storybook
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     defaults:
@@ -382,18 +413,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Put cargo on the path
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Link the runner's build directory
-        run: |
-          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
-          mkdir -p "$dir"
-          rm -rf target
-          ln -sfn "$dir" target
-          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
-
 
       - name: Install node
         uses: actions/setup-node@v4
@@ -408,9 +427,13 @@ jobs:
           corepack enable
           pnpm --version
 
+      - name: Authenticate to the Astrum npm registry
+        uses: ./.github/actions/astrum-npm-auth
+        with:
+          username: ${{ secrets.ASTRUM_USERNAME }}
+          password: ${{ secrets.ASTRUM_PASSWORD }}
+
       - name: Install dependencies
-        env:
-          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
 
       - name: Generate the wire types, the icon set and the boot fixtures
@@ -434,6 +457,9 @@ jobs:
       - name: Build Storybook
         run: pnpm build-storybook
 
+      - name: Install the system libraries of chromium
+        run: pnpm exec playwright install-deps chromium
+
       - name: Install chromium for the Storybook test runner
         run: pnpm exec playwright install chromium
 
@@ -455,19 +481,20 @@ jobs:
 
       - name: Dry run of the publication of @globalart/keel
         working-directory: frontend/dist/keel
-        env:
-          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm publish --dry-run --no-git-checks
 
   rehearsal:
     name: dependency rehearsal
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
     services:
       postgres:
         image: postgres:16
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: keel
           POSTGRES_PASSWORD: keel
@@ -486,29 +513,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Put cargo on the path
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Link the runner's build directory
-        run: |
-          dir="/opt/actions-runner/cache/keel/$RUNNER_NAME/target"
-          mkdir -p "$dir"
-          rm -rf target
-          ln -sfn "$dir" target
-          echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
 
       - name: Install Rust toolchain
         run: |
+          rustup toolchain install
           rustup show
           rustc --version
           cargo --version
 
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rehearsal
+          cache-on-failure: true
 
       - name: Find the IPv4 port of Postgres
         run: |
           port=$(docker port "${{ job.services.postgres.id }}" 5432/tcp | awk '/^0\.0\.0\.0:/ { sub(/.*:/, ""); print; exit }')
           test -n "$port"
           echo "KEEL_TEST_DATABASE_URL=postgres://keel:keel@127.0.0.1:$port/postgres" >> "$GITHUB_ENV"
+
+      - name: Install the Postgres client
+        run: command -v pg_isready >/dev/null || { sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client; }
 
       - name: Wait for Postgres
         run: |
@@ -518,7 +546,6 @@ jobs:
           done
           echo "postgres did not come up" >&2
           exit 1
-
 
       - name: Install node
         uses: actions/setup-node@v4
@@ -533,10 +560,14 @@ jobs:
           corepack enable
           pnpm --version
 
+      - name: Authenticate to the Astrum npm registry
+        uses: ./.github/actions/astrum-npm-auth
+        with:
+          username: ${{ secrets.ASTRUM_USERNAME }}
+          password: ${{ secrets.ASTRUM_PASSWORD }}
+
       - name: Install the frontend dependencies
         working-directory: frontend
-        env:
-          NEXUS_NPM_TOKEN: ${{ secrets.NEXUS_NPM_TOKEN }}
         run: pnpm install --frozen-lockfile
 
       - name: Build the shell the binary embeds

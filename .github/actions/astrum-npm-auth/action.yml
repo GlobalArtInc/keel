@@ -1,0 +1,23 @@
+name: Authenticate to the Astrum npm registry
+description: Write the credentials of the Astrum npm registry into the user npmrc
+
+inputs:
+  username:
+    description: The Astrum user that reads the npm registry
+    required: true
+  password:
+    description: The password of that user
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write the registry credentials
+      shell: bash
+      env:
+        USERNAME: ${{ inputs.username }}
+        PASSWORD: ${{ inputs.password }}
+      run: |
+        auth=$(printf '%s:%s' "$USERNAME" "$PASSWORD" | base64 -w0)
+        echo "::add-mask::$auth"
+        printf '%s\n' "//astrum.globalart.hu/repository/npm-hosted/:_auth=$auth" >> "$HOME/.npmrc"

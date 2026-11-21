@@ -64,8 +64,10 @@ in `KEEL_TEST_DATABASE_URL`, from which every test creates and drops a database 
 the variable is unset, `keel-testkit` starts the container `keel-testkit-postgres` from
 `postgres:16` through the local Docker socket, keeps it running for the next test process and
 prints the URL it uses, which is the path the `env -u` command below proves. The frontend
-commands run in `frontend/` with `NEXUS_NPM_TOKEN` in the environment, the token of the private
-registry `@globalart/phoenix-ui` comes from; `pnpm exec playwright install chromium`
+commands run in `frontend/` with the credentials of the private registry
+`@globalart/phoenix-ui` comes from in the user's `~/.npmrc`, the line
+`//astrum.globalart.hu/repository/npm-hosted/:_auth=<base64 of user:password>`, which CI writes
+from the secrets `ASTRUM_USERNAME` and `ASTRUM_PASSWORD`; `pnpm exec playwright install chromium`
 is needed once for the browser suite:
 
 ```
@@ -179,7 +181,7 @@ frontend, measures it with `hack/check-size.sh` against the cap of 42,000,000 by
 `hack/size-cap` after `hack/check-size-test.sh` has proven the check, and uploads it as an artifact, after `keel-dev i18n pull` has
 refreshed the dictionaries when the translation token is present; `release.yml` publishes an
 annotated `keel-v*` tag to the release channel behind `https://dl.globalart.hu/keel/`, and
-`publish-npm.yml` publishes `@globalart/keel` to Nexus on a `keel-v*` tag or by hand, stamped with
+`publish-npm.yml` publishes `@globalart/keel` to Astrum on a `keel-v*` tag or by hand, stamped with
 the binary's version.
 
 ### Running by hand
