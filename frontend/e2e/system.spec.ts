@@ -179,7 +179,8 @@ keelTest.describe('system', () => {
   keelTest('root creates a token whose plaintext is shown once', async ({ page, keel }) => {
     await keel.asAdmin();
     await page.goto('/f/auth.token.list');
-    await page.locator('keel-list [data-action="create"]').click();
+    await page.locator('keel-list phx-toolbar').getByRole('button', { name: 'More' }).click();
+    await page.getByRole('menuitem', { name: 'New token', exact: true }).click();
     await expect(page).toHaveURL(/\/f\/auth\.token\.create$/);
     const form = page.locator('keel-form[data-form="auth.token.create"]');
     await field(form, 'Name').getByRole('textbox').fill(TOKEN_NAME);
