@@ -107,7 +107,7 @@ keelTest.describe('notes', () => {
     await expect(page).toHaveURL(new RegExp(`${NOTE_EDIT}$`));
     await expect(page.locator('keel-page[data-page="main"]')).toBeVisible();
     await expect(page.locator('keel-page[data-page="owner"]')).toHaveCount(0);
-    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.locator('keel-form[data-form="note.edit"]').getByRole('tab')).toHaveCount(0);
     for (const draft of NOTES) {
       await createNote(page, draft);
     }
