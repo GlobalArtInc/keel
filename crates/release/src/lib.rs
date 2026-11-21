@@ -6,11 +6,13 @@ mod signed;
 use std::io;
 use std::path::PathBuf;
 
+use manifest::utc;
+
 pub use semver::Version;
 
 pub use digest::{Digest, Hasher};
 pub use keys::{KeyRing, PublicKey, SecretKey};
-pub use manifest::{Channel, Manifest, archive_path, manifest_path};
+pub use manifest::{Channel, Manifest, archive_path, manifest_path, unix_now};
 pub use signed::Signed;
 
 pub const CHANNEL_URL: &str = "https://dl.globalart.hu/keel/";
@@ -59,6 +61,20 @@ pub enum ReleaseError {
     },
     #[error("the archive's sha256 {actual} differs from the manifest's {expected}")]
     Digest { expected: String, actual: String },
+    #[error("the head manifest of {of} carries no expires_at; a head without an expiry is refused")]
+    NoExpiry { of: String },
+    #[error(
+        "the head manifest of {of} expired at {} (now {}); an expired head is refused",
+        utc(*expires_at),
+        utc(*now)
+    )]
+    Expired {
+        of: String,
+        expires_at: u64,
+        now: u64,
+    },
+    #[error("the system clock is before the Unix epoch: {0}")]
+    Clock(String),
     #[error("the channel \"{0}\" is neither stable nor beta")]
     Channel(String),
 }

@@ -79,6 +79,15 @@ else
 fi
 check "$workflow runs hack/release.py with the tag and the musl binary" grep -qF 'python3 hack/release.py --tag "$GITHUB_REF_NAME" --binary target/x86_64-unknown-linux-musl/release/keel' "$workflow"
 check "$workflow hands each of the two secrets to one step" test "$(grep -c 'secrets.KEEL_RELEASE_KEY\|secrets.KEEL_RELEASE_ASTRUM_PASSWORD' "$workflow")" = "2"
+refresh_workflow=.github/workflows/refresh-channel.yml
+check "$refresh_workflow runs hack/release.py --refresh for both channels with the keel-release it built" test "$(grep -cE 'run: python3 hack/release.py --refresh (stable|beta) --keel-release target/debug/keel-release$' "$refresh_workflow")" = "2"
+check "$refresh_workflow builds keel-release in a step that holds no secret" test "$(sed -n '/- name: Build keel-release/,/- name: Refresh the stable head/p' "$refresh_workflow" | grep -c 'secrets\.\|env:')" = "0"
+check "$refresh_workflow and $workflow share one concurrency group" test "$(grep -h -A1 '^concurrency:' "$refresh_workflow" "$workflow" | grep -c 'group: release-channel$')" = "2"
+check "$refresh_workflow hands each of the two secrets to both steps" test "$(grep -c 'secrets.KEEL_RELEASE_KEY\|secrets.KEEL_RELEASE_ASTRUM_PASSWORD' "$refresh_workflow")" = "4"
+check "$refresh_workflow runs on a schedule and by hand" grep -qE '^  workflow_dispatch:$' "$refresh_workflow"
+if command -v actionlint >/dev/null 2>&1; then
+  check "actionlint $refresh_workflow" actionlint "$refresh_workflow"
+fi
 check "$workflow refuses a tag without an annotation" grep -qF 'git cat-file -t "$GITHUB_REF_NAME"' "$workflow"
 check "$workflow checks the binary against the tag" grep -qF 'expected="keel ${GITHUB_REF_NAME#keel-v}"' "$workflow"
 
@@ -124,6 +133,68 @@ verify_quietly() {
   verify "$1" >/dev/null
 }
 
+verify_head() {
+  if [ -n "$rehearsal_pub" ]; then
+    cargo run -q -p keel-release -- verify "$1" --head --key "$rehearsal_pub"
+  else
+    cargo run -q -p keel-release -- verify "$1" --head
+  fi
+}
+
+verify_head_quietly() {
+  verify_head "$1" >/dev/null
+}
+
+refresh_dry_run() {
+  local channel=$1 dir=$2
+  shift 2
+  if [ -n "$rehearsal_pub" ]; then
+    python3 hack/release.py --refresh "$channel" --dry-run --out "$dir" --verify-key "$rehearsal_pub" "$@"
+  else
+    python3 hack/release.py --refresh "$channel" --dry-run --out "$dir" "$@"
+  fi
+}
+
+payload_text() {
+  python3 -c 'import base64, json, sys; sys.stdout.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]).decode())' "$1"
+}
+
+expiry_of() {
+  payload_text "$1" | python3 -c 'import json, sys; print(json.load(sys.stdin).get("expires_at", ""))'
+}
+
+without_expiry() {
+  payload_text "$1" | sed -E 's/"expires_at": [0-9]+/"expires_at": N/'
+}
+
+same_but_expiry() {
+  python3 -c '
+import base64, json, sys
+def load(path):
+    document = json.loads(base64.b64decode(json.load(open(path))["payload"]))
+    document.pop("expires_at", None)
+    return document
+sys.exit(0 if load(sys.argv[1]) == load(sys.argv[2]) else 1)
+' "$1" "$2"
+}
+
+tampered_copy() {
+  python3 -c '
+import base64, json, sys
+envelope = json.load(open(sys.argv[1]))
+payload = bytearray(base64.b64decode(envelope["payload"]))
+position = payload.index(b"1")
+payload[position] = ord("2")
+envelope["payload"] = base64.b64encode(bytes(payload)).decode()
+json.dump(envelope, open(sys.argv[2], "w"))
+' "$1" "$2"
+}
+
+within() {
+  local value=$1 low=$2 high=$3
+  [ "$value" -ge "$low" ] && [ "$value" -le "$high" ]
+}
+
 field() {
   python3 -c 'import json, sys; value = json.load(open(sys.argv[1]))[sys.argv[2]]; print(value if isinstance(value, str) else json.dumps(value))' "$tmp/payload.json" "$1"
 }
@@ -155,8 +226,14 @@ expected=$(printf '%s\n' \
   "versions/$version/$archive.sha256" \
   "versions/$version/manifest.json" | sort)
 check "the two dry runs leave the layout of the design plus install.sh at the root and nothing else" test "$(cd "$out" && find . -type f | sed 's|^\./||' | sort)" = "$expected"
-check "stable/manifest.json is the manifest of $version" cmp -s "$out/stable/manifest.json" "$out/versions/$version/manifest.json"
-check "beta/manifest.json is the manifest of $beta" cmp -s "$out/beta/manifest.json" "$out/versions/$beta/manifest.json"
+check "stable/manifest.json carries the manifest of $version and an expires_at" same_but_expiry "$out/stable/manifest.json" "$out/versions/$version/manifest.json"
+check "beta/manifest.json carries the manifest of $beta and an expires_at" same_but_expiry "$out/beta/manifest.json" "$out/versions/$beta/manifest.json"
+check "versions/$version/manifest.json carries no expires_at" test -z "$(expiry_of "$out/versions/$version/manifest.json")"
+check "versions/$beta/manifest.json carries no expires_at" test -z "$(expiry_of "$out/versions/$beta/manifest.json")"
+published=$(date +%s)
+for head in stable beta; do
+  check "$head/manifest.json expires thirty days after it was published" within "$(expiry_of "$out/$head/manifest.json")" "$((published + 29 * 86400))" "$((published + 31 * 86400))"
+done
 for object in "versions/$version/$archive" "versions/$version/$archive.sha256" "versions/$version/manifest.json" "stable/manifest.json" "install.sh"; do
   check "the dry run names the PUT of $object" grep -qF "a publish would PUT https://astrum.globalart.hu/repository/keel-releases/keel/$object" "$tmp/stable.log"
 done
@@ -177,6 +254,45 @@ else
   problem "keel-release verify accepts versions/$version/manifest.json"
 fi
 check "keel-release verify accepts beta/manifest.json" verify_quietly "$out/beta/manifest.json"
+check "keel-release verify --head accepts stable/manifest.json" verify_head_quietly "$out/stable/manifest.json"
+check "keel-release verify --head accepts beta/manifest.json" verify_head_quietly "$out/beta/manifest.json"
+check "keel-release verify --head refuses the manifest of a version, which carries no expires_at" fails_with "carries no expires_at" verify_head "$out/versions/$version/manifest.json"
+
+refresh_dir=$tmp/refresh
+mkdir -p "$refresh_dir/stable"
+cp "$out/stable/manifest.json" "$refresh_dir/stable/manifest.json"
+cp "$out/stable/manifest.json" "$tmp/head-before.json"
+refreshed_stable() {
+  refresh_dry_run stable "$refresh_dir" --expires-days 90 > "$tmp/refresh.log"
+}
+check "the dry run of --refresh stable signs the head again" refreshed_stable
+refreshed=$refresh_dir/stable/manifest.json
+check "the refreshed head verifies as a head" verify_head_quietly "$refreshed"
+check "the refreshed head differs from the head it came from" bash -c '! cmp -s "$1" "$2"' bash "$refreshed" "$tmp/head-before.json"
+check "the refreshed head expires later than the head it came from" test "$(expiry_of "$refreshed")" -gt "$(expiry_of "$tmp/head-before.json")"
+check "the refreshed head expires ninety days after the refresh" within "$(expiry_of "$refreshed")" "$(($(date +%s) + 89 * 86400))" "$(($(date +%s) + 91 * 86400))"
+check "the refreshed head differs from its source in the expires_at number alone, byte for byte" cmp -s <(without_expiry "$refreshed") <(without_expiry "$tmp/head-before.json")
+check "the refreshed head still carries the manifest of $version" same_but_expiry "$refreshed" "$out/versions/$version/manifest.json"
+check "the refresh writes the head and nothing else" test "$(cd "$refresh_dir" && find . -type f | sed 's|^\./||' | sort)" = "stable/manifest.json"
+check "the dry run names the PUT of the refreshed head" grep -qF "a publish would PUT https://astrum.globalart.hu/repository/keel-releases/keel/stable/manifest.json" "$tmp/refresh.log"
+mkdir -p "$tmp/tampered/stable"
+tampered_copy "$out/stable/manifest.json" "$tmp/tampered/stable/manifest.json"
+cp "$tmp/tampered/stable/manifest.json" "$tmp/tampered-before.json"
+check "a refresh of a head whose payload was changed is rejected" fails_with "the signature matches none of the trusted keys" refresh_dry_run stable "$tmp/tampered"
+check "a rejected refresh writes nothing" test "$(cd "$tmp/tampered" && find . -type f | sed 's|^\./||' | sort)" = "stable/manifest.json"
+check "a rejected refresh leaves the head as it was" cmp -s "$tmp/tampered-before.json" "$tmp/tampered/stable/manifest.json"
+mkdir -p "$tmp/headless"
+refresh_without_head() {
+  refresh_dry_run beta "$tmp/headless" > "$tmp/headless.log"
+}
+check "a refresh of a beta channel without a head reports it and succeeds" refresh_without_head
+check "the report names the missing head" grep -qF "the beta channel has no head to refresh" "$tmp/headless.log"
+check "a refresh of a stable channel without a head fails" fails_with "the stable channel has no head to refresh" refresh_dry_run stable "$tmp/headless"
+check "a refresh of a channel without a head writes nothing" test -z "$(find "$tmp/headless" -type f)"
+check "--refresh refuses a tag" fails_with "does not belong to --refresh" refresh_dry_run stable "$refresh_dir" --tag "keel-v$version"
+check "--expires-days of zero is refused" fails_with "--expires-days is between 1 and 365" refresh_dry_run stable "$refresh_dir" --expires-days 0
+check "--expires-days above a year is refused" fails_with "--expires-days is between 1 and 365" refresh_dry_run stable "$refresh_dir" --expires-days 366
+check "a refresh without the password is refused before the channel is read" fails_with "KEEL_RELEASE_ASTRUM_PASSWORD is not set" env -u KEEL_RELEASE_ASTRUM_PASSWORD python3 hack/release.py --refresh stable
 
 if command -v sha256sum >/dev/null 2>&1; then
   check "the .sha256 file checks with sha256sum" bash -c "cd '$out/versions/$version' && sha256sum -c --strict --quiet '$archive.sha256'"

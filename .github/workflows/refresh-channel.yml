@@ -1,0 +1,55 @@
+name: Refresh channel
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-channel
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  refresh:
+    name: sign the heads of the channel again
+    if: github.repository == 'GlobalArtInc/keel'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup show
+
+      - name: Cache the build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: refresh
+          cache-on-failure: true
+
+      - name: Build keel-release
+        run: cargo build -p keel-release
+
+      - name: Refresh the stable head
+        env:
+          KEEL_RELEASE_KEY: ${{ secrets.KEEL_RELEASE_KEY }}
+          KEEL_RELEASE_ASTRUM_PASSWORD: ${{ secrets.KEEL_RELEASE_ASTRUM_PASSWORD }}
+        run: python3 hack/release.py --refresh stable --keel-release target/debug/keel-release
+
+      - name: Refresh the beta head
+        if: ${{ !cancelled() }}
+        env:
+          KEEL_RELEASE_KEY: ${{ secrets.KEEL_RELEASE_KEY }}
+          KEEL_RELEASE_ASTRUM_PASSWORD: ${{ secrets.KEEL_RELEASE_ASTRUM_PASSWORD }}
+        run: python3 hack/release.py --refresh beta --keel-release target/debug/keel-release

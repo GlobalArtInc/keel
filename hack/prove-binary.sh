@@ -424,7 +424,7 @@ agent_answers() {
 write_channel() {
   local dir=$1 running=$2 available=$3
   python3 - "$dir" "$running" "$available" <<'EOF'
-import base64, json, os, sys
+import base64, json, os, sys, time
 root, running, available = sys.argv[1:4]
 
 def signed(path, manifest):
@@ -433,7 +433,7 @@ def signed(path, manifest):
     with open(path, "w") as handle:
         json.dump({"payload": payload, "signature": base64.b64encode(bytes(64)).decode()}, handle)
 
-signed(os.path.join(root, "stable", "manifest.json"), {"version": available, "sha256": "00", "min_upgrade_from": running, "contract": 1, "notes": "Rehearsal release " + available})
+signed(os.path.join(root, "stable", "manifest.json"), {"version": available, "sha256": "00", "min_upgrade_from": running, "contract": 1, "notes": "Rehearsal release " + available, "expires_at": int(time.time()) + 3600})
 signed(os.path.join(root, "versions", available, "manifest.json"), {"version": available, "sha256": "00", "min_upgrade_from": running, "contract": 1, "notes": "Rehearsal release " + available})
 signed(os.path.join(root, "versions", running, "manifest.json"), {"version": running, "sha256": "00", "min_upgrade_from": "0.0.1", "contract": 1, "notes": "Running release " + running})
 EOF
@@ -506,7 +506,7 @@ data_dir: $site/lib
 database: $(database_url "$admin_url" "$database")
 log: { level: info, format: text }
 host: { socket: $site/agent/agent.sock }
-update: { channel_url: http://127.0.0.1:$channel_port/ }
+update: { channel_url: http://127.0.0.1:$channel_port/, insecure_rehearsal_channel: true }
 EOF
 echo "site $site, binary $keel $version, channel offers $available_version"
 

@@ -34,14 +34,18 @@ fn manifest() -> impl Strategy<Value = Manifest> {
         any::<u32>(),
         any::<String>(),
         prop::collection::vec(any::<u8>(), 0..64),
+        prop::option::of(any::<u64>()),
     )
-        .prop_map(|(version, minimum, contract, notes, archive)| Manifest {
-            version: Version::new(version.0, version.1, version.2),
-            sha256: Digest::of(&archive).hex(),
-            min_upgrade_from: Version::new(minimum.0, minimum.1, minimum.2),
-            contract,
-            notes,
-        })
+        .prop_map(
+            |(version, minimum, contract, notes, archive, expires_at)| Manifest {
+                version: Version::new(version.0, version.1, version.2),
+                sha256: Digest::of(&archive).hex(),
+                min_upgrade_from: Version::new(minimum.0, minimum.1, minimum.2),
+                contract,
+                notes,
+                expires_at,
+            },
+        )
 }
 
 fn envelope_of(signed: &Signed) -> Value {

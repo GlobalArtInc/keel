@@ -6,6 +6,7 @@ use std::process::ExitStatus;
 
 use keel_release::{
     Channel, KeyRing, Manifest, ReleaseError, Signed, Version, archive_path, manifest_path,
+    unix_now,
 };
 use tar::EntryType;
 
@@ -178,7 +179,11 @@ impl Runner {
             "update: {} from {} requested by {}; current {}",
             request.version, request.channel, request.requested_by, current.version
         );
-        let head = self.verified(&request.channel.head_path()).await?;
+        let head = if request.version < current.version {
+            self.verified(&request.channel.head_path()).await?
+        } else {
+            self.verified_head(request.channel).await?
+        };
         head.admits(&request.version)?;
         println!(
             "update: the head of {} is {} with min_upgrade_from {}",
@@ -320,6 +325,14 @@ impl Runner {
     async fn verified(&self, relative: &str) -> Result<Manifest, UpdateError> {
         let bytes = self.source.fetch(relative, MANIFEST_LIMIT).await?;
         Ok(Signed::parse(&bytes)?.verify(&self.keys)?)
+    }
+
+    async fn verified_head(&self, channel: Channel) -> Result<Manifest, UpdateError> {
+        let bytes = self
+            .source
+            .fetch(&channel.head_path(), MANIFEST_LIMIT)
+            .await?;
+        Ok(Signed::parse(&bytes)?.verify_head(&self.keys, unix_now()?)?)
     }
 
     fn installed_manifest(&self, version: &Version) -> Result<Manifest, UpdateError> {

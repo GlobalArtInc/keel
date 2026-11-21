@@ -272,12 +272,13 @@ four unit files, the file the path unit watches and the order of steps in the up
 spellings are those of `keel privileged --help`: `--socket` and `--policy` with the defaults
 above, `--user keel`, the one account the agent socket admits, and `--templates
 /etc/keel/templates`, the operator's template overrides; `update --from-request` with
-`--request`, `--channel-url` (an `https://` or `http://` base, a `file://` URL or an absolute
-directory), `--opt`, `--unit-dir`, `--systemctl` and `--release-key`, which exist so that a test
-or a rehearsal drives the whole sequence in another tree with a stub `systemctl` and a channel
-directory; and `update rollback [--restore <archive>]`. Everything the root side does is fixed by
-its flags, never by the request. The host agent's policy file `agent.yaml`,
-its operation catalogue and its impersonation rules are described in [06-host.md](06-host.md).
+`--request`, `--channel-url` (an `https://` base, a `file://` URL or an absolute directory; an
+`http://` base only together with `--insecure-rehearsal-channel`), `--opt`, `--unit-dir`,
+`--systemctl` and `--release-key`, which exist so that a test or a rehearsal drives the whole
+sequence in another tree with a stub `systemctl` and a channel directory; and `update rollback
+[--restore <archive>]`. Everything the root side does is fixed by its flags, never by the
+request. The host agent's policy file `agent.yaml`, its operation catalogue and its impersonation
+rules are described in [06-host.md](06-host.md).
 
 ## Installation and first start
 
@@ -341,9 +342,13 @@ at once with one line naming bash. The signature is verified with `openssl` over
 bytes of the manifest, the same check `keel-release verify` makes, before anything is unpacked;
 the archive is checked against the sha256 of the verified payload, and the signed manifest is kept
 beside the installed version. Its flags: `--product <id>[,<id>]`, `--channel stable|beta`,
-`--channel-url`, `--version` for a version of the channel instead of its head, `--release-key`
-for a rehearsal channel, `--binary <path|url>`, an unsigned override for a build that is not on
-the channel, `--listen` and `--yes`. The installer creates no administrator; it prints the setup
+`--channel-url` (an `https://` address), `--insecure-rehearsal-channel` to admit an `http://`
+address for a rehearsal channel, `--version` for a version of the channel instead of its head,
+`--release-key` for a rehearsal channel, `--binary <path|url>`, an unsigned override for a build
+that is not on the channel, `--listen` and `--yes`. When it reads the head of a channel the
+installer also refuses a head that carries no `expires_at` or whose `expires_at` has passed, with
+a message that names the expiry and says to try later or to use another channel; the manifest of
+a `--version` never expires. The installer creates no administrator; it prints the setup
 link the first start logs, and the page behind it calls `keel.setup.admin`.
 
 The M4 acceptance test for this section is: on a clean Debian or Ubuntu,
@@ -464,7 +469,7 @@ belong to the runtime, not to a module.
 ## Updates
 
 Releases are published on a channel described by a signed `manifest.json` with `version`,
-`sha256`, `min_upgrade_from`, `contract` and `notes`.
+`sha256`, `min_upgrade_from`, `contract` and `notes`; the head of a channel adds `expires_at`.
 
 ### The release channel
 
@@ -485,10 +490,87 @@ https://dl.globalart.hu/keel/
 
 `stable/manifest.json` and `beta/manifest.json` are the heads of the two channels; the copy under
 `versions/<ver>/` is the manifest the version was released with, kept so that a rollback and an
-audit can read what was promised at the time. Reading is anonymous for this repository only: the
-manifest is signed and the archive is verified against the hash in it, and what an installation
-may run is decided by its license, not by who can download the archive. Should downloads ever
-need to be restricted, the license server of M5 hands out tokens for the same URL.
+audit can read what was promised at the time; it never expires. Reading is anonymous for this
+repository only: the manifest is signed and the archive is verified against the hash in it, and
+what an installation may run is decided by its license, not by who can download the archive.
+Should downloads ever need to be restricted, the license server of M5 hands out tokens for the
+same URL.
+
+The channel is read over `https://` and over nothing else. `install.sh --channel-url`, the key
+`update.channel_url` of `config.yaml` and `keel privileged update --channel-url` refuse an
+`http://` address with a message that says so; a rehearsal channel on a network the operator
+trusts is named explicitly instead: `install.sh --insecure-rehearsal-channel`, which, when the
+address is `http://`, also writes `update: { channel_url, insecure_rehearsal_channel: true }` into
+the `config.yaml` of the installation (and nothing about the rehearsal for an `https://` address),
+the boolean `update.insecure_rehearsal_channel` of the `update` section (default `false`), and
+`keel privileged update --insecure-rehearsal-channel`. The kernel keeps running with an address
+the module refuses: `update.check`, `update.apply` and `update.rollback` answer
+`update.error.channel_insecure` (or `update.error.channel_url` for an address that is no http(s)
+base) and the rest of the kernel is untouched. Outside a rehearsal the clients of the root side and
+of the kernel follow a redirect only when it stays on https and on the same host, and the
+installer's `curl` takes only https redirects. The signature protects what is installed over plain
+http as well; only the freshness of the head is left to `expires_at` below. A `file://` URL and an
+absolute directory carry no network and need no flag.
+
+A head carries one field the manifest of a version does not: `expires_at`, whole seconds since
+the Unix epoch in UTC, inside the signed document, so that it cannot be changed without the key.
+A man in the middle cannot forge a head, but without it he could serve an old signed one to a
+fresh installation, or withhold a newer one, for as long as he liked. Every reader of a head
+refuses one that carries no `expires_at` or whose `expires_at` is not after the current time:
+`keel-release verify --head`, the root side of an update, the kernel's read of the channel for the
+screen "Updates" (the errors `update.error.head_expired` and `update.error.head_no_expiry`) and
+`install.sh`, which also refuses when the clock of the host gives no usable time. The refusal
+also stands for a manifest of a version served in the place of the head, which has no expiry. A
+refused head changes nothing: an installation that meets one keeps running the version it runs,
+`update.check` answers the error, and the daily job raises no `update.available`; a fresh
+installation stops before it unpacks anything, and `install.sh` says to try later, when the
+channel has been refreshed, or to use another channel.
+
+What this does and does not do: a head that has expired is refused, and that is all. Within its
+window an old signed head is still accepted, so the expiry bounds how long a replayed or withheld
+head can mislead, it does not make a stale copy of the channel impossible to present. The
+installation keeps no record of the heads it has seen. The root side takes the version to install
+from the request and checks it against its own signed manifest; it does not bind that version to
+the one the verified head names, and uses the head for its freshness and its `min_upgrade_from`
+alone. An update never moves to a version older than the one the installation runs; a request
+moves down only to `bin/previous`.
+
+A move down to `bin/previous` does not need a fresh head. The root side verifies the signature of
+the head it reads for such a request but does not require its expiry, and the kernel reads the
+head for its `min_upgrade_from` without requiring it, so `update.rollback` is not blocked by a
+channel nobody has refreshed. It still reads the head and the manifests of both versions from the
+channel, and the root side downloads the previous version again, so the channel must answer;
+`keel privileged update rollback` works from the installation alone and needs neither.
+
+`hack/release.py` sets `expires_at` on every head it writes, now plus 30 days by default
+(`--expires-days`, between 1 and 365), and none on the manifest of the version. A head nobody
+publishes again would expire, so the workflow `refresh-channel.yml` runs every Monday at 04:17 UTC
+and on demand, and calls `hack/release.py --refresh stable` and `--refresh beta`: the script
+reads the current head from the raw repository it writes to, with the deploy account, verifies its
+signature with the release keys and rejects it if the signature is not valid, writes the same
+manifest with a new `expires_at` (now plus the window), signs it with the key of
+`KEEL_RELEASE_KEY` through `keel-release refresh` and uploads it like a release does. Nothing but
+`expires_at` changes: a head whose payload `keel-release` would not reproduce byte for byte is
+refused rather than rewritten, and the script reads the head again before it uploads and stops if
+it changed meanwhile. A `beta` channel without a head, before its first pre-release, is reported
+and left alone with exit status 0; a `stable` channel without a head, like any other failure,
+fails the step, and the `beta` step runs even when the `stable` step failed. The workflow builds
+`keel-release` in a step that holds no secret and hands the secrets only to the steps that run
+`hack/release.py` with that binary, so no build script of a dependency sees them. The workflow
+and `release.yml` share the concurrency group `release-channel`, so that a release and a refresh
+never run at once; GitHub keeps one waiting run per group, so a run that waits while another
+waits is replaced and is started again from the Actions tab. With the weekly run the head signed
+last expires after four weekly runs have failed in a row. The 30 days and the weekly rhythm are
+defaults, which the owner may change in `--expires-days` and in the `cron` line of the workflow.
+GitHub disables the scheduled workflows of a public repository after 60 days without activity in
+it; the heads then stop being refreshed, and each expires at most 30 days after its last refresh.
+With the key moved to an offline machine the refresh is run there by hand within the window.
+
+Rolling out the expiry: heads published before the release that introduces `expires_at` carry
+none, and the new clients refuse them. After that release every head it did not touch, typically
+`beta` when the release is a stable one, has to be refreshed once by hand with
+`workflow_dispatch` of `refresh-channel.yml`; the head of the channel the release is published on
+is rewritten by the release itself.
 
 Publication is the release workflow of M4: a tag `keel-vX.Y.Z` builds the musl binary, signs the
 manifest with `hack/release.py` and uploads through the REST API of Astrum under a deploy account
@@ -499,9 +581,10 @@ where `hack/release.py` runs and nothing else. The workflow is `release.yml`, tr
 annotated `keel-v*` tags alone: it repeats the musl build, checks that the binary prints the
 version of the tag, and runs `hack/release.py`, which packages the binary with
 `config-sample.yaml` beside it and `install.sh`, `uninstall.sh`, `agent.yaml` and the unit files
-under `deploy/`, writes the `.sha256`, signs the manifest through `keel-release sign`, verifies it
-against the compiled keys and uploads the archive, its digest, the version's manifest and the
-head in that order, then `install.sh` to the channel root. A
+under `deploy/`, writes the `.sha256`, signs the manifest of the version and the head with their
+`expires_at` through `keel-release sign`, verifies both against the compiled keys (the head with
+`verify --head`) and uploads the archive, its digest, the version's manifest and the head in that
+order, then `install.sh` to the channel root. A
 version with a pre-release suffix lands on `beta`, any other on `stable`; the release notes are
 the tag's annotation; a version the channel already carries is refused without `--replace`, and a
 head never moves backwards. `contract` and `min_upgrade_from` of the next release live in
@@ -516,8 +599,9 @@ An update runs in two halves separated by the privilege boundary:
    `update.channel_url` in `config.yaml`. The address is startup configuration, not a setting,
    so no administrator points an installation at another channel from the browser. Anti-rollback
    is enforced by the minimum version stated in the channel manifest. The kernel side reads the
-   payload of the signed envelope without verifying it: the root side is the one verifier. A
-   daily cron job raises the problem `update.available`, and the running version clears it.
+   payload of the signed envelope without verifying it, and refuses a head that is expired or
+   carries no `expires_at`: the root side is the one verifier. A daily cron job raises the problem
+   `update.available`, and the running version clears it.
 2. The kernel drains the task queue ([05-modules.md](05-modules.md)) and takes a logical dump of
    the database: `COPY … TO STDOUT` over its own connection into
    `backups/pre-update-<version>-<instant>/`, one file per base table of the schema, loaded or
@@ -528,7 +612,9 @@ An update runs in two halves separated by the privilege boundary:
 3. The kernel writes `update.request` with the requested version, channel and the requesting
    principal; an unconsumed request is replaced. The whole of steps 1 to 3 is the task
    `update.apply`, run from the button of the screen "Updates" or by `keel update apply`.
-4. `keel-update.path` fires. The root code path downloads `versions/<ver>`, verifies the
+4. `keel-update.path` fires. The root code path first reads the head of the channel and
+   refuses it when its signature fails or it is expired or carries no `expires_at`, then
+   downloads `versions/<ver>`, verifies the
    Ed25519 signature and the sha256 from the manifest, switches the `bin/current` symlink,
    refreshes the unit files from the release and restarts the service. The root side knows one
    operation only — install signed version X — and takes no commands from the request beyond

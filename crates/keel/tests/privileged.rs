@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use keel::{ExitCode, Runtime};
 use keel_release::{
-    Channel, Digest, Manifest, SecretKey, Signed, Version, archive_path, manifest_path,
+    Channel, Digest, Manifest, SecretKey, Signed, Version, archive_path, manifest_path, unix_now,
 };
 use tempfile::TempDir;
 
@@ -17,6 +17,10 @@ const PRIVILEGED_UNIT: &str =
 struct Site {
     dir: TempDir,
     key: SecretKey,
+}
+
+fn fresh() -> u64 {
+    unix_now().unwrap() + 3_600
 }
 
 impl Site {
@@ -68,7 +72,14 @@ impl Site {
         min_upgrade_from: &str,
         archive: &[u8],
     ) -> Vec<u8> {
-        self.signed_with(&self.key, version, contract, min_upgrade_from, archive)
+        self.signed_with(
+            &self.key,
+            version,
+            contract,
+            min_upgrade_from,
+            archive,
+            None,
+        )
     }
 
     fn signed_with(
@@ -78,6 +89,7 @@ impl Site {
         contract: u32,
         min_upgrade_from: &str,
         archive: &[u8],
+        expires_at: Option<u64>,
     ) -> Vec<u8> {
         let manifest = Manifest {
             version: Version::parse(version).unwrap(),
@@ -85,6 +97,7 @@ impl Site {
             min_upgrade_from: Version::parse(min_upgrade_from).unwrap(),
             contract,
             notes: format!("release {version}"),
+            expires_at,
         };
         Signed::sign(&manifest, key)
             .unwrap()
@@ -177,12 +190,32 @@ impl Site {
     ) {
         let parsed = Version::parse(version).unwrap();
         let channel_dir = self.path("channel");
-        let manifest = self.signed_with(key, version, contract, min_upgrade_from, archive);
+        let manifest = self.signed_with(key, version, contract, min_upgrade_from, archive, None);
         let archive_file = channel_dir.join(archive_path(&parsed));
         fs::create_dir_all(archive_file.parent().unwrap()).unwrap();
         fs::write(&archive_file, archive).unwrap();
         fs::write(channel_dir.join(manifest_path(&parsed)), &manifest).unwrap();
-        fs::write(channel_dir.join(channel.head_path()), &manifest).unwrap();
+        let head = self.signed_with(
+            key,
+            version,
+            contract,
+            min_upgrade_from,
+            archive,
+            Some(fresh()),
+        );
+        fs::write(channel_dir.join(channel.head_path()), head).unwrap();
+    }
+
+    fn republish_head(
+        &self,
+        version: &str,
+        min_upgrade_from: &str,
+        channel: Channel,
+        archive: &[u8],
+        expires_at: Option<u64>,
+    ) {
+        let head = self.signed_with(&self.key, version, 1, min_upgrade_from, archive, expires_at);
+        fs::write(self.path("channel").join(channel.head_path()), head).unwrap();
     }
 
     fn request(&self, body: &str) {
@@ -377,6 +410,25 @@ fn a_request_naming_an_unsigned_or_tampered_version_leaves_current_untouched() {
 }
 
 #[test]
+fn a_head_without_an_expiry_or_past_it_is_refused_by_the_root_side() {
+    let site = Site::new();
+    site.install_current("0.1.0", 1);
+    let archive = site.publish("0.2.0", 1, "0.1.0", Channel::Stable);
+    for expires_at in [None, Some(1), Some(unix_now().unwrap())] {
+        site.republish_head("0.2.0", "0.1.0", Channel::Stable, &archive, expires_at);
+        site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+        assert_eq!(site.update(), ExitCode::FAILURE, "{expires_at:?}");
+        assert_eq!(site.current(), site.binary_of("0.1.0"));
+        assert!(!site.version_dir("0.2.0").exists());
+        assert!(site.systemctl_calls().is_empty());
+    }
+    site.republish_head("0.2.0", "0.1.0", Channel::Stable, &archive, Some(fresh()));
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("0.2.0"));
+}
+
+#[test]
 fn rollback_switches_to_the_previous_version_within_the_contract_and_refuses_across_it() {
     let site = Site::new();
     site.install_current("0.1.0", 1);
@@ -485,6 +537,30 @@ fn an_update_request_moves_down_only_to_the_previous_version_within_its_contract
 }
 
 #[test]
+fn a_request_for_the_previous_version_is_installed_under_an_expired_head_and_a_newer_one_is_not() {
+    let site = Site::new();
+    site.install_current("0.1.0", 1);
+    site.publish("0.1.0", 1, "0.0.1", Channel::Stable);
+    let archive = site.publish("0.2.0", 1, "0.1.0", Channel::Stable);
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.previous(), Some(site.binary_of("0.1.0")));
+    site.clear_systemctl_calls();
+
+    site.republish_head("0.2.0", "0.1.0", Channel::Stable, &archive, Some(1));
+    site.request(r#"{"version":"0.1.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("0.1.0"));
+    assert_eq!(site.systemctl_calls(), restart_sequence());
+    site.clear_systemctl_calls();
+
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    assert_eq!(site.update(), ExitCode::FAILURE);
+    assert_eq!(site.current(), site.binary_of("0.1.0"));
+    assert!(site.systemctl_calls().is_empty());
+}
+
+#[test]
 fn the_request_carries_no_command_the_root_side_obeys() {
     let site = Site::new();
     site.install_current("0.1.0", 1);
@@ -521,17 +597,39 @@ fn a_channel_served_over_http_installs_the_same_way() {
     site.publish("0.2.0", 1, "0.1.0", Channel::Beta);
     let root = site.path("channel");
     let (addr, stop) = serve_directory(root);
+    let rehearsal = ["--from-request", "--insecure-rehearsal-channel"];
     site.request(r#"{"version":"0.2.0","channel":"beta","requested_by":"admin"}"#);
-    let code = site.run(&format!("http://{addr}/keel"), &["--from-request"]);
+    let code = site.run(&format!("http://{addr}/keel"), &rehearsal);
     assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(site.current(), site.binary_of("0.2.0"));
     assert_eq!(site.systemctl_calls(), restart_sequence());
 
     site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
     site.clear_systemctl_calls();
-    let code = site.run(&format!("http://{addr}/keel"), &["--from-request"]);
+    let code = site.run(&format!("http://{addr}/keel"), &rehearsal);
     assert_eq!(code, ExitCode::FAILURE);
     assert!(site.systemctl_calls().is_empty());
+    let _ = stop.send(());
+}
+
+#[test]
+fn a_plain_http_channel_is_refused_by_the_root_side_without_the_rehearsal_flag() {
+    let site = Site::new();
+    site.install_current("0.1.0", 1);
+    site.publish("0.2.0", 1, "0.1.0", Channel::Stable);
+    let (addr, stop) = serve_directory(site.path("channel"));
+    site.request(r#"{"version":"0.2.0","channel":"stable","requested_by":"admin"}"#);
+    let code = site.run(&format!("http://{addr}/keel"), &["--from-request"]);
+    assert_eq!(code, ExitCode::FAILURE);
+    assert_eq!(site.current(), site.binary_of("0.1.0"));
+    assert!(site.systemctl_calls().is_empty());
+    assert!(site.path("lib/update.request").exists());
+    let code = site.run(
+        &format!("http://{addr}/keel"),
+        &["--from-request", "--insecure-rehearsal-channel"],
+    );
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert_eq!(site.current(), site.binary_of("0.2.0"));
     let _ = stop.send(());
 }
 

@@ -137,6 +137,42 @@ check "install.sh shows the API example over https" grep -qE "curl -sS --cacert 
 check "install.sh names the certificate's subjects when listen is unspecified" grep -qE 'names:.*\$name, localhost, 127\.0\.0\.1 and ::1' deploy/install.sh
 check "install.sh pins the API example to a certificate name when listen is unspecified" grep -qE 'curl -sS --cacert \$CERT --resolve \\"\$name:\$port:\$host\\" -X POST https://\$name:\$port/' deploy/install.sh
 check "install.sh prints no plain address" test "$(grep -cE 'http://\$host' deploy/install.sh)" = "0"
+refuses_plain_http() {
+  local out
+  if out=$(bash deploy/install.sh --product demo --channel-url http://127.0.0.1:9/ </dev/null 2>&1); then
+    return 1
+  fi
+  grep -qF 'is plain http; a release channel is read over https' <<<"$out" && grep -qF -- '--insecure-rehearsal-channel' <<<"$out"
+}
+
+admits_rehearsal_http() {
+  local out
+  out=$(bash deploy/install.sh --product demo --channel-url http://127.0.0.1:9/ --insecure-rehearsal-channel </dev/null 2>&1 || true)
+  grep -qF 'warning: the channel http://127.0.0.1:9/ is reached over plain http' <<<"$out" && ! grep -qF 'is plain http; a release channel' <<<"$out"
+}
+
+check "install.sh refuses a plain http channel without --insecure-rehearsal-channel" refuses_plain_http
+check "install.sh admits a plain http channel with --insecure-rehearsal-channel and warns" admits_rehearsal_http
+rendered_config() {
+  bash -c 'set -Eeuo pipefail; source deploy/install.sh; channel_url=$1; insecure_rehearsal_channel=$2; render_config' bash "$@"
+}
+
+refuses_odd_rehearsal_url() {
+  local out
+  if out=$(bash deploy/install.sh --product demo --channel-url 'http://a"b/' --insecure-rehearsal-channel </dev/null 2>&1); then
+    return 1
+  fi
+  grep -qF 'carries a character that is not written into' <<<"$out"
+}
+
+check "install.sh writes the channel and the rehearsal setting into config.yaml for a plain http channel named a rehearsal" test "$(rendered_config http://127.0.0.1:8098/ 1)" = "$(printf 'update:\n  channel_url: "http://127.0.0.1:8098/"\n  insecure_rehearsal_channel: true')"
+check "install.sh writes nothing about the rehearsal for an https channel even with the flag" test -z "$(rendered_config https://dl.example.org/keel/ 1)"
+check "install.sh writes nothing about the rehearsal without the flag" test -z "$(rendered_config https://dl.globalart.hu/keel/ 0)"
+check "install.sh refuses a rehearsal channel address it cannot write into config.yaml" refuses_odd_rehearsal_url
+check "the deploy README names the rehearsal flag and the setting" test "$(grep -cF -e '--insecure-rehearsal-channel' -e 'insecure_rehearsal_channel' deploy/README.md)" -ge 2
+check "install-vm.sh names its plain http channel as a rehearsal" grep -qF -- '--channel-url "http://127.0.0.1:$CHANNEL_PORT/" --insecure-rehearsal-channel' hack/install-vm.sh
+check "update-vm.sh names its plain http channel as a rehearsal for the kernel and the root side" test "$(grep -cF -e 'insecure_rehearsal_channel: true' -e '--insecure-rehearsal-channel --release-key' hack/update-vm.sh)" = "2"
+check "update-vm.sh signs the head of its rehearsal channel with an expiry" grep -qF -- '--expires-at' hack/update-vm.sh
 
 unit_value() {
   local unit=$1 key=$2
@@ -379,6 +415,95 @@ if ossl=$(find_openssl); then
   check "install.sh refuses a tampered payload" refuses "$ossl" "$rehearsal/payload-tampered.json" "$rehearsal/keys/release.pub" "$rehearsal/refused.json"
   check "install.sh refuses a manifest that is not a signed envelope" refuses "$ossl" "$rehearsal/unsigned.json" "$rehearsal/keys/release.pub" "$rehearsal/refused.json"
   check "a refused manifest yields no payload" test ! -e "$rehearsal/refused.json"
+  now=$(date +%s)
+  cargo run -q -p keel-release -- sign --key "$rehearsal/keys/release.key" --version 0.1.0 --archive "$rehearsal/archive" \
+    --min-upgrade-from 0.1.0 --contract 1 --notes "install rehearsal" --expires-at $((now + 3600)) --out "$rehearsal/head-fresh.json" >/dev/null
+  cargo run -q -p keel-release -- sign --key "$rehearsal/keys/release.key" --version 0.1.0 --archive "$rehearsal/archive" \
+    --min-upgrade-from 0.1.0 --contract 1 --notes "install rehearsal" --expires-at 1 --out "$rehearsal/head-expired.json" >/dev/null
+  printf '{\n  "version": "0.1.0",\n  "expires_at": "%s"\n}\n' $((now + 3600)) >"$rehearsal/payload-text-expiry.json"
+  printf '{\n  "version": "0.1.0",\n  "expires_at": %s.5\n}\n' $((now + 3600)) >"$rehearsal/payload-float-expiry.json"
+  for kind in fresh expired version; do
+    mkdir -p "$rehearsal/channel-$kind/stable" "$rehearsal/channel-$kind/versions/0.1.0"
+    : >"$rehearsal/channel-$kind/versions/0.1.0/keel-0.1.0-x86_64-linux-musl.tar.zst"
+  done
+  cp "$rehearsal/head-fresh.json" "$rehearsal/channel-fresh/stable/manifest.json"
+  cp "$rehearsal/head-expired.json" "$rehearsal/channel-expired/stable/manifest.json"
+  cp "$rehearsal/manifest.json" "$rehearsal/channel-version/stable/manifest.json"
+  for kind in fresh expired version; do
+    cp "$rehearsal/manifest.json" "$rehearsal/channel-$kind/versions/0.1.0/manifest.json"
+  done
+  mkdir -p "$rehearsal/stub-empty" "$rehearsal/stub-garbage" "$rehearsal/stub-failing"
+  printf '#!/bin/sh\nexit 0\n' >"$rehearsal/stub-empty/date"
+  printf '#!/bin/sh\necho not-a-number\n' >"$rehearsal/stub-garbage/date"
+  printf '#!/bin/sh\nexit 1\n' >"$rehearsal/stub-failing/date"
+  chmod +x "$rehearsal/stub-empty/date" "$rehearsal/stub-garbage/date" "$rehearsal/stub-failing/date"
+  printf '{\n  "version": "0.1.0",\n  "expires_at": 9999999999999999999\n}\n' >"$rehearsal/payload-huge-expiry.json"
+  fetched_from() {
+    local kind=$1 requested=${2:-} stubs=${3:-}
+    PATH="${stubs:+$stubs:}$(dirname "$ossl"):$PATH" bash -c '
+set -Eeuo pipefail
+source deploy/install.sh
+channel_dir=$1
+RELEASE_KEY=$(head -n 1 "$2")
+requested_version=$3
+channel_url=http://rehearsal.invalid/
+channel=stable
+tmp=$(mktemp -d)
+trap '"'"'rm -rf "$tmp"'"'"' EXIT
+download() { cp "$channel_dir/${1#"$channel_url"}" "$2"; }
+sha256sum() { cat >/dev/null; }
+install() { :; }
+unpack() { printf "unpacked\n"; }
+fetch_from_channel
+' bash "$rehearsal/channel-$kind" "$rehearsal/keys/release.pub" "$requested" 2>&1
+  }
+  fetch_reaches_unpack() {
+    local out
+    out=$(fetched_from "$@") && grep -qxF 'unpacked' <<<"$out"
+  }
+  fetch_refused_with() {
+    local pattern=$1 out
+    shift
+    if out=$(fetched_from "$@"); then
+      return 1
+    fi
+    grep -qE -- "$pattern" <<<"$out" && ! grep -qxF 'unpacked' <<<"$out"
+  }
+  freshness() {
+    sourced "$ossl" check_head_fresh "$1" "$2" stable 2>&1
+  }
+  is_fresh() {
+    freshness "$@" >/dev/null
+  }
+  refused_with() {
+    local pattern=$1 out
+    shift
+    if out=$(freshness "$@"); then
+      return 1
+    fi
+    grep -qE -- "$pattern" <<<"$out"
+  }
+  check "install.sh accepts a head signed with an expiry in the future" verifies "$ossl" "$rehearsal/head-fresh.json" "$rehearsal/keys/release.pub" "$rehearsal/payload-fresh.json"
+  check "install.sh reads the expires_at of the verified head" test "$(sourced "$ossl" json_number "$rehearsal/payload-fresh.json" expires_at)" = "$((now + 3600))"
+  check "install.sh finds no expires_at in the manifest of a version" test -z "$(sourced "$ossl" json_number "$rehearsal/payload.json" expires_at)"
+  check "install.sh takes a head that expires after now" is_fresh "$rehearsal/payload-fresh.json" "$now"
+  check "install.sh refuses a head that expires at this very second" refused_with 'expired at' "$rehearsal/payload-fresh.json" "$((now + 3600))"
+  check "install.sh names the expiry of a head past it and says to try later or use another channel" refused_with 'expired at .*Try again later.*another channel' "$rehearsal/payload-fresh.json" "$((now + 7200))"
+  check "install.sh refuses a head without an expires_at" refused_with 'carries no usable expires_at' "$rehearsal/payload.json" "$now"
+  check "install.sh refuses an expires_at that is a string" refused_with 'carries no usable expires_at' "$rehearsal/payload-text-expiry.json" "$now"
+  check "install.sh refuses an expires_at that is not a whole number" refused_with 'carries no usable expires_at' "$rehearsal/payload-float-expiry.json" "$now"
+  check "install.sh refuses an expires_at too large to compare" refused_with 'carries no usable expires_at' "$rehearsal/payload-huge-expiry.json" "$now"
+  check "install.sh refuses a head when the clock gives nothing" refused_with 'clock of this host' "$rehearsal/payload-fresh.json" ""
+  check "install.sh refuses a head when the clock does not give a number" refused_with 'clock of this host' "$rehearsal/payload-fresh.json" "not-a-number"
+  check "install.sh refuses a head when the clock gives a negative number" refused_with 'clock of this host' "$rehearsal/payload-fresh.json" "-5"
+  check "install.sh reads a fresh head through to the unpacking" fetch_reaches_unpack fresh
+  check "install.sh refuses an expired head before it unpacks anything" fetch_refused_with 'expired at' expired
+  check "install.sh refuses the manifest of a version served in the place of the head before it unpacks anything" fetch_refused_with 'carries no usable expires_at' version
+  check "install.sh refuses a fresh head when the date command prints nothing" fetch_refused_with 'clock of this host' fresh "" "$rehearsal/stub-empty"
+  check "install.sh refuses a fresh head when the date command prints no number" fetch_refused_with 'clock of this host' fresh "" "$rehearsal/stub-garbage"
+  check "install.sh refuses a fresh head when the date command fails" fetch_refused_with 'clock of this host' fresh "" "$rehearsal/stub-failing"
+  check "install.sh installs a version of the channel although its head is expired" fetch_reaches_unpack expired 0.1.0
+  check "install.sh installs a version of the channel although the clock gives no number" fetch_reaches_unpack version 0.1.0 "$rehearsal/stub-garbage"
   printf 'keel:100000:65536\n' >"$rehearsal/subuid"
   check "install.sh skips uid ranges taken by a subordinate range or an account" allots "$ossl" "$rehearsal/subuid" "231072 296607"
   printf '' >"$rehearsal/empty-subuid"

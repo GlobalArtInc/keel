@@ -187,7 +187,7 @@ run() {
 
   local installed=0
   check "curl | sh refuses a plain sh with the bash line" test "$(curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | sh -s -- --product "$product" 2>&1 || true)" = "install.sh runs under bash: curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product <id>"
-  if curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/" --listen "$listen" --yes >"$dir/install.log" 2>&1; then
+  if curl -fsSL "http://127.0.0.1:$CHANNEL_PORT/install.sh" | bash -s -- --product "$product" --channel-url "http://127.0.0.1:$CHANNEL_PORT/" --insecure-rehearsal-channel --listen "$listen" --yes >"$dir/install.log" 2>&1; then
     installed=1
   fi
   cat "$dir/install.log"

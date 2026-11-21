@@ -1,7 +1,8 @@
 use keel_sdk::prelude::*;
 use keel_sdk::types::Envelope;
 use keel_system::update::{
-    CHECK, ERROR_CHANNEL, ERROR_CHANNEL_URL, MODULE, POLL_JOB, POLL_SCHEDULE, SECTION,
+    CHECK, ERROR_CHANNEL, ERROR_CHANNEL_INSECURE, ERROR_CHANNEL_URL, MODULE, POLL_JOB,
+    POLL_SCHEDULE, SECTION,
 };
 use keel_testkit::{Harness, tokio};
 
@@ -12,7 +13,10 @@ async fn update_alone_boots_with_its_table_its_job_and_names_an_unreachable_chan
         .module(&keel_system::tasks::MODULE)
         .module(&keel_system::cron::MODULE)
         .module(&MODULE)
-        .section(SECTION, json!({ "channel_url": "http://127.0.0.1:9/" }))
+        .section(
+            SECTION,
+            json!({ "channel_url": "http://127.0.0.1:9/", "insecure_rehearsal_channel": true }),
+        )
         .boot()
         .await;
     assert_eq!(
@@ -54,15 +58,37 @@ async fn update_alone_boots_with_its_table_its_job_and_names_an_unreachable_chan
     );
     socket.stop().await.expect("the socket stops");
 
-    let refused = Harness::new()
-        .module(&keel_system::tasks::MODULE)
-        .module(&keel_system::cron::MODULE)
-        .module(&MODULE)
-        .section(SECTION, json!({ "channel_url": "file:///srv/channel" }))
-        .try_boot()
-        .await
-        .expect_err("a channel that is not http does not boot")
-        .to_string();
-    assert!(refused.contains(ERROR_CHANNEL_URL), "{refused}");
     harness.finish().await;
+
+    for (section, key) in [
+        (
+            json!({ "channel_url": "file:///srv/channel" }),
+            ERROR_CHANNEL_URL,
+        ),
+        (
+            json!({ "channel_url": "http://127.0.0.1:9/" }),
+            ERROR_CHANNEL_INSECURE,
+        ),
+    ] {
+        let kept = Harness::new()
+            .module(&keel_system::tasks::MODULE)
+            .module(&keel_system::cron::MODULE)
+            .module(&MODULE)
+            .section(SECTION, section)
+            .boot()
+            .await;
+        let socket = kept.socket().await;
+        let checked = socket.call(CHECK, json!({})).await;
+        let Envelope::Err { error } = checked else {
+            panic!("an unusable channel address answers an error: {checked:?}");
+        };
+        assert_eq!(error.key, key);
+        let jobs = socket.call(keel_system::cron::JOB_LIST, json!({})).await;
+        assert!(
+            matches!(jobs, Envelope::Ok { .. }),
+            "the kernel keeps running: {jobs:?}"
+        );
+        socket.stop().await.expect("the socket stops");
+        kept.finish().await;
+    }
 }

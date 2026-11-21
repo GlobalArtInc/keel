@@ -80,6 +80,12 @@ impl Signed {
     pub fn verify(&self, keys: &KeyRing) -> Result<Manifest, ReleaseError> {
         serde_json::from_slice(self.open(keys)?).map_err(ReleaseError::Payload)
     }
+
+    pub fn verify_head(&self, keys: &KeyRing, now: u64) -> Result<Manifest, ReleaseError> {
+        let manifest = self.verify(keys)?;
+        manifest.check_fresh(now)?;
+        Ok(manifest)
+    }
 }
 
 #[cfg(test)]
@@ -96,6 +102,7 @@ mod tests {
             min_upgrade_from: Version::new(0, 1, 0),
             contract: 1,
             notes: "Second release.\nWith two lines and ünïcödé.".to_owned(),
+            expires_at: None,
         }
     }
 
@@ -127,6 +134,32 @@ mod tests {
         assert!(matches!(
             foreign.verify(&ring),
             Err(ReleaseError::Signature)
+        ));
+    }
+
+    #[test]
+    fn a_head_verifies_only_while_it_is_fresh_and_never_before_its_signature() {
+        let key = SecretKey::generate("release").unwrap();
+        let ring = KeyRing::new(key.public(), Vec::new());
+        let head = Manifest {
+            expires_at: Some(2_000),
+            ..manifest()
+        };
+        let signed = Signed::sign(&head, &key).unwrap();
+        assert_eq!(signed.verify_head(&ring, 1_999).unwrap(), head);
+        assert!(matches!(
+            signed.verify_head(&ring, 2_000),
+            Err(ReleaseError::Expired { .. })
+        ));
+        let stranger = KeyRing::new(SecretKey::generate("other").unwrap().public(), Vec::new());
+        assert!(matches!(
+            signed.verify_head(&stranger, 2_000),
+            Err(ReleaseError::Signature)
+        ));
+        let version_manifest = Signed::sign(&manifest(), &key).unwrap();
+        assert!(matches!(
+            version_manifest.verify_head(&ring, 0),
+            Err(ReleaseError::NoExpiry { .. })
         ));
     }
 

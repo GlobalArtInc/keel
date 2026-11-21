@@ -11,6 +11,7 @@ use crate::VERSION;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
+const REDIRECT_LIMIT: usize = 10;
 
 pub(crate) enum Source {
     Directory(PathBuf),
@@ -26,6 +27,10 @@ pub(crate) enum SourceError {
         "the channel \"{0}\" is neither an https:// URL, a file:// URL nor an absolute directory"
     )]
     Shape(String),
+    #[error(
+        "the channel \"{0}\" is plain http, which a release channel is not read over; --insecure-rehearsal-channel admits it for a rehearsal"
+    )]
+    PlainHttp(String),
     #[error("the channel directory {0} does not exist")]
     NoDirectory(PathBuf),
     #[error("the http client could not be built: {0}")]
@@ -59,13 +64,53 @@ pub(crate) enum SourceError {
     },
 }
 
+fn redirect_refusal(
+    from: &reqwest::Url,
+    to: &reqwest::Url,
+    insecure_rehearsal: bool,
+) -> Option<&'static str> {
+    if insecure_rehearsal {
+        return None;
+    }
+    if to.scheme() != "https" {
+        return Some("the redirect leaves https");
+    }
+    if from.host_str() != to.host_str()
+        || from.port_or_known_default() != to.port_or_known_default()
+    {
+        return Some("the redirect changes the host");
+    }
+    None
+}
+
+fn redirect_policy(insecure_rehearsal: bool) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= REDIRECT_LIMIT {
+            return attempt.error(format!("more than {REDIRECT_LIMIT} redirects"));
+        }
+        let Some(from) = attempt.previous().last() else {
+            return attempt.error("a redirect without a request before it");
+        };
+        match redirect_refusal(from, attempt.url(), insecure_rehearsal) {
+            Some(reason) => {
+                let message = format!("{reason}: {from} to {}", attempt.url());
+                attempt.error(message)
+            }
+            None => attempt.follow(),
+        }
+    })
+}
+
 impl Source {
-    pub(crate) fn parse(value: &str) -> Result<Self, SourceError> {
+    pub(crate) fn parse(value: &str, insecure_rehearsal: bool) -> Result<Self, SourceError> {
         if let Some(path) = value.strip_prefix("file://") {
             return Self::directory(Path::new(path));
         }
         if value.starts_with('/') {
             return Self::directory(Path::new(value));
+        }
+        if value.starts_with("http://") && !insecure_rehearsal {
+            return Err(SourceError::PlainHttp(value.to_owned()));
         }
         if value.starts_with("https://") || value.starts_with("http://") {
             let mut base = value.to_owned();
@@ -77,6 +122,7 @@ impl Source {
                 .user_agent(format!("keel/{VERSION}"))
                 .connect_timeout(CONNECT_TIMEOUT)
                 .read_timeout(READ_TIMEOUT)
+                .redirect(redirect_policy(insecure_rehearsal))
                 .build()
                 .map_err(SourceError::Client)?;
             return Ok(Source::Http { base, client });
@@ -260,33 +306,105 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let text = dir.path().display().to_string();
         assert!(
-            matches!(Source::parse(&text).unwrap(), Source::Directory(path) if path == dir.path())
+            matches!(Source::parse(&text, false).unwrap(), Source::Directory(path) if path == dir.path())
         );
         assert!(matches!(
-            Source::parse(&format!("file://{text}")).unwrap(),
+            Source::parse(&format!("file://{text}"), false).unwrap(),
             Source::Directory(path) if path == dir.path()
         ));
         assert!(matches!(
-            Source::parse("/nowhere/at/all"),
+            Source::parse("/nowhere/at/all", false),
             Err(SourceError::NoDirectory(_))
         ));
         assert!(matches!(
-            Source::parse("https://dl.globalart.hu/keel").unwrap(),
+            Source::parse("https://dl.globalart.hu/keel", false).unwrap(),
             Source::Http { base, .. } if base == "https://dl.globalart.hu/keel/"
         ));
         assert!(matches!(
-            Source::parse("ftp://dl.globalart.hu/keel/"),
+            Source::parse("ftp://dl.globalart.hu/keel/", false),
             Err(SourceError::Shape(value)) if value == "ftp://dl.globalart.hu/keel/"
         ));
         assert!(matches!(
-            Source::parse("relative/dir"),
+            Source::parse("relative/dir", false),
             Err(SourceError::Shape(_))
         ));
         assert_eq!(
-            Source::parse("https://dl.globalart.hu/keel/")
+            Source::parse("https://dl.globalart.hu/keel/", false)
                 .unwrap()
                 .to_string(),
             "https://dl.globalart.hu/keel/"
+        );
+    }
+
+    #[test]
+    fn a_plain_http_channel_is_refused_without_the_rehearsal_flag() {
+        for address in ["http://127.0.0.1:8080/keel", "http://dl.globalart.hu/keel/"] {
+            assert!(matches!(
+                Source::parse(address, false),
+                Err(SourceError::PlainHttp(value)) if value == address
+            ));
+        }
+        assert!(matches!(
+            Source::parse("http://127.0.0.1:8080/keel", true).unwrap(),
+            Source::Http { base, .. } if base == "http://127.0.0.1:8080/keel/"
+        ));
+        assert!(Source::parse("https://dl.globalart.hu/keel", true).is_ok());
+        assert!(matches!(
+            Source::parse("ftp://dl.globalart.hu/keel/", true),
+            Err(SourceError::Shape(_))
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        assert!(Source::parse(&dir.path().display().to_string(), false).is_ok());
+    }
+
+    #[test]
+    fn a_redirect_off_https_or_to_another_host_is_refused_unless_the_channel_is_a_rehearsal() {
+        let url = |text: &str| reqwest::Url::parse(text).unwrap();
+        let from = url("https://dl.globalart.hu/keel/stable/manifest.json");
+        assert_eq!(
+            redirect_refusal(
+                &from,
+                &url("https://dl.globalart.hu/other/manifest.json"),
+                false
+            ),
+            None
+        );
+        assert_eq!(
+            redirect_refusal(
+                &from,
+                &url("http://dl.globalart.hu/keel/stable/manifest.json"),
+                false
+            ),
+            Some("the redirect leaves https")
+        );
+        assert_eq!(
+            redirect_refusal(
+                &from,
+                &url("https://mirror.example.org/keel/stable/manifest.json"),
+                false
+            ),
+            Some("the redirect changes the host")
+        );
+        assert_eq!(
+            redirect_refusal(
+                &from,
+                &url("https://dl.globalart.hu:8443/keel/stable/manifest.json"),
+                false
+            ),
+            Some("the redirect changes the host")
+        );
+        let rehearsal = url("http://127.0.0.1:8080/keel/stable/manifest.json");
+        assert_eq!(
+            redirect_refusal(&rehearsal, &url("http://localhost:9090/x"), false),
+            Some("the redirect leaves https")
+        );
+        assert_eq!(
+            redirect_refusal(&rehearsal, &url("http://localhost:9090/x"), true),
+            None
+        );
+        assert_eq!(
+            redirect_refusal(&from, &url("http://mirror.example.org/x"), true),
+            None
         );
     }
 
@@ -295,7 +413,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("stable")).unwrap();
         std::fs::write(dir.path().join("stable/manifest.json"), b"head").unwrap();
-        let source = Source::parse(&dir.path().display().to_string()).unwrap();
+        let source = Source::parse(&dir.path().display().to_string(), false).unwrap();
         assert_eq!(
             source.fetch("stable/manifest.json", 1024).await.unwrap(),
             b"head"
