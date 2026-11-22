@@ -1,3 +1,4 @@
+mod backup;
 mod editions;
 mod history;
 mod records;

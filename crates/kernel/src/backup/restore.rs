@@ -1,9 +1,10 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use keel_sdk::runtime::Contributions;
+use keel_sdk::runtime::{Contributions, Services};
 use keel_sdk::sea_orm::DatabaseConnection;
 use keel_sdk::system::BackupManifest;
 use keel_types::Id;
@@ -272,11 +273,13 @@ impl Restore {
     pub async fn sources(
         &self,
         contributions: &Contributions,
+        services: &Arc<Services>,
         db: &DatabaseConnection,
         data_dir: &Path,
     ) -> Result<SourcesRestored, BackupError> {
         sources::restore_all(
             contributions,
+            services,
             db,
             &self.staging.join(archive::SOURCES_DIR),
             &self.manifest.sources,

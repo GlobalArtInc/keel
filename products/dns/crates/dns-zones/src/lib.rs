@@ -52,7 +52,6 @@ pub static MODULE: ModuleDef = ModuleDef {
 fn init(r: &mut Registrar) -> Result<()> {
     let bind = Arc::new(BindProvider::default());
     let started = Arc::clone(&bind);
-    let backed_up = Arc::clone(&bind);
     let changes = ZoneChanges::new(Arc::clone(&bind));
     r.require::<dyn HostExecutor>()
         .require::<dyn AccountSource>()
@@ -115,9 +114,8 @@ fn init(r: &mut Registrar) -> Result<()> {
             )
             .validate(bind::CHECK),
         )
-        .contribute(BackupSource::new(BACKUP, move |dir: BackupDir| {
-            let bind = Arc::clone(&backed_up);
-            async move { bind.copy_zone_files(&dir).await }
+        .contribute(BackupSource::new(BACKUP, |dir: BackupDir| async move {
+            bind::copy_zone_files(&dir).await
         }))
         .i18n("en", include_str!("../i18n/en.json"))
         .i18n("ru", include_str!("../i18n/ru.json"))

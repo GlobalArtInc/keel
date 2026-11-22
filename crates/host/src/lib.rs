@@ -21,16 +21,16 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     let local = Arc::new(Local::default());
-    let started = Arc::clone(&local);
+    let attached = Arc::clone(&local);
     r.provide::<dyn HostExecutor>(local.clone())
         .provide::<dyn PluginLauncher>(local)
         .contribute(ConfigSection::new::<HostConfig>(SECTION))
         .i18n("en", include_str!("../i18n/en.json"))
         .i18n("ru", include_str!("../i18n/ru.json"))
-        .start(move |ctx| async move {
+        .attach(move |ctx| async move {
             let config = ctx.config::<HostConfig>()?;
-            if !started.attach(config.target()) {
-                tracing::warn!("the host module was started twice; the first socket stands");
+            if !attached.attach(config.target()) {
+                tracing::warn!("the host module was attached twice; the first socket stands");
             }
             Ok(())
         });

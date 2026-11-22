@@ -56,6 +56,7 @@ pub struct Frozen {
 
 pub(super) struct Lifecycle {
     pub module: String,
+    pub attach: Option<StartHook>,
     pub start: Option<StartHook>,
     pub stop: Option<StopHook>,
 }
@@ -522,6 +523,7 @@ impl Initialised {
             freezer.contributions.extend(registrations.contributions);
             freezer.lifecycle.push(Lifecycle {
                 module,
+                attach: registrations.attach,
                 start: registrations.start,
                 stop: registrations.stop,
             });

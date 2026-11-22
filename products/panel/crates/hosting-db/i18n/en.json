@@ -18,7 +18,7 @@
       "error": {
         "account": "The stored account {account} of a database user is not an identifier",
         "backup": "The dump {file} could not be copied into the backup",
-        "detached": "The database module has not started yet",
+        "detached": "The database module is not attached to its host or configuration",
         "exists": "The database {name} already exists",
         "foreign": "Only databases of the same account can be granted",
         "password": "A password carries no control characters",

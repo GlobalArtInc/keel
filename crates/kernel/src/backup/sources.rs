@@ -1,6 +1,7 @@
 use std::path::Path;
+use std::sync::Arc;
 
-use keel_sdk::runtime::Contributions;
+use keel_sdk::runtime::{Contributions, Services};
 use keel_sdk::sea_orm::DatabaseConnection;
 use keel_sdk::{BackupDir, BackupSource, Db};
 
@@ -8,6 +9,7 @@ use super::BackupError;
 
 pub async fn write_all(
     contributions: &Contributions,
+    services: &Arc<Services>,
     db: &DatabaseConnection,
     into: &Path,
     data_dir: &Path,
@@ -26,6 +28,7 @@ pub async fn write_all(
             dir,
             Db::from_connection(db.clone()),
             data_dir,
+            Arc::clone(services),
         );
         (source.write_hook())(handle)
             .await
@@ -47,6 +50,7 @@ pub struct SourcesRestored {
 
 pub async fn restore_all(
     contributions: &Contributions,
+    services: &Arc<Services>,
     db: &DatabaseConnection,
     from: &Path,
     names: &[String],
@@ -72,6 +76,7 @@ pub async fn restore_all(
             dir,
             Db::from_connection(db.clone()),
             data_dir,
+            Arc::clone(services),
         ))
         .await
         .map_err(|error| BackupError::Source {
@@ -125,8 +130,9 @@ mod tests {
             },
         ));
         let db = DatabaseConnection::Disconnected;
+        let services = Arc::new(Services::new());
         let staging = dir.path().join("sources");
-        let written = write_all(&contributions, &db, &staging, dir.path())
+        let written = write_all(&contributions, &services, &db, &staging, dir.path())
             .await
             .unwrap();
         assert_eq!(written, ["dns.zonefiles", "mail.spool"]);
@@ -136,6 +142,7 @@ mod tests {
         );
         let restored = restore_all(
             &contributions,
+            &services,
             &db,
             &staging,
             &[
@@ -155,7 +162,7 @@ mod tests {
         failing.add(BackupSource::new("x.fails", |_: BackupDir| async {
             Err(KeelError::internal("x.error.boom"))
         }));
-        let error = write_all(&failing, &db, &staging, dir.path())
+        let error = write_all(&failing, &services, &db, &staging, dir.path())
             .await
             .unwrap_err();
         assert!(
@@ -165,6 +172,7 @@ mod tests {
         assert_eq!(
             restore_all(
                 &Contributions::default(),
+                &services,
                 &db,
                 &PathBuf::from("/nowhere"),
                 &[],

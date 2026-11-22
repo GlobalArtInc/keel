@@ -201,6 +201,7 @@ async fn a_mailbox_lands_in_the_virtual_maps_and_the_passwd_file() {
         backup.path().to_owned(),
         Db::from_connection(harness.db().clone()),
         harness.data_dir(),
+        harness.registry().services().clone(),
     ))
     .await
     .expect("the maildirs are archived");

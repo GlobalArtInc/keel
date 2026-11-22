@@ -73,6 +73,10 @@ impl Prepared {
 }
 
 impl InProcessAgent {
+    pub(crate) fn socket(&self) -> PathBuf {
+        self.dir.path().join(SOCKET_FILE)
+    }
+
     pub(crate) async fn stop(self) {
         let InProcessAgent { dir, stop, task } = self;
         if stop.send(()).is_err() {

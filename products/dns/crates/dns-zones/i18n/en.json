@@ -82,7 +82,7 @@
         "id": "The stored id {id} of a zone is not an identifier",
         "inside_foreign_zone": "The zone {name} lies inside a zone that belongs to another account",
         "log": "The zone history cannot be read without a database connection",
-        "not_started": "The dns module has not started, so no name server is attached",
+        "not_started": "The dns module is not attached to its name server or configuration",
         "template": "The {type} record {name} of the template does not hold for this zone"
       },
       "expire": "Expire, seconds",

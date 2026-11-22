@@ -2372,7 +2372,9 @@ dependencies = [
  "keel-host",
  "keel-system",
  "keel-testkit",
+ "tar",
  "tempfile",
+ "zstd",
 ]
 
 [[package]]
