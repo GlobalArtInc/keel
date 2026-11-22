@@ -68,6 +68,10 @@
     "list": {
       "title": "Settings"
     },
+    "menu": {
+      "brand": "Brand by host",
+      "general": "General"
+    },
     "pref": {
       "key": "Preference",
       "set": {

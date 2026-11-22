@@ -29,8 +29,8 @@ pub const FUNCTIONS: [&str; 10] = [
     "settings.brand.delete",
     "settings.brand.logo",
 ];
-pub const MENU_PATH: &str = "system/settings";
-pub const BRAND_MENU_PATH: &str = "system/brand";
+pub const MENU_PATH: &str = "system/settings/general";
+pub const BRAND_MENU_PATH: &str = "system/settings/brand";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/settings").table("keel_migration_settings");
@@ -67,12 +67,14 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new(MENU_PATH, "settings.list")
                 .icon("sliders-horizontal")
-                .order(40),
+                .order(10)
+                .label("settings.menu.general"),
         )
         .menu(
             MenuNode::new(BRAND_MENU_PATH, brand::functions::LIST)
                 .icon("palette")
-                .order(45),
+                .order(20)
+                .label("settings.menu.brand"),
         )
         .i18n("en", include_str!("../../i18n/settings/en.json"))
         .i18n("ru", include_str!("../../i18n/settings/ru.json"))

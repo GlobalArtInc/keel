@@ -44,6 +44,29 @@ mod cron_alone;
 mod license;
 #[cfg(all(feature = "license", feature = "auth"))]
 mod license_time;
+#[cfg(any(
+    feature = "auth",
+    feature = "audit",
+    feature = "cron",
+    feature = "tasks",
+    feature = "webhooks"
+))]
+mod menu;
+#[cfg(all(
+    feature = "auth",
+    feature = "settings",
+    feature = "audit",
+    feature = "tasks",
+    feature = "cron",
+    feature = "notify",
+    feature = "webhooks",
+    feature = "license",
+    feature = "update",
+    feature = "backup",
+    feature = "peers",
+    feature = "plugins"
+))]
+mod menu_tree;
 #[cfg(feature = "notify")]
 mod notify;
 #[cfg(feature = "notify")]

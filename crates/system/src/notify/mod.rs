@@ -61,8 +61,8 @@ pub const INTERNAL_FUNCTIONS: [&str; 4] = [
     MESSAGE_CREATE,
     functions::internal::SEND_TO,
 ];
-pub const MENU_PATH: &str = "system/problems";
-pub const CHANNELS_MENU_PATH: &str = "system/channels";
+pub const MENU_PATH: &str = "monitor/problems";
+pub const CHANNELS_MENU_PATH: &str = "system/settings/channels";
 pub const WIDGET_LIMIT: u32 = 5;
 
 static MIGRATIONS: migrator::Migrations =
@@ -111,12 +111,12 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new(MENU_PATH, PROBLEM_LIST)
                 .icon("triangle-alert")
-                .order(44),
+                .order(10),
         )
         .menu(
             MenuNode::new(CHANNELS_MENU_PATH, CHANNEL_LIST)
                 .icon("mail")
-                .order(46),
+                .order(30),
         )
         .i18n("en", include_str!("../../i18n/notify/en.json"))
         .i18n("ru", include_str!("../../i18n/notify/ru.json"))

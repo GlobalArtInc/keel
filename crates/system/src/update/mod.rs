@@ -37,7 +37,7 @@ pub const APPLY: &str = "update.apply";
 pub const ROLLBACK: &str = "update.rollback";
 pub const FUNCTIONS: [&str; 3] = [CHECK, APPLY, ROLLBACK];
 pub const CHANNEL_KEY: &str = "update.channel";
-pub const MENU_PATH: &str = "system/updates";
+pub const MENU_PATH: &str = "system/install/updates";
 pub const MENU_ICON: &str = "package";
 
 static MIGRATIONS: migrator::Migrations =
@@ -69,7 +69,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(status::check())
         .function(apply::apply(pool.clone()))
         .function(apply::rollback(pool))
-        .menu(MenuNode::new(MENU_PATH, CHECK).icon(MENU_ICON).order(48))
+        .menu(MenuNode::new(MENU_PATH, CHECK).icon(MENU_ICON).order(30))
         .i18n("en", include_str!("../../i18n/update/en.json"))
         .i18n("ru", include_str!("../../i18n/update/ru.json"))
         .start(move |ctx| async move {

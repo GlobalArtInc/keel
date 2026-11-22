@@ -3,21 +3,21 @@ source: crates/system/tests/auth_grants.rs
 ---
 [
   {
-    "path": "system/sessions",
-    "label": "auth.session.list.title",
-    "func": "auth.session.list",
-    "kind": "list",
-    "icon": "monitor"
-  },
-  {
-    "path": "system/tokens",
+    "path": "access/users/tokens",
     "label": "auth.token.list.title",
     "func": "auth.token.list",
     "kind": "list",
     "icon": "key"
   },
   {
-    "path": "system/grants",
+    "path": "access/users/sessions",
+    "label": "auth.session.list.title",
+    "func": "auth.session.list",
+    "kind": "list",
+    "icon": "monitor"
+  },
+  {
+    "path": "access/users/grants",
     "label": "auth.grant.list.title",
     "func": "auth.grant.list",
     "kind": "list",

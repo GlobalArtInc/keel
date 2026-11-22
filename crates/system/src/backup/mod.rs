@@ -33,7 +33,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(list::list())
         .function(create::create())
         .function(restore::restore())
-        .menu(MenuNode::new(MENU_PATH, LIST).icon(MENU_ICON).order(49))
+        .menu(MenuNode::new(MENU_PATH, LIST).icon(MENU_ICON).order(20))
         .i18n("en", include_str!("../../i18n/backup/en.json"))
         .i18n("ru", include_str!("../../i18n/backup/ru.json"));
     Ok(())

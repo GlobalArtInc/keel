@@ -61,7 +61,7 @@ pub use remote::{
 pub use rotation::{ERROR_NO_URL, ERROR_PROOF, REKEY, RENEW, ROTATE};
 
 pub const FEATURE: &str = "peers";
-pub const MENU_PATH: &str = "system/peers";
+pub const MENU_PATH: &str = "system/settings/peers";
 pub const MENU_ICON: &str = "network";
 pub const FUNCTIONS: [&str; 10] = [
     LIST, GET, PAIR_CODE, PAIR, CREATE, LINK, ROTATE, RENEW, REKEY, DELETE,
@@ -145,7 +145,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(rotation::renew())
         .function(rotation::rekey())
         .function(functions::delete())
-        .menu(MenuNode::new(MENU_PATH, LIST).icon(MENU_ICON).order(55))
+        .menu(MenuNode::new(MENU_PATH, LIST).icon(MENU_ICON).order(50))
         .i18n("en", include_str!("../../i18n/peers/en.json"))
         .i18n("ru", include_str!("../../i18n/peers/ru.json"))
         .start(move |ctx| async move {

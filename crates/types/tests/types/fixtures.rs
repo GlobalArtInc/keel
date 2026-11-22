@@ -292,8 +292,16 @@ fn boot_none_fixture_round_trips_with_no_product_no_view_the_platform_group_alon
         .iter()
         .map(|group| (group.id.as_str(), group.product.as_deref()))
         .collect();
-    assert_eq!(groups, [("system", None)]);
-    assert!(boot.menu[0].items.iter().all(|item| item.kind.is_some()));
+    assert_eq!(
+        groups,
+        [("access", None), ("monitor", None), ("system", None)]
+    );
+    assert!(
+        boot.menu
+            .iter()
+            .flat_map(|group| &group.items)
+            .all(|item| item.kind.is_some())
+    );
     assert!(boot.features.is_empty());
     let widgets: Vec<(WidgetKind, &str)> = boot
         .dashboard
@@ -333,7 +341,7 @@ fn boot_fixture_round_trips_with_the_platform_brand_and_a_product_on_every_group
         .iter()
         .map(|group| group.product.as_deref())
         .collect();
-    assert_eq!(products, [Some("dns"), Some("panel"), None]);
+    assert_eq!(products, [Some("dns"), Some("panel"), None, None]);
     assert_eq!(boot.menu[0].items[0].kind, Some(Kind::List));
     assert_eq!(
         boot.menu[0].items[0]

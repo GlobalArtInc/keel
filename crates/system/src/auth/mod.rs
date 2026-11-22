@@ -184,27 +184,27 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission(GRANT_READ, &[Level::Reseller])
         .permission(GRANT_MANAGE, &[Level::Reseller])
         .menu(
-            MenuNode::new("system/sessions", "auth.session.list")
+            MenuNode::new("access/users/sessions", "auth.session.list")
                 .icon("monitor")
                 .order(40)
                 .label("auth.session.list.title"),
         )
         .menu(
-            MenuNode::new("system/tokens", "auth.token.list")
+            MenuNode::new("access/users/tokens", "auth.token.list")
                 .icon("key")
-                .order(50)
+                .order(30)
                 .label("auth.token.list.title"),
         )
         .menu(
-            MenuNode::new("system/ip-rules", "auth.ip_rule.list")
+            MenuNode::new("access/users/ip-rules", "auth.ip_rule.list")
                 .icon("shield")
-                .order(60)
+                .order(50)
                 .label("auth.ip_rule.list.title"),
         )
         .menu(
-            MenuNode::new("system/grants", "auth.grant.list")
+            MenuNode::new("access/users/grants", "auth.grant.list")
                 .icon("user-cog")
-                .order(70)
+                .order(60)
                 .label("auth.grant.list.title"),
         )
         .contribute(local)
@@ -371,25 +371,25 @@ mod tests {
             menu,
             [
                 (
-                    "system/sessions",
+                    "access/users/sessions",
                     "auth.session.list",
                     Some("monitor"),
                     Some("auth.session.list.title")
                 ),
                 (
-                    "system/tokens",
+                    "access/users/tokens",
                     "auth.token.list",
                     Some("key"),
                     Some("auth.token.list.title")
                 ),
                 (
-                    "system/ip-rules",
+                    "access/users/ip-rules",
                     "auth.ip_rule.list",
                     Some("shield"),
                     Some("auth.ip_rule.list.title")
                 ),
                 (
-                    "system/grants",
+                    "access/users/grants",
                     "auth.grant.list",
                     Some("user-cog"),
                     Some("auth.grant.list.title")

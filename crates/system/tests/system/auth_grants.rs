@@ -7,12 +7,13 @@ use keel_testkit::{Answer, ErrorCode, Fixture, Harness, TestHttp, Who, tokio};
 
 const SECRET_READ: &str = "probe.secret.read";
 const NOBODY: &str = "probe.nobody";
-const ACCOUNT_READ: &str = "keel.account.read";
+const PRINCIPAL_READ: &str = "keel.principal.read";
+const PRINCIPALS_NODE: &str = "access/users/principals";
 const AUTH_NODES: [&str; 4] = [
-    "system/sessions",
-    "system/tokens",
-    "system/ip-rules",
-    "system/grants",
+    "access/users/tokens",
+    "access/users/sessions",
+    "access/users/ip-rules",
+    "access/users/grants",
 ];
 
 fn snapshots_dir() -> PathBuf {
@@ -103,15 +104,18 @@ async fn index_names(http: &TestHttp, who: Who) -> Vec<String> {
         .collect()
 }
 
-async fn system_paths(http: &TestHttp, who: Who) -> Vec<String> {
+async fn menu_paths(http: &TestHttp, who: Who) -> Vec<String> {
     let answer = http.get(who, "/api/v1/boot").await;
     assert_eq!(answer.status, 200, "{}", answer.body);
     answer.json()["menu"]
         .as_array()
         .expect("groups")
         .iter()
-        .filter(|group| group["id"] == json!("system"))
         .flat_map(|group| group["items"].as_array().cloned().unwrap_or_default())
+        .flat_map(|item| {
+            let tabs = item["children"].as_array().cloned().unwrap_or_default();
+            std::iter::once(item).chain(tabs)
+        })
         .filter_map(|item| item["path"].as_str().map(str::to_owned))
         .collect()
 }
@@ -214,21 +218,21 @@ async fn a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_a
     assert_eq!(again.json()["data"]["id"], saved["id"]);
     assert_eq!(acl_gen(&harness, a1).await, "2");
 
-    let accounts_before = call(&http, Who::A1, "keel.account.list", json!({})).await;
-    assert_eq!(accounts_before.status, 200, "{}", accounts_before.body);
+    let principals_before = call(&http, Who::A1, "keel.principal.list", json!({})).await;
+    assert_eq!(principals_before.status, 200, "{}", principals_before.body);
     assert!(
-        system_paths(&http, Who::A1)
+        menu_paths(&http, Who::A1)
             .await
-            .contains(&"system/accounts".to_owned())
+            .contains(&PRINCIPALS_NODE.to_owned())
     );
-    let denied = set(&http, Who::Reseller, a1, ACCOUNT_READ, false).await;
+    let denied = set(&http, Who::Reseller, a1, PRINCIPAL_READ, false).await;
     assert_eq!(denied.status, 200, "{}", denied.body);
     assert_eq!(denied.json()["data"]["granted"], json!(false));
     let denial = denied.json()["data"]["id"]
         .as_str()
         .expect("an id")
         .to_owned();
-    let taken = call(&http, Who::A1, "keel.account.list", json!({})).await;
+    let taken = call(&http, Who::A1, "keel.principal.list", json!({})).await;
     assert_eq!(taken.status, 403, "{}", taken.body);
     assert_eq!(
         error_of(&taken),
@@ -236,25 +240,32 @@ async fn a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_a
     );
     assert_eq!(
         taken.json()["error"]["params"]["permission"],
-        json!(ACCOUNT_READ)
+        json!(PRINCIPAL_READ)
     );
     assert!(
-        !system_paths(&http, Who::A1)
+        !menu_paths(&http, Who::A1)
             .await
-            .contains(&"system/accounts".to_owned())
+            .contains(&PRINCIPALS_NODE.to_owned())
+    );
+    assert!(
+        menu_paths(&http, Who::Reseller)
+            .await
+            .contains(&PRINCIPALS_NODE.to_owned())
     );
     let after_denial = etag(&http, Who::A1).await;
     assert_ne!(after_grant, after_denial);
-    let still_by_default = call(&http, Who::A2, "keel.account.list", json!({})).await;
+    let still_by_default = call(&http, Who::A2, "keel.principal.list", json!({})).await;
     assert_eq!(still_by_default.status, 200, "{}", still_by_default.body);
-    let direct = harness.call(Who::A1, "keel.account.list", json!({})).await;
+    let direct = harness
+        .call(Who::A1, "keel.principal.list", json!({}))
+        .await;
     assert!(direct.data().is_some(), "{:?}", direct.error());
 
     let listed = call(
         &http,
         Who::Reseller,
         "auth.grant.list",
-        json!({ "search": "keel.account", "sort": { "key": "key", "dir": "asc" } }),
+        json!({ "search": "keel.principal", "sort": { "key": "key", "dir": "asc" } }),
     )
     .await;
     assert_eq!(listed.status, 200, "{}", listed.body);
@@ -265,7 +276,7 @@ async fn a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_a
     assert_eq!(row["principalId"], json!(a1.to_string()));
     assert_eq!(row["principalLogin"], json!("a1"));
     assert_eq!(row["accountId"], json!(accounts.a1.to_string()));
-    assert_eq!(row["key"], json!(ACCOUNT_READ));
+    assert_eq!(row["key"], json!(PRINCIPAL_READ));
     assert_eq!(row["granted"], json!(false));
     assert_eq!(
         row["createdBy"],
@@ -294,7 +305,7 @@ async fn a_stored_grant_overrides_the_default_and_a_denial_takes_a_default_key_a
     .await;
     assert_eq!(deleted.status, 200, "{}", deleted.body);
     assert_eq!(deleted.json()["data"], json!({ "deleted": true }));
-    let restored = call(&http, Who::A1, "keel.account.list", json!({})).await;
+    let restored = call(&http, Who::A1, "keel.principal.list", json!({})).await;
     assert_eq!(restored.status, 200, "{}", restored.body);
     let after_delete = etag(&http, Who::A1).await;
     assert_ne!(after_denial, after_delete);
@@ -413,8 +424,8 @@ async fn the_grant_descriptors_and_the_auth_menu_nodes_match_their_snapshots() {
             .as_array()
             .expect("groups")
             .iter()
-            .filter(|group| group["id"] == json!("system"))
             .flat_map(|group| group["items"].as_array().cloned().unwrap_or_default())
+            .flat_map(|item| item["children"].as_array().cloned().unwrap_or_default())
             .filter(|item| {
                 item["func"]
                     .as_str()
@@ -424,16 +435,25 @@ async fn the_grant_descriptors_and_the_auth_menu_nodes_match_their_snapshots() {
         settings.set_snapshot_suffix(who.level().as_str());
         settings.bind(|| insta::assert_json_snapshot!("auth.menu", nodes));
     }
-    let user = system_paths(&http, Who::A1).await;
-    assert!(user.contains(&"system/sessions".to_owned()), "{user:?}");
-    assert!(user.contains(&"system/tokens".to_owned()), "{user:?}");
-    assert!(!user.contains(&"system/ip-rules".to_owned()), "{user:?}");
-    assert!(!user.contains(&"system/grants".to_owned()), "{user:?}");
-    let admin = system_paths(&http, Who::Admin).await;
+    let user = menu_paths(&http, Who::A1).await;
+    assert!(user.contains(&"access/users/tokens".to_owned()), "{user:?}");
+    assert!(
+        user.contains(&"access/users/sessions".to_owned()),
+        "{user:?}"
+    );
+    assert!(
+        !user.contains(&"access/users/ip-rules".to_owned()),
+        "{user:?}"
+    );
+    assert!(
+        !user.contains(&"access/users/grants".to_owned()),
+        "{user:?}"
+    );
+    let admin = menu_paths(&http, Who::Admin).await;
     for path in AUTH_NODES {
         assert!(admin.contains(&path.to_owned()), "{admin:?}");
     }
-    let guest = system_paths(&http, Who::Guest).await;
+    let guest = menu_paths(&http, Who::Guest).await;
     assert!(
         !guest.iter().any(|path| AUTH_NODES.contains(&path.as_str())),
         "{guest:?}"

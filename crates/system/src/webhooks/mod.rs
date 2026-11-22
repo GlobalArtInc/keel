@@ -44,7 +44,7 @@ pub const FUNCTIONS: [&str; 8] = [
     DELIVERY_GET,
     DELIVERY_RETRY,
 ];
-pub const MENU_PATH: &str = "system/webhooks";
+pub const MENU_PATH: &str = "system/settings/webhooks";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/webhooks").table("keel_migration_webhook");
@@ -83,7 +83,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new(MENU_PATH, SUBSCRIPTION_LIST)
                 .icon("share-2")
-                .order(48),
+                .order(40),
         )
         .i18n("en", include_str!("../../i18n/webhooks/en.json"))
         .i18n("ru", include_str!("../../i18n/webhooks/ru.json"))

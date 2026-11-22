@@ -23,7 +23,7 @@ pub use schedule::ERROR_SCHEDULE;
 pub use scheduler::{ERROR_NOT_RUNNING, OVERRIDES_KEY, TICK};
 
 pub const FUNCTIONS: [&str; 3] = [JOB_LIST, JOB_RUN, RUN_LIST];
-pub const MENU_PATH: &str = "system/cron";
+pub const MENU_PATH: &str = "monitor/tasks/cron";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/cron").table("keel_migration_cron");
@@ -54,7 +54,12 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::job_list())
         .function(functions::job_run())
         .function(functions::run_list())
-        .menu(MenuNode::new(MENU_PATH, JOB_LIST).icon("timer").order(42))
+        .menu(
+            MenuNode::new(MENU_PATH, JOB_LIST)
+                .icon("timer")
+                .order(20)
+                .label("cron.menu.schedule"),
+        )
         .i18n("en", include_str!("../../i18n/cron/en.json"))
         .i18n("ru", include_str!("../../i18n/cron/ru.json"))
         .start(move |ctx| async move {

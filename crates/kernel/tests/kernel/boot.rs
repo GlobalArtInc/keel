@@ -495,16 +495,9 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
         paths(&boot),
         [
             (Some("probe"), vec!["probe/public", "probe/items"]),
-            (
-                None,
-                vec![
-                    "system/accounts",
-                    "system/principals",
-                    "system/products",
-                    "system/health",
-                    "system/logs"
-                ]
-            ),
+            (None, vec!["access/users"]),
+            (None, vec!["monitor/logs", "monitor/health"]),
+            (None, vec!["system/install"]),
         ]
     );
     let probe = &boot.menu[0];
@@ -523,11 +516,30 @@ async fn boot_over_the_socket_as_the_owner_carries_the_enabled_product_its_brand
             .map(|badge| badge.problem.as_str()),
         Some("probe.item_stale")
     );
-    let system = &boot.menu[1];
-    assert_eq!(system.id, "system");
-    assert_eq!(system.label, "menu.system");
-    assert_eq!(system.items[0].label, "keel.account.list.title");
-    assert_eq!(system.items[0].func, "keel.account.list");
+    let access = &boot.menu[1];
+    assert_eq!(access.id, "access");
+    assert_eq!(access.label, "menu.access");
+    let users = &access.items[0];
+    assert_eq!(users.label, "keel.menu.users");
+    assert_eq!(users.icon.as_deref(), Some("users"));
+    assert_eq!(users.func, "keel.principal.list");
+    assert!(users.badge.is_none());
+    let tabs: Vec<(&str, &str)> = users
+        .children
+        .iter()
+        .map(|tab| (tab.path.as_str(), tab.func.as_str()))
+        .collect();
+    assert_eq!(
+        tabs,
+        [
+            ("access/users/principals", "keel.principal.list"),
+            ("access/users/accounts", "keel.account.list")
+        ]
+    );
+    assert_eq!(boot.menu[2].id, "monitor");
+    assert_eq!(boot.menu[3].id, "system");
+    assert_eq!(boot.menu[3].label, "menu.system");
+    assert_eq!(boot.menu[3].items[0].children.len(), 1);
     assert!(boot.meta.starts_with("m-"), "{}", boot.meta);
     assert_eq!(boot.features, ["probe.items", "probe.export"]);
     assert!(boot.views.is_empty());
@@ -559,16 +571,11 @@ async fn boot_without_a_product_shows_the_platform_brand_and_the_platform_group_
     assert_eq!(boot.brand.chroma, 0.18);
     assert_eq!(
         paths(&boot),
-        [(
-            None,
-            vec![
-                "system/accounts",
-                "system/principals",
-                "system/products",
-                "system/health",
-                "system/logs"
-            ]
-        )]
+        [
+            (None, vec!["access/users"]),
+            (None, vec!["monitor/logs", "monitor/health"]),
+            (None, vec!["system/install"]),
+        ]
     );
     assert_eq!(boot.keel.version, env!("CARGO_PKG_VERSION"));
     assert!(boot.views.is_empty());
@@ -608,9 +615,15 @@ async fn boot_as_a_guest_returns_no_principal_and_no_node_above_the_guest_level(
         paths(&user),
         [
             (Some("probe"), vec!["probe/public", "probe/items"]),
-            (None, vec!["system/accounts", "system/principals"]),
+            (None, vec!["access/users"]),
         ]
     );
+    let tabs: Vec<&str> = user.menu[1].items[0]
+        .children
+        .iter()
+        .map(|tab| tab.path.as_str())
+        .collect();
+    assert_eq!(tabs, ["access/users/principals"]);
     assert_ne!(guest.meta, user.meta);
     bench.finish().await;
     let bare = start(Composition::new()).await;

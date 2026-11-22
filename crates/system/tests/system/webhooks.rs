@@ -1545,12 +1545,7 @@ async fn the_webhook_descriptors_match_their_snapshots() {
     assert_eq!(answer.status, 200, "{}", answer.body);
     let boot = answer.json();
     http.stop().await.expect("the server stops");
-    let node = boot["menu"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|group| group["items"].as_array().cloned().unwrap_or_default())
-        .find(|item| item["path"] == json!(MENU_PATH))
+    let node = crate::menu::node(&boot, MENU_PATH)
         .unwrap_or_else(|| panic!("no menu node {MENU_PATH} in {}", boot["menu"]));
     assert_eq!(node["func"], json!(SUBSCRIPTION_LIST));
     for level in Level::ALL {

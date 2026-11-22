@@ -26,7 +26,7 @@ pub use runner::{
 pub use worker::{POLL, STOP_GRACE};
 
 pub const FUNCTIONS: [&str; 4] = ["task.list", "task.get", "task.cancel", "task.download"];
-pub const MENU_PATH: &str = "system/tasks";
+pub const MENU_PATH: &str = "monitor/tasks/queue";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/tasks").table("keel_migration_task");
@@ -60,7 +60,8 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new(MENU_PATH, "task.list")
                 .icon("list-checks")
-                .order(40),
+                .order(10)
+                .label("task.menu.queue"),
         )
         .i18n("en", include_str!("../../i18n/tasks/en.json"))
         .i18n("ru", include_str!("../../i18n/tasks/ru.json"))

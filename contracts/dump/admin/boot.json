@@ -233,101 +233,181 @@
       ]
     },
     {
-      "id": "system",
+      "id": "access",
       "product": null,
-      "label": "menu.system",
-      "icon": "settings",
+      "label": "menu.access",
+      "icon": "users",
       "items": [
         {
-          "path": "system/accounts",
-          "label": "keel.account.list.title",
-          "func": "keel.account.list",
-          "kind": "list",
-          "icon": "users"
-        },
-        {
-          "path": "system/principals",
-          "label": "keel.principal.list.title",
+          "path": "access/users",
+          "label": "keel.menu.users",
           "func": "keel.principal.list",
           "kind": "list",
-          "icon": "user"
-        },
+          "icon": "users",
+          "children": [
+            {
+              "path": "access/users/principals",
+              "label": "keel.menu.principals",
+              "func": "keel.principal.list",
+              "kind": "list",
+              "icon": "user"
+            },
+            {
+              "path": "access/users/accounts",
+              "label": "keel.account.list.title",
+              "func": "keel.account.list",
+              "kind": "list",
+              "icon": "users"
+            },
+            {
+              "path": "access/users/tokens",
+              "label": "auth.token.list.title",
+              "func": "auth.token.list",
+              "kind": "list",
+              "icon": "key"
+            },
+            {
+              "path": "access/users/sessions",
+              "label": "auth.session.list.title",
+              "func": "auth.session.list",
+              "kind": "list",
+              "icon": "monitor"
+            },
+            {
+              "path": "access/users/ip-rules",
+              "label": "auth.ip_rule.list.title",
+              "func": "auth.ip_rule.list",
+              "kind": "list",
+              "icon": "shield"
+            },
+            {
+              "path": "access/users/grants",
+              "label": "auth.grant.list.title",
+              "func": "auth.grant.list",
+              "kind": "list",
+              "icon": "user-cog"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "monitor",
+      "product": null,
+      "label": "menu.monitor",
+      "icon": "activity",
+      "items": [
         {
-          "path": "system/products",
-          "label": "keel.product.list.title",
-          "func": "keel.product.list",
-          "kind": "list",
-          "icon": "package"
-        },
-        {
-          "path": "system/sessions",
-          "label": "auth.session.list.title",
-          "func": "auth.session.list",
-          "kind": "list",
-          "icon": "monitor"
-        },
-        {
-          "path": "system/settings",
-          "label": "settings.list.title",
-          "func": "settings.list",
-          "kind": "list",
-          "icon": "sliders-horizontal"
-        },
-        {
-          "path": "system/tasks",
-          "label": "task.list.title",
-          "func": "task.list",
-          "kind": "list",
-          "icon": "list-checks"
-        },
-        {
-          "path": "system/cron",
-          "label": "cron.job.list.title",
-          "func": "cron.job.list",
-          "kind": "list",
-          "icon": "timer"
-        },
-        {
-          "path": "system/problems",
+          "path": "monitor/problems",
           "label": "notify.problem.list.title",
           "func": "notify.problem.list",
           "kind": "list",
           "icon": "triangle-alert"
         },
         {
-          "path": "system/brand",
-          "label": "settings.brand.list.title",
-          "func": "settings.brand.list",
+          "path": "monitor/tasks",
+          "label": "keel.menu.tasks",
+          "func": "task.list",
           "kind": "list",
-          "icon": "palette"
+          "icon": "list-checks",
+          "children": [
+            {
+              "path": "monitor/tasks/queue",
+              "label": "task.menu.queue",
+              "func": "task.list",
+              "kind": "list",
+              "icon": "list-checks"
+            },
+            {
+              "path": "monitor/tasks/cron",
+              "label": "cron.menu.schedule",
+              "func": "cron.job.list",
+              "kind": "list",
+              "icon": "timer"
+            }
+          ]
         },
         {
-          "path": "system/channels",
-          "label": "notify.channel.list.title",
-          "func": "notify.channel.list",
+          "path": "monitor/logs",
+          "label": "keel.menu.logs",
+          "func": "audit.list",
           "kind": "list",
-          "icon": "mail"
+          "icon": "history",
+          "children": [
+            {
+              "path": "monitor/logs/audit",
+              "label": "audit.list.title",
+              "func": "audit.list",
+              "kind": "list",
+              "icon": "history"
+            },
+            {
+              "path": "monitor/logs/server",
+              "label": "keel.menu.server_log",
+              "func": "keel.logs.stream",
+              "kind": "stream",
+              "icon": "file-text"
+            }
+          ]
         },
         {
-          "path": "system/license",
-          "label": "license.get.title",
-          "func": "license.get",
-          "kind": "get",
-          "icon": "key-round"
-        },
-        {
-          "path": "system/updates",
-          "label": "update.check.title",
-          "func": "update.check",
-          "kind": "get",
-          "icon": "package"
-        },
-        {
-          "path": "system/webhooks",
-          "label": "webhook.subscription.list.title",
-          "func": "webhook.subscription.list",
+          "path": "monitor/health",
+          "label": "keel.doctor.run.title",
+          "func": "keel.doctor.run",
           "kind": "list",
-          "icon": "share-2"
+          "icon": "activity"
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "product": null,
+      "label": "menu.system",
+      "icon": "settings",
+      "items": [
+        {
+          "path": "system/settings",
+          "label": "keel.menu.settings",
+          "func": "settings.list",
+          "kind": "list",
+          "icon": "sliders-horizontal",
+          "children": [
+            {
+              "path": "system/settings/general",
+              "label": "settings.menu.general",
+              "func": "settings.list",
+              "kind": "list",
+              "icon": "sliders-horizontal"
+            },
+            {
+              "path": "system/settings/brand",
+              "label": "settings.menu.brand",
+              "func": "settings.brand.list",
+              "kind": "list",
+              "icon": "palette"
+            },
+            {
+              "path": "system/settings/channels",
+              "label": "notify.channel.list.title",
+              "func": "notify.channel.list",
+              "kind": "list",
+              "icon": "mail"
+            },
+            {
+              "path": "system/settings/webhooks",
+              "label": "webhook.subscription.list.title",
+              "func": "webhook.subscription.list",
+              "kind": "list",
+              "icon": "share-2"
+            },
+            {
+              "path": "system/settings/peers",
+              "label": "peer.list.title",
+              "func": "peer.list",
+              "kind": "list",
+              "icon": "network"
+            }
+          ]
         },
         {
           "path": "system/backups",
@@ -337,53 +417,34 @@
           "icon": "archive"
         },
         {
-          "path": "system/audit",
-          "label": "audit.list.title",
-          "func": "audit.list",
+          "path": "system/install",
+          "label": "keel.menu.install",
+          "func": "keel.product.list",
           "kind": "list",
-          "icon": "history"
-        },
-        {
-          "path": "system/tokens",
-          "label": "auth.token.list.title",
-          "func": "auth.token.list",
-          "kind": "list",
-          "icon": "key"
-        },
-        {
-          "path": "system/peers",
-          "label": "peer.list.title",
-          "func": "peer.list",
-          "kind": "list",
-          "icon": "network"
-        },
-        {
-          "path": "system/ip-rules",
-          "label": "auth.ip_rule.list.title",
-          "func": "auth.ip_rule.list",
-          "kind": "list",
-          "icon": "shield"
-        },
-        {
-          "path": "system/grants",
-          "label": "auth.grant.list.title",
-          "func": "auth.grant.list",
-          "kind": "list",
-          "icon": "user-cog"
-        },
-        {
-          "path": "system/health",
-          "label": "keel.doctor.run.title",
-          "func": "keel.doctor.run",
-          "kind": "list",
-          "icon": "activity"
-        },
-        {
-          "path": "system/logs",
-          "label": "keel.logs.stream.title",
-          "func": "keel.logs.stream",
-          "kind": "stream",
-          "icon": "file-text"
+          "icon": "package",
+          "children": [
+            {
+              "path": "system/install/products",
+              "label": "keel.product.list.title",
+              "func": "keel.product.list",
+              "kind": "list",
+              "icon": "package"
+            },
+            {
+              "path": "system/install/license",
+              "label": "license.get.title",
+              "func": "license.get",
+              "kind": "get",
+              "icon": "key-round"
+            },
+            {
+              "path": "system/install/updates",
+              "label": "update.check.title",
+              "func": "update.check",
+              "kind": "get",
+              "icon": "package"
+            }
+          ]
         }
       ]
     }

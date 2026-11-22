@@ -13,7 +13,7 @@ pub use functions::PERMISSION_READ as READ;
 pub use sink::{BATCH_ROWS, BATCH_WAIT, CHANNEL_CAPACITY, STATUS_COMMITTED, STATUS_FAILED};
 
 pub const FUNCTIONS: [&str; 2] = ["audit.list", "audit.get"];
-pub const MENU_PATH: &str = "system/audit";
+pub const MENU_PATH: &str = "monitor/logs/audit";
 
 static MIGRATIONS: migrator::Migrations =
     migrator::embed!("$CARGO_MANIFEST_DIR/migrations/audit").table("keel_migration_audit");
@@ -39,7 +39,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .menu(
             MenuNode::new(MENU_PATH, "audit.list")
                 .icon("history")
-                .order(50),
+                .order(10),
         )
         .i18n("en", include_str!("../../i18n/audit/en.json"))
         .i18n("ru", include_str!("../../i18n/audit/ru.json"))

@@ -29,6 +29,9 @@
     "list": {
       "title": "Tasks"
     },
+    "menu": {
+      "queue": "Queue"
+    },
     "state": {
       "cancelled": "Cancelled",
       "done": "Done",

@@ -8,7 +8,7 @@ use keel_sdk::system::PermissionSource;
 use keel_testkit::{ErrorCode, Harness, Who, tokio};
 
 const SECRET_READ: &str = "gate.secret.read";
-const ACCOUNT_READ: &str = "keel.account.read";
+const PRINCIPAL_READ: &str = "keel.principal.read";
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 struct Nothing {}
@@ -37,7 +37,7 @@ impl PermissionSource for ByLogin {
         Ok(match login.as_str() {
             "a1" => BTreeMap::from([
                 (SECRET_READ.to_owned(), true),
-                (ACCOUNT_READ.to_owned(), false),
+                (PRINCIPAL_READ.to_owned(), false),
             ]),
             "reseller" => BTreeMap::from([(SECRET_READ.to_owned(), false)]),
             "admin" => BTreeMap::from([(SECRET_READ.to_owned(), false)]),
@@ -81,9 +81,9 @@ async fn the_transports_overlay_the_stored_grants_and_the_guard_reads_them_over_
     assert_eq!(a1.status, 200, "{}", a1.body);
     assert_eq!(
         a1.json()["data"],
-        json!({ "login": "a1", "grants": { SECRET_READ: true, ACCOUNT_READ: false } })
+        json!({ "login": "a1", "grants": { SECRET_READ: true, PRINCIPAL_READ: false } })
     );
-    let taken = http.get(Who::A1, "/api/v1/call/keel.account.list").await;
+    let taken = http.get(Who::A1, "/api/v1/call/keel.principal.list").await;
     assert_eq!(taken.status, 403, "{}", taken.body);
     assert_eq!(taken.json()["error"]["key"], json!("keel.error.permission"));
     let a2 = http.get(Who::A2, "/api/v1/call/gate.secret.read").await;
@@ -106,12 +106,18 @@ async fn the_transports_overlay_the_stored_grants_and_the_guard_reads_them_over_
         .collect();
     assert!(names.contains(&"gate.secret.read".to_owned()), "{names:?}");
     assert!(
-        !names.contains(&"keel.account.list".to_owned()),
+        !names.contains(&"keel.principal.list".to_owned()),
         "{names:?}"
+    );
+    let allowed = http.get(Who::A2, "/api/v1/boot").await;
+    assert!(
+        allowed.body.contains("access/users/principals"),
+        "the node is missing for a principal without the denial: {}",
+        allowed.body
     );
     let boot = http.get(Who::A1, "/api/v1/boot").await;
     assert!(
-        !boot.body.contains("system/accounts"),
+        !boot.body.contains("access/users/principals"),
         "the denied node is still in the menu: {}",
         boot.body
     );
@@ -121,7 +127,7 @@ async fn the_transports_overlay_the_stored_grants_and_the_guard_reads_them_over_
     let as_a1 = socket.call_as("gate.secret.read", json!({}), "a1").await;
     assert_eq!(
         serde_json::to_value(&as_a1).expect("an envelope")["data"]["grants"],
-        json!({ SECRET_READ: true, ACCOUNT_READ: false })
+        json!({ SECRET_READ: true, PRINCIPAL_READ: false })
     );
     let as_a2 = socket.call_as("gate.secret.read", json!({}), "a2").await;
     assert_eq!(

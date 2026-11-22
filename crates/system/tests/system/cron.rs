@@ -804,22 +804,11 @@ async fn the_cron_descriptors_match_their_snapshots_and_the_reseller_is_answered
     let http = harness.http().await;
     let booted = http.get(Who::Admin, "/api/v1/boot").await;
     assert_eq!(booted.status, 200, "{}", booted.body);
-    let system = booted.json()["menu"]
-        .as_array()
-        .expect("groups")
-        .iter()
-        .find(|group| group["id"] == json!("system"))
-        .cloned()
-        .expect("the system group");
-    let node = system["items"]
-        .as_array()
-        .expect("items")
-        .iter()
-        .find(|item| item["func"] == json!(JOB_LIST))
-        .cloned()
-        .unwrap_or_else(|| panic!("no cron node in {system}"));
-    assert_eq!(node["path"], json!(MENU_PATH));
-    assert_eq!(node["label"], json!("cron.job.list.title"));
+    let boot = booted.json();
+    let node = crate::menu::node(&boot, MENU_PATH)
+        .unwrap_or_else(|| panic!("no cron node in {}", boot["menu"]));
+    assert_eq!(node["func"], json!(JOB_LIST));
+    assert_eq!(node["label"], json!("cron.menu.schedule"));
     assert_eq!(node["kind"], json!("list"));
     let reseller = http.get(Who::Reseller, "/api/v1/boot").await;
     assert!(

@@ -269,6 +269,15 @@
         "title": "Log"
       }
     },
+    "menu": {
+      "install": "Installation",
+      "logs": "Logs",
+      "principals": "Users",
+      "server_log": "Server log",
+      "settings": "Settings",
+      "tasks": "Tasks",
+      "users": "Users"
+    },
     "name": "Name",
     "once": {
       "title": "Shown only once: copy the values now"

@@ -14,7 +14,7 @@ mod stats;
 mod widgets;
 
 use keel_sdk::prelude::*;
-use keel_sdk::{ModuleDef, Registrar};
+use keel_sdk::{MenuSection, ModuleDef, Registrar};
 
 pub use accounts::{RESELLER_KIND, SYSTEM_KIND};
 use health::DOCTOR_RUN;
@@ -108,35 +108,48 @@ fn init(r: &mut Registrar) -> Result<()> {
         .permission("keel.account.manage", &[Level::Reseller])
         .permission("keel.principal.read", &[Level::User, Level::Reseller])
         .permission("keel.principal.manage", &[Level::User, Level::Reseller])
+        .section(MenuSection::new("access/users", "keel.menu.users", "users").order(10))
+        .section(MenuSection::new("monitor/tasks", "keel.menu.tasks", "list-checks").order(20))
+        .section(MenuSection::new("monitor/logs", "keel.menu.logs", "history").order(30))
+        .section(
+            MenuSection::new(
+                "system/settings",
+                "keel.menu.settings",
+                "sliders-horizontal",
+            )
+            .order(10),
+        )
+        .section(MenuSection::new("system/install", "keel.menu.install", "package").order(30))
         .menu(
-            MenuNode::new("system/accounts", "keel.account.list")
-                .icon("users")
+            MenuNode::new("access/users/principals", "keel.principal.list")
+                .icon("user")
                 .order(10)
+                .label("keel.menu.principals"),
+        )
+        .menu(
+            MenuNode::new("access/users/accounts", "keel.account.list")
+                .icon("users")
+                .order(20)
+                .level(Level::Reseller)
                 .label("keel.account.list.title"),
         )
         .menu(
-            MenuNode::new("system/principals", "keel.principal.list")
-                .icon("user")
-                .order(20)
-                .label("keel.principal.list.title"),
-        )
-        .menu(
-            MenuNode::new("system/products", "keel.product.list")
+            MenuNode::new("system/install/products", "keel.product.list")
                 .icon("package")
-                .order(30)
+                .order(10)
                 .label("keel.product.list.title"),
         )
         .menu(
             MenuNode::new(health::MENU_PATH, DOCTOR_RUN)
                 .icon(health::MENU_ICON)
-                .order(90)
+                .order(40)
                 .label("keel.doctor.run.title"),
         )
         .menu(
             MenuNode::new(health::LOGS_MENU_PATH, health::LOGS_STREAM)
                 .icon(health::LOGS_MENU_ICON)
-                .order(95)
-                .label("keel.logs.stream.title"),
+                .order(20)
+                .label("keel.menu.server_log"),
         )
         .i18n("en", include_str!("../../i18n/en.json"))
         .i18n("ru", include_str!("../../i18n/ru.json"))
@@ -169,6 +182,21 @@ mod tests {
             .expect("the registrations are valid");
         assert_eq!(registrations.permissions.len(), 4);
         assert_eq!(registrations.menu.len(), 5);
+        let sections: Vec<(&str, i32)> = registrations
+            .sections
+            .iter()
+            .map(|section| (section.path(), section.order_value()))
+            .collect();
+        assert_eq!(
+            sections,
+            [
+                ("access/users", 10),
+                ("monitor/tasks", 20),
+                ("monitor/logs", 30),
+                ("system/settings", 10),
+                ("system/install", 30)
+            ]
+        );
         let widgets: Vec<(WidgetKind, &str, Option<Level>)> = registrations
             .contributions
             .of::<DashboardWidget>()
@@ -225,12 +253,11 @@ mod tests {
             .map(FunctionDef::name)
             .collect();
         assert_eq!(internal, [RESTART, IDEMPOTENCY_PRUNE]);
-        assert!(
-            registrations
-                .menu
+        assert!(registrations.menu.iter().all(|node| {
+            ["access/", "monitor/", "system/"]
                 .iter()
-                .all(|node| node.path().starts_with("system/"))
-        );
+                .any(|group| node.path().starts_with(group))
+        }));
         let languages: Vec<&str> = registrations
             .i18n
             .iter()

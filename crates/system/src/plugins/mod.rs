@@ -22,7 +22,7 @@ pub use register::ERROR_UNAVAILABLE;
 
 pub const DIRECTORY: &str = "plugins";
 pub const PROBLEM_REFUSED: &str = "plugin.refused";
-const MENU_PATH: &str = "system/plugins";
+const MENU_PATH: &str = "system/install/plugins";
 const PROBLEM_SOURCE: &str = "plugin.start";
 
 static MIGRATIONS: migrator::Migrations =
@@ -52,7 +52,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .function(functions::get(shared.clone()))
         .function(functions::enable(shared))
         .function(functions::disable())
-        .menu(MenuNode::new(MENU_PATH, LIST).icon("puzzle").order(53))
+        .menu(MenuNode::new(MENU_PATH, LIST).icon("puzzle").order(40))
         .i18n("en", include_str!("../../i18n/plugins/en.json"))
         .i18n("ru", include_str!("../../i18n/plugins/ru.json"))
         .start(move |ctx| async move {

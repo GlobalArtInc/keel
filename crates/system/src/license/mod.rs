@@ -17,7 +17,7 @@ pub use problems::{EXPIRED, EXPIRING, PRODUCT_UNLISTED};
 
 pub const GET: &str = "license.get";
 pub const INSTALL: &str = "license.install";
-const MENU_PATH: &str = "system/license";
+const MENU_PATH: &str = "system/install/license";
 const MENU_ICON: &str = "key-round";
 
 pub static MODULE: ModuleDef = ModuleDef {
@@ -39,7 +39,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .contribute(problems::source(grant.clone()))
         .function(functions::get(grant.clone()))
         .function(functions::install(grant))
-        .menu(MenuNode::new(MENU_PATH, GET).icon(MENU_ICON).order(47))
+        .menu(MenuNode::new(MENU_PATH, GET).icon(MENU_ICON).order(20))
         .i18n("en", include_str!("../../i18n/license/en.json"))
         .i18n("ru", include_str!("../../i18n/license/ru.json"))
         .start(move |ctx| async move { started.start(&ctx).await });

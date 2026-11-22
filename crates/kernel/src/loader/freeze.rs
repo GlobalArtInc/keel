@@ -2077,9 +2077,12 @@ mod tests {
     fn a_declared_section_with_tabs_in_a_platform_group_freezes_and_is_kept_in_the_registry() {
         let frozen = freeze(&[&TIDY], &[]).unwrap();
         let sections = frozen.registry().sections();
-        assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].path(), "system/area");
-        assert_eq!(sections[0].order_value(), 3);
+        let area: Vec<&MenuSection> = sections
+            .iter()
+            .filter(|section| section.path() == "system/area")
+            .collect();
+        assert_eq!(area.len(), 1);
+        assert_eq!(area[0].order_value(), 3);
         let tabs = frozen
             .registry()
             .menu()

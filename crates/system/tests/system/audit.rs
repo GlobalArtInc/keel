@@ -782,22 +782,12 @@ async fn the_audit_descriptors_match_their_snapshots() {
     let http = harness.http().await;
     let booted = http.get(Who::A1, "/api/v1/boot").await;
     assert_eq!(booted.status, 200, "{}", booted.body);
-    let system = booted.json()["menu"]
-        .as_array()
-        .expect("groups")
-        .iter()
-        .find(|group| group["id"] == json!("system"))
-        .cloned()
-        .expect("the system group");
-    let node = system["items"]
-        .as_array()
-        .expect("items")
-        .iter()
-        .find(|item| item["func"] == json!("audit.list"))
-        .cloned()
-        .unwrap_or_else(|| panic!("no audit node in {system}"));
+    let boot = booted.json();
+    let node = crate::menu::node(&boot, MENU_PATH)
+        .unwrap_or_else(|| panic!("no audit node in {}", boot["menu"]));
+    assert_eq!(node["func"], json!("audit.list"));
     assert_eq!(node["label"], json!("audit.list.title"));
-    assert_eq!(MENU_PATH, "system/audit");
+    assert_eq!(MENU_PATH, "monitor/logs/audit");
     let guest = http.get(Who::Guest, "/api/v1/boot").await;
     assert!(
         !guest.body.contains("audit.list"),
