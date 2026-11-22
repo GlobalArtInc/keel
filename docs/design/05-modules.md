@@ -667,7 +667,8 @@ function attribute ([06-host.md](06-host.md)).
   hold with `auth.error.grant_not_held`, a target at or above the caller through the `not_below`
   rule, and every write bumps the target's `acl_gen` in the same transaction so its descriptors and
   menu change at once ([03-access.md](03-access.md)). The module's menu nodes are
-  `system/sessions`, `system/tokens`, `system/ip-rules` and `system/grants`. `su` goes only down
+  the tabs `access/users/sessions`, `access/users/tokens`, `access/users/ip-rules` and
+  `access/users/grants`. `su` goes only down
   the ladder, as a separate session with an `actor`; audit records both sides.
 - One-time login keys: `auth.key.issue { principal | externalId, ttl <= 300, redirect }` returns
   a `kok_` key and the relative `url` `/login?key=…`, redeemed by a same-origin `POST
@@ -717,14 +718,14 @@ function attribute ([06-host.md](06-host.md)).
 - White-label by hostname through `ManifestSource`: `settings_brand` holds one row per host
   (`host`, `name`, `logo`, `hue`, `chroma`, `updated_at`, `updated_by`), edited by the
   admin-level unowned functions `settings.brand.list`, `settings.brand.get`, `settings.brand.set`
-  and `settings.brand.delete` behind the menu node `system/brand`, which says white-label by host
+  and `settings.brand.delete` behind the menu node `system/settings/brand`, which says white-label by host
   name; the host is stored in lower case under the `domain` check, `hue` and `chroma` carry
   their ranges in the schema and say "from the product" when empty, and the logo is an upload,
   `settings.brand.logo { host, logo }` of kind `upload` taking one `image/svg+xml` file of up to
   64 KiB, refused unless it parses as an SVG document without a script element. The patch of the
   request's `Host`, without its port, goes out in `GET /api/v1/boot` and `/brand/logo.svg`
-  ([10-contracts.md](10-contracts.md)). The module's menu nodes are `system/settings` and
-  `system/brand`.
+  ([10-contracts.md](10-contracts.md)). The module's menu nodes are the tabs `system/settings/general` and
+  `system/settings/brand`.
 - Everything editable from the UI lives here; `config.yaml` holds only what the process needs to
   start ([09-operations.md](09-operations.md)).
 
@@ -751,7 +752,7 @@ function attribute ([06-host.md](06-host.md)).
 - `audit.list`, owned by `account_id` under `audit.read` for user and reseller, sorted by `at`
   descending and filterable on function, principal, status, request id and `at` under the
   day-boundary rule ([10-contracts.md](10-contracts.md)), and `audit.get`; the menu node
-  `system/audit`. A guest's failed login lands in the root account and is therefore visible to
+  `monitor/logs/audit`. A guest's failed login lands in the root account and is therefore visible to
   admins alone.
 
 ### tasks and cron
@@ -771,7 +772,7 @@ function attribute ([06-host.md](06-host.md)).
   and ends a queued one at once.
 - Functions: `task.list`, owned under `task.read`, `task.get` with the prop list, the progress,
   the log tail and the checkpoint, `task.cancel` under `task.manage`, and `task.download`, the
-  `download` function that serves a job's stored file to its owner; the menu node `system/tasks`.
+  `download` function that serves a job's stored file to its owner; the menu node `monitor/tasks/queue`.
 - `ui.result = task` opens the progress modal in the frontend; progress travels as the
   `task.progress` SSE event ([08-frontend.md](08-frontend.md)), a `TaskProgress` frame the
   worker publishes on `LiveEvents` for every report and state change.
@@ -791,7 +792,7 @@ function attribute ([06-host.md](06-host.md)).
   object from job id to schedule at admin level, changes a job's schedule without a build.
   Functions, all admin-level and unowned: `cron.job.list` over the contributions joined with
   their last run, `cron.job.run { id }` starting a job now, `cron.run.list`; the menu node
-  `system/cron`. Since M6 the module contributes its own job `cron.idempotency.prune`, hourly at
+  `monitor/tasks/cron`. Since M6 the module contributes its own job `cron.idempotency.prune`, hourly at
   minute 25, which calls the kernel's internal `keel.idempotency.prune` as the owner, since the
   kernel cannot depend on the module that runs jobs ([02-functions.md](02-functions.md)).
 
@@ -813,8 +814,8 @@ function attribute ([06-host.md](06-host.md)).
 - Functions: `notify.problem.list` and `notify.problem.get` (unowned, a problem without an
   account visible to admins alone), `notify.message.list`, `notify.message.mark` and
   `notify.message.clear` on the caller's own rows, `notify.channel.list`, `.get`, `.set`,
-  `.delete` and `.test`, `notify.delivery.list`; the menu nodes `system/problems` and
-  `system/channels`.
+  `.delete` and `.test`, `notify.delivery.list`; the menu nodes `monitor/problems` and
+  `system/settings/channels`.
 - Channels: the kinds `email`, `telegram` and `webhook` are declared; `email` over lettre is the
   one implemented, the other two refused on `kind` until their milestone. A channel row's
   password is sealed through `SecretCipher` and never leaves the row. Delivery goes through the
@@ -845,7 +846,7 @@ function attribute ([06-host.md](06-host.md)).
   (subscription, event), `pending`, `delivered`, `failed` or `dead`, with the event type copied
   onto the row so the list shows it without the outbox.
 - Functions under `webhook.manage`: `webhook.subscription.list`, `.get`, `.set`, `.delete` and
-  `.toggle`, `webhook.delivery.list`, `.get` and `.retry`; the menu node `system/webhooks`. The
+  `.toggle`, `webhook.delivery.list`, `.get` and `.retry`; the menu node `system/settings/webhooks`. The
   secret rule: a secret is shown once, at creation, chosen by the caller or generated; an empty
   secret counts as absent; the stored one is sealed and never answered again.
 - Signatures are HMAC-SHA256 ([07-ecosystem.md](07-ecosystem.md)); retries at 1m, 5m, 30m, 2h
@@ -996,7 +997,7 @@ function attribute ([06-host.md](06-host.md)).
   `peer.renew`, and `peer.delete`, both retiring every credential of the link. The tables are
   `peer_product`, `peer_pair_code`, `peer_inbox` and `peer_identity`; the cron job `peer.check`
   checks every link daily and raises `peer.problem.protocol`, `peer.problem.instance_key` and
-  `peer.problem.proof`; the menu node is `system/peers`.
+  `peer.problem.proof`; the menu node is `system/settings/peers`.
 - A pull feed `/api/v1/x/peer/feed?after=seq` for instances behind NAT and the hook
   `/api/v1/x/peer/hook` for signed deliveries, both `Endpoint`s; the inbox deduplicates by link and
   event id, bounds a link to 10 000 waiting events and relays them onto the bus through

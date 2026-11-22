@@ -459,11 +459,16 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   products (enabling and disabling bundles, from the `keel.product.*` descriptors), brand and
   support. Every installation has them, without writing any UI: every screen of a system module
   that exists as a descriptor is rendered generically, reached from the menu nodes the modules
-  register — the kernel's `system/accounts`, `system/principals` and `system/products`, the
-  `auth` nodes `system/sessions`, `system/tokens`, `system/ip-rules` and `system/grants`,
-  `system/settings` and `system/brand` of `settings`, `system/audit` of `audit`, `system/tasks`
-  of `tasks`, `system/cron` of `cron`, `system/problems` and `system/channels` of `notify`,
-  `system/webhooks` of `webhooks`. The shell adds a
+  register — the kernel's `access/users/principals`, `access/users/accounts`, `system/install/products`,
+  `monitor/health` and `monitor/logs/server`, the `auth` tabs `access/users/sessions`,
+  `access/users/tokens`, `access/users/ip-rules` and `access/users/grants`,
+  `system/settings/general` and `system/settings/brand` of `settings`, `monitor/logs/audit` of
+  `audit`, `monitor/tasks/queue` of `tasks`, `monitor/tasks/cron` of `cron`, `monitor/problems`
+  and `system/settings/channels` of `notify`, `system/settings/webhooks` of `webhooks`,
+  `system/settings/peers` of `peers`, `system/backups` of `backup`, `system/install/license`,
+  `system/install/updates` and `system/install/plugins` of `license`, `update` and `plugins`. The
+  five sections `access/users`, `monitor/tasks`, `monitor/logs`, `system/settings` and
+  `system/install` are declared by the kernel. The shell adds a
   screen of its own only where a descriptor cannot say it, and registers it through
   `provideKeelViews` like a product's view, listed in `frontend/apps/shell/views.json` and counted
   in the custom-views share: the settings value form, which replaces the generic form of

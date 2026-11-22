@@ -230,7 +230,7 @@ created_by, created_at)` until they are used or expire. The only status is `acti
 The module's functions are `peer.list` and `peer.get` (admin, never answering a token hash, a
 sealed token or a secret), `peer.pair_code`, `peer.create`, `peer.rotate` and `peer.delete`, the
 guest exchanges `peer.pair` and `peer.renew`, and the internal writes `peer.link` and `peer.rekey`;
-they sit behind the menu node `system/peers`, and the events `peer.created`, `peer.rotated` and
+they sit behind the menu node `system/settings/peers`, and the events `peer.created`, `peer.rotated` and
 `peer.deleted` refresh the list.
 
 **Trust on first use.** The identity of a peer is its Ed25519 instance key, pinned in the link at
