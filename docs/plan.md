@@ -9190,3 +9190,80 @@ listed last, unticked.
       of the link; `PeerLinks` hands a link's token to any module compiled in, the pre-check of
       `dns-peer` writes the customer on the neighbour before the local transaction decides, and its
       task runs with a widened scope, the subject of the M7 review.
+
+## MVP exit checklist
+
+What the machine and CI proved is ticked with the evidence; what only the owner, a second
+machine or a real domain can prove is left unticked and named; what the review left without a fix is
+named for M7 at the end.
+
+- [x] CI runs on GitHub-hosted runners only: `grep -rn self-hosted .github` finds nothing, the
+  workflow `CI` is green over all of its jobs on `main` (the `check` job with the browser suite,
+  `hack/conformance.sh`, `hack/descriptors.sh` and `hack/peers-e2e.sh`, the `keel-system` matrix, the
+  `frontend` and `rehearsal` jobs), and the job of `Build` that builds the musl release is green.
+- [x] The release binary is built without `demo` and with fat LTO: `cargo build --release --target
+  x86_64-unknown-linux-musl -p keel-bin --no-default-features --features dns,panel` measures 41.56 MB
+  against the cap of 42,000,000 bytes in `hack/size-cap`, 0.4 MB of headroom.
+- [x] The plugin host is out of the release binary:
+  `a_binary_without_the_plugins_feature_has_no_plugin_functions`, and the shipped
+  `deploy/agent.yaml` has no `plugins` section.
+- [x] The findings of the M4 and M5 reviews that a customer could reach are closed with named tests:
+  `a_process_past_its_timeout_is_killed_and_the_lock_released`,
+  `a_package_outside_the_allowlist_is_refused_and_journalled`,
+  `an_operation_with_an_unknown_argument_is_refused`,
+  `an_archive_with_too_many_entries_is_refused_by_the_unpacker`,
+  `an_expired_head_manifest_is_refused`, `a_head_manifest_without_an_expiry_is_refused`,
+  `a_plain_http_channel_is_refused_without_the_rehearsal_flag`,
+  `a_zone_inside_a_zone_of_another_account_is_refused`,
+  `a_customer_cannot_create_a_zone_inside_a_zone_of_the_root_account`,
+  `a_customer_cannot_add_a_mail_domain_outside_its_own_zones` and
+  `a_customer_cannot_take_the_apex_of_an_ancestor_zone_as_a_mail_domain`.
+- [x] `hack/check-vocabulary.sh` is green in CI over the tree and the whole history, and
+  `hack/check-docs.sh` runs the commands of `docs/operator/` against the binary.
+- [x] On a clean Debian 13 virtual machine, installed with the binary of the release workflow:
+  `hack/install-vm.sh` from a signed rehearsal channel (`curl | bash -s -- --product dns`, no process
+  but `keel privileged` as root, the setup link); `hack/dns-vm.sh` (zones from the CLI and a token served
+  by bind, a broken template rolled back while bind kept answering); `hack/product-vm.sh dns`;
+  `hack/update-vm.sh run` and `kernel` (the update by `keel-update.path` and by the kernel, the
+  rollback); `hack/doctor-vm.sh` (the doctor and a support bundle with no credential in it); and for the
+  panel `hack/panel-vm.sh install`, `db`, `mail` (a mail delivered to a mailbox), `ftp`, `config`,
+  `services` and `backup`, `hack/backup-vm.sh take` with the secret key and `restore` on a machine purged
+  and installed again.
+- [ ] `hack/panel-vm.sh run` and `files` end green with the kernel's retry of a busy user deletion
+  (`a_busy_user_deletion_is_retried_until_the_agent_lets_it_go`): the last full run failed one check each
+  on the race of the deletion of an account between `hosting-web` and `hosting-users`; the retry came
+  after that run and is to be proven on the machine.
+- [ ] `hack/update-vm.sh kernel`: the check `/api/v1/boot answers <version>` cannot pass while the
+  rehearsal repackages the running binary under the next version number; the rest of the script passes.
+- [ ] A site with a Let's Encrypt certificate on a real domain: `hack/panel-vm.sh ssl <domain>`
+  needs a domain that points at the machine.
+- [ ] Two machines: `hack/peers-vm.sh` (peers are a beta), `hack/bridge-vm.sh`, and the second factor
+  of a user enrolled on the first machine accepted on the second after `hack/backup-vm.sh restore`.
+- [ ] `hack/host-vm.sh` needs a binary built with the `demo` bundle; the agent's behaviour it proves
+  is covered by the tests of `keel-host-agent`.
+- [ ] The translation token: the job `dictionaries` of `Build` and the same step of `release.yml` fail
+  with `Project not found` since `KEEL_OWNLATE_TOKEN` was refused by the translation service; a new
+  token is the owner's to issue. The dictionaries of the repository are checked in CI by
+  `keel-dev i18n missing`.
+- [ ] The production license key pair exists and its public half is compiled in
+  (`crates/release/keys/license.pub`); the private half is in `~/.config/keel/license-prod/` on the
+  owner's machine and is to be kept offline. A lease for `keel-demo` is not issued, and `keel-demo` is
+  still at 0.1.0 with the `demo` bundle, which the release no longer carries: it is to be installed
+  again with `--product dns,panel`.
+- [ ] The release candidate: a tag `keel-vX.Y.Z-rc.1` needs the workspace version raised to the
+  candidate, the translation token and the owner's word; the stable tag waits for the owner.
+- [ ] A walk through the whole application by hand, every role and screen at a narrow and a wide
+  width, and someone other than the author installing `panel` from `docs/operator/`: not done. The
+  browser suite of CI (`hack/e2e.sh`) covers the flows of `demo`, `dns` and `panel` that it names.
+- Left without a fix, for M7 step 5: the FTP directory a hosting user can turn into a link that vsftpd
+  follows at login (no more rights than the user has through PHP); a zone and so a mail domain for a name
+  someone else registered proves no ownership; the code of `keel privileged` that spawns plugin
+  processes is compiled in and refused by policy only; the allowlist of packages covers removal; one
+  global lock holds up to the sum of the limits of an operation's processes; the findings of the M6
+  review listed in its checklist.
+- Found by the machines and closed: the credential of the first login in the log ring of a support
+  bundle; `keel backup` failing on every installation with `dns` or `panel`; the unit of the service
+  unable to write the transfer root of the panel; Dovecot 2.4 losing the domain of the address for
+  delivery and looking for the INBOX in the system spool; a user left behind when the workers of a removed
+  site were still running; stalls of the registry download in CI; and proof scripts whose `grep -q`
+  under `pipefail` reported found text as missing and passed negative checks without looking.
