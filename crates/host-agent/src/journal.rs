@@ -70,6 +70,34 @@ pub(crate) fn operation(
     }
 }
 
+pub(crate) struct Stop<'a> {
+    pub(crate) op: &'a str,
+    pub(crate) actor: &'a str,
+    pub(crate) request_id: &'a str,
+    pub(crate) product: &'a str,
+    pub(crate) peer_uid: u32,
+    pub(crate) user: &'a str,
+    pub(crate) uid: u32,
+    pub(crate) sigterm: usize,
+    pub(crate) sigkill: usize,
+}
+
+pub(crate) fn processes_stopped(stop: &Stop<'_>) {
+    tracing::info!(
+        target: AUDIT,
+        op = %stop.op,
+        actor = %stop.actor,
+        request_id = %stop.request_id,
+        product = %stop.product,
+        peer_uid = stop.peer_uid,
+        user = %stop.user,
+        uid = stop.uid,
+        sigterm = stop.sigterm,
+        sigkill = stop.sigkill,
+        outcome = %"processes_stopped",
+    );
+}
+
 pub(crate) fn frame(peer: u32, id: u64, failure: &Failure) {
     tracing::warn!(
         target: AUDIT,
