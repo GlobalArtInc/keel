@@ -24,3 +24,16 @@ pub async fn drop_account(db: &Db, account: Id) -> Result<Dropped> {
         deliveries: deliveries.rows_affected,
     })
 }
+
+pub(super) async fn forget(call: Call<Id>) -> Result<()> {
+    let account = *call.params();
+    let dropped = drop_account(call.tx()?, account).await?;
+    if let Some(task) = call.task() {
+        task.log(&format!(
+            "removed {} subscription(s) and {} delivery(ies) of account {account}",
+            dropped.subscriptions, dropped.deliveries
+        ))
+        .await?;
+    }
+    Ok(())
+}

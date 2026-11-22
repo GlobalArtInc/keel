@@ -89,6 +89,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .require::<dyn SecretCipher>()
         .require::<dyn OutboxSubscriber>()
         .contribute(poll::job(sources))
+        .contribute(AccountLifecycle::new().on_delete(lifecycle::forget))
         .contribute(DashboardWidget::list(PROBLEM_LIST, WIDGET_LIMIT).level(Level::Admin))
         .function(functions::internal::problem_raise())
         .function(functions::internal::problem_clear())

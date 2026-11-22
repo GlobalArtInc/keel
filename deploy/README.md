@@ -848,8 +848,8 @@ records.
 - The allowlist of packages covers removal too: an admitted caller can remove any allowlisted
   package, dependencies included.
 - The restore across a contract is run by hand after `rollback --restore`, as shown above.
-- Deleting an account whose principals hold passwords, sessions or settings fails with
-  `keel.account.error.rows_remain` until the system modules contribute their `on_delete`.
+- Deleting an account whose principals toggled a plugin fails with `keel.account.error.rows_remain`
+  in a build with the `plugins` feature; the release binary has no plugin host.
 - Call counters and latency histograms; the support bundle carries `/readyz` in their place.
 
 ## Checks CI runs

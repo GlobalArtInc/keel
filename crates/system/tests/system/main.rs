@@ -1,3 +1,11 @@
+#[cfg(all(
+    feature = "auth",
+    feature = "settings",
+    feature = "notify",
+    feature = "webhooks",
+    feature = "tasks"
+))]
+mod account_delete;
 #[cfg(all(feature = "auth", feature = "audit"))]
 mod audit;
 #[cfg(feature = "audit")]

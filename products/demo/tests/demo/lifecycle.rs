@@ -135,7 +135,7 @@ async fn notes_of_a_suspended_account_refuse_edits_and_disappear_with_the_accoun
     assert_eq!(state, TaskState::Done, "{detail}");
     assert_eq!(
         detail["result"],
-        json!({ "id": a1.to_string(), "modules": ["note"] })
+        json!({ "id": a1.to_string(), "modules": ["note", "notify"] })
     );
     let log = detail["logTail"].to_string();
     assert!(log.contains("dropped 1 note(s)"), "{log}");

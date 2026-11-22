@@ -9259,11 +9259,14 @@ named for M7 at the end.
   follows at login (no more rights than the user has through PHP); a zone and so a mail domain for a name
   someone else registered proves no ownership; the code of `keel privileged` that spawns plugin
   processes is compiled in and refused by policy only; the allowlist of packages covers removal; one
-  global lock holds up to the sum of the limits of an operation's processes; the findings of the M6
-  review listed in its checklist.
+  global lock holds up to the sum of the limits of an operation's processes; the `plugins` module has
+  no `on_delete`, so an account whose principals toggled a plugin cannot be deleted in a build with
+  that feature; the findings of the M6 review listed in its checklist.
 - Found by the machines and closed: the credential of the first login in the log ring of a support
   bundle; `keel backup` failing on every installation with `dns` or `panel`; the unit of the service
-  unable to write the transfer root of the panel; Dovecot 2.4 losing the domain of the address for
+  unable to write the transfer root of the panel; the deletion of an account that failed with
+  `rows_remain` as soon as one of its users held a token, a session, a password or a setting, since no
+  system module removed its rows (`auth`, `settings`, `notify` and `webhooks` do now); Dovecot 2.4 losing the domain of the address for
   delivery and looking for the INBOX in the system spool; a user left behind when the workers of a removed
   site were still running; stalls of the registry download in CI; and proof scripts whose `grep -q`
   under `pipefail` reported found text as missing and passed negative checks without looking.

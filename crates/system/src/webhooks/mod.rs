@@ -65,6 +65,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .require::<dyn SecretCipher>()
         .require::<dyn OutboxSubscriber>()
         .require::<dyn SettingsSource>()
+        .contribute(AccountLifecycle::new().on_delete(lifecycle::forget))
         .contribute(
             SettingDef::new(PRIVATE_TARGETS_KEY, schema_for!(bool))
                 .default(false)

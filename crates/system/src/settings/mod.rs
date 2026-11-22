@@ -1,6 +1,7 @@
 mod brand;
 mod entity;
 mod functions;
+mod lifecycle;
 mod pref;
 mod store;
 
@@ -50,6 +51,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .provide::<dyn PreferenceSource>(prefs.clone())
         .provide::<dyn ManifestSource>(Arc::new(Brands))
         .require::<dyn LanguageSource>()
+        .contribute(AccountLifecycle::new().on_delete(lifecycle::forget))
         .function(functions::list(store.clone()))
         .function(functions::get(store.clone()))
         .function(functions::set(store.clone()))

@@ -7,6 +7,7 @@ mod functions;
 mod grant;
 mod ip_rule;
 mod key;
+mod lifecycle;
 mod limits;
 mod mail;
 mod password;
@@ -140,6 +141,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .provide::<dyn PermissionSource>(Arc::new(Grants))
         .provide::<RateLimit>(rate_limit.clone())
         .provide::<Lockout>(lockout.clone())
+        .contribute(AccountLifecycle::new().on_delete(lifecycle::forget))
         .guard(ip_rules.clone())
         .guard(rate_limit)
         .function(functions::password_set(passwords.clone()))
@@ -476,5 +478,24 @@ mod tests {
             MODULE.migrations.map(|migrations| migrations.ledger()),
             Some("keel_migration_auth")
         );
+    }
+
+    #[test]
+    fn the_module_contributes_one_lifecycle_that_deletes_its_rows_with_the_account() {
+        use keel_sdk::lifecycle::AccountChange;
+
+        let mut registrar = Registrar::new(MODULE.id);
+        (MODULE.init)(&mut registrar).expect("init registers");
+        let registrations = registrar
+            .into_registrations()
+            .expect("the registrations are valid");
+        let lifecycles: Vec<&AccountLifecycle> = registrations
+            .contributions
+            .of::<AccountLifecycle>()
+            .collect();
+        assert_eq!(lifecycles.len(), 1);
+        assert_eq!(lifecycles[0].module(), "auth");
+        assert!(lifecycles[0].handler(AccountChange::Delete).is_some());
+        assert!(lifecycles[0].handler(AccountChange::Suspend).is_none());
     }
 }

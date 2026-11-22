@@ -578,11 +578,17 @@ the walk goes on.
    row answers `keel.account.error.rows_remain` with the constraint's detail.
 
 A failing handler fails the task with its own error and the module as a parameter and leaves the
-account in `deleting`, which `doctor` reports; calling delete again runs a new job. In M4 the
-modules of `keel-system` contribute no `on_delete` yet, so deleting an account whose principals
-hold passwords, sessions or settings fails loudly with `rows_remain`; `notify` and `webhooks`
-expose `drop_account` in the shape of an `on_delete` handler, tested directly, for the milestone
-that wires them. `on_rename` keeps no caller, since an account carries no name.
+account in `deleting`, which `doctor` reports; calling delete again runs a new job. The modules
+`auth`, `settings`, `notify`, `webhooks` and `svc` of `keel-system` contribute an `on_delete`: `auth`
+removes the tokens, sessions (with the sessions that hang from them by `parent_id_hash`; a session
+that merely pointed at a removed one by `su_id_hash` stays and loses the pointer), login keys and
+challenges, mail tokens, recovery codes, second factors, passwords, addresses and grants of the
+account's principals and of the account; `settings` its values and the principals' preferences;
+`notify` its messages, problems and pending direct mails through `drop_account` and one more
+statement; `webhooks` its subscriptions and deliveries through `drop_account`. The `plugins`
+module, which only a build with the `plugins` feature carries, contributes none yet, so deleting an
+account whose principals toggled a plugin fails with `rows_remain` there. `on_rename` keeps no
+caller, since an account carries no name.
 
 Module migrations use `ON DELETE RESTRICT` on their account foreign keys by default. A module
 that forgot to contribute `on_delete` therefore makes the deletion fail at step 3 rather than
