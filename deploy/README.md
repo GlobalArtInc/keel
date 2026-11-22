@@ -425,7 +425,8 @@ keys `virtual_mailbox_domains`, `virtual_mailbox_maps`, `virtual_alias_maps` and
 `virtual_transport = lmtp:unix:private/dovecot-lmtp`, and the dovecot drop-in
 `/etc/dovecot/conf.d/90-keel-panel.conf` that reads the passwd-file and listens for LMTP in the
 spool of postfix, and keeps the domain in the LMTP lookup, because the distribution's
-`20-lmtp.conf` strips it.
+`20-lmtp.conf` strips it. It also points the INBOX at the maildir root, because the
+distribution's `10-mail.conf` points it at `/var/mail`.
 
 FTP accounts belong to a site and are virtual users of vsftpd, named `hp_<name>` and chrooted to
 a directory under the document root of the site, given relative to that root; a directory that
