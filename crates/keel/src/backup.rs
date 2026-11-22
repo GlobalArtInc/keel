@@ -58,7 +58,7 @@ impl Runtime {
         let storage = Storage::connect(config).await.map_err(Error::from)?;
         let outcome = async {
             let enabled = self.enabled(&storage).await?.ids;
-            let frozen = self
+            let mut frozen = self
                 .composition(&enabled)?
                 .key(throwaway_key()?)
                 .sections(Sections::new(&config.file, config.sections.clone()))
@@ -69,6 +69,11 @@ impl Runtime {
                 .map_err(BootError::from)
                 .map_err(Error::from)?
                 .freeze()
+                .map_err(BootError::from)
+                .map_err(Error::from)?;
+            frozen
+                .attach(storage.db().clone())
+                .await
                 .map_err(BootError::from)
                 .map_err(Error::from)?;
             let site = Site::new(frozen.graph(), frozen.registry());
@@ -140,7 +145,12 @@ impl Runtime {
             let loaded = restore.database(storage.db(), file_key.as_ref()).await?;
             let files = restore.files(&config.data_dir, &config.file)?;
             let sources = restore
-                .sources(site.contributions(), storage.db(), &config.data_dir)
+                .sources(
+                    site.contributions(),
+                    site.services(),
+                    storage.db(),
+                    &config.data_dir,
+                )
                 .await?;
             let note = Note {
                 archive: restore.archive().to_owned(),

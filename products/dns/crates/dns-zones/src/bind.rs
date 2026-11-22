@@ -61,28 +61,28 @@ impl BindProvider {
             .get()
             .ok_or_else(|| KeelError::unavailable(NOT_STARTED))
     }
+}
 
-    pub(crate) async fn copy_zone_files(&self, dir: &BackupDir) -> Result<()> {
-        let config = &self.attached()?.config;
-        for name in served_names(dir.db(), None, true).await? {
-            let file = zone::file_of(&name);
-            let source = Path::new(&config.zones_dir).join(&file);
-            let copied = match tokio::fs::symlink_metadata(&source).await {
-                Ok(meta) if meta.is_file() => tokio::fs::copy(&source, dir.path().join(&file))
-                    .await
-                    .map(drop),
-                Ok(_) => Err(io::Error::other("not a regular file")),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-                Err(error) => Err(error),
-            };
-            copied.map_err(|error| {
-                KeelError::internal(BACKUP_FAILED)
-                    .param("file", source.display().to_string())
-                    .source(error)
-            })?;
-        }
-        Ok(())
+pub(crate) async fn copy_zone_files(dir: &BackupDir) -> Result<()> {
+    let config = dir.config::<DnsConfig>()?;
+    for name in served_names(dir.db(), None, true).await? {
+        let file = zone::file_of(&name);
+        let source = Path::new(&config.zones_dir).join(&file);
+        let copied = match tokio::fs::symlink_metadata(&source).await {
+            Ok(meta) if meta.is_file() => tokio::fs::copy(&source, dir.path().join(&file))
+                .await
+                .map(drop),
+            Ok(_) => Err(io::Error::other("not a regular file")),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        };
+        copied.map_err(|error| {
+            KeelError::internal(BACKUP_FAILED)
+                .param("file", source.display().to_string())
+                .source(error)
+        })?;
     }
+    Ok(())
 }
 
 #[async_trait]

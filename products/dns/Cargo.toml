@@ -18,4 +18,6 @@ keel-host = { workspace = true }
 [dev-dependencies]
 keel-system = { workspace = true, features = ["auth", "settings", "audit", "tasks", "cron", "notify", "license", "stats", "svc"] }
 keel-testkit = { workspace = true }
+tar = { workspace = true }
 tempfile = { workspace = true }
+zstd = { workspace = true }

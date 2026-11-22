@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 
 use chrono::{DateTime, Utc};
 use keel_sdk::async_trait::async_trait;
-use keel_sdk::runtime::Contributions;
+use keel_sdk::runtime::{Contributions, Services};
 use keel_sdk::sea_orm::DatabaseConnection;
 use keel_sdk::system::{BackupCreated, BackupManifest, BackupModule, BackupProduct, Backups};
 use keel_sdk::{KeelError, Result as SdkResult};
@@ -51,6 +51,7 @@ pub struct Site {
     config_file: PathBuf,
     clock: Arc<dyn Clock>,
     contributions: Arc<Contributions>,
+    services: Arc<Services>,
 }
 
 impl Site {
@@ -92,6 +93,7 @@ impl Site {
             config_file: graph.sections().file().to_owned(),
             clock: graph.clock().clone(),
             contributions: registry.contributions().clone(),
+            services: registry.services().clone(),
         }
     }
 
@@ -105,6 +107,10 @@ impl Site {
 
     pub fn contributions(&self) -> &Arc<Contributions> {
         &self.contributions
+    }
+
+    pub fn services(&self) -> &Arc<Services> {
+        &self.services
     }
 
     pub fn now(&self) -> DateTime<Utc> {
@@ -191,6 +197,7 @@ impl Site {
         data.sort();
         let sources = sources::write_all(
             &self.contributions,
+            &self.services,
             db,
             &staging.join(archive::SOURCES_DIR),
             &self.data_dir,

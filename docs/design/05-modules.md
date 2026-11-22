@@ -135,7 +135,11 @@ Between process start and the first served request the kernel runs these steps, 
    across the loaded set. Menu groups are ordered by product in composition order, then by
    `order` within a bundle, with the platform group last. Every problem is collected and reported
    in one error, which fails the boot when it comes from a compiled module.
-7. `start(ctx)`: the start hooks registered in `init` run in graph order; background work is
+7. `attach(ctx)` and `start(ctx)`: in graph order each module's attach hook, which only records
+   what its module needs later (its configuration section, the services it requires) and spawns
+   nothing, runs before its start hook; `keel backup` runs the attach hooks of the loaded modules
+   and nothing else, so a backup source finds that state with the service stopped. The start hooks
+   registered in `init` run in graph order; background work is
    spawned through `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's
    stop hook runs first, then the tasks it spawned are cancelled and awaited. A start hook that
    fails stops the modules already started and fails the boot.
@@ -202,8 +206,10 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   `r.patch(DescriptorPatch::new("hosting.site.edit").field("dnsZone", schema).after("name").store(hooks::store_zone))`,
   within the limits checked at freeze; the `store` mechanics of an added field are in
   [10-contracts.md](10-contracts.md).
-- Start and stop hooks, `r.start(|ctx| async move { … })` and `r.stop(|| async { … })`, one of
-  each per module. `ctx` is the module's `Context`: `ctx.spawn` for background work,
+- Attach, start and stop hooks, `r.attach(|ctx| async move { … })`, `r.start(|ctx| async move { … })`
+  and `r.stop(|| async { … })`, one of each per module; the attach hook is for state that a
+  backup source or the start needs, and a task it spawns is refused when the hook runs outside a
+  start. `ctx` is the module's `Context`: `ctx.spawn` for background work,
   `ctx.contributions::<T>()` for the typed bag, `ctx.require::<dyn Trait>()` for services,
   `ctx.config::<T>()` for the module's own `ConfigSection`. The public context carries no
   database handle; a system module that needs one outside a call, the `audit` worker being the
@@ -926,7 +932,10 @@ function attribute ([06-host.md](06-host.md)).
 - An update moves every enabled product at once, because there is one binary and one version.
 - A backup is `tar.zst` with a manifest, `BackupSource` contributions from modules and
   `--with-secret-key` under a passphrase. `BackupSource::new(name, write).restore(read)`: both
-  hooks receive the source's directory in the archive, a pool `Db` and the data directory; the
+  hooks receive the source's directory in the archive, a pool `Db`, the data directory and the
+  resolved configuration sections (`BackupDir::config::<T>()`); a source may rely on the state of
+  an attach hook but never on the one of a start hook, because `keel backup` runs the attach hooks
+  and the sources without starting any module; the
   freeze refuses a name without its module's prefix and one claimed by two modules. The kernel
   provides `dyn Backups` as a platform service, so the module reaches the archive writer without
   depending on the kernel. The archive has one target, the local directory

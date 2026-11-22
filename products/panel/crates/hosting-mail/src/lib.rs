@@ -46,7 +46,7 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     let mail = Arc::new(Mail::default());
-    let started = Arc::clone(&mail);
+    let attached = Arc::clone(&mail);
     let archived = Arc::clone(&mail);
     r.require::<dyn HostExecutor>()
         .require::<dyn DnsProvider>()
@@ -106,6 +106,6 @@ fn init(r: &mut Registrar) -> Result<()> {
         }))
         .i18n("en", include_str!("../i18n/en.json"))
         .i18n("ru", include_str!("../i18n/ru.json"))
-        .start(move |ctx| async move { started.attach(&ctx) });
+        .attach(move |ctx| async move { attached.attach(&ctx) });
     Ok(())
 }

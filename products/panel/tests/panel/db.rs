@@ -200,6 +200,7 @@ async fn a_database_and_user_are_created_with_quoted_identifiers() {
         backup.path().to_owned(),
         Db::from_connection(harness.db().clone()),
         harness.data_dir(),
+        harness.registry().services().clone(),
     ))
     .await
     .expect("every database is dumped");

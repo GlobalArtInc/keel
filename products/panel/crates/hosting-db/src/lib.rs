@@ -42,7 +42,7 @@ pub static MODULE: ModuleDef = ModuleDef {
 
 fn init(r: &mut Registrar) -> Result<()> {
     let dumps = Arc::new(Dumps::default());
-    let started = Arc::clone(&dumps);
+    let attached = Arc::clone(&dumps);
     r.require::<dyn HostExecutor>()
         .require::<dyn HostingUsers>()
         .provide::<dyn api::Databases>(Arc::new(Lookup))
@@ -88,6 +88,6 @@ fn init(r: &mut Registrar) -> Result<()> {
         }))
         .i18n("en", include_str!("../i18n/en.json"))
         .i18n("ru", include_str!("../i18n/ru.json"))
-        .start(move |ctx| async move { started.attach(&ctx) });
+        .attach(move |ctx| async move { attached.attach(&ctx) });
     Ok(())
 }

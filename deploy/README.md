@@ -673,7 +673,11 @@ products with their editions, the schema version of every module ledger, the tab
 columns), a `COPY` dump of every table of the schema taken in one snapshot over the kernel's own
 connection, `/etc/keel/` in full (the parent directory of the configuration file the command
 runs with, regular files only), `instance.id` and the TLS material under `/var/lib/keel`, and
-the directories every loaded module contributes through `BackupSource`. `secret.key` is
+the directories every loaded module contributes through `BackupSource`; a source reads the
+configuration of its module from the context it runs in and the command runs the attach hooks of
+the modules, never their start hooks, so the archive is written with the service running or
+stopped, and the sources of the panel product reach the agent socket without any module
+starting. `secret.key` is
 included only with `--with-secret-key`, sealed under a passphrase read from
 `KEEL_BACKUP_PASSPHRASE` or asked for on the terminal; API tokens and sessions are stored as
 hashes, so an archive without the key holds nothing that opens a session, and only `Secret`

@@ -333,6 +333,7 @@ pub struct Registrar {
     contributions: Contributions,
     provides: Services,
     requires: Vec<ServiceKey>,
+    attach: Option<StartHook>,
     start: Option<StartHook>,
     stop: Option<StopHook>,
     invoker: Option<Arc<dyn Invoker>>,
@@ -354,6 +355,7 @@ pub struct Registrations {
     pub contributions: Contributions,
     pub provides: Services,
     pub requires: Vec<ServiceKey>,
+    pub attach: Option<StartHook>,
     pub start: Option<StartHook>,
     pub stop: Option<StopHook>,
     pub invoker: Option<Arc<dyn Invoker>>,
@@ -374,6 +376,7 @@ impl fmt::Debug for Registrations {
             .field("contributions", &self.contributions)
             .field("provides", &self.provides)
             .field("requires", &self.requires)
+            .field("attach", &self.attach.is_some())
             .field("start", &self.start.is_some())
             .field("stop", &self.stop.is_some())
             .field("invoker", &self.invoker.is_some())
@@ -397,6 +400,7 @@ impl Registrar {
             contributions: Contributions::default(),
             provides: Services::new(),
             requires: Vec::new(),
+            attach: None,
             start: None,
             stop: None,
             invoker: None,
@@ -615,6 +619,22 @@ impl Registrar {
         self
     }
 
+    pub fn attach<F, Fut>(&mut self, hook: F) -> &mut Self
+    where
+        F: FnOnce(Context) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if self.attach.is_some() {
+            self.errors.push(RegistrationError::Duplicate {
+                module: self.module.clone(),
+                kind: "attach hook",
+                name: "attach".to_owned(),
+            });
+        }
+        self.attach = Some(Box::new(move |ctx| Box::pin(hook(ctx))));
+        self
+    }
+
     pub fn start<F, Fut>(&mut self, hook: F) -> &mut Self
     where
         F: FnOnce(Context) -> Fut + Send + 'static,
@@ -715,6 +735,7 @@ impl Registrar {
             contributions: self.contributions,
             provides: self.provides,
             requires: self.requires,
+            attach: self.attach,
             start: self.start,
             stop: self.stop,
             invoker: self.invoker,
@@ -1015,6 +1036,8 @@ mod tests {
             .i18n("de", "{ not json")
             .provide::<dyn Clock>(Arc::new(Fixed))
             .provide::<dyn Clock>(Arc::new(Fixed))
+            .attach(|_| async { Ok(()) })
+            .attach(|_| async { Ok(()) })
             .start(|_| async { Ok(()) })
             .start(|_| async { Ok(()) })
             .stop(|| async { Ok(()) })
@@ -1042,6 +1065,7 @@ mod tests {
                     ServiceKey::of::<dyn Clock>().name()
                 )
                 .as_str(),
+                "module dns: attach hook \"attach\" is registered twice",
                 "module dns: start hook \"start\" is registered twice",
                 "module dns: stop hook \"stop\" is registered twice",
                 "module dns: invoker \"invoker\" is registered twice",

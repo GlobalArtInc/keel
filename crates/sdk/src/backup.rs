@@ -1,3 +1,4 @@
+use std::any::type_name;
 use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -6,7 +7,8 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use crate::db::Db;
-use crate::error::Result;
+use crate::error::{KeelError, Result};
+use crate::services::Services;
 
 pub type SourceHook = Arc<dyn Fn(BackupDir) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
@@ -78,16 +80,24 @@ pub struct BackupDir {
     path: PathBuf,
     db: Db,
     data_dir: Arc<Path>,
+    services: Arc<Services>,
 }
 
 impl BackupDir {
     #[doc(hidden)]
-    pub fn new(source: &str, path: PathBuf, db: Db, data_dir: &Path) -> Self {
+    pub fn new(
+        source: &str,
+        path: PathBuf,
+        db: Db,
+        data_dir: &Path,
+        services: Arc<Services>,
+    ) -> Self {
         Self {
             source: Arc::from(source),
             path,
             db,
             data_dir: Arc::from(data_dir),
+            services,
         }
     }
 
@@ -105,6 +115,12 @@ impl BackupDir {
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    pub fn config<T: Send + Sync + 'static>(&self) -> Result<Arc<T>> {
+        self.services.get::<T>().ok_or_else(|| {
+            KeelError::internal("keel.error.config_missing").param("section", type_name::<T>())
+        })
     }
 }
 
@@ -125,6 +141,7 @@ mod tests {
     use sea_orm::DatabaseConnection;
 
     use super::*;
+    use crate::services::ServiceKey;
 
     #[tokio::test]
     async fn a_source_names_its_module_and_runs_its_hooks_with_the_directory() {
@@ -166,6 +183,7 @@ mod tests {
             PathBuf::from("/tmp/staging/sources/dns.zonefiles"),
             Db::from_connection(DatabaseConnection::Disconnected),
             Path::new("/var/lib/keel"),
+            Arc::new(Services::new()),
         );
         assert!(!dir.db().is_transaction());
         assert!(format!("{dir:?}").starts_with("BackupDir { source: \"dns.zonefiles\""));
@@ -184,5 +202,27 @@ mod tests {
             BackupSource::new("bare", |_| async { Ok(()) }).module(),
             "bare"
         );
+    }
+
+    #[test]
+    fn a_directory_hands_out_the_sections_it_was_given_and_refuses_the_rest() {
+        struct Section(u8);
+        let make = |services: Services| {
+            BackupDir::new(
+                "dns.zonefiles",
+                PathBuf::from("/tmp/staging"),
+                Db::from_connection(DatabaseConnection::Disconnected),
+                Path::new("/var/lib/keel"),
+                Arc::new(services),
+            )
+        };
+        let error = make(Services::new())
+            .config::<Section>()
+            .err()
+            .expect("no section yet");
+        assert_eq!(error.key(), "keel.error.config_missing");
+        let mut services = Services::new();
+        services.provide_erased(ServiceKey::of::<Section>(), Box::new(Arc::new(Section(7))));
+        assert_eq!(make(services).config::<Section>().unwrap().0, 7);
     }
 }

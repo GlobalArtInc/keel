@@ -155,7 +155,7 @@ enabled bundle names `host` in its `modules`, and product modules that need the 
 - the `host` module, `keel_host::MODULE` — an ordinary `ModuleDef` with id `host`. It registers
   `dyn HostExecutor` as a service and reads its own section of `config.yaml` through
   `ConfigSection`: `socket` (absolute, default `/run/keel/agent.sock`) and `timeout_seconds`
-  (1 to 3600, default 60). The start hook only records them; the socket is opened by the first
+  (1 to 3600, default 60). The attach hook only records them, so `keel backup` reaches the agent without starting any module; the socket is opened by the first
   operation, so a kernel with the module loaded connects only once a module calls. The set of `host.*`
   functions and streams it exposes for host-level screens (services, files, logs) is also not
   fixed by this revision. File manager and terminal screens are product views built on raw

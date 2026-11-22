@@ -55,16 +55,16 @@ impl Frozen {
         };
         for lifecycle in self.lifecycle {
             let tasks = Arc::new(TaskSet::new(&lifecycle.module));
-            if let Some(start) = lifecycle.start {
-                let ctx = Context::new(
-                    &lifecycle.module,
-                    kernel.registry.contributions().clone(),
-                    kernel.registry.services().clone(),
-                    tasks.clone(),
-                    Db::from_connection(db.clone()),
-                    data_dir.clone(),
-                );
-                if let Err(source) = start(ctx).await {
+            let ctx = Context::new(
+                &lifecycle.module,
+                kernel.registry.contributions().clone(),
+                kernel.registry.services().clone(),
+                tasks.clone(),
+                Db::from_connection(db.clone()),
+                data_dir.clone(),
+            );
+            for hook in [lifecycle.attach, lifecycle.start].into_iter().flatten() {
+                if let Err(source) = hook(ctx.clone()).await {
                     tasks.shutdown().await;
                     let failed = StartError {
                         module: lifecycle.module,
@@ -86,6 +86,46 @@ impl Frozen {
         }
         tracing::info!(modules = ?kernel.graph.ids(), "modules started");
         Ok(kernel)
+    }
+}
+
+impl Frozen {
+    pub async fn attach(&mut self, db: DatabaseConnection) -> Result<(), StartError> {
+        let data_dir = self.graph.data_dir().to_path_buf();
+        for lifecycle in &mut self.lifecycle {
+            let Some(attach) = lifecycle.attach.take() else {
+                continue;
+            };
+            let ctx = Context::new(
+                &lifecycle.module,
+                self.registry.contributions().clone(),
+                self.registry.services().clone(),
+                Arc::new(Detached {
+                    module: lifecycle.module.clone(),
+                }),
+                Db::from_connection(db.clone()),
+                data_dir.clone(),
+            );
+            attach(ctx).await.map_err(|source| StartError {
+                module: lifecycle.module.clone(),
+                source,
+            })?;
+        }
+        Ok(())
+    }
+}
+
+struct Detached {
+    module: String,
+}
+
+impl Spawner for Detached {
+    fn spawn(&self, task: BoxFuture<'static, ()>) {
+        drop(task);
+        tracing::error!(
+            module = self.module,
+            "a task was spawned by an attach hook run without the module starting; it is dropped"
+        );
     }
 }
 
@@ -314,6 +354,60 @@ mod tests {
                 "order_a:task_dropped",
             ]
         );
+    }
+
+    fn attaching(r: &mut Registrar) -> Result<()> {
+        let id = r.module().to_owned();
+        let attached = id.clone();
+        r.attach(move |ctx| async move {
+            note(format!("{attached}:attach"));
+            ctx.spawn(async {});
+            Ok(())
+        })
+        .start(move |_| async move {
+            note(format!("{id}:start"));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    module!(ATTACH_A, "attach_a", [], attaching);
+    module!(ATTACH_B, "attach_b", ["attach_a"], attaching);
+
+    #[tokio::test]
+    async fn attach_hooks_run_in_graph_order_without_starting_and_only_once_before_a_later_start() {
+        let mut frozen = Composition::new()
+            .module(&ATTACH_B)
+            .module(&ATTACH_A)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect("the registries freeze");
+        frozen
+            .attach(DatabaseConnection::Disconnected)
+            .await
+            .unwrap();
+        assert_eq!(events_of("attach_"), ["attach_a:attach", "attach_b:attach"]);
+        frozen
+            .attach(DatabaseConnection::Disconnected)
+            .await
+            .unwrap();
+        let kernel = frozen
+            .start(DatabaseConnection::Disconnected)
+            .await
+            .unwrap();
+        assert_eq!(
+            events_of("attach_"),
+            [
+                "attach_a:attach",
+                "attach_b:attach",
+                "attach_a:start",
+                "attach_b:start"
+            ]
+        );
+        kernel.stop().await.unwrap();
     }
 
     fn failing_start(r: &mut Registrar) -> Result<()> {

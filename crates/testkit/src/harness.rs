@@ -381,6 +381,10 @@ impl Harness {
         self.data_dir.path()
     }
 
+    pub fn agent_socket(&self) -> Option<PathBuf> {
+        self.agent.as_ref().map(InProcessAgent::socket)
+    }
+
     pub fn live_events(&self) -> broadcast::Receiver<Frame> {
         match self.registry().services().get::<LiveBus>() {
             Some(bus) => bus.subscribe(),

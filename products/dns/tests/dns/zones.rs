@@ -118,6 +118,7 @@ async fn a_zone_created_by_a_user_renders_its_file_and_include_after_commit_and_
         backup.path().to_owned(),
         Db::from_connection(harness.db().clone()),
         harness.data_dir(),
+        harness.registry().services().clone(),
     ))
     .await
     .expect("the zone files are copied");

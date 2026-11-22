@@ -38,7 +38,7 @@ impl Local {
         self.target.get().ok_or_else(|| {
             failure(
                 ERROR_UNREACHABLE,
-                "the host module has not started, so no agent socket is known",
+                "the host module has not been attached, so no agent socket is known",
             )
         })
     }

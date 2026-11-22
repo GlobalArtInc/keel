@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use keel::prelude::*;
 use keel::sdk::chrono::{DateTime, Duration, Utc};
 use keel::sdk::serde_json;
+use keel::{ExitCode, Runtime};
 use keel_system::cron::api::{Outcome, Scheduler};
 use keel_testkit::{Harness, Reply, Who, tokio};
 use tar::{Archive, EntryType};
@@ -416,5 +417,102 @@ async fn a_due_schedule_is_backed_up_by_the_cron_job_and_moves_to_its_next_run()
     })
     .await;
     assert_eq!(rows(&harness, &next).await, ["2026-09-27T03:00:00 7"]);
+    harness.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_panel_backup_taken_without_the_service_started_carries_the_database_dumps_and_the_maildirs()
+ {
+    let site = Site::new();
+    let harness = mail(&site, composed(&site))
+        .section(
+            "hosting_database",
+            json!({ "dumps_dir": site.path("dumps").display().to_string() }),
+        )
+        .boot()
+        .await;
+    let user = create(&harness, Who::A1, "shop").await;
+    state_becomes(&harness, &user, "active").await;
+    let database = created(
+        &harness,
+        "hosting.database.create",
+        json!({ "name": DATABASE }),
+    )
+    .await;
+    state_is(&harness, "hosting_database", &database, "active").await;
+    let domain = domain_of_a1(&harness, DOMAIN).await;
+    state_is(&harness, "hosting_mail_domain", &domain, "active").await;
+    let mailbox = created(
+        &harness,
+        "hosting.mail.mailbox.create",
+        json!({ "domain": domain, "local": "info", "password": PASSWORD }),
+    )
+    .await;
+    state_is(&harness, "hosting_mailbox", &mailbox, "active").await;
+
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut config = harness.database().config();
+    config.listen = "127.0.0.1:0".parse().expect("an address");
+    config.socket = dir.path().join("run").join("core.sock");
+    config.data_dir = dir.path().join("lib");
+    let etc = dir.path().join("etc");
+    fs::create_dir_all(&etc).expect("the config directory");
+    let config_path = etc.join("config.yaml");
+    let text = json!({
+        "listen": config.listen.to_string(),
+        "socket": config.socket.display().to_string(),
+        "data_dir": config.data_dir.display().to_string(),
+        "database": config.database.expose(),
+        "log": { "level": "warn", "format": "text" },
+        "host": { "socket": harness.agent_socket().expect("the agent socket").display().to_string() },
+        "hosting_database": { "dumps_dir": site.path("dumps").display().to_string() },
+        "hosting_mail": {
+            "maildirs_dir": site.path("maildirs").display().to_string(),
+            "dumps_dir": site.path("dumps").display().to_string(),
+        },
+    });
+    fs::write(&config_path, text.to_string()).expect("the config file is written");
+    config.file = config_path.clone();
+
+    let runtime = Runtime::new()
+        .module(&keel_system::tasks::MODULE)
+        .module(&keel_system::cron::MODULE)
+        .module(&keel_system::notify::MODULE)
+        .module(&keel_system::settings::MODULE)
+        .module(&keel_system::stats::MODULE)
+        .product(&keel_panel::MANIFEST);
+    runtime
+        .enable_product(&config, "panel")
+        .await
+        .expect("the product is enabled");
+    let archive = dir.path().join("panel.tar.zst");
+    let args = [
+        "keel".to_owned(),
+        "--config".to_owned(),
+        config_path.display().to_string(),
+        "backup".to_owned(),
+        "--out".to_owned(),
+        archive.display().to_string(),
+    ];
+    let code = tokio::task::spawn_blocking(move || runtime.run_from(args))
+        .await
+        .expect("the command finishes");
+    assert_eq!(code, ExitCode::SUCCESS);
+    let packed = entries(&archive);
+    let content = |path: &str| {
+        packed
+            .get(path)
+            .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned())
+            .unwrap_or_else(|| panic!("{path} is not in {:?}", packed.keys()))
+    };
+    assert_eq!(
+        content(&format!("sources/hosting_database.dumps/{DATABASE}.sql")),
+        format!("-- dump of {DATABASE}\n")
+    );
+    assert_eq!(
+        content("sources/hosting_mail.maildirs/maildirs.tar"),
+        "the maildirs of the test\n"
+    );
+    drop(dir);
     harness.finish().await;
 }
