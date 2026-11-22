@@ -20,7 +20,14 @@ import { PhxSidebarComponent } from '@globalart/phoenix-ui';
 const FIXTURES = resolve(__dirname, '../../../../../contracts/fixtures');
 
 const MESSAGES = {
-  menu: { dns: 'DNS', hosting: 'Hosting', mail: 'Mail', system: 'System' },
+  menu: {
+    dns: 'DNS',
+    hosting: 'Hosting',
+    mail: 'Mail',
+    access: 'Users and access',
+    monitor: 'Monitoring',
+    system: 'System',
+  },
   product: {
     dns: { brand: 'KeelDNS', level: { reseller: 'Partner' } },
     panel: { brand: 'KeelPanel' },
@@ -36,6 +43,12 @@ const MESSAGES = {
     product: { list: { title: 'Products' } },
     doctor: { run: { title: 'Health' } },
     logs: { stream: { title: 'Log' } },
+    menu: {
+      users: 'Users',
+      logs: 'Logs',
+      settings: 'Settings',
+      install: 'Installation',
+    },
   },
 };
 
@@ -198,15 +211,25 @@ function activeFuncs(fixture: ComponentFixture<unknown>): string[] {
   );
 }
 
+const ACCESS: ShownGroup = {
+  id: 'access',
+  label: 'Users and access',
+  items: ['Users /f/keel.principal.list'],
+};
+const MONITOR: ShownGroup = {
+  id: 'monitor',
+  label: 'Monitoring',
+  items: ['Logs /f/keel.logs.stream', 'Health /f/keel.doctor.run'],
+};
 const SYSTEM: ShownGroup = {
   id: 'system',
   label: 'System',
-  items: [
-    'Accounts /f/keel.account.list',
-    'Principals /f/keel.principal.list',
-    'Products /f/keel.product.list',
-    'Health /f/keel.doctor.run',
-  ],
+  items: ['Settings /f/settings.list'],
+};
+const INSTALL: ShownGroup = {
+  id: 'system',
+  label: 'System',
+  items: ['Installation /f/keel.product.list'],
 };
 const DNS: ShownGroup = { id: 'dns', label: 'DNS', items: ['Zones /f/dns.zone.list'] };
 const HOSTING: ShownGroup = {
@@ -215,12 +238,12 @@ const HOSTING: ShownGroup = {
   items: ['Sites /f/hosting.site.list'],
 };
 const MAIL: ShownGroup = { id: 'mail', label: 'Mail', items: ['Mailboxes /f/mail.box.list'] };
-const PLATFORM: ShownSection = { product: null, label: null, groups: [SYSTEM] };
+const PLATFORM: ShownSection = { product: null, label: null, groups: [ACCESS, SYSTEM] };
 
 describe('the sidebar rule', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('one product shows its groups then system under the product brand', async () => {
+  it('one product shows its groups then the platform groups under the product brand', async () => {
     const fixture = await render(oneProduct());
     expect(sectionsOf(fixture)).toEqual([{ product: 'dns', label: null, groups: [DNS] }, PLATFORM]);
     expect(brandShown(fixture)).toEqual({ alt: 'KeelDNS', text: null });
@@ -235,8 +258,8 @@ describe('the sidebar rule', () => {
     const fixture = await render(oneProduct());
     const element: HTMLElement = fixture.nativeElement;
     const groups = [...element.querySelectorAll<HTMLElement>('phx-sidebar-group.group')];
-    expect(groups.map((group) => eyebrowOf(group))).toEqual([null, null]);
-    expect(groups.map((group) => nameOf(group))).toEqual(['DNS', 'System']);
+    expect(groups.map((group) => eyebrowOf(group))).toEqual([null, null, null]);
+    expect(groups.map((group) => nameOf(group))).toEqual(['DNS', 'Users and access', 'System']);
     const sidebar = fixture.debugElement.query(By.directive(PhxSidebarComponent))
       .componentInstance as PhxSidebarComponent;
     expect(sidebar.density()).toBe('compact');
@@ -249,13 +272,13 @@ describe('the sidebar rule', () => {
     expect(sectionsOf(fixture)).toEqual([
       { product: 'dns', label: 'KeelDNS', groups: [DNS] },
       { product: 'panel', label: 'KeelPanel', groups: [HOSTING] },
-      PLATFORM,
+      { product: null, label: null, groups: [SYSTEM, ACCESS] },
     ]);
     expect(brandShown(fixture)).toEqual({ alt: null, text: 'Keel' });
     expect(fixture.nativeElement.querySelector('phx-brand-logo img')).toBeNull();
     expect(
       fixture.nativeElement.querySelectorAll('phx-sidebar-group.group > .eyebrow'),
-    ).toHaveLength(3);
+    ).toHaveLength(twoProducts().menu.length);
     expect(levelShown(fixture)).toBe('Reseller');
   });
 
@@ -266,18 +289,13 @@ describe('the sidebar rule', () => {
     expect(sectionsOf(fixture)).toEqual([
       { product: 'dns', label: 'KeelDNS', groups: [DNS] },
       { product: 'panel', label: 'KeelPanel', groups: [MAIL, HOSTING] },
-      PLATFORM,
+      { product: null, label: null, groups: [SYSTEM, ACCESS] },
     ]);
   });
 
-  it('no product shows the platform group alone', async () => {
+  it('no product shows the platform groups alone', async () => {
     const fixture = await render(noProduct());
-    expect(sectionsOf(fixture)).toEqual([
-      {
-        ...PLATFORM,
-        groups: [{ ...SYSTEM, items: [...SYSTEM.items, 'Log /f/keel.logs.stream'] }],
-      },
-    ]);
+    expect(sectionsOf(fixture)).toEqual([{ ...PLATFORM, groups: [ACCESS, MONITOR, INSTALL] }]);
     expect(brandShown(fixture)).toEqual({ alt: null, text: 'Keel' });
     expect(levelShown(fixture)).toBe('Owner');
   });
@@ -310,15 +328,17 @@ describe('the sidebar rule', () => {
         section.label,
         section.groups.map((group) => group.label),
       ]);
-    expect(shape(noProduct())).toEqual([[null, null, ['menu.system']]]);
+    expect(shape(noProduct())).toEqual([
+      [null, null, ['menu.access', 'menu.monitor', 'menu.system']],
+    ]);
     expect(shape(oneProduct())).toEqual([
       ['dns', null, ['menu.dns']],
-      [null, null, ['menu.system']],
+      [null, null, ['menu.access', 'menu.system']],
     ]);
     expect(shape(withSecondGroup())).toEqual([
       ['dns', 'product.dns.brand', ['menu.dns']],
       ['panel', 'product.panel.brand', ['menu.hosting', 'menu.mail']],
-      [null, null, ['menu.system']],
+      [null, null, ['menu.access', 'menu.system']],
     ]);
     const empty = twoProducts();
     empty.menu = [];

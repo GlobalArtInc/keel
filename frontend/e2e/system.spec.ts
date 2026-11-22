@@ -1,27 +1,13 @@
 import { E2E_LOGINS, expect, keelTest } from '@globalart/keel/testing/playwright';
 import type { Locator, Page } from '@playwright/test';
-
-interface SystemScreen {
-  label: string;
-  func: string;
-  tree?: boolean;
-}
-
-const SCREENS: readonly SystemScreen[] = [
-  { label: 'Accounts', func: 'keel.account.list', tree: true },
-  { label: 'Principals', func: 'keel.principal.list' },
-  { label: 'Products', func: 'keel.product.list' },
-  { label: 'Settings', func: 'settings.list' },
-  { label: 'White-label by host name', func: 'settings.brand.list' },
-  { label: 'Tasks', func: 'task.list' },
-  { label: 'Scheduled jobs', func: 'cron.job.list' },
-  { label: 'Webhooks', func: 'webhook.subscription.list' },
-  { label: 'Audit trail', func: 'audit.list' },
-  { label: 'Sessions', func: 'auth.session.list' },
-  { label: 'API tokens', func: 'auth.token.list' },
-  { label: 'Permission grants', func: 'auth.grant.list' },
-  { label: 'Health', func: 'keel.doctor.run' },
-];
+import {
+  SYSTEM_SCREENS,
+  openSystemScreen,
+  screenView,
+  sectionTabs,
+  sidebarLink,
+  systemScreen,
+} from './system-menu';
 
 const MIN_LENGTH_KEY = 'auth.password.min_length';
 const BRAND_HOST = 'panel.example';
@@ -33,6 +19,7 @@ const MIN_LENGTH = '10';
 const TOKEN_NAME = 'browser suite';
 const TOKEN_PREFIX = 'kat_';
 const PRINCIPALS = 3;
+const MAX_SIDEBAR_ITEMS = 14;
 
 function field(scope: Locator | Page, label: string): Locator {
   return scope.getByRole('group', { name: label, exact: true });
@@ -40,6 +27,14 @@ function field(scope: Locator | Page, label: string): Locator {
 
 function rows(page: Page): Locator {
   return page.locator('phx-list-table .body [role="row"]');
+}
+
+function sidebarItems(page: Page): Locator {
+  return page.locator('phx-sidebar phx-sidebar-item');
+}
+
+function workspaceTabs(page: Page): Locator {
+  return page.locator('phx-tab-bar [role="tab"]');
 }
 
 async function saved(page: Page, func: string, save: () => Promise<void>): Promise<void> {
@@ -60,20 +55,52 @@ async function search(page: Page, text: string): Promise<void> {
 keelTest.describe('system', () => {
   keelTest('root opens every system screen from the menu', async ({ page, keel }) => {
     await keel.asAdmin();
-    for (const screen of SCREENS) {
-      await page.locator('phx-sidebar').getByRole('link', { name: screen.label }).click();
-      await expect(page).toHaveURL(new RegExp(`/f/${screen.func.replaceAll('.', '\\.')}$`));
-      if (screen.tree === true) {
-        const tree = page.locator(`keel-tree[data-tree="${screen.func}"]`);
-        await expect(tree.getByRole('heading', { level: 1 })).toHaveText(screen.label);
-        await expect(tree.getByRole('tree', { name: screen.label })).toBeVisible();
-        continue;
+    for (const screen of SYSTEM_SCREENS) {
+      await openSystemScreen(page, screen);
+      if (screen.tab !== undefined) {
+        await expect(
+          sectionTabs(page).getByRole('tab', { name: screen.tab, exact: true }),
+        ).toHaveAttribute('aria-selected', 'true');
       }
-      const list = page.locator(`keel-list[data-list="${screen.func}"]`);
-      await expect(list.getByRole('heading', { level: 1 })).toHaveText(screen.label);
-      await expect(list.getByText(/^Total: \d+$/)).toBeVisible();
+      const view = screenView(page, screen);
+      await expect(view.getByRole('heading', { level: 1 })).toHaveText(screen.title);
+      if (screen.view === 'tree') {
+        await expect(view.getByRole('tree', { name: screen.title })).toBeVisible();
+      }
+      if (screen.view === 'list') {
+        await expect(view.getByText(/^Total: \d+$/)).toBeVisible();
+      }
     }
   });
+
+  keelTest(
+    'the sections keep the sidebar within fourteen items, the users section shows its strip of tabs and a tab opens in the same workspace tab',
+    async ({ page, keel }) => {
+      await keel.asAdmin();
+      await expect(sidebarItems(page).first()).toBeVisible();
+      expect(await sidebarItems(page).count()).toBeLessThanOrEqual(MAX_SIDEBAR_ITEMS);
+
+      const users = systemScreen('keel.principal.list');
+      await openSystemScreen(page, users);
+      await expect(sectionTabs(page)).toBeVisible();
+      const opened = await workspaceTabs(page).count();
+      const current = page.locator('phx-tab-bar [role="tab"].tab_active');
+      const currentId = await current.getAttribute('id');
+      expect(currentId).not.toBeNull();
+
+      await sectionTabs(page).getByRole('tab', { name: 'Sessions', exact: true }).click();
+      await expect(page).toHaveURL(/\/f\/auth\.session\.list$/);
+      await expect(workspaceTabs(page)).toHaveCount(opened);
+      await expect(current).toHaveAttribute('id', currentId ?? '');
+
+      await page.goto('/f/auth.session.list');
+      await expect(page.locator('phx-sidebar [aria-current="page"]')).toHaveCount(1);
+      await expect(sidebarLink(page, users)).toHaveAttribute('aria-current', 'page');
+      await expect(
+        sectionTabs(page).getByRole('tab', { name: 'Sessions', exact: true }),
+      ).toHaveAttribute('aria-selected', 'true');
+    },
+  );
 
   keelTest('root sets auth.password.min_length through the value form', async ({ page, keel }) => {
     await keel.asAdmin();
@@ -103,11 +130,7 @@ keelTest.describe('system', () => {
     'the white-label screen says white-label by host name, hue and chroma say from the product when empty, an uploaded svg logo shows after a reload and a scripted one is refused on the field',
     async ({ page, keel }) => {
       await keel.asAdmin();
-      await page
-        .locator('phx-sidebar')
-        .getByRole('link', { name: 'White-label by host name' })
-        .click();
-      await expect(page).toHaveURL(new RegExp(`${BRAND_LIST.replaceAll('.', '\\.')}$`));
+      await openSystemScreen(page, systemScreen('settings.brand.list'));
       const list = page.locator('keel-list[data-list="settings.brand.list"]');
       await expect(list.getByRole('heading', { level: 1 })).toHaveText('White-label by host name');
       await list.locator('[data-action="create"]').click();
@@ -216,7 +239,7 @@ keelTest.describe('system', () => {
 
     const banner = page.locator('[data-acting-as]');
     await expect(banner).toContainText(`You are acting as ${E2E_LOGINS.user}`);
-    await page.locator('phx-sidebar').getByRole('link', { name: 'Principals' }).click();
+    await openSystemScreen(page, systemScreen('keel.principal.list'));
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page).first().locator('[data-column="login"]')).toHaveText(E2E_LOGINS.user);
 

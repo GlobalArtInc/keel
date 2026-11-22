@@ -1,12 +1,12 @@
 import { expect, keelTest } from '@globalart/keel/testing/playwright';
+import { openSystemScreen, systemScreen } from './system-menu';
 
 const STREAM = 'keel.logs.stream';
 
 keelTest.describe('stream', () => {
   keelTest('root opens the kernel log from the menu and sees it live', async ({ page, keel }) => {
     await keel.asAdmin();
-    await page.locator('phx-sidebar').getByRole('link', { name: 'Log', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/f/${STREAM.replaceAll('.', '\\.')}$`));
+    await openSystemScreen(page, systemScreen(STREAM));
 
     const stream = page.locator(`keel-stream[data-stream="${STREAM}"]`);
     await expect(stream).toHaveAttribute('data-phase', 'live');

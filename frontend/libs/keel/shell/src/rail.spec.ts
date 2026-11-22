@@ -339,7 +339,7 @@ describe('the rail and the user menu', () => {
     expect(
       element.querySelector('phx-rail-item[data-rail="user"] button')?.getAttribute('aria-label'),
     ).toBe('owner');
-    expect(TestBed.inject(Router).url).toBe('/f/keel.account.list');
+    expect(TestBed.inject(Router).url).toBe('/f/keel.principal.list');
   });
 
   it('"Act as" is absent when auth.su is not in the index and searches keel.principal.list when it is', async () => {
@@ -417,6 +417,6 @@ describe('the rail and the user menu', () => {
     expect(element.querySelector('[data-acting-as] .text')?.textContent?.trim()).toBe(
       'You are acting as alice',
     );
-    expect(TestBed.inject(Router).url).toBe('/f/keel.account.list');
+    expect(TestBed.inject(Router).url).toBe('/f/keel.principal.list');
   });
 });

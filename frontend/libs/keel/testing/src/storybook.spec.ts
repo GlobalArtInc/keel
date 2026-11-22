@@ -82,12 +82,9 @@ describe('the Storybook decorator', () => {
     const catalogue = await firstValueFrom(client.catalogue('en'));
     expect(catalogue?.body.lang).toBe('en');
     const messages = catalogue?.body.messages ?? {};
-    expect(messages['menu']).toEqual({
-      system: 'System',
-      demo: 'Demo',
-      dns: 'DNS',
-      panel: 'Hosting',
-    });
+    const groups = keelDump('user').boot.menu.map((group) => group.id);
+    expect(Object.keys(messages['menu'] ?? {})).toEqual(expect.arrayContaining(groups));
+    expect(messages['menu']).toMatchObject({ dns: 'DNS' });
     expect(messages['product.dns.brand']).toBe('KeelDNS');
     expect((await firstValueFrom(client.call('note.list'))).ok).toBe(true);
     expect(() => keelStoryClient({ level: 'admin', boot: undefined }).boot()).not.toThrow();

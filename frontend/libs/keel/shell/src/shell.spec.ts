@@ -23,13 +23,14 @@ const BOOT: Boot = {
 };
 
 const MESSAGES = {
-  menu: { system: 'System' },
+  menu: { access: 'Users and access', monitor: 'Monitoring', system: 'System' },
   keel: {
     account: { list: { title: 'Accounts' } },
     principal: { list: { title: 'Principals' } },
     product: { list: { title: 'Products' } },
     doctor: { run: { title: 'Health' } },
     logs: { stream: { title: 'Log' } },
+    menu: { users: 'Users', logs: 'Logs', install: 'Installation' },
     shell: { boot_failed: 'The installation did not answer; reload the page' },
   },
   phx: { retry: 'Try again', loading: 'Loading' },
@@ -102,7 +103,7 @@ describe('KeelShellComponent', () => {
     await settle(fixture);
     expect(loads).toHaveBeenCalledTimes(2);
     expect(element.getAttribute('data-startup')).toBe('ready');
-    expect(router.url).toBe('/f/keel.account.list');
+    expect(router.url).toBe('/f/keel.principal.list');
     expect(TestBed.inject(KeelStartup).failure()).toBeNull();
     expect(QuietEventSource.opened).toHaveLength(1);
     expect(QuietEventSource.last()?.url).toBe('/api/v1/events');
@@ -116,21 +117,19 @@ describe('KeelShellComponent', () => {
 
     const items = [...element.querySelectorAll('keel-layout phx-sidebar-item')];
     expect(items.map((item) => item.querySelector('.label')?.textContent)).toEqual([
-      'Accounts',
-      'Principals',
-      'Products',
+      'Users',
+      'Logs',
       'Health',
-      'Log',
+      'Installation',
     ]);
     expect(items.map((item) => item.querySelector('a')?.getAttribute('href'))).toEqual([
-      '/f/keel.account.list',
       '/f/keel.principal.list',
-      '/f/keel.product.list',
-      '/f/keel.doctor.run',
       '/f/keel.logs.stream',
+      '/f/keel.doctor.run',
+      '/f/keel.product.list',
     ]);
     expect(items.map((item) => item.querySelector('a')?.classList.contains('item_active'))).toEqual(
-      [true, false, false, false, false],
+      [true, false, false, false],
     );
     expect(element.querySelector('phx-sidebar nav.menu')?.getAttribute('aria-label')).toBe(
       'System',
@@ -141,14 +140,14 @@ describe('KeelShellComponent', () => {
     link?.dispatchEvent(click);
     expect(click.defaultPrevented).toBe(true);
     await settle(fixture);
-    expect(router.url).toBe('/f/keel.principal.list');
+    expect(router.url).toBe('/f/keel.logs.stream');
     expect(items[1].querySelector('a')?.classList.contains('item_active')).toBe(true);
 
     const withKey = new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true });
     items[2].dispatchEvent(withKey);
     expect(withKey.defaultPrevented).toBe(false);
     await settle(fixture);
-    expect(router.url).toBe('/f/keel.principal.list');
+    expect(router.url).toBe('/f/keel.logs.stream');
     expect(plainClick(withKey)).toBe(false);
     expect(plainClick(new MouseEvent('click', { button: 1 }))).toBe(false);
     expect(plainClick(new MouseEvent('click', { button: 0 }))).toBe(true);

@@ -36,7 +36,7 @@ describe('KeelBoot', () => {
     expect(boot.principal()?.login).toBe('res1');
     expect(boot.products().map((product) => product.id)).toEqual(['dns', 'panel']);
     expect(boot.brand()?.name).toBe('keel.brand');
-    expect(boot.menu().map((group) => group.id)).toEqual(['dns', 'hosting', 'system']);
+    expect(boot.menu().map((group) => group.id)).toEqual(['dns', 'hosting', 'access', 'system']);
     expect(boot.views()).toEqual([]);
     expect(boot.features()).toEqual([]);
     expect(boot.meta()).toBe(BOOT.meta);

@@ -133,14 +133,20 @@ describe('contracts/fixtures', () => {
     expectValid('Boot', load('boot.json'), 'boot.json');
   });
 
-  it('boot-none.json validates against Boot with no product, no view and the system group alone', () => {
+  it('boot-none.json validates against Boot with no product, no view and the platform groups alone', () => {
     const boot = load('boot-none.json') as Boot;
     expectValid('Boot', boot, 'boot-none.json');
     expect(boot.products).toEqual([]);
     expect(boot.views).toEqual([]);
     expect(boot.brand.name).toBe('keel.brand');
-    expect(boot.menu.map((group) => [group.id, group.product])).toEqual([['system', null]]);
-    expect(boot.menu[0].items.every((item) => item.kind !== undefined)).toBe(true);
+    expect(boot.menu.map((group) => [group.id, group.product])).toEqual([
+      ['access', null],
+      ['monitor', null],
+      ['system', null],
+    ]);
+    expect(boot.menu.flatMap((group) => group.items).every((item) => item.kind !== undefined)).toBe(
+      true,
+    );
   });
 
   it('a boot with a view and its menu item without a kind validates against Boot', () => {
