@@ -1130,7 +1130,7 @@ files_proof() {
   check "the upload carries the content" test "$(cat "$HOME_DIR/docs/index.html")" = "$FILES_CONTENT"
   check "no staged file is left in $TRANSFER" test -z "$(ls -A "$TRANSFER")"
   check "hosting.file.rename moves it to docs/main.html" file_task hosting.file.rename "user=$id" from=docs/index.html to=docs/main.html
-  check "hosting.file.chmod sets 600" file_task hosting.file.chmod "user=$id" path=docs/main.html mode=600
+  check "hosting.file.chmod sets 600" file_task hosting.file.chmod "user=$id" path=docs/main.html 'mode="600"'
   check "docs/main.html has mode 600 and still belongs to $USER_NAME" eval 'mode_is "$HOME_DIR/docs/main.html" 600 && owned_by_user "$HOME_DIR/docs/main.html"'
   check "hosting.file.list shows main.html in docs" listed "$id" docs main.html
   check "hosting.file.download answers the content over HTTPS to a kat_ token" downloaded "$id" "$account"
@@ -1141,7 +1141,7 @@ files_proof() {
   check "a link towards /etc is refused as leaving the home" refused_outside "$id" escape
   check "a parent path is refused as leaving the home" refused_outside "$id" ..
   install -m 0600 -o root -g root /dev/null "$HOME_DIR/docs/root-only"
-  check "a mode change of a file root owns fails, the worker being $USER_NAME" file_task_fails hosting.file.chmod "user=$id" path=docs/root-only mode=644
+  check "a mode change of a file root owns fails, the worker being $USER_NAME" file_task_fails hosting.file.chmod "user=$id" path=docs/root-only 'mode="644"'
   check "the file of root keeps mode 600" mode_is "$HOME_DIR/docs/root-only" 600
   check "hosting.file.delete removes docs" file_task hosting.file.delete "user=$id" path=docs
   check "docs is gone" test ! -e "$HOME_DIR/docs"
