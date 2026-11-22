@@ -673,9 +673,9 @@ with local archives only, so remote targets wait for a later milestone. The per-
 `panel` are archives of their own in the agent's root `backups`, taken and restored by
 `hosting-backup` as tasks of that module ([06-host.md](06-host.md)); the installation backup
 carries the module's two tables like every other table and none of the site archives, and its
-sources `hosting_database.dumps` and `hosting_mail.maildirs` answer `unavailable` in the CLI
-backup, which never starts the modules, so `backup.create` in the running service is the one that
-carries them. A site backup is taken by `hosting.backup.create` and by the cron job
+sources `hosting_database.dumps` and `hosting_mail.maildirs` read their configuration from
+`BackupDir` and reach the host agent through the attach hook, so `keel backup` carries them
+without starting any module. A site backup is taken by `hosting.backup.create` and by the cron job
 `hosting.backup.scheduled` as read-mode tasks, a restore by the write-mode task
 `hosting.backup.restore`: a write-mode task commits or rolls back with its outcome, which would
 hide the pending row while the host packs, erase the error row of a failed run and leave the

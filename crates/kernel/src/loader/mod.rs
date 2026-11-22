@@ -17,7 +17,7 @@ pub use i18n::REQUIRED_LANGUAGE;
 #[cfg(test)]
 pub(crate) use i18n::leaves;
 pub use init::{InitError, Initialised};
-pub use lifecycle::{Kernel, StartError, StopError};
+pub use lifecycle::{AttachError, Kernel, StartError, StopError};
 pub use migrate::{ACTIVE, MigrateError, Migrated, ORPHANED};
 
 use keel_sdk::Db;
@@ -39,6 +39,8 @@ pub enum BootError {
     Freeze(#[from] FreezeError),
     #[error(transparent)]
     Start(#[from] StartError),
+    #[error(transparent)]
+    Attach(#[from] AttachError),
 }
 
 impl Kernel {

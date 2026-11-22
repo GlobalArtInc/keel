@@ -135,14 +135,14 @@ Between process start and the first served request the kernel runs these steps, 
    across the loaded set. Menu groups are ordered by product in composition order, then by
    `order` within a bundle, with the platform group last. Every problem is collected and reported
    in one error, which fails the boot when it comes from a compiled module.
-7. `attach(ctx)` and `start(ctx)`: in graph order each module's attach hook, which only records
-   what its module needs later (its configuration section, the services it requires) and spawns
-   nothing, runs before its start hook; `keel backup` runs the attach hooks of the loaded modules
-   and nothing else, so a backup source finds that state with the service stopped. The start hooks
-   registered in `init` run in graph order; background work is
-   spawned through `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's
-   stop hook runs first, then the tasks it spawned are cancelled and awaited. A start hook that
-   fails stops the modules already started and fails the boot.
+7. `attach(ctx)` and `start(ctx)`: in graph order each module's attach hook runs before its start
+   hook. An attach hook only records what its module needs later (its configuration section, the
+   services it requires) and spawns nothing; `keel backup` runs the attach hooks of the loaded
+   modules and nothing else, so a backup source finds that state with the service stopped. The
+   start hooks registered in `init` run in graph order; background work is spawned through
+   `ctx.spawn`, then transports open. `stop` runs in reverse order: a module's stop hook runs
+   first, then the tasks it spawned are cancelled and awaited. An attach or start hook that fails
+   stops the modules already started and fails the boot.
 
 There is deliberately no dynamic loading after boot: registries are immutable and every check
 runs at startup, so a typo in a condition or a missing translation cannot reach a deployed
@@ -933,10 +933,12 @@ function attribute ([06-host.md](06-host.md)).
 - A backup is `tar.zst` with a manifest, `BackupSource` contributions from modules and
   `--with-secret-key` under a passphrase. `BackupSource::new(name, write).restore(read)`: both
   hooks receive the source's directory in the archive, a pool `Db`, the data directory and the
-  resolved configuration sections (`BackupDir::config::<T>()`); a source may rely on the state of
-  an attach hook but never on the one of a start hook, because `keel backup` runs the attach hooks
-  and the sources without starting any module; the
-  freeze refuses a name without its module's prefix and one claimed by two modules. The kernel
+  resolved configuration sections (`BackupDir::config::<T>()`). The `write` hook may also rely on
+  the state of an attach hook but never on the one of a start hook, because `keel backup` runs
+  the attach hooks and the sources without starting any module. `keel restore` runs no attach
+  hook, so the `restore` hook gets the configuration sections only, and no module registers a
+  restore hook with host needs today. The freeze refuses a name without its module's prefix and
+  one claimed by two modules. The kernel
   provides `dyn Backups` as a platform service, so the module reaches the archive writer without
   depending on the kernel. The archive has one target, the local directory
   `<data_dir>/backups/`. The S3 target and the crate `keel-storage` were moved to M5 with

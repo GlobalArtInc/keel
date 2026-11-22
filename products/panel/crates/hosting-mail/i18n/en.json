@@ -38,7 +38,7 @@
       },
       "error": {
         "backup": "The mail archive {file} could not be copied into the backup",
-        "detached": "The mail module has not started yet",
+        "detached": "The mail module is not attached to its host or configuration",
         "domain": "{name} is not a domain name",
         "forward": "{name} is not an address mail can be forwarded to",
         "hashing": "The password could not be hashed",

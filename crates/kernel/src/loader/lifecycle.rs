@@ -38,6 +38,14 @@ pub struct StartError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[error("module {module}: attach failed: {source}")]
+pub struct AttachError {
+    pub module: String,
+    #[source]
+    pub source: KeelError,
+}
+
+#[derive(Debug, thiserror::Error)]
 pub struct StopError {
     failed: Vec<(String, KeelError)>,
 }
@@ -90,7 +98,7 @@ impl Frozen {
 }
 
 impl Frozen {
-    pub async fn attach(&mut self, db: DatabaseConnection) -> Result<(), StartError> {
+    pub async fn attach(&mut self, db: DatabaseConnection) -> Result<(), AttachError> {
         let data_dir = self.graph.data_dir().to_path_buf();
         for lifecycle in &mut self.lifecycle {
             let Some(attach) = lifecycle.attach.take() else {
@@ -106,7 +114,7 @@ impl Frozen {
                 Db::from_connection(db.clone()),
                 data_dir.clone(),
             );
-            attach(ctx).await.map_err(|source| StartError {
+            attach(ctx).await.map_err(|source| AttachError {
                 module: lifecycle.module.clone(),
                 source,
             })?;
@@ -359,9 +367,10 @@ mod tests {
     fn attaching(r: &mut Registrar) -> Result<()> {
         let id = r.module().to_owned();
         let attached = id.clone();
+        let spawned = id.clone();
         r.attach(move |ctx| async move {
             note(format!("{attached}:attach"));
-            ctx.spawn(async {});
+            ctx.spawn(async move { note(format!("{spawned}:task_ran")) });
             Ok(())
         })
         .start(move |_| async move {
@@ -389,6 +398,7 @@ mod tests {
             .attach(DatabaseConnection::Disconnected)
             .await
             .unwrap();
+        tokio::task::yield_now().await;
         assert_eq!(events_of("attach_"), ["attach_a:attach", "attach_b:attach"]);
         frozen
             .attach(DatabaseConnection::Disconnected)
@@ -408,6 +418,95 @@ mod tests {
             ]
         );
         kernel.stop().await.unwrap();
+    }
+
+    fn plain(r: &mut Registrar) -> Result<()> {
+        let id = r.module().to_owned();
+        let started = id.clone();
+        let stopped = id.clone();
+        r.attach(move |_| async move {
+            note(format!("{id}:attach"));
+            Ok(())
+        })
+        .start(move |_| async move {
+            note(format!("{started}:start"));
+            Ok(())
+        })
+        .stop(move || async move {
+            note(format!("{stopped}:stop"));
+            Ok(())
+        });
+        Ok(())
+    }
+
+    fn failing_attach(r: &mut Registrar) -> Result<()> {
+        r.attach(|ctx| async move {
+            note(format!("{}:attach", ctx.module()));
+            Err(KeelError::unavailable("roll_b.error.no_socket"))
+        });
+        Ok(())
+    }
+
+    module!(SERVE_A, "serve_a", [], plain);
+    module!(SERVE_B, "serve_b", ["serve_a"], plain);
+    module!(ROLL_A, "roll_a", [], plain);
+    module!(ROLL_B, "roll_b", ["roll_a"], failing_attach);
+
+    #[tokio::test]
+    async fn a_start_runs_the_attach_hook_of_every_module_right_before_its_own_start_hook() {
+        let kernel = start(&[&SERVE_B, &SERVE_A]).await.unwrap();
+        assert_eq!(
+            events_of("serve_"),
+            [
+                "serve_a:attach",
+                "serve_a:start",
+                "serve_b:attach",
+                "serve_b:start"
+            ]
+        );
+        kernel.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_failing_attach_hook_during_a_start_stops_the_modules_that_started_and_names_the_module()
+     {
+        let error = start(&[&ROLL_A, &ROLL_B]).await.unwrap_err();
+        assert_eq!(error.module, "roll_b");
+        assert_eq!(
+            error.to_string(),
+            "module roll_b: start failed: unavailable: roll_b.error.no_socket"
+        );
+        assert_eq!(
+            events_of("roll_"),
+            [
+                "roll_a:attach",
+                "roll_a:start",
+                "roll_b:attach",
+                "roll_a:stop"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_attach_hook_outside_a_start_is_named_as_an_attach_failure() {
+        let mut frozen = Composition::new()
+            .module(&ROLL_B)
+            .module(&ROLL_A)
+            .resolve()
+            .expect("the composition resolves")
+            .init()
+            .expect("init registers")
+            .freeze()
+            .expect("the registries freeze");
+        let error = frozen
+            .attach(DatabaseConnection::Disconnected)
+            .await
+            .unwrap_err();
+        assert_eq!(error.module, "roll_b");
+        assert_eq!(
+            error.to_string(),
+            "module roll_b: attach failed: unavailable: roll_b.error.no_socket"
+        );
     }
 
     fn failing_start(r: &mut Registrar) -> Result<()> {
