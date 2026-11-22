@@ -33,10 +33,10 @@ usage: hack/dns-vm.sh install <keel binary or tar.zst>
 Proves the dns bundle on a virtual machine with bind, run as root from a
 checkout of the repository.
 
-"install" installs bind9 from the distribution when named is missing,
-prepares $ZONES_DIR and $INCLUDE_DIR, an empty $INDEX and the line
-$INCLUDE_LINE in $NAMED_LOCAL, then runs deploy/install.sh --product dns
---binary <archive> --yes and prints the setup link. Open it, create the
+"install" runs deploy/install.sh --product dns --binary <archive> --yes, which
+installs bind9 from the distribution, prepares $ZONES_DIR, $INCLUDE_DIR, an
+empty $INDEX and the line $INCLUDE_LINE in $NAMED_LOCAL, and prints the setup
+link. Then it checks what the installer did. Open the link, create the
 administrator and, to prove the browser too, a zone on the Zones screen.
 
 "run" proves the running installation. As the user keel over the control
@@ -83,26 +83,6 @@ named_present() {
   command -v named >/dev/null 2>&1 && command -v named-checkconf >/dev/null 2>&1 && command -v dig >/dev/null 2>&1
 }
 
-install_bind() {
-  if named_present; then
-    say "named, named-checkconf and dig are present"
-  else
-    say "installing bind9 and its tools from the distribution"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -q bind9 bind9-utils bind9-dnsutils
-  fi
-  install -d -m 0755 -o root -g bind "$ZONES_DIR" "$INCLUDE_DIR"
-  if [ ! -e "$INDEX" ]; then
-    install -m 0644 -o root -g root /dev/null "$INDEX"
-  fi
-  if ! grep -qxF "$INCLUDE_LINE" "$NAMED_LOCAL"; then
-    printf '%s\n' "$INCLUDE_LINE" >>"$NAMED_LOCAL"
-  fi
-  local out
-  out=$(named-checkconf -z 2>&1) || fail "named-checkconf -z refuses the configuration with $INDEX included: $out"
-  systemctl enable --now "$NAMED_UNIT"
-  systemctl reload "$NAMED_UNIT"
-}
-
 install_keel() {
   local archive=${1:-}
   [ -n "$archive" ] || { usage >&2; fail "the archive is required"; }
@@ -110,7 +90,6 @@ install_keel() {
   need_root
   cd "$(dirname "$0")/.."
   [ -f deploy/install.sh ] || fail "deploy/install.sh is missing; run from a checkout of the repository"
-  install_bind
   local log
   log=$(mktemp)
   if ! bash deploy/install.sh --product dns --binary "$archive" --yes 2>&1 | tee "$log"; then
@@ -119,6 +98,11 @@ install_keel() {
   check "$UNIT is active" systemctl is-active --quiet "$UNIT"
   check "$AGENT_UNIT is active" systemctl is-active --quiet "$AGENT_UNIT"
   check "$NAMED_UNIT is active" systemctl is-active --quiet "$NAMED_UNIT"
+  check "bind9 is installed" sh -c 'dpkg -s bind9 >/dev/null 2>&1'
+  check "$ZONES_DIR exists" test -d "$ZONES_DIR"
+  check "$INCLUDE_DIR exists" test -d "$INCLUDE_DIR"
+  check "$NAMED_LOCAL includes $INDEX" grep -qxF "$INCLUDE_LINE" "$NAMED_LOCAL"
+  check "named-checkconf -z accepts the configuration" named-checkconf -z
   check "the installer printed the setup link" grep -qF "setup link:   https://" "$log"
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
   say "keel is installed with dns; open the setup link, create the administrator and a zone on the Zones screen, then run: hack/dns-vm.sh run --browser-zone <that zone>"

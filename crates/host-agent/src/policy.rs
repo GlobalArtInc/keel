@@ -828,7 +828,7 @@ policy:
             assert!(policy.allows_package(package), "{package}");
         }
         assert!(!policy.allows_package("openssh-server"));
-        assert_eq!(policy.packages.allow.len(), 15);
+        assert_eq!(policy.packages.allow.len(), 18);
     }
 
     #[test]

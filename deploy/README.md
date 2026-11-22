@@ -297,14 +297,21 @@ touches it. Its shared keys are `uid_range`, `file_roots`, `services`, `checks`,
 `timeouts` and `packages`; under `products`, one section per product id carries `user_prefix`,
 `drop_in_prefix` and `classes`. `packages: { allow: [...] }` lists the packages `host.pkg.*` may
 install, remove or read, and the release lists exactly those `install.sh` installs: `curl`,
-`ca-certificates`, `openssl`, `zstd`, `postgresql` and the packages of `panel` named above. The
-file has no secret and travels verbatim in the support bundle.
+`ca-certificates`, `openssl`, `zstd`, `postgresql`, `bind9`, `bind9-utils`, `bind9-dnsutils` and the
+packages of `panel` named above. The file has no secret and travels verbatim in the support
+bundle.
 
 ## Running KeelDNS
 
-`--product dns` installs the bundle; bind itself is the operator's, and neither the installer
-nor the kernel wires it. The defaults of the `dns` section of `config.yaml` follow the Debian
-layout of bind:
+`--product dns` installs the bundle and brings bind: `bind9`, `bind9-utils` and `bind9-dnsutils`
+from the distribution, the directories `/etc/bind/zones` and `/etc/bind/keel`, an empty index
+`keel-dns-zones.conf` when there is none and the include line in `/etc/bind/named.conf.local` when
+it is not there yet. It then lets `named-checkconf -z`, the check `named.check` of `agent.yaml`,
+pass and enables and starts `named`. An existing bind configuration is kept: nothing but the include
+line is appended, and a check that fails after the line was added by this run takes the line back
+and stops the installation with the tool's output. `uninstall.sh` leaves bind, its packages and the
+zone files in place, as it leaves the daemons of `panel`. The defaults of the `dns` section of
+`config.yaml` follow the Debian layout of bind:
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -313,16 +320,12 @@ layout of bind:
 | `nameserver` | `localhost` | the primary name server of the SOA and NS records |
 | `hostmaster` | `hostmaster.localhost` | the mailbox of the SOA record |
 
-Before the first zone, the host needs bind with its tools, both directories, the index and its
-include line, so that `named-checkconf -z`, the check `named.check` of `agent.yaml`, passes:
-
-```
-apt-get install -y bind9 bind9-utils bind9-dnsutils
-install -d -m 0755 -o root -g bind /etc/bind/zones /etc/bind/keel
-install -m 0644 -o root -g root /dev/null /etc/bind/keel/keel-dns-zones.conf
-echo 'include "/etc/bind/keel/keel-dns-zones.conf";' >> /etc/bind/named.conf.local
-named-checkconf -z && systemctl reload named
-```
+The installer does not move bind off a port another service holds: where `named` cannot start,
+for example next to another DNS server such as unbound or dnsmasq on port 53, the installation
+stops with the message of `systemctl` and a hint to read `journalctl -u named` and to look for
+the holder of the port. Enabling `dns` later with `keel product enable dns` installs nothing;
+prepare bind first by the commands under "Create the first zone" in
+[docs/operator/README.md](../docs/operator/README.md).
 
 A zone is then created on the Zones screen, over the control socket or with an API token; its
 file is rendered after the transaction commits, checked, and bind reloaded:

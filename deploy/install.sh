@@ -53,6 +53,13 @@ PANEL_PAM_DIR=/etc/pam.d
 PANEL_FTP_DIR=/etc/vsftpd/keel
 PANEL_FTP_PASSWD=$PANEL_FTP_DIR/keel-panel-passwd
 PANEL_FTP_USERS=/etc/vsftpd/keel-users
+DNS_PACKAGES=(bind9 bind9-utils bind9-dnsutils)
+DNS_ZONES=/etc/bind/zones
+DNS_INCLUDE_DIR=/etc/bind/keel
+DNS_INDEX=$DNS_INCLUDE_DIR/keel-dns-zones.conf
+DNS_NAMED_LOCAL=/etc/bind/named.conf.local
+DNS_NAMED_UNIT=named.service
+DNS_INCLUDE_LINE='include "/etc/bind/keel/keel-dns-zones.conf";'
 NOLOGIN=/usr/sbin/nologin
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)
@@ -99,6 +106,12 @@ from the distribution, points postfix and dovecot at the virtual mailboxes and
 vsftpd at the virtual FTP accounts the panel writes, prepares the roots of
 $AGENT_POLICY it uses, and enables and starts
 ${PANEL_UNITS[*]} and $PANEL_PHP_UNITS.
+
+A product that serves DNS brings bind: dns installs ${DNS_PACKAGES[*]}
+from the distribution, creates $DNS_ZONES and $DNS_INCLUDE_DIR, an empty
+$DNS_INDEX when there is none and the line $DNS_INCLUDE_LINE in
+$DNS_NAMED_LOCAL when it is not there yet, checks the configuration with
+named-checkconf -z, and enables and starts $DNS_NAMED_UNIT.
 
   --product <id>[,<id>]   product bundles to enable (required), for example demo
   --channel <name>        the release channel, stable or beta (default $DEFAULT_CHANNEL)
@@ -847,6 +860,7 @@ install_units() {
 product_packages() {
   case $1 in
     panel) printf '%s\n' "${PANEL_PACKAGES[@]}" ;;
+    dns) printf '%s\n' "${DNS_PACKAGES[@]}" ;;
   esac
 }
 
@@ -855,8 +869,56 @@ prepare_products() {
   for id in "${product_ids[@]}"; do
     case $id in
       panel) prepare_panel ;;
+      dns) prepare_dns ;;
     esac
   done
+}
+
+prepare_dns() {
+  products_prepared=1
+  apt_install "${DNS_PACKAGES[@]}"
+  begin "preparing bind for dns"
+  [ -d "$DNS_ZONES" ] || install -d -m 0755 -o root -g bind "$DNS_ZONES"
+  [ -d "$DNS_INCLUDE_DIR" ] || install -d -m 0755 -o root -g bind "$DNS_INCLUDE_DIR"
+  if [ ! -e "$DNS_INDEX" ]; then
+    install -m 0644 -o root -g root /dev/null "$DNS_INDEX"
+  fi
+  local out saved="" created=0 added=0
+  if ! grep -qxF "$DNS_INCLUDE_LINE" "$DNS_NAMED_LOCAL" 2>/dev/null; then
+    if [ -e "$DNS_NAMED_LOCAL" ]; then
+      saved=$(mktemp)
+      cp -p "$DNS_NAMED_LOCAL" "$saved"
+      if [ -s "$DNS_NAMED_LOCAL" ] && [ -n "$(tail -c1 "$DNS_NAMED_LOCAL")" ]; then
+        printf '\n' >>"$DNS_NAMED_LOCAL"
+      fi
+    else
+      created=1
+    fi
+    printf '%s\n' "$DNS_INCLUDE_LINE" >>"$DNS_NAMED_LOCAL"
+    if [ "$created" -eq 1 ]; then
+      chmod 0644 "$DNS_NAMED_LOCAL"
+      chgrp bind "$DNS_NAMED_LOCAL"
+    fi
+    added=1
+  fi
+  if ! out=$(named-checkconf -z 2>&1); then
+    if [ "$added" -eq 1 ]; then
+      if [ "$created" -eq 1 ]; then
+        rm -f "$DNS_NAMED_LOCAL"
+      else
+        cat "$saved" >"$DNS_NAMED_LOCAL"
+      fi
+    fi
+    if [ -n "$saved" ]; then
+      rm -f "$saved"
+    fi
+    fail "named-checkconf -z refuses the configuration with $DNS_INDEX included: $out"
+  fi
+  if [ -n "$saved" ]; then
+    rm -f "$saved"
+  fi
+  systemctl enable --now "$DNS_NAMED_UNIT" || fail "$DNS_NAMED_UNIT did not start; see journalctl -u named, and another service may hold port 53: ss -lnup 'sport = :53'"
+  systemctl reload "$DNS_NAMED_UNIT" || fail "$DNS_NAMED_UNIT did not reload; see journalctl -u named"
 }
 
 prepare_panel() {
@@ -1082,7 +1144,7 @@ setup_key() {
 }
 
 report() {
-  local host port name fingerprint key
+  local host port name fingerprint key id
   host=$(shown_host)
   port=$(listen_port)
   name=$(hostname)
@@ -1116,9 +1178,18 @@ report() {
   say "                keel-update.service runs once per update request"
   say "  postgres:     database keel, role keel, peer authentication on $PG_SOCKET_DIR port $pg_port"
   if [ "$products_prepared" -eq 1 ]; then
-    say "  panel:        ${PANEL_UNITS[*]} and $PANEL_PHP_UNITS enabled and running;"
-    say "                sites under $PANEL_WWW, certificates under $PANEL_CERTS, mailboxes under $PANEL_MAILDIRS,"
-    say "                FTP accounts through the PAM service $PANEL_FTP_PAM ($PANEL_FTP_CONF.orig keeps the previous $PANEL_FTP_CONF)"
+    for id in "${product_ids[@]}"; do
+      case $id in
+        panel)
+          say "  panel:        ${PANEL_UNITS[*]} and $PANEL_PHP_UNITS enabled and running;"
+          say "                sites under $PANEL_WWW, certificates under $PANEL_CERTS, mailboxes under $PANEL_MAILDIRS,"
+          say "                FTP accounts through the PAM service $PANEL_FTP_PAM ($PANEL_FTP_CONF.orig keeps the previous $PANEL_FTP_CONF)"
+          ;;
+        dns)
+          say "  bind:         $DNS_NAMED_UNIT enabled and running; zones under $DNS_ZONES, the index $DNS_INDEX included from $DNS_NAMED_LOCAL"
+          ;;
+      esac
+    done
   fi
   say ""
   say "  URL:          https://$host:$port/"

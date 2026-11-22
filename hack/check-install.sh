@@ -550,6 +550,11 @@ PANEL_PAM_DIR=$dir/pam.d
 PANEL_FTP_DIR=$dir/ftp
 PANEL_FTP_PASSWD=$PANEL_FTP_DIR/keel-panel-passwd
 PANEL_FTP_USERS=$dir/ftp-users
+DNS_ZONES=$dir/zones
+DNS_INCLUDE_DIR=$dir/keel
+DNS_INDEX=$DNS_INCLUDE_DIR/keel-dns-zones.conf
+DNS_NAMED_LOCAL=$dir/named.conf.local
+[ -e "$dir/no-named-local" ] || [ -e "$DNS_NAMED_LOCAL" ] || printf "// existing\n" >"$DNS_NAMED_LOCAL"
 mkdir -p "$PANEL_PAM_DIR"
 printf "listen=NO\n" >"$PANEL_FTP_CONF"
 apt_install() { record apt_install "$@"; }
@@ -566,6 +571,17 @@ systemctl() {
   if [ "$1" = list-unit-files ]; then
     printf "php8.4-fpm.service enabled enabled\n"
   fi
+  [ "$1" != enable ] || [ ! -e "$dir/systemctl-fails" ] || return 1
+}
+chmod() { record chmod "$@"; }
+chgrp() { record chgrp "$@"; }
+named-checkconf() {
+  if grep -qxF "$DNS_INCLUDE_LINE" "$DNS_NAMED_LOCAL"; then
+    record named-checkconf "$@" include-present
+  else
+    record named-checkconf "$@" include-missing
+  fi
+  [ ! -e "$dir/checkconf-fails" ] || { echo "named-checkconf: refused by the harness" >&2; return 1; }
 }
 install() {
   record install "$@"
@@ -603,7 +619,7 @@ recorded_before() {
 prepared=$(mktemp -d)
 trap 'rm -rf "$prepared"; [ -z "${rehearsal:-}" ] || rm -rf "$rehearsal"' EXIT
 check "install.sh names the packages of panel" test "$(packages_of panel)" = "${panel_packages[*]} "
-check "install.sh installs no package for dns" test -z "$(packages_of dns)"
+check "install.sh installs the packages of dns" test "$(packages_of dns)" = "bind9 bind9-utils bind9-dnsutils "
 if prepare_panel_under "$prepared"; then
   check "install.sh --product panel installs the packages of panel in one apt_install" recorded "$prepared" "apt_install ${panel_packages[*]}"
   check "install.sh answers the mailer question of postfix before the packages" grep -qF 'postfix postfix/main_mailer_type select Internet Site' "$prepared/debconf"
@@ -637,14 +653,71 @@ if prepare_panel_under "$prepared"; then
 else
   problem "install.sh --product panel did not prepare the host against the recording stubs"
 fi
+dns_include='include "/etc/bind/keel/keel-dns-zones.conf";'
+dns_expected=$(printf '// existing\n%s' "$dns_include")
 dns_prepared=$(mktemp -d)
 if prepare_panel_under "$dns_prepared" dns; then
+  check "install.sh --product dns installs the packages of dns in one apt_install" recorded "$dns_prepared" "apt_install bind9 bind9-utils bind9-dnsutils"
+  check "install.sh --product dns creates the missing zone and include directories for root and the bind group" test "$(grep -cxF -e "install -d -m 0755 -o root -g bind $dns_prepared/zones" -e "install -d -m 0755 -o root -g bind $dns_prepared/keel" "$dns_prepared/calls")" = 2
+  check "install.sh --product dns creates the index empty" test "$(wc -c <"$dns_prepared/keel/keel-dns-zones.conf" | tr -d ' ')" = 0
+  check "install.sh --product dns keeps the existing line and adds the include once" test "$(cat "$dns_prepared/named.conf.local")" = "$dns_expected"
+  check "named-checkconf -z sees the include and runs before systemctl enables named" recorded_before "$dns_prepared" "named-checkconf -z include-present" "systemctl enable --now named.service"
   check "install.sh --product dns writes no drop-in of keel.service" test ! -e "$dns_prepared/keel.service.d"
-  check "install.sh --product dns runs no command at all in its preparation" test ! -s "$dns_prepared/calls"
+  printf 'zone marker\n' >"$dns_prepared/keel/keel-dns-zones.conf"
+  if prepare_panel_under "$dns_prepared" dns; then
+    check "a second run keeps the index that holds zones" test "$(cat "$dns_prepared/keel/keel-dns-zones.conf")" = "zone marker"
+    check "a second run does not repeat the include line" test "$(cat "$dns_prepared/named.conf.local")" = "$dns_expected"
+  else
+    problem "install.sh --product dns did not prepare the host a second time"
+  fi
 else
   problem "install.sh --product dns did not prepare the host against the recording stubs"
 fi
-rm -rf "$dns_prepared"
+dns_bare=$(mktemp -d)
+printf '// existing' >"$dns_bare/named.conf.local"
+if prepare_panel_under "$dns_bare" dns && prepare_panel_under "$dns_bare" dns; then
+  check "a named.conf.local without a final newline gets the include on a line of its own, once, on two runs" test "$(cat "$dns_bare/named.conf.local")" = "$dns_expected"
+else
+  problem "install.sh --product dns did not prepare a named.conf.local without a final newline"
+fi
+dns_refused=$(mktemp -d)
+printf '// existing' >"$dns_refused/named.conf.local"
+cp -p "$dns_refused/named.conf.local" "$dns_refused/before"
+touch "$dns_refused/checkconf-fails"
+if prepare_panel_under "$dns_refused" dns >/dev/null 2>&1; then
+  problem "install.sh --product dns did not stop at a refused named-checkconf"
+else
+  check "a refused named-checkconf restores named.conf.local byte for byte" cmp -s "$dns_refused/before" "$dns_refused/named.conf.local"
+fi
+dns_absent=$(mktemp -d)
+touch "$dns_absent/checkconf-fails" "$dns_absent/no-named-local"
+if prepare_panel_under "$dns_absent" dns >/dev/null 2>&1; then
+  problem "install.sh --product dns did not stop at a refused named-checkconf without a named.conf.local"
+else
+  check "a refused named-checkconf leaves a named.conf.local that was not there absent" test ! -e "$dns_absent/named.conf.local"
+fi
+dns_created=$(mktemp -d)
+touch "$dns_created/no-named-local"
+if prepare_panel_under "$dns_created" dns; then
+  check "the named.conf.local this run creates gets mode 0644 and the group bind" test "$(grep -cxF -e "chmod 0644 $dns_created/named.conf.local" -e "chgrp bind $dns_created/named.conf.local" "$dns_created/calls")" = 2
+else
+  problem "install.sh --product dns did not prepare the host without a named.conf.local"
+fi
+dns_dirs=$(mktemp -d)
+mkdir -p "$dns_dirs/zones" "$dns_dirs/keel"
+if prepare_panel_under "$dns_dirs" dns; then
+  check "install.sh --product dns leaves existing zone and include directories alone" test "$(grep -c 'install -d' "$dns_dirs/calls")" = 0
+else
+  problem "install.sh --product dns did not prepare the host with its directories in place"
+fi
+dns_port=$(mktemp -d)
+touch "$dns_port/systemctl-fails"
+if out=$(prepare_panel_under "$dns_port" dns 2>&1); then
+  problem "install.sh --product dns did not stop when named does not start"
+else
+  check "a named that does not start points at its journal and at port 53" grep -qF "port 53" <<<"$out"
+fi
+rm -rf "$dns_prepared" "$dns_bare" "$dns_refused" "$dns_absent" "$dns_created" "$dns_dirs" "$dns_port"
 main_line() {
   grep -nE "^  $1\$" deploy/install.sh | cut -d: -f1
 }

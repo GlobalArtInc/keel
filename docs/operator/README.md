@@ -37,9 +37,10 @@ curl -fsSL https://dl.globalart.hu/keel/install.sh | bash -s -- --product dns --
 
 The installer verifies the signature of the release manifest with a key embedded in the script,
 installs Postgres from the distribution if it is missing, creates the user `keel`, the database
-and the units, and starts the service. Every step announces itself with `==>`; a failure names
-the step and exits with a non-zero status. At the end it prints three things: the https address of
-the panel, the fingerprint of the generated certificate and a one-time setup link.
+and the units, installs and prepares bind, and starts the service. Every step announces itself
+with `==>`; a failure names the step and exits with a non-zero status. At the end it prints three
+things: the https address of the panel, the fingerprint of the generated certificate and a
+one-time setup link.
 
 By default the service listens on `127.0.0.1:1500`. From another machine, forward the port:
 
@@ -64,8 +65,10 @@ check fails. Only `keel privileged` runs as root; `ps -eo user,comm | grep keel`
 
 ## Create the first zone
 
-The installer does not touch bind. Install it, create the two directories Keel writes into and
-the include line, and let `named-checkconf` pass once:
+The installer of `--product dns` has already installed bind, created the two directories Keel
+writes into and the include line, and started `named`: `named-checkconf -z` passes and
+`systemctl status named` shows it running. On a host that enabled `dns` later with
+`keel product enable dns`, install the packages and prepare them once by hand:
 
 ```
 apt-get install -y bind9 bind9-utils bind9-dnsutils
