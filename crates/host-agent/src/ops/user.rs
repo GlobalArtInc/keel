@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
+use std::thread;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -18,6 +20,8 @@ const NO_HOME: &str = "/nonexistent";
 const EXPIRED_SINCE_EPOCH_DAY: &str = "1";
 const NEVER_EXPIRES: &str = "";
 const USER_BUSY: &str = "currently used by process";
+const DELETE_ROUNDS: usize = 5;
+const ROUND_PAUSE: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -191,11 +195,13 @@ pub(super) fn delete(call: &Call<'_>, who: Who<'_>, args: Delete) -> Result<Valu
     argv.push(&args.name);
     let timeout = call.policy.timeout(tool::USERDEL);
     let mut stopped = Stopped::default();
-    let outcome = stop_then_delete(
+    let (rounds, outcome) = stop_then_delete(
+        DELETE_ROUNDS,
+        ROUND_PAUSE,
         || reap::stop_user(range, user.uid, &args.name, &mut stopped),
         || process::succeed(&tools.userdel, &argv, timeout).map(drop),
     );
-    report(call, &who, &user, stopped);
+    report(call, &who, &user, stopped, rounds);
     outcome?;
     if let Some(group) = accounts.group(&args.name)?
         && range.contains(group.gid)
@@ -210,25 +216,35 @@ pub(super) fn delete(call: &Call<'_>, who: Who<'_>, args: Delete) -> Result<Valu
     Ok(json!({ "removed": true }))
 }
 
-fn stop_then_delete<S, D>(mut stop: S, mut userdel: D) -> Result<(), Failure>
+fn stop_then_delete<S, D>(
+    rounds: usize,
+    pause: Duration,
+    mut stop: S,
+    mut userdel: D,
+) -> (usize, Result<(), Failure>)
 where
     S: FnMut() -> Result<(), Failure>,
     D: FnMut() -> Result<(), Failure>,
 {
-    let mut attempt = || {
-        stop()?;
-        userdel()
-    };
-    match attempt() {
-        Err(failure) if failure.key == ERROR_EXEC_FAILED && failure.detail.contains(USER_BUSY) => {
-            attempt()
+    let mut round = 0;
+    loop {
+        round += 1;
+        let outcome = stop().and_then(|()| userdel());
+        match outcome {
+            Err(failure)
+                if round < rounds
+                    && failure.key == ERROR_EXEC_FAILED
+                    && failure.detail.contains(USER_BUSY) =>
+            {
+                thread::sleep(pause);
+            }
+            outcome => return (round, outcome),
         }
-        outcome => outcome,
     }
 }
 
-fn report(call: &Call<'_>, who: &Who<'_>, user: &User, stopped: Stopped) {
-    if stopped != Stopped::default() {
+fn report(call: &Call<'_>, who: &Who<'_>, user: &User, stopped: Stopped, rounds: usize) {
+    if stopped != Stopped::default() || rounds > 1 {
         journal::processes_stopped(&Stop {
             op: OP_USER_DELETE,
             actor: who.actor,
@@ -239,6 +255,7 @@ fn report(call: &Call<'_>, who: &Who<'_>, user: &User, stopped: Stopped) {
             uid: user.uid,
             sigterm: stopped.terminated,
             sigkill: stopped.killed,
+            rounds,
         });
     }
 }
@@ -375,22 +392,45 @@ mod tests {
         )
     }
 
-    #[test]
-    fn a_busy_user_has_its_processes_stopped_again_before_the_one_retry() {
+    fn rounds_of(busy_rounds: usize, limit: usize) -> (Vec<&'static str>, usize, bool) {
         let steps = std::cell::RefCell::new(Vec::new());
-        let mut round = 0;
-        let outcome = stop_then_delete(
+        let mut calls = 0;
+        let (rounds, outcome) = stop_then_delete(
+            limit,
+            Duration::ZERO,
             || {
                 steps.borrow_mut().push("stop");
                 Ok(())
             },
             || {
                 steps.borrow_mut().push("userdel");
-                round += 1;
-                if round == 1 { Err(busy()) } else { Ok(()) }
+                calls += 1;
+                if calls <= busy_rounds {
+                    Err(busy())
+                } else {
+                    Ok(())
+                }
             },
         );
-        assert!(outcome.is_ok());
-        assert_eq!(*steps.borrow(), ["stop", "userdel", "stop", "userdel"]);
+        (steps.into_inner(), rounds, outcome.is_ok())
+    }
+
+    #[test]
+    fn a_busy_user_has_its_processes_stopped_again_before_each_further_round() {
+        let (steps, rounds, done) = rounds_of(2, 5);
+        assert!(done);
+        assert_eq!(rounds, 3);
+        assert_eq!(
+            steps,
+            ["stop", "userdel", "stop", "userdel", "stop", "userdel"]
+        );
+    }
+
+    #[test]
+    fn a_user_that_stays_busy_gets_exactly_the_rounds_allowed() {
+        let (steps, rounds, done) = rounds_of(usize::MAX, 5);
+        assert!(!done);
+        assert_eq!(rounds, 5);
+        assert_eq!(steps.iter().filter(|step| **step == "userdel").count(), 5);
     }
 }

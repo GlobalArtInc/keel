@@ -934,7 +934,7 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
 }
 
 #[test]
-fn a_userdel_that_finds_the_user_busy_is_retried_once_after_stopping_its_processes_again() {
+fn a_userdel_that_finds_the_user_busy_is_retried_and_then_succeeds() {
     let mut site = Site::start("busy");
     let created = site.call("host.user.create", "panel", json!({ "name": "hp_busy" }));
     assert_eq!(created["data"]["created"], true, "{created}");
@@ -955,7 +955,7 @@ fn a_userdel_that_finds_the_user_busy_is_retried_once_after_stopping_its_process
 }
 
 #[test]
-fn a_userdel_that_stays_busy_ends_after_one_retry_and_fails() {
+fn a_userdel_that_stays_busy_ends_after_five_rounds_and_fails() {
     let mut site = Site::start("stuck");
     site.call("host.user.create", "panel", json!({ "name": "hp_stuck" }));
     fs::write(site.root().join("busy-userdel"), b"").unwrap();
@@ -967,7 +967,7 @@ fn a_userdel_that_stays_busy_ends_after_one_retry_and_fails() {
         .into_iter()
         .filter(|call| call.starts_with("userdel"))
         .count();
-    assert_eq!(deletions, 2);
+    assert_eq!(deletions, 5);
     assert!(site.passwd().contains("hp_stuck:"));
 }
 
