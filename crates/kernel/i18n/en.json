@@ -10,8 +10,9 @@
       },
       "column": {
         "createdAt": "Created",
-        "id": "Account",
+        "id": "Id",
         "kind": "Kind",
+        "label": "Account",
         "origin": "Origin",
         "parentId": "Parent",
         "state": "State"
@@ -41,7 +42,11 @@
         "state_changed": "The account is {state}, not {expected}; it changed while the operation ran"
       },
       "id": "Account",
-      "kind": "Kind",
+      "kind": {
+        "reseller": "Reseller",
+        "system": "Installation",
+        "user": "User"
+      },
       "list": {
         "title": "Accounts"
       },
@@ -318,7 +323,7 @@
       "lang": "Language",
       "level": "Level",
       "list": {
-        "title": "Principals"
+        "title": "Users"
       },
       "login": "Login",
       "page": {

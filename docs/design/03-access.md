@@ -340,7 +340,14 @@ pub struct Account {
 
 On the wire the row of `keel.account.get` and `keel.account.list` carries these members in
 camelCase — `parentId`, `externalId`, `createdAt`, `updatedAt` — while the columns stay
-snake_case ([10-contracts.md](10-contracts.md)); the forms `keel.account.create` and
+snake_case ([10-contracts.md](10-contracts.md)). An account has no name, so the rows of
+`keel.account.list` and the options of `keel.account.options` carry a `label` computed when they
+are read, with no column behind it: the login of the principal with the role `owner` created
+first in that account, and the last eight characters of the id when the account has no such
+principal. A caller who may not list principals, by the rule of `keel.principal.list` (the level,
+the permission `keel.principal.read` and the scope of its token), gets the short id, so a label
+never shows a login the caller could not already read; the value of an option stays the id. The
+forms `keel.account.create` and
 `keel.account.update` take the parent as `parent`. `keel_account` is itself `Owned` by `id`:
 the scope of a caller over accounts is the same subtree rule as over any owned row, so a user
 sees only its own account and a reseller its subtree. The kernel reserves `kind = system` for

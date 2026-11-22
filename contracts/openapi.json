@@ -13285,13 +13285,13 @@
                       "const": true
                     },
                     "data": {
-                      "title": "Page_Account",
+                      "title": "Page_AccountRow",
                       "type": "object",
                       "properties": {
                         "data": {
                           "type": "array",
                           "items": {
-                            "$ref": "#/components/schemas/Account"
+                            "$ref": "#/components/schemas/AccountRow"
                           }
                         },
                         "total": {
@@ -22828,10 +22828,13 @@
   },
   "components": {
     "schemas": {
-      "Account": {
+      "AccountRow": {
         "type": "object",
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "label": {
             "type": "string"
           },
           "kind": {
@@ -22884,6 +22887,7 @@
         },
         "required": [
           "id",
+          "label",
           "kind",
           "path",
           "state",

@@ -935,7 +935,7 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .get("/api/v1/functions/keel.account.list", Some(&user()))
         .await;
     let list = &as_user.body;
-    assert_eq!(columns(list), ["id", "kind", "state", "createdAt"]);
+    assert_eq!(columns(list), ["label", "kind", "state", "id", "createdAt"]);
     assert!(list["ui"].get("layout").is_none(), "{}", list["ui"]);
     assert!(list["ui"].get("parent").is_none(), "{}", list["ui"]);
     assert!(actions(list).is_empty(), "{}", list["ui"]);
@@ -951,7 +951,7 @@ async fn descriptors_are_projected_by_level_and_permission() {
     let list = &as_reseller.body;
     assert_eq!(
         columns(list),
-        ["id", "kind", "state", "parentId", "createdAt"]
+        ["label", "kind", "state", "parentId", "id", "createdAt"]
     );
     assert_eq!(list["ui"]["layout"], json!("tree"));
     assert_eq!(list["ui"]["parent"], json!("parentId"));
@@ -969,7 +969,15 @@ async fn descriptors_are_projected_by_level_and_permission() {
         .await;
     assert_eq!(
         columns(&as_admin.body),
-        ["id", "kind", "state", "parentId", "createdAt", "origin"]
+        [
+            "label",
+            "kind",
+            "state",
+            "parentId",
+            "id",
+            "createdAt",
+            "origin"
+        ]
     );
     let form = bench
         .get("/api/v1/functions/keel.principal.create", Some(&user()))

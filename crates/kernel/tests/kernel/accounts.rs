@@ -4,7 +4,7 @@ use keel_kernel::dispatcher::{CallOptions, Dispatcher, Reply};
 use keel_kernel::{Composition, Kernel, Storage};
 use keel_sdk::prelude::*;
 use keel_testkit::TestDatabase;
-use keel_types::{ErrorCode, Scope, Via};
+use keel_types::{ErrorCode, PeerScope, Scope, Via};
 
 struct Bench {
     database: TestDatabase,
@@ -200,6 +200,31 @@ impl Bench {
         self.storage.close().await.expect("the pool closes");
         self.database.finish().await;
     }
+}
+
+fn short(id: &str) -> String {
+    id[id.len() - 8..].to_owned()
+}
+
+fn labels(reply: &Reply) -> BTreeMap<String, String> {
+    data(reply)["data"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|row| {
+            (
+                row["id"].as_str().expect("id").to_owned(),
+                row["label"].as_str().expect("label").to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn without_read(mut principal: Principal) -> Principal {
+    principal
+        .grants
+        .insert("keel.principal.read".to_owned(), false);
+    principal
 }
 
 fn ids(ids: &[Id]) -> Vec<String> {
@@ -1078,8 +1103,8 @@ async fn account_options_list_only_visible_accounts_and_page_by_cursor() {
     assert_eq!(
         subtree,
         [
-            (reseller_id.clone(), reseller_id.clone(), "reseller".into()),
-            (customer_id.clone(), customer_id.clone(), "user".into()),
+            (reseller_id.clone(), short(&reseller_id), "reseller".into()),
+            (customer_id.clone(), short(&customer_id), "user".into()),
         ]
     );
     assert!(!more);
@@ -1151,5 +1176,155 @@ async fn account_options_list_only_visible_accounts_and_page_by_cursor() {
         )
         .await;
     assert_eq!(code(&guest), ErrorCode::Unauthenticated);
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_account_is_labelled_by_the_login_of_its_owner_principal_that_came_first() {
+    let Seeded { bench, .. } = seeded().await;
+    let reply = bench.call(&owner(), "keel.account.list", json!({})).await;
+    let found = labels(&reply);
+    assert_eq!(found[&Id::ROOT_ACCOUNT.to_string()], "admin");
+    assert_eq!(found[&bench.reseller.to_string()], "res");
+    assert_eq!(found[&bench.customer.to_string()], "cust");
+
+    let member = bench
+        .call(
+            &owner(),
+            "keel.principal.create",
+            json!({ "login": "aaa", "level": "user", "role": "member", "account": bench.customer }),
+        )
+        .await;
+    id_of(&member);
+    let later_owner = bench
+        .call(
+            &owner(),
+            "keel.principal.create",
+            json!({ "login": "zzz", "level": "user", "account": bench.customer }),
+        )
+        .await;
+    id_of(&later_owner);
+    let found = labels(&bench.call(&owner(), "keel.account.list", json!({})).await);
+    assert_eq!(found[&bench.customer.to_string()], "cust");
+
+    let mixed = bench.account(&owner(), "user", Some(bench.reseller)).await;
+    for (login, role) in [("first", "member"), ("second", "owner")] {
+        let created = bench
+            .call(
+                &owner(),
+                "keel.principal.create",
+                json!({ "login": login, "level": "user", "role": role, "account": mixed }),
+            )
+            .await;
+        id_of(&created);
+    }
+    let found = labels(&bench.call(&owner(), "keel.account.list", json!({})).await);
+    assert_eq!(found[&mixed.to_string()], "second");
+
+    let options = bench
+        .call(&owner(), "keel.account.options", json!({}))
+        .await;
+    let by_value: BTreeMap<String, String> = data(&options)["data"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .map(|choice| {
+            (
+                choice["value"].as_str().expect("value").to_owned(),
+                choice["label"].as_str().expect("label").to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(by_value[&bench.reseller.to_string()], "res");
+    assert_eq!(by_value[&Id::ROOT_ACCOUNT.to_string()], "admin");
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn an_account_without_an_owner_principal_is_labelled_by_the_short_form_of_its_id() {
+    let Seeded { bench, .. } = seeded().await;
+    let empty = bench.account(&owner(), "user", Some(bench.reseller)).await;
+    let members = bench.account(&owner(), "user", Some(bench.reseller)).await;
+    let created = bench
+        .call(
+            &owner(),
+            "keel.principal.create",
+            json!({ "login": "member", "level": "user", "role": "member", "account": members }),
+        )
+        .await;
+    id_of(&created);
+    let reply = bench.call(&owner(), "keel.account.list", json!({})).await;
+    let found = labels(&reply);
+    assert_eq!(found[&empty.to_string()], short(&empty.to_string()));
+    assert_eq!(found[&members.to_string()], short(&members.to_string()));
+    assert_eq!(short(&Id::ROOT_ACCOUNT.to_string()), "00000000");
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn labels_follow_the_reach_of_the_principal_list() {
+    let Seeded { bench, .. } = seeded().await;
+    let reseller = principal(Level::Reseller, bench.reseller);
+    let found = labels(&bench.call(&reseller, "keel.account.list", json!({})).await);
+    assert_eq!(
+        found,
+        BTreeMap::from([
+            (bench.reseller.to_string(), "res".to_owned()),
+            (bench.customer.to_string(), "cust".to_owned()),
+        ])
+    );
+    let user = principal(Level::User, bench.customer);
+    let found = labels(&bench.call(&user, "keel.account.list", json!({})).await);
+    assert_eq!(
+        found,
+        BTreeMap::from([(bench.customer.to_string(), "cust".to_owned())])
+    );
+    let own_list = bench.call(&user, "keel.account.options", json!({})).await;
+    assert_eq!(data(&own_list)["data"][0]["label"], json!("cust"));
+    let outside = labels(&bench.call(&owner(), "keel.account.list", json!({})).await);
+    assert_eq!(outside[&bench.other.to_string()], "other");
+
+    for blind in [without_read(reseller), without_read(user)] {
+        let reply = bench.call(&blind, "keel.account.list", json!({})).await;
+        for (id, label) in labels(&reply) {
+            assert_eq!(label, short(&id));
+        }
+        let options = bench.call(&blind, "keel.account.options", json!({})).await;
+        for choice in data(&options)["data"].as_array().expect("choices") {
+            let value = choice["value"].as_str().expect("value");
+            assert_eq!(choice["label"], json!(short(value)));
+        }
+    }
+    bench.finish().await;
+}
+
+#[tokio::test]
+async fn a_token_that_does_not_admit_the_principal_list_gets_short_labels() {
+    let Seeded { bench, .. } = seeded().await;
+    let functions = vec![
+        "keel.account.list".to_owned(),
+        "keel.account.options".to_owned(),
+    ];
+    let mut limited = principal(Level::Reseller, bench.reseller);
+    limited.scope = Scope::Functions(functions.clone());
+    let mut peer = principal(Level::Reseller, bench.reseller);
+    peer.scope = Scope::Peer(PeerScope {
+        functions,
+        level: Level::Reseller,
+        on_behalf: false,
+    });
+    for caller in [limited, peer] {
+        let listed = bench.call(&caller, "keel.account.list", json!({})).await;
+        let found = labels(&listed);
+        assert_eq!(found.len(), 2);
+        for (id, label) in found {
+            assert_eq!(label, short(&id));
+        }
+        let options = bench.call(&caller, "keel.account.options", json!({})).await;
+        for choice in data(&options)["data"].as_array().expect("choices") {
+            let value = choice["value"].as_str().expect("value");
+            assert_eq!(choice["label"], json!(short(value)));
+        }
+    }
     bench.finish().await;
 }

@@ -310,7 +310,15 @@ async fn describe_and_i18n_frames_answer_the_projected_descriptor_and_the_catalo
         .collect();
     assert_eq!(
         columns,
-        ["id", "kind", "state", "parentId", "createdAt", "origin"]
+        [
+            "label",
+            "kind",
+            "state",
+            "parentId",
+            "id",
+            "createdAt",
+            "origin"
+        ]
     );
     assert_eq!(meta.principal.expect("the owner").level, Level::Owner);
     let missing = client
@@ -486,15 +494,17 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
     let headers: Vec<&str> = lines[0].split_whitespace().collect();
     assert_eq!(
         headers,
-        ["Account", "Kind", "State", "Parent", "Created", "Origin"]
+        [
+            "Account", "Kind", "State", "Parent", "Id", "Created", "Origin"
+        ]
     );
     assert!(
-        lines[1].starts_with(&Id::ROOT_ACCOUNT.to_string()),
+        lines[1].starts_with("00000000") && lines[1].contains(&Id::ROOT_ACCOUNT.to_string()),
         "{}",
         lines[1]
     );
     assert!(lines[1].contains("system"), "{}", lines[1]);
-    assert!(lines[2].starts_with(id), "{}", lines[2]);
+    assert!(lines[2].contains(id), "{}", lines[2]);
     assert!(lines[2].contains("reseller"), "{}", lines[2]);
 
     let russian = ctl::run(
@@ -510,7 +520,7 @@ async fn ctl_renders_keel_account_list_as_a_table_and_creates_an_account_from_pa
     )
     .await
     .expect("ctl runs");
-    let account_header = kernel_ru()["keel"]["account"]["column"]["id"]
+    let account_header = kernel_ru()["keel"]["account"]["column"]["label"]
         .as_str()
         .expect("a column label")
         .to_owned();

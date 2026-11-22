@@ -25,7 +25,7 @@ export const SYSTEM_SCREENS: readonly SystemScreen[] = [
     group: 'access',
     section: 'Users',
     tab: 'Users',
-    title: 'Principals',
+    title: 'Users',
     func: 'keel.principal.list',
     view: 'list',
   },

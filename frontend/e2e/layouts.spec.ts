@@ -1,5 +1,5 @@
 import type { Envelope, Id, Page } from '@globalart/keel/meta';
-import { E2E_SCRIPT, expect, keelTest } from '@globalart/keel/testing/playwright';
+import { E2E_LOGINS, E2E_SCRIPT, expect, keelTest } from '@globalart/keel/testing/playwright';
 
 interface ZoneRow {
   id: Id;
@@ -8,7 +8,6 @@ interface ZoneRow {
 
 const ACCOUNTS = '/f/keel.account.list';
 const ZONES = '/f/dns.zone.list';
-const ROOT_ACCOUNT = '00000000000000000000000000';
 const CLI_ZONE_VARIABLE = 'KEEL_E2E_DNS_ZONE';
 const RECORD = { type: 'A', name: 'beside', value: '192.0.2.20' };
 
@@ -39,7 +38,7 @@ keelTest.describe('layouts', () => {
       const tree = page.locator('keel-tree[data-tree="keel.account.list"]');
       await expect(tree).toHaveAttribute('data-phase', 'loaded');
       const nodes = tree.locator('phx-tree-node');
-      await expect(nodes).toHaveText([ROOT_ACCOUNT]);
+      await expect(nodes).toHaveText([E2E_LOGINS.admin]);
 
       await nodes.first().locator('.chevron').click();
       await expect(nodes).toHaveCount(2);

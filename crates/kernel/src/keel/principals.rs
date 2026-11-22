@@ -11,6 +11,8 @@ use super::entity::{account, principal};
 use super::{Pick, Saved};
 use crate::clock::Clock;
 
+pub(super) const LIST: &str = "keel.principal.list";
+pub(super) const READ: &str = "keel.principal.read";
 pub const DEFAULT_ROLE: &str = "owner";
 pub const DEFAULT_LANG: &str = "en";
 pub const EXTERNAL_PATTERN: &str = keel_types::EXTERNAL_PATTERN;
@@ -91,9 +93,9 @@ struct Deleted {
 }
 
 pub fn list() -> FunctionDef {
-    function::<ListQuery, Page<principal::Model>>("keel.principal.list")
+    function::<ListQuery, Page<principal::Model>>(LIST)
         .kind(Kind::List)
-        .access(Level::User, "keel.principal.read")
+        .access(Level::User, READ)
         .owned::<principal::Entity>()
         .ui(List::new("keel.principal.list.title")
             .search(["login"])
@@ -142,7 +144,7 @@ pub fn list() -> FunctionDef {
 pub fn get() -> FunctionDef {
     function::<Pick, principal::Model>("keel.principal.get")
         .kind(Kind::Get)
-        .access(Level::User, "keel.principal.read")
+        .access(Level::User, READ)
         .owned::<principal::Entity>()
         .handler(
             |call: Call<Pick>| async move { load(call.db(), &call.params().id.to_string()).await },

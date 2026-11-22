@@ -1,11 +1,15 @@
+use std::collections::BTreeMap;
+
 use keel_sdk::lifecycle::AccountChange;
 use keel_sdk::prelude::*;
+use keel_sdk::sea_orm::prelude::DateTimeUtc;
 use keel_sdk::sea_orm::sea_query::extension::postgres::PgExpr;
 use keel_sdk::sea_orm::sea_query::{Condition, Expr, OnConflict};
 use keel_sdk::sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, DbErr, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, SqlErr, Statement,
 };
+use keel_sdk::system::PermissionCatalogue;
 use keel_sdk::types::AccountState;
 use keel_sdk::{TaskHandle, escape_like};
 
@@ -13,11 +17,13 @@ use super::entity::{account, principal};
 use super::lifecycle::{self, STATE_CHANGED};
 use super::{Pick, Saved, acl, principals};
 use crate::clock::Clock;
+use crate::dispatcher::guards;
 
 pub const SYSTEM_KIND: &str = "system";
 pub const RESELLER_KIND: &str = "reseller";
 pub const USER_KIND: &str = "user";
 const MAX_OPTIONS: u32 = 100;
+const SHORT_ID_LEN: usize = 8;
 pub(super) const UPSERT: &str = "keel.account.upsert";
 pub(super) const SUSPEND: &str = "keel.account.suspend";
 pub(super) const RESUME: &str = "keel.account.resume";
@@ -111,20 +117,102 @@ pub struct AccountUpdate {
     pub parent: Option<Id>,
 }
 
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(rename = "AccountRow", rename_all = "camelCase")]
+pub struct AccountRow {
+    pub id: String,
+    pub label: String,
+    pub kind: String,
+    #[schemars(extend("x-keel" = json!({ "level": "reseller" })))]
+    pub parent_id: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "level": "reseller" })))]
+    pub path: String,
+    pub state: String,
+    #[schemars(extend("x-keel" = json!({ "level": "admin" })))]
+    pub external_id: Option<String>,
+    #[schemars(extend("x-keel" = json!({ "level": "admin" })))]
+    pub origin: Option<String>,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
+}
+
+impl AccountRow {
+    fn of(row: account::Model, labels: &BTreeMap<String, String>) -> Self {
+        Self {
+            label: labels
+                .get(&row.id)
+                .cloned()
+                .unwrap_or_else(|| short_id(&row.id)),
+            id: row.id,
+            kind: row.kind,
+            parent_id: row.parent_id,
+            path: row.path,
+            state: row.state,
+            external_id: row.external_id,
+            origin: row.origin,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+fn short_id(id: &str) -> String {
+    id.get(id.len().saturating_sub(SHORT_ID_LEN)..)
+        .unwrap_or(id)
+        .to_owned()
+}
+
+fn may_read_logins<P>(call: &Call<P>) -> Result<bool> {
+    let principal = call.principal();
+    let catalogue = call.require::<dyn PermissionCatalogue>()?;
+    Ok(catalogue.holds(principal, principals::READ)
+        && guards::scope(principals::LIST, Mode::Read, principal).is_ok())
+}
+
+async fn labels<P>(call: &Call<P>, accounts: &[String]) -> Result<BTreeMap<String, String>> {
+    if accounts.is_empty() || !may_read_logins(call)? {
+        return Ok(BTreeMap::new());
+    }
+    let rows: Vec<(String, String)> = call
+        .account_scope()
+        .apply(principal::Entity::find())
+        .select_only()
+        .column(principal::Column::AccountId)
+        .column(principal::Column::Login)
+        .filter(principal::Column::AccountId.is_in(accounts.iter().map(String::as_str)))
+        .filter(principal::Column::Role.eq(principals::DEFAULT_ROLE))
+        .distinct_on([principal::Column::AccountId])
+        .order_by_asc(principal::Column::AccountId)
+        .order_by_asc(principal::Column::CreatedAt)
+        .order_by_asc(principal::Column::Id)
+        .into_tuple()
+        .all(call.db())
+        .await?;
+    Ok(rows.into_iter().collect())
+}
+
 pub fn list() -> FunctionDef {
-    function::<ListQuery, Page<account::Model>>("keel.account.list")
+    function::<ListQuery, Page<AccountRow>>("keel.account.list")
         .kind(Kind::List)
         .access(Level::User, "keel.account.read")
         .owned::<account::Entity>()
         .ui(List::new("keel.account.list.title")
             .search(["id", "kind"])
             .column(
-                Column::new("id", ColumnType::Link)
+                Column::new("label", ColumnType::Link)
                     .to("keel.account.update", [("id", "$id")])
-                    .sortable()
                     .primary(),
             )
-            .column(Column::new("kind", ColumnType::Text).sortable())
+            .column(
+                Column::new("kind", ColumnType::Status)
+                    .map([
+                        (SYSTEM_KIND, Tone::Info),
+                        (RESELLER_KIND, Tone::Neutral),
+                        (USER_KIND, Tone::Neutral),
+                    ])
+                    .sortable(),
+            )
             .column(
                 Column::new("state", ColumnType::Status)
                     .map([
@@ -139,6 +227,7 @@ pub fn list() -> FunctionDef {
                     .level(Level::Reseller)
                     .filter_remote("keel.account.options"),
             )
+            .column(Column::new("id", ColumnType::Text).sortable())
             .column(Column::new("createdAt", ColumnType::Datetime).sortable())
             .column(Column::new("origin", ColumnType::Text).level(Level::Admin))
             .action(
@@ -172,13 +261,13 @@ pub fn list() -> FunctionDef {
                     .icon("trash")
                     .confirm_with(ConfirmDetails {
                         destructive: true,
-                        items: Some("id".to_owned()),
+                        items: Some("label".to_owned()),
                         input: None,
                     }),
             )
             .row_actions(["edit", "suspend", "resume", "delete"])
             .empty("keel.account.empty", Some("create"))
-            .invalidate_on(["keel.account.*"])
+            .invalidate_on(["keel.account.*", "keel.principal.*"])
             .tree(PARENT))
         .default_sort("id", SortDir::Asc)
         .source(Accounts)
@@ -188,9 +277,9 @@ struct Accounts;
 
 #[async_trait]
 impl ListSource for Accounts {
-    type Row = account::Model;
+    type Row = AccountRow;
 
-    async fn fetch(&self, call: &Call<ListQuery>, spec: &ListSpec) -> Result<Page<account::Model>> {
+    async fn fetch(&self, call: &Call<ListQuery>, spec: &ListSpec) -> Result<Page<AccountRow>> {
         let scope = call.account_scope();
         let mut select = scope.apply(account::Entity::find());
         match call.params().scope.get(PARENT) {
@@ -203,7 +292,18 @@ impl ListSource for Accounts {
                 return Err(KeelError::validation(PARENT_SCOPE).field(format!("scope.{PARENT}")));
             }
         }
-        fetch_page(select, call, spec).await
+        let page = fetch_page(select, call, spec).await?;
+        let ids: Vec<String> = page.data.iter().map(|row| row.id.clone()).collect();
+        let labels = labels(call, &ids).await?;
+        Ok(Page {
+            data: page
+                .data
+                .into_iter()
+                .map(|row| AccountRow::of(row, &labels))
+                .collect(),
+            total: page.total,
+            totals: page.totals,
+        })
     }
 }
 
@@ -627,10 +727,18 @@ pub fn options() -> FunctionDef {
                 .await?;
             let more = rows.len() > limit as usize;
             rows.truncate(limit as usize);
+            let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+            let labels = labels(&call, &ids).await?;
             Ok(Choices {
                 data: rows
                     .into_iter()
-                    .map(|row| Choice::new(row.id.clone(), row.id).hint(row.kind))
+                    .map(|row| {
+                        let label = labels
+                            .get(&row.id)
+                            .cloned()
+                            .unwrap_or_else(|| short_id(&row.id));
+                        Choice::new(row.id, label).hint(row.kind)
+                    })
                     .collect(),
                 more,
             })

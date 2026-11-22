@@ -782,13 +782,11 @@ async fn ctl_keel_account_create_returns_the_envelope_and_out_table_renders_the_
     assert_eq!(lines.len(), 3, "{}", table.text);
     assert_eq!(
         lines[0].split_whitespace().collect::<Vec<_>>(),
-        ["Account", "Kind", "State", "Parent", "Created", "Origin"]
+        [
+            "Account", "Kind", "State", "Parent", "Id", "Created", "Origin"
+        ]
     );
-    assert!(
-        lines.iter().any(|line| line.starts_with(id)),
-        "{}",
-        table.text
-    );
+    assert!(lines.iter().any(|line| line.contains(id)), "{}", table.text);
     running.stop().await.unwrap();
     site.finish().await;
 }

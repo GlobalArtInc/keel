@@ -13,13 +13,13 @@
     "$ref": "keel://ListQuery"
   },
   "result": {
-    "title": "Page_Account",
+    "title": "Page_AccountRow",
     "type": "object",
     "properties": {
       "data": {
         "type": "array",
         "items": {
-          "$ref": "#/$defs/Account"
+          "$ref": "#/$defs/AccountRow"
         }
       },
       "total": {
@@ -40,10 +40,13 @@
       "total"
     ],
     "$defs": {
-      "Account": {
+      "AccountRow": {
         "type": "object",
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "label": {
             "type": "string"
           },
           "kind": {
@@ -78,6 +81,7 @@
         },
         "required": [
           "id",
+          "label",
           "kind",
           "path",
           "state",
@@ -95,7 +99,7 @@
     ],
     "columns": [
       {
-        "key": "id",
+        "key": "label",
         "type": "link",
         "to": {
           "screen": "keel.account.update",
@@ -103,13 +107,17 @@
             "id": "$id"
           }
         },
-        "sortable": true,
         "primary": true
       },
       {
         "key": "kind",
-        "type": "text",
-        "sortable": true
+        "type": "status",
+        "sortable": true,
+        "map": {
+          "reseller": "neutral",
+          "system": "info",
+          "user": "neutral"
+        }
       },
       {
         "key": "state",
@@ -136,6 +144,11 @@
         "access": {
           "level": "reseller"
         }
+      },
+      {
+        "key": "id",
+        "type": "text",
+        "sortable": true
       },
       {
         "key": "createdAt",
@@ -196,7 +209,7 @@
         },
         "confirm": {
           "destructive": true,
-          "items": "id"
+          "items": "label"
         }
       }
     ],
@@ -211,7 +224,8 @@
       "action": "create"
     },
     "invalidate_on": [
-      "keel.account.*"
+      "keel.account.*",
+      "keel.principal.*"
     ],
     "layout": "tree",
     "parent": "parentId"
