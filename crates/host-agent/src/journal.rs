@@ -80,6 +80,7 @@ pub(crate) struct Stop<'a> {
     pub(crate) uid: u32,
     pub(crate) sigterm: usize,
     pub(crate) sigkill: usize,
+    pub(crate) rounds: usize,
 }
 
 pub(crate) fn processes_stopped(stop: &Stop<'_>) {
@@ -94,6 +95,7 @@ pub(crate) fn processes_stopped(stop: &Stop<'_>) {
         uid = stop.uid,
         sigterm = stop.sigterm,
         sigkill = stop.sigkill,
+        rounds = stop.rounds,
         outcome = %"processes_stopped",
     );
 }
