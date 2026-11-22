@@ -100,7 +100,6 @@ export const SAVE_KEY = 'keel.action.save';
       margin-bottom: var(--phx-form-row-gap, 28px);
     }
     phx-tab keel-page {
-      display: block;
       padding-top: 16px;
     }
   `,
