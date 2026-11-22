@@ -931,6 +931,9 @@ service lmtp {
     group = postfix
   }
 }
+protocol lmtp {
+  auth_username_format = %{user | lower}
+}
 CONF
   chmod 0644 "$PANEL_MAIL_DROP_IN"
   doveconf -n >/dev/null || fail "doveconf -n refuses $PANEL_MAIL_DROP_IN; panel needs dovecot 2.4, the one of Debian 13"

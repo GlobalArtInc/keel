@@ -424,7 +424,8 @@ installer creates the system user `vmail`, the empty maps, the empty passwd-file
 keys `virtual_mailbox_domains`, `virtual_mailbox_maps`, `virtual_alias_maps` and
 `virtual_transport = lmtp:unix:private/dovecot-lmtp`, and the dovecot drop-in
 `/etc/dovecot/conf.d/90-keel-panel.conf` that reads the passwd-file and listens for LMTP in the
-spool of postfix.
+spool of postfix, and keeps the domain in the LMTP lookup, because the distribution's
+`20-lmtp.conf` strips it.
 
 FTP accounts belong to a site and are virtual users of vsftpd, named `hp_<name>` and chrooted to
 a directory under the document root of the site, given relative to that root; a directory that

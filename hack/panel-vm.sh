@@ -268,6 +268,9 @@ install_keel() {
   check "postfix reads the domains of $MAIL_MAPS" test "$(postconf -h virtual_mailbox_domains)" = "hash:$MAIL_MAPS/keel-panel-domains"
   check "dovecot reads the passwd-file $MAIL_PASSWD" grep -qF "passwd_file_path = $MAIL_PASSWD" "$MAIL_DROP_IN"
   check "dovecot accepts its configuration" doveconf -n
+  local warnings
+  warnings=$(doveconf -n 2>&1 >/dev/null || true)
+  check "dovecot prints no warning about auth_username_format" test -z "$(grep -F auth_username_format <<<"$warnings")"
   check "$MAILDIRS is vmail's" test "$(stat -c '%U %a' "$MAILDIRS")" = "vmail 700"
   check "$FTP_CONF names the PAM service and the per-account files" grep -qxF "user_config_dir=$FTP_USERS" "$FTP_CONF"
   check "the PAM service reads $FTP_PASSWD" grep -qF "pwdfile=$FTP_PASSWD" "$FTP_PAM"
@@ -685,7 +688,7 @@ unmapped() {
 }
 
 passwd_placed() {
-  [ "$(stat -c '%U:%G %a' "$MAIL_PASSWD")" = "dovecot:dovecot 640" ] && grep -q "^$MAILBOX:{ARGON2ID}\$argon2id\$" "$MAIL_PASSWD"
+  [ "$(stat -c '%U:%G %a' "$MAIL_PASSWD")" = "dovecot:dovecot 640" ] && grep -qE "^$MAILBOX:\{ARGON2ID\}[$]argon2id[$]" "$MAIL_PASSWD"
 }
 
 logs_in() {
