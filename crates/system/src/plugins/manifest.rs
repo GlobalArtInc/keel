@@ -500,6 +500,13 @@ fn contributions(manifest: &Manifest, own: &BTreeSet<&str>, faults: &mut Vec<Str
         }
     }
     for node in &manifest.menu {
+        let segments: Vec<&str> = node.path.split('/').collect();
+        if segments.len() != 2 || segments.contains(&"") {
+            faults.push(format!(
+                "the menu node {} is not a path of the form group/item",
+                node.path
+            ));
+        }
         for key in [&node.label, &node.badge].into_iter().flatten() {
             if !prefixed(id, key) {
                 faults.push(format!(
@@ -780,6 +787,12 @@ mod tests {
             |value| value["menu"][0]["label"] = json!("menu.system"),
             "the menu node dns/acme names menu.system",
         );
+        for path in ["system/x/y", "a/b/c/d", "system", "system/", "/x"] {
+            refused(
+                |value| value["menu"][0]["path"] = json!(path),
+                &format!("the menu node {path} is not a path of the form group/item"),
+            );
+        }
         let mut foreign = manifest();
         foreign["i18n"] = json!({});
         let manifest = parse(&foreign.to_string()).expect("the manifest parses");

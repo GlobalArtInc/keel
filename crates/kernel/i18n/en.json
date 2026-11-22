@@ -576,6 +576,8 @@
     }
   },
   "menu": {
+    "access": "Users and access",
+    "monitor": "Monitoring",
     "system": "System"
   },
   "phx": {

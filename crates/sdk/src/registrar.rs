@@ -31,6 +31,7 @@ pub struct MenuNode {
     order: i32,
     label: Option<String>,
     badge: Option<String>,
+    level: Option<Level>,
 }
 
 impl MenuNode {
@@ -42,6 +43,7 @@ impl MenuNode {
             order: 0,
             label: None,
             badge: None,
+            level: None,
         }
     }
 
@@ -62,6 +64,11 @@ impl MenuNode {
 
     pub fn badge(mut self, problem: &str) -> Self {
         self.badge = Some(problem.to_owned());
+        self
+    }
+
+    pub fn level(mut self, level: Level) -> Self {
+        self.level = Some(level);
         self
     }
 
@@ -87,6 +94,50 @@ impl MenuNode {
 
     pub fn badge_problem(&self) -> Option<&str> {
         self.badge.as_deref()
+    }
+
+    pub fn min_level(&self) -> Option<Level> {
+        self.level
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MenuSection {
+    path: String,
+    label: String,
+    icon: String,
+    order: i32,
+}
+
+impl MenuSection {
+    pub fn new(path: &str, label: &str, icon: &str) -> Self {
+        Self {
+            path: path.to_owned(),
+            label: label.to_owned(),
+            icon: icon.to_owned(),
+            order: 0,
+        }
+    }
+
+    pub fn order(mut self, order: i32) -> Self {
+        self.order = order;
+        self
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn label_key(&self) -> &str {
+        &self.label
+    }
+
+    pub fn icon_name(&self) -> &str {
+        &self.icon
+    }
+
+    pub fn order_value(&self) -> i32 {
+        self.order
     }
 }
 
@@ -324,6 +375,7 @@ pub struct Registrar {
     functions: Vec<FunctionDef>,
     views: Vec<ViewDef>,
     menu: Vec<MenuNode>,
+    sections: Vec<MenuSection>,
     i18n: Vec<I18nBundle>,
     permissions: Vec<PermissionDef>,
     before: Vec<HookDef<BeforeHook>>,
@@ -346,6 +398,7 @@ pub struct Registrations {
     pub functions: Vec<FunctionDef>,
     pub views: Vec<ViewDef>,
     pub menu: Vec<MenuNode>,
+    pub sections: Vec<MenuSection>,
     pub i18n: Vec<I18nBundle>,
     pub permissions: Vec<PermissionDef>,
     pub before: Vec<HookDef<BeforeHook>>,
@@ -368,6 +421,7 @@ impl fmt::Debug for Registrations {
             .field("functions", &self.functions)
             .field("views", &self.views)
             .field("menu", &self.menu)
+            .field("sections", &self.sections)
             .field("permissions", &self.permissions)
             .field("before", &self.before)
             .field("within", &self.within)
@@ -391,6 +445,7 @@ impl Registrar {
             functions: Vec::new(),
             views: Vec::new(),
             menu: Vec::new(),
+            sections: Vec::new(),
             i18n: Vec::new(),
             permissions: Vec::new(),
             before: Vec::new(),
@@ -483,6 +538,12 @@ impl Registrar {
 
     pub fn menu(&mut self, node: MenuNode) -> &mut Self {
         self.menu.push(node);
+        self
+    }
+
+    pub fn section(&mut self, section: MenuSection) -> &mut Self {
+        self.check_prefix("menu section label", section.label_key());
+        self.sections.push(section);
         self
     }
 
@@ -726,6 +787,7 @@ impl Registrar {
             functions: self.functions,
             views: self.views,
             menu: self.menu,
+            sections: self.sections,
             i18n: self.i18n,
             permissions: self.permissions,
             before: self.before,
@@ -777,6 +839,7 @@ impl fmt::Debug for Registrar {
             .field("functions", &self.function_names())
             .field("views", &self.views)
             .field("menu", &self.menu)
+            .field("sections", &self.sections)
             .field("permissions", &self.permissions)
             .field("derive", &self.derive.is_some())
             .field("errors", &self.errors)
@@ -1235,6 +1298,41 @@ mod tests {
         assert_eq!(
             listed,
             ["module svc: function \"dns.zone.open\" does not carry the module prefix"]
+        );
+    }
+
+    #[test]
+    fn a_menu_section_keeps_its_declaration_and_its_label_carries_the_module_prefix() {
+        let mut registrar = Registrar::new("acme");
+        registrar
+            .section(MenuSection::new("acme/users", "acme.menu.users", "users").order(4))
+            .menu(MenuNode::new("acme/users/all", "acme.user.list").level(Level::Reseller));
+        let registrations = registrar.into_registrations().unwrap();
+        let [section] = registrations.sections.as_slice() else {
+            panic!("one section expected");
+        };
+        assert_eq!(section.path(), "acme/users");
+        assert_eq!(section.label_key(), "acme.menu.users");
+        assert_eq!(section.icon_name(), "users");
+        assert_eq!(section.order_value(), 4);
+        assert_eq!(registrations.menu[0].min_level(), Some(Level::Reseller));
+        assert_eq!(
+            MenuNode::new("acme/zones", "acme.zone.list").min_level(),
+            None
+        );
+        let mut registrar = Registrar::new("acme");
+        registrar.section(MenuSection::new(
+            "acme/users",
+            "elsewhere.menu.users",
+            "users",
+        ));
+        assert_eq!(
+            registrar.errors(),
+            [RegistrationError::Prefix {
+                module: "acme".to_owned(),
+                kind: "menu section label",
+                name: "elsewhere.menu.users".to_owned(),
+            }]
         );
     }
 

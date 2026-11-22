@@ -13,7 +13,7 @@ use keel_sdk::system::{
 };
 use keel_sdk::{
     BackupSource, ConfigSection, ConfigTemplate, DashboardWidget, FunctionDef, MenuNode,
-    ProductManifest, SettingsSource,
+    MenuSection, ProductManifest, SettingsSource,
 };
 use keel_types::descriptor::{Control, KeelAttrs, UiAttrs, X_KEEL, X_UI};
 use keel_types::ui::{ColumnFilter, ScreenResult, ScreenUi};
@@ -37,7 +37,10 @@ use crate::doctor;
 use crate::features::ProductFeatures;
 use crate::instance;
 use crate::keel::{SetupHandle, StoredAccounts, StoredLimits, StoredPrincipals};
-use crate::menu::{SYSTEM_GROUP, group_of, label_of};
+use crate::menu::{
+    PLATFORM_GROUPS, SECTION_DEPTH, TAB_DEPTH, depth_of, group_of, has_empty_segment, label_of,
+    section_of,
+};
 use crate::products::Composed;
 use crate::registry::{Function, Group, Hook, ModuleInfo, Registry, View};
 use crate::restart;
@@ -266,6 +269,14 @@ pub enum FreezeProblem {
         group: String,
         icon: String,
     },
+    #[error(
+        "module {module}: menu section {path} names the icon {icon}, which is outside the phoenix icon set"
+    )]
+    MenuSectionIcon {
+        module: String,
+        path: String,
+        icon: String,
+    },
     #[error("function {function}: {member} names {target}, which is not registered")]
     Reference {
         function: String,
@@ -332,6 +343,36 @@ pub enum FreezeProblem {
         first: String,
         second: String,
     },
+    #[error("the menu section {path} is declared by both {first} and {second}")]
+    MenuSectionTwice {
+        path: String,
+        first: String,
+        second: String,
+    },
+    #[error("module {module}: menu section {path} is not a path of the form group/section")]
+    MenuSectionPath { module: String, path: String },
+    #[error(
+        "module {module}: menu section {path} names the group {group}, which no enabled product declares"
+    )]
+    MenuSectionGroupUnknown {
+        module: String,
+        path: String,
+        group: String,
+    },
+    #[error("module {module}: menu node {path} has an empty path segment")]
+    MenuPathEmptySegment { module: String, path: String },
+    #[error("module {module}: menu node {path} is deeper than three segments")]
+    MenuPathDepth { module: String, path: String },
+    #[error(
+        "module {module}: menu node {path} is a tab of the section {section}, which no module declares"
+    )]
+    MenuNodeSectionUnknown {
+        module: String,
+        path: String,
+        section: String,
+    },
+    #[error("module {module}: menu node {path} takes the path of a menu section")]
+    MenuNodeIsSection { module: String, path: String },
     #[error(
         "module {module}: menu node {path} has no label and {function} has no screen title to use instead"
     )]
@@ -415,6 +456,8 @@ struct Freezer {
     guards: Vec<Hook<Arc<dyn Guard>>>,
     menu: Vec<MenuNode>,
     menu_owners: BTreeMap<String, String>,
+    menu_sections: Vec<MenuSection>,
+    menu_section_owners: BTreeMap<String, String>,
     groups: Vec<Group>,
     group_owners: BTreeMap<String, String>,
     catalogue: Catalogue,
@@ -455,6 +498,8 @@ impl Initialised {
             guards: Vec::new(),
             menu: Vec::new(),
             menu_owners: BTreeMap::new(),
+            menu_sections: Vec::new(),
+            menu_section_owners: BTreeMap::new(),
             groups: Vec::new(),
             group_owners: BTreeMap::new(),
             catalogue: Catalogue::default(),
@@ -497,6 +542,9 @@ impl Initialised {
             }
             for node in registrations.menu {
                 freezer.menu(&module, node);
+            }
+            for section in registrations.sections {
+                freezer.menu_section(&module, section);
             }
             for bundle in registrations.i18n {
                 freezer.dictionary(&format!("module {module}"), &bundle.lang, &bundle.messages);
@@ -552,7 +600,9 @@ impl Initialised {
                 freezer.patch(&module, &patch);
             }
         }
-        freezer.group(PLATFORM, None, &SYSTEM_GROUP);
+        for group in &PLATFORM_GROUPS {
+            freezer.group(PLATFORM, None, group);
+        }
         freezer.references();
         freezer.tasks();
         freezer.translations(self.graph.products());
@@ -841,6 +891,33 @@ impl Freezer {
         self.menu.push(node);
     }
 
+    fn menu_section(&mut self, module: &str, section: MenuSection) {
+        if let Some(first) = self.menu_section_owners.get(section.path()) {
+            self.problems.push(FreezeProblem::MenuSectionTwice {
+                path: section.path().to_owned(),
+                first: first.clone(),
+                second: module.to_owned(),
+            });
+            return;
+        }
+        self.menu_section_owners
+            .insert(section.path().to_owned(), module.to_owned());
+        if depth_of(section.path()) != SECTION_DEPTH || has_empty_segment(section.path()) {
+            self.problems.push(FreezeProblem::MenuSectionPath {
+                module: module.to_owned(),
+                path: section.path().to_owned(),
+            });
+        }
+        if !self.icons.admits(section.icon_name()) {
+            self.problems.push(FreezeProblem::MenuSectionIcon {
+                module: module.to_owned(),
+                path: section.path().to_owned(),
+                icon: section.icon_name().to_owned(),
+            });
+        }
+        self.menu_sections.push(section);
+    }
+
     fn dictionary(&mut self, owner: &str, lang: &str, messages: &Value) {
         for conflict in self.catalogue.merge(lang, messages) {
             let first = self
@@ -1055,8 +1132,46 @@ impl Freezer {
             let group = group_of(node.path());
             if !self.group_owners.contains_key(group) {
                 problems.push(FreezeProblem::MenuGroupUnknown {
+                    module: module.clone(),
+                    path: node.path().to_owned(),
+                    group: group.to_owned(),
+                });
+            }
+            if has_empty_segment(node.path()) {
+                problems.push(FreezeProblem::MenuPathEmptySegment {
                     module,
                     path: node.path().to_owned(),
+                });
+            } else if depth_of(node.path()) > TAB_DEPTH {
+                problems.push(FreezeProblem::MenuPathDepth {
+                    module,
+                    path: node.path().to_owned(),
+                });
+            } else if let Some(section) = section_of(node.path()) {
+                if !self.menu_section_owners.contains_key(section) {
+                    problems.push(FreezeProblem::MenuNodeSectionUnknown {
+                        module,
+                        path: node.path().to_owned(),
+                        section: section.to_owned(),
+                    });
+                }
+            } else if self.menu_section_owners.contains_key(node.path()) {
+                problems.push(FreezeProblem::MenuNodeIsSection {
+                    module,
+                    path: node.path().to_owned(),
+                });
+            }
+        }
+        for section in &self.menu_sections {
+            let group = group_of(section.path());
+            if !self.group_owners.contains_key(group) {
+                problems.push(FreezeProblem::MenuSectionGroupUnknown {
+                    module: self
+                        .menu_section_owners
+                        .get(section.path())
+                        .cloned()
+                        .unwrap_or_default(),
+                    path: section.path().to_owned(),
                     group: group.to_owned(),
                 });
             }
@@ -1136,6 +1251,13 @@ impl Freezer {
                 None => {}
             }
         }
+        for section in &self.menu_sections {
+            required.push((
+                format!("menu section {}", section.path()),
+                section.label_key().to_owned(),
+                None,
+            ));
+        }
         for group in &self.groups {
             let owner = match &group.product {
                 Some(product) => format!("product {product} group {}", group.id),
@@ -1210,6 +1332,7 @@ impl Freezer {
             views: self.views,
             groups: self.groups,
             menu: self.menu,
+            sections: self.menu_sections,
             permissions: self.permissions,
             guards: self.guards,
             i18n: self.catalogue.into_languages(),
@@ -1777,7 +1900,15 @@ mod tests {
             .iter()
             .map(|group| (group.id.as_str(), group.product.as_deref()))
             .collect();
-        assert_eq!(groups, [("base", Some("base")), ("system", None)]);
+        assert_eq!(
+            groups,
+            [
+                ("base", Some("base")),
+                ("access", None),
+                ("monitor", None),
+                ("system", None)
+            ]
+        );
         assert!(registry.i18n("en").unwrap()["product"]["base"]["brand"].is_string());
         assert!(registry.i18n("ru").unwrap()["product"]["base"]["brand"].is_string());
         assert!(format!("{frozen:?}").contains("Registry"));
@@ -1833,7 +1964,10 @@ mod tests {
             .iter()
             .map(|group| group.id.as_str())
             .collect();
-        assert_eq!(ids, ["early", "late", "base", "system"]);
+        assert_eq!(
+            ids,
+            ["early", "late", "base", "access", "monitor", "system"]
+        );
         assert_eq!(frozen.registry().product_ids(), ["ordered", "base"]);
         assert_eq!(frozen.graph().ids(), ["keel", "base"]);
     }
@@ -1908,6 +2042,271 @@ mod tests {
                 "module homeless: menu node nowhere/items has no label and homeless.item.get has no screen title to use instead",
                 "module homeless: menu node system/homeless has no label and homeless.item.get has no screen title to use instead",
             ]
+        );
+    }
+
+    fn sectioned(r: &mut Registrar, section: MenuSection, nodes: &[(&str, &str)]) {
+        let module = r.module().to_owned();
+        r.section(section);
+        for (path, label) in nodes {
+            let name = format!("{module}.tab.{}", path.replace('/', "_"));
+            r.function(get(&name))
+                .menu(MenuNode::new(path, &name).label(label));
+        }
+    }
+
+    fn tidy_init(r: &mut Registrar) -> Result<()> {
+        sectioned(
+            r,
+            MenuSection::new("system/area", "tidy.menu.area", "users").order(3),
+            &[
+                ("system/area/one", "tidy.one"),
+                ("system/area/two", "tidy.two"),
+            ],
+        );
+        r.i18n(
+            "en",
+            r#"{ "tidy": { "menu": { "area": "Area" }, "one": "One", "two": "Two" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(TIDY, "tidy", [], tidy_init);
+
+    #[test]
+    fn a_declared_section_with_tabs_in_a_platform_group_freezes_and_is_kept_in_the_registry() {
+        let frozen = freeze(&[&TIDY], &[]).unwrap();
+        let sections = frozen.registry().sections();
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].path(), "system/area");
+        assert_eq!(sections[0].order_value(), 3);
+        let tabs = frozen
+            .registry()
+            .menu()
+            .iter()
+            .filter(|node| node.path().starts_with("system/area/"))
+            .count();
+        assert_eq!(tabs, 2);
+    }
+
+    fn twice_one_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new(
+            "system/area",
+            "twiceone.menu.area",
+            "users",
+        ))
+        .i18n("en", r#"{ "twiceone": { "menu": { "area": "Area" } } }"#);
+        Ok(())
+    }
+
+    fn twice_two_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new(
+            "system/area",
+            "twicetwo.menu.area",
+            "users",
+        ));
+        Ok(())
+    }
+
+    module!(TWICE_ONE, "twiceone", [], twice_one_init);
+    module!(TWICE_TWO, "twicetwo", [], twice_two_init);
+
+    #[test]
+    fn a_section_declared_by_two_modules_fails_freeze() {
+        assert_eq!(
+            problems(&[&TWICE_ONE, &TWICE_TWO], &[]),
+            ["the menu section system/area is declared by both twiceone and twicetwo"]
+        );
+    }
+
+    fn lost_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new("nowhere/area", "lost.menu.area", "users"))
+            .i18n("en", r#"{ "lost": { "menu": { "area": "Area" } } }"#);
+        Ok(())
+    }
+
+    module!(LOST, "lost", [], lost_init);
+
+    #[test]
+    fn a_section_needs_a_group_that_a_product_or_the_platform_declares() {
+        assert_eq!(
+            problems(&[&LOST], &[]),
+            [
+                "module lost: menu section nowhere/area names the group nowhere, which no enabled product declares"
+            ]
+        );
+    }
+
+    fn icony_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new(
+            "system/area",
+            "icony.menu.area",
+            "notebook",
+        ))
+        .i18n("en", r#"{ "icony": { "menu": { "area": "Area" } } }"#);
+        Ok(())
+    }
+
+    module!(ICONY, "icony", [], icony_init);
+
+    #[test]
+    fn a_section_icon_outside_the_phoenix_set_fails_freeze() {
+        assert_eq!(
+            problems(&[&ICONY], &[]),
+            [
+                "module icony: menu section system/area names the icon notebook, which is outside the phoenix icon set"
+            ]
+        );
+    }
+
+    fn bare_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new("system/area", "bare.menu.area", "users"));
+        Ok(())
+    }
+
+    module!(BARE, "bare", [], bare_init);
+
+    #[test]
+    fn a_section_label_needs_an_en_entry() {
+        assert_eq!(
+            problems(&[&BARE], &[]),
+            ["menu section system/area: the en dictionary has no entry for bare.menu.area"]
+        );
+    }
+
+    fn flat_init(r: &mut Registrar) -> Result<()> {
+        r.section(MenuSection::new("system", "flat.menu.one", "users"))
+            .section(MenuSection::new(
+                "system/area/extra",
+                "flat.menu.two",
+                "users",
+            ))
+            .section(MenuSection::new("system/", "flat.menu.three", "users"))
+            .i18n(
+                "en",
+                r#"{ "flat": { "menu": { "one": "One", "two": "Two", "three": "Three" } } }"#,
+            );
+        Ok(())
+    }
+
+    module!(FLAT, "flat", [], flat_init);
+
+    #[test]
+    fn a_section_path_is_exactly_a_group_and_a_section() {
+        assert_eq!(
+            problems(&[&FLAT], &[]),
+            [
+                "module flat: menu section system is not a path of the form group/section",
+                "module flat: menu section system/area/extra is not a path of the form group/section",
+                "module flat: menu section system/ is not a path of the form group/section",
+            ]
+        );
+    }
+
+    fn deep_init(r: &mut Registrar) -> Result<()> {
+        sectioned(
+            r,
+            MenuSection::new("system/area", "deep.menu.area", "users"),
+            &[("system/area/tab/deeper", "deep.tab")],
+        );
+        r.i18n(
+            "en",
+            r#"{ "deep": { "menu": { "area": "Area" }, "tab": "Tab" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(DEEP, "deep", [], deep_init);
+
+    #[test]
+    fn a_menu_path_longer_than_three_segments_fails_freeze() {
+        assert_eq!(
+            problems(&[&DEEP], &[]),
+            ["module deep: menu node system/area/tab/deeper is deeper than three segments"]
+        );
+    }
+
+    fn gappy_init(r: &mut Registrar) -> Result<()> {
+        sectioned(
+            r,
+            MenuSection::new("system/area", "gappy.menu.area", "users"),
+            &[
+                ("system/area/", "gappy.tab"),
+                ("system//item", "gappy.tab"),
+                ("/item", "gappy.tab"),
+            ],
+        );
+        r.i18n(
+            "en",
+            r#"{ "gappy": { "menu": { "area": "Area" }, "tab": "Tab" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(GAPPY, "gappy", [], gappy_init);
+
+    #[test]
+    fn a_menu_path_with_an_empty_segment_fails_freeze() {
+        let found = problems(&[&GAPPY], &[]);
+        for path in ["system/area/", "system//item", "/item"] {
+            let expected = format!("module gappy: menu node {path} has an empty path segment");
+            assert!(
+                found.contains(&expected),
+                "{expected:?} is not among {found:?}"
+            );
+        }
+        assert!(
+            found
+                .iter()
+                .all(|problem| !problem.contains("no module declares"))
+        );
+    }
+
+    fn orphan_init(r: &mut Registrar) -> Result<()> {
+        sectioned(
+            r,
+            MenuSection::new("system/other", "orphan.menu.other", "users"),
+            &[("system/area/tab", "orphan.tab")],
+        );
+        r.i18n(
+            "en",
+            r#"{ "orphan": { "menu": { "other": "Other" }, "tab": "Tab" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(ORPHAN, "orphan", [], orphan_init);
+
+    #[test]
+    fn a_three_segment_node_needs_a_declared_section() {
+        assert_eq!(
+            problems(&[&ORPHAN], &[]),
+            [
+                "module orphan: menu node system/area/tab is a tab of the section system/area, which no module declares"
+            ]
+        );
+    }
+
+    fn clash_init(r: &mut Registrar) -> Result<()> {
+        sectioned(
+            r,
+            MenuSection::new("system/area", "clash.menu.area", "users"),
+            &[("system/area", "clash.tab")],
+        );
+        r.i18n(
+            "en",
+            r#"{ "clash": { "menu": { "area": "Area" }, "tab": "Tab" } }"#,
+        );
+        Ok(())
+    }
+
+    module!(CLASH, "clash", [], clash_init);
+
+    #[test]
+    fn a_two_segment_node_cannot_take_the_path_of_a_section() {
+        assert_eq!(
+            problems(&[&CLASH], &[]),
+            ["module clash: menu node system/area takes the path of a menu section"]
         );
     }
 

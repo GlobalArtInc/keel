@@ -30,7 +30,7 @@ pub use crate::list::{ListSource, ListSpec, entity_source, fetch_page};
 pub use crate::module::ModuleDef;
 pub use crate::multipart;
 pub use crate::product::{Asset, Brand, Bridge, Edition, LevelLabels, MenuGroup, ProductManifest};
-pub use crate::registrar::{Before, DescriptorPatch, MenuNode, Registrar};
+pub use crate::registrar::{Before, DescriptorPatch, MenuNode, MenuSection, Registrar};
 pub use crate::secret::Secret;
 pub use crate::settings::{SettingDef, SettingsSource};
 pub use crate::stream::Lines;

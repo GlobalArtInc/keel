@@ -71,7 +71,7 @@ pub use list::{EntitySource, ListSource, ListSpec, entity_source, escape_like, f
 pub use mail::{MailTemplate, MailText};
 pub use module::ModuleDef;
 pub use product::{Asset, Brand, Bridge, Edition, LevelLabels, MenuGroup, ProductManifest};
-pub use registrar::{Before, DescriptorPatch, MenuNode, Registrar};
+pub use registrar::{Before, DescriptorPatch, MenuNode, MenuSection, Registrar};
 pub use secret::Secret;
 pub use settings::{SettingDef, SettingsSource};
 pub use stat::StatCollector;

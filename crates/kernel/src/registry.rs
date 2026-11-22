@@ -6,7 +6,7 @@ use keel_sdk::runtime::{
     BeforeHook, Contributions, Guard, Invoker, PermissionDef, Services, StoreHook, ViewDef,
     WithinHook,
 };
-use keel_sdk::{FunctionDef, MenuNode, ProductManifest};
+use keel_sdk::{FunctionDef, MenuNode, MenuSection, ProductManifest};
 use keel_types::{Access, Descriptor, Platform};
 use serde_json::{Map, Value};
 
@@ -19,6 +19,7 @@ pub struct Registry {
     pub(crate) views: BTreeMap<String, View>,
     pub(crate) groups: Vec<Group>,
     pub(crate) menu: Vec<MenuNode>,
+    pub(crate) sections: Vec<MenuSection>,
     pub(crate) permissions: BTreeMap<String, PermissionDef>,
     pub(crate) guards: Vec<Hook<Arc<dyn Guard>>>,
     pub(crate) i18n: BTreeMap<String, Map<String, Value>>,
@@ -112,6 +113,10 @@ impl Registry {
 
     pub fn menu(&self) -> &[MenuNode] {
         &self.menu
+    }
+
+    pub fn sections(&self) -> &[MenuSection] {
+        &self.sections
     }
 
     pub fn permissions(&self) -> &BTreeMap<String, PermissionDef> {
@@ -213,6 +218,7 @@ impl fmt::Debug for Registry {
             .field("views", &self.views.keys().collect::<Vec<_>>())
             .field("groups", &self.groups)
             .field("menu", &self.menu)
+            .field("sections", &self.sections)
             .field("permissions", &self.permissions.keys().collect::<Vec<_>>())
             .field("guards", &self.guards)
             .field("languages", &self.i18n.keys().collect::<Vec<_>>())

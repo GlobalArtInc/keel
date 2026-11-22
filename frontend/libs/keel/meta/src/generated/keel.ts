@@ -284,6 +284,7 @@ export interface BootMenuItem {
   kind?: Kind | null;
   icon?: string | null;
   badge?: Badge | null;
+  children?: BootMenuItem[];
 }
 export interface BootWidget {
   kind: WidgetKind;

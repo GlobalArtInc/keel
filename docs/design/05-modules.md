@@ -49,7 +49,7 @@ product's lib crate as `pub static MANIFEST`:
 | `assets`        | `&[Asset { id, content_type, bytes }]`: the files the bundle ships, embedded at compile time, the logo `Brand.logo` names among them; `ProductManifest::asset(id)` and `logo()` read them, the kernel serves the logo at `/brand/<id>/logo.svg` for every compiled-in bundle, enabled or not, since the products screen lists disabled bundles with their logo, and the freeze refuses an id shipped twice. A single enabled product without the asset its brand names answers `404` on `/brand/logo.svg`; the kernel's own mark stands for the platform brand alone. |
 | `modules`       | `&[&ModuleDef]`: the definitions of the modules the product enables, `host` included when its modules need the agent; the composition learns a bundle's modules from here and lists only the platform modules itself. |
 | `bridges`       | `Bridge { to, local, remote }`: the pair of modules through which this product reaches product `to`; `local` is loaded when `to` is enabled on the same installation, `remote` otherwise. The sides are `&ModuleDef`s rather than ids, so a side cannot name a module the binary lacks, and they stay out of `modules`; the loader attributes the chosen side to the bridging bundle. The first bridge is the `panel` bundle's bridge to `dns`, since M5. |
-| `menu`          | Menu groups (`id`, `label`, `icon`, `order`) under which the modules' `MenuNode`s are placed; group ids are unique across enabled bundles. |
+| `menu`          | Menu groups (`id`, `label`, `icon`, `order`) under which the modules' `MenuNode`s are placed; group ids are unique across enabled bundles and differ from the platform groups `access`, `monitor` and `system`. |
 | `levels`        | `LevelLabels { labels, disabled }`: level labels and disabled levels ([03-access.md](03-access.md)). |
 | `editions`      | Edition ids with their feature sets; the first is the default edition used while no lease is present, and the lease names the edition of each product. |
 | `account_kinds` | The account kinds the product creates ([03-access.md](03-access.md)): identifiers, never `system`. |
@@ -126,14 +126,14 @@ Between process start and the first served request the kernel runs these steps, 
    attributes are members of their enums) and checks that the i18n keys a descriptor or a menu
    node carries exist at least for `en`, that a menu node without a label of its own points at a
    function with a screen title, that every menu node's group is declared by an enabled bundle
-   or is the platform group `system`, that no group id is declared by two enabled bundles, that
+   or is one of the platform groups `access`, `monitor` and `system`, that no group id is declared by two enabled bundles, that
    every bundle dictionary is a JSON object, that no message uses a placeholder other than
    `{name}` ([08-frontend.md](08-frontend.md)), that every icon a descriptor action, a menu node
    or a menu group names is in the embedded icon set of `contracts/icons.json`, that a view's
    permission is registered and its menu node carries a label of its own and a declared group,
    that no bundle ships an asset id twice, and that no `ConfigTemplate` id is contributed twice
    across the loaded set. Menu groups are ordered by product in composition order, then by
-   `order` within a bundle, with the platform group last. Every problem is collected and reported
+   `order` within a bundle, with the platform groups last, in the order `access`, `monitor`, `system`. A menu section is checked too: it is declared exactly once, its path is exactly `group/section` under an existing group, its icon is in the embedded set, its label exists at least for `en`, and a node of three segments `group/section/item` names a declared section; a node path has no empty segment and no more than three segments. Every problem is collected and reported
    in one error, which fails the boot when it comes from a compiled module.
 7. `attach(ctx)` and `start(ctx)`: in graph order each module's attach hook runs before its start
    hook. An attach hook only records what its module needs later (its configuration section, the
@@ -187,7 +187,13 @@ Everything a module adds to the installation goes through `Registrar` inside `in
   ([08-frontend.md](08-frontend.md)).
 - Migrations, through `ModuleDef.migrations`.
 - Menu nodes, `r.menu(MenuNode::new("dns/zones", "dns.zone.list").icon("globe").order(10))`; the
-  first path segment names a menu group declared by a bundle or the platform group `system`.
+  first path segment names a menu group declared by a bundle or one of the platform groups
+  `access`, `monitor` and `system`. `.level(Level::Reseller)` hides the node from the menu of a
+  lower level and changes nothing about who may call its function. A node of three segments,
+  `system/settings/webhooks`, is a tab of the menu section `system/settings` declared with
+  `r.section(MenuSection::new("system/settings", "keel.menu.settings", "sliders-horizontal").order(10))`;
+  the shell shows a section as one sidebar item and its nodes as the tabs of one screen. The label
+  key of a section carries the declaring module's prefix.
 - i18n dictionaries per language, `r.i18n("en", ...)`; key names follow the convention in
   [08-frontend.md](08-frontend.md).
 - Permission keys with their default levels,

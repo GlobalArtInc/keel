@@ -3,7 +3,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use keel_types::{Boot, Descriptor};
+use keel_types::{Boot, BootMenuItem, Descriptor};
 
 use super::{Catalogue, DUMP_LEVEL, Error, Projects, REQUIRED_LANGUAGE, keys, read_json};
 use crate::descriptors::{BOOT_FILE, FUNCTIONS_DIR};
@@ -52,11 +52,7 @@ pub fn required(dump: &Path) -> Result<Vec<Required>, Error> {
             shared: None,
         });
         for item in &group.items {
-            required.push(Required {
-                owner: format!("menu node {}", item.path),
-                key: item.label.clone(),
-                shared: None,
-            });
+            require_item(&mut required, item);
         }
     }
     for product in &boot.products {
@@ -67,6 +63,22 @@ pub fn required(dump: &Path) -> Result<Vec<Required>, Error> {
         });
     }
     Ok(required)
+}
+
+fn require_item(required: &mut Vec<Required>, item: &BootMenuItem) {
+    let kind = if item.children.is_empty() {
+        "menu node"
+    } else {
+        "menu section"
+    };
+    required.push(Required {
+        owner: format!("{kind} {}", item.path),
+        key: item.label.clone(),
+        shared: None,
+    });
+    for child in &item.children {
+        require_item(required, child);
+    }
 }
 
 fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, Error> {
@@ -174,6 +186,41 @@ pub(super) mod tests {
             .iter()
             .map(|(key, text)| (key.clone(), text.as_str().unwrap().to_owned()))
             .collect()
+    }
+
+    #[test]
+    fn a_section_item_requires_its_own_label_and_the_labels_of_its_tabs() {
+        let tab = |path: &str, label: &str| BootMenuItem {
+            path: path.into(),
+            label: label.into(),
+            func: "keel.principal.list".into(),
+            kind: None,
+            icon: None,
+            badge: None,
+            children: Vec::new(),
+        };
+        let section = BootMenuItem {
+            children: vec![tab("access/users/principals", "keel.principal.list.title")],
+            ..tab("access/users", "keel.menu.users")
+        };
+        let mut required = Vec::new();
+        require_item(&mut required, &section);
+        require_item(&mut required, &tab("system/health", "keel.health.title"));
+        let pairs: Vec<(&str, &str)> = required
+            .iter()
+            .map(|required| (required.owner.as_str(), required.key.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("menu section access/users", "keel.menu.users"),
+                (
+                    "menu node access/users/principals",
+                    "keel.principal.list.title"
+                ),
+                ("menu node system/health", "keel.health.title"),
+            ]
+        );
     }
 
     #[test]

@@ -578,6 +578,8 @@
       }
     },
     "menu": {
+      "access": "Users and access",
+      "monitor": "Monitoring",
       "system": "System",
       "demo": "Demo",
       "dns": "DNS",

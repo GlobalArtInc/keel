@@ -120,6 +120,8 @@ pub struct BootMenuItem {
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub badge: Option<Badge>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<BootMenuItem>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -190,6 +192,7 @@ mod tests {
                     kind: Some(Kind::List),
                     icon: Some("users".into()),
                     badge: None,
+                    children: Vec::new(),
                 }],
             }],
             dashboard: Vec::new(),
@@ -317,6 +320,7 @@ mod tests {
             kind: None,
             icon: Some("folder".into()),
             badge: None,
+            children: Vec::new(),
         };
         let wire = serde_json::to_value(&item).unwrap();
         assert_eq!(
@@ -325,6 +329,44 @@ mod tests {
                     "func": "hosting.file-manager", "icon": "folder" })
         );
         assert_eq!(serde_json::from_value::<BootMenuItem>(wire).unwrap(), item);
+    }
+
+    #[test]
+    fn a_menu_section_item_lists_its_tabs_and_an_empty_list_is_left_off_the_wire() {
+        let tab = BootMenuItem {
+            path: "access/users/principals".into(),
+            label: "keel.principal.list.title".into(),
+            func: "keel.principal.list".into(),
+            kind: Some(Kind::List),
+            icon: None,
+            badge: None,
+            children: Vec::new(),
+        };
+        let section = BootMenuItem {
+            path: "access/users".into(),
+            label: "keel.menu.users".into(),
+            func: "keel.principal.list".into(),
+            kind: Some(Kind::List),
+            icon: Some("users".into()),
+            badge: None,
+            children: vec![tab],
+        };
+        let wire = serde_json::to_value(&section).unwrap();
+        assert_eq!(
+            wire,
+            json!({
+                "path": "access/users", "label": "keel.menu.users",
+                "func": "keel.principal.list", "kind": "list", "icon": "users",
+                "children": [
+                    { "path": "access/users/principals", "label": "keel.principal.list.title",
+                      "func": "keel.principal.list", "kind": "list" }
+                ]
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<BootMenuItem>(wire).unwrap(),
+            section
+        );
     }
 
     #[test]

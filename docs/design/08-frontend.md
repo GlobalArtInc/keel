@@ -355,10 +355,10 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   `totp`, the enabled features, the license state, the menu already cut to the principal's level
   with a `product` on every group, the dashboard, the list of custom views, the meta version and
   the count of open problems. With exactly one product enabled the effective brand is that
-  product's brand and `phx-sidebar` shows its groups followed by the platform group `system`;
+  product's brand and `phx-sidebar` shows its groups followed by the platform groups `access`, `monitor` and `system`;
   with several, the effective brand is the platform brand and the sidebar shows a heading per
   enabled product, in the order of `/boot.products`, with that product's groups under it and
-  the platform group last; a heading with no visible item is not shown. With none, the shell
+  the platform groups last; a heading with no visible item is not shown. With none, the shell
   shows the platform brand and the platform group only. `phx-layout` and `phx-sidebar` are
   built from `menu`; a `badge` on a menu item is bound to a problem key and shows the count of
   open problems with that key from `KeelProblems`. A product's heading and a
@@ -664,7 +664,7 @@ a manual list.
 | `<module>.<entity>.<field>.hint`, `.placeholder` | field hint and placeholder; the schema names them explicitly in `x-ui.help` and `x-ui.placeholder`, and only a named key is checked |
 | `<module>.<entity>.<field>.empty`   | the label a nullable number field shows for its null in place of `phx.unlimited`; optional, read by the field component, which provides a scoped `PHX_LABELS` with `unlimited` replaced when the catalogue has the key |
 | `<patching module>.<entity>.<field>`  | label of a field another module added by a descriptor patch (`storing.item.sync` for a patch of `base.item.edit` by `storing`); a module never writes keys under another module's prefix |
-| `menu.<group>`                        | menu group label, declared by a bundle or the platform; `menu.system` is the kernel's |
+| `menu.<group>`                        | menu group label, declared by a bundle or the platform; `menu.access`, `menu.monitor` and `menu.system` are the kernel's |
 | `product.<id>.brand`                  | brand name of a product, the `name` of its manifest |
 | `product.<id>.level.<level>`          | a bundle's label of a level, from `levels.labels`, used while it is the only enabled product |
 | `keel.level.<level>`                  | platform label of a level, shipped by the kernel, used when several products are enabled |
