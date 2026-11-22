@@ -2539,6 +2539,7 @@ dependencies = [
  "base64 0.22.1",
  "keel",
  "keel-host",
+ "tracing",
 ]
 
 [[package]]

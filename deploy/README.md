@@ -380,7 +380,8 @@ A hosting user is an operating-system account named
 `hp_<name>` inside `uid_range`, with its home `/var/www/keel-panel-<name>` under the `www` root
 of `file_roots` and no login shell unless shell access is granted. It is created after the
 transaction commits; suspending its account locks it, resuming unlocks it, and deleting the
-user or its account removes the account and its home:
+user or its account removes the account and its home; the kernel retries the user deletion up to six
+times with a pause of two seconds when the host agent reports `host.error.exec_failed`:
 
 ```
 runuser -u keel -- keel ctl hosting.user.create --as <login> name=alice
