@@ -524,3 +524,56 @@ export const Workspace: Story = {
     await expect(canvasElement.querySelectorAll('[role="tab"] .tab__parent')).toHaveLength(1);
   },
 };
+
+function sectioned(boot: Boot): Boot {
+  const items = boot.menu.flatMap((group) => group.items);
+  const notes = items.find((item) => item.func === 'note.list');
+  const accounts = items.find((item) => item.func === 'keel.account.list');
+  if (notes === undefined || accounts === undefined) {
+    throw new Error('the one-product boot has the notes and the accounts');
+  }
+  return {
+    ...boot,
+    menu: boot.menu.map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item) => item !== accounts)
+        .map((item) =>
+          item === notes ? { ...notes, path: 'demo/notes', children: [notes, accounts] } : item,
+        ),
+    })),
+  };
+}
+
+function sectionTab(root: HTMLElement, label: string): HTMLElement {
+  const tab = [
+    ...root.querySelectorAll<HTMLElement>('phx-tab-group.section-tabs [role="tab"]'),
+  ].find((item) => item.querySelector('.tab__label')?.textContent?.trim() === label);
+  if (tab === undefined) {
+    throw new Error(`no section tab ${label}`);
+  }
+  return tab;
+}
+
+export const Sections: Story = {
+  decorators: [
+    withKeel({
+      boot: sectioned(KEEL_BOOT.one),
+      calls: { ...CALLS, 'settings.pref.get': okEnvelope({ key: 'columns', value: null }) },
+      routes: routesTo('note.list'),
+    }),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole('heading', { name: 'Notes' });
+    await expect(menuItem(canvasElement, 'note.list')).toBeInTheDocument();
+    await expect(
+      canvasElement.querySelector('phx-sidebar-item[data-func="keel.account.list"]'),
+    ).toBeNull();
+    await expect(sectionTab(canvasElement, 'Notes').getAttribute('aria-selected')).toBe('true');
+    await userEvent.click(sectionTab(canvasElement, 'Accounts'));
+    await waitFor(() =>
+      expect(sectionTab(canvasElement, 'Accounts').getAttribute('aria-selected')).toBe('true'),
+    );
+  },
+};

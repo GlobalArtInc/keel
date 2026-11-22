@@ -346,7 +346,7 @@ export class KeelListComponent {
   protected readonly workspace = inject(KEEL_WORKSPACE, { optional: true });
   private readonly root = this.depth === 0;
   private listTab: string | null = null;
-  private restored = false;
+  private listFunc: string | null = null;
   private pendingPage: number | null = null;
   private readonly client = inject(KeelClient);
   private readonly boot = inject(KeelBoot);
@@ -565,7 +565,7 @@ export class KeelListComponent {
         this.tableFilters.set([]);
         this.order.set(null);
         this.hiddenColumns.set(null);
-        this.restoreState();
+        this.restoreState(name);
         void this.loadPref(name);
       });
     });
@@ -643,17 +643,17 @@ export class KeelListComponent {
     }
   }
 
-  private restoreState(): void {
+  private restoreState(name: string): void {
     const tab = this.workspace?.activeId() ?? null;
-    if (!this.root || this.restored || tab === null || this.workspace === null) {
+    if (!this.root || tab === null || this.workspace === null) {
       return;
     }
-    this.restored = true;
     this.listTab = tab;
+    this.listFunc = name;
     if (Object.hasOwn(this.params(), 'search')) {
       return;
     }
-    const saved = this.workspace.listState(tab);
+    const saved = this.workspace.listState(tab, name);
     if (saved === null) {
       return;
     }
@@ -664,8 +664,8 @@ export class KeelListComponent {
   }
 
   private keepState(state: WorkspaceListState): void {
-    if (this.listTab !== null && this.workspace !== null) {
-      this.workspace.saveListState(this.listTab, state);
+    if (this.listTab !== null && this.listFunc !== null && this.workspace !== null) {
+      this.workspace.saveListState(this.listTab, this.listFunc, state);
     }
   }
 

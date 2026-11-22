@@ -44,6 +44,35 @@ function settle(harness: RouterTestingHarness): Promise<void> {
   });
 }
 
+async function start(): Promise<{ mock: KeelMockClient; harness: RouterTestingHarness }> {
+  const mock = new KeelMockClient({
+    boot: BOOT,
+    descriptors: [LIST],
+    catalogue: { lang: 'en', messages: {} },
+    answers: {
+      'dns.zone.list': ok({ data: ZONES, total: 60, totals: null }),
+      'keel.account.options': ok({ data: [], more: false }),
+    },
+  });
+  TestBed.configureTestingModule({
+    providers: [
+      providePhoenixIcons(),
+      provideRouter(ROUTES, withComponentInputBinding()),
+      { provide: KeelClient, useValue: mock },
+      {
+        provide: KEEL_EVENT_SOURCE,
+        useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
+      },
+      { provide: KEEL_WORKSPACE, useExisting: KeelWorkspace },
+    ],
+  });
+  await TestBed.inject(KeelBoot).load();
+  await TestBed.inject(KeelI18n).load('en');
+  TestBed.inject(KeelWorkspace);
+  const harness = await RouterTestingHarness.create();
+  return { mock, harness };
+}
+
 describe('a reopened tab of the workspace', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -56,36 +85,18 @@ describe('a reopened tab of the workspace', () => {
   });
 
   it('a list opened again in its tab takes the search that the tab saved', async () => {
-    const mock = new KeelMockClient({
-      boot: BOOT,
-      descriptors: [LIST],
-      catalogue: { lang: 'en', messages: {} },
-      answers: {
-        'dns.zone.list': ok({ data: ZONES, total: 60, totals: null }),
-        'keel.account.options': ok({ data: [], more: false }),
-      },
-    });
-    TestBed.configureTestingModule({
-      providers: [
-        providePhoenixIcons(),
-        provideRouter(ROUTES, withComponentInputBinding()),
-        { provide: KeelClient, useValue: mock },
-        {
-          provide: KEEL_EVENT_SOURCE,
-          useValue: (url: string, init: EventSourceInit) => new QuietEventSource(url, init),
-        },
-        { provide: KEEL_WORKSPACE, useExisting: KeelWorkspace },
-      ],
-    });
-    await TestBed.inject(KeelBoot).load();
-    await TestBed.inject(KeelI18n).load('en');
+    const { mock, harness } = await start();
     const workspace = TestBed.inject(KeelWorkspace);
-    const harness = await RouterTestingHarness.create();
 
     await harness.navigateByUrl('/f/dns.zone.list');
     await settle(harness);
     const tab = must(TestBed.inject(PhxTabsService).activeId(), 'active tab');
-    workspace.saveListState(tab, { search: 'a.org', sort: null, filters: [], page: 1 });
+    workspace.saveListState(tab, 'dns.zone.list', {
+      search: 'a.org',
+      sort: null,
+      filters: [],
+      page: 1,
+    });
 
     await harness.navigateByUrl('/other');
     await harness.navigateByUrl('/f/dns.zone.list');
@@ -95,5 +106,33 @@ describe('a reopened tab of the workspace', () => {
       .componentInstance as KeelListComponent;
     expect(list.tableSearch()).toBe('a.org');
     expect(mock.callsOf('dns.zone.list').at(-1)?.params).toMatchObject({ search: 'a.org' });
+  });
+
+  it('a workspace saved under the previous key is not restored', async () => {
+    const principal = must(BOOT.principal, 'principal');
+    localStorage.setItem(
+      `keel.workspace.v1.${principal.id}`,
+      JSON.stringify({
+        v: 1,
+        tabs: [
+          {
+            id: '/f/dns.zone.edit',
+            label: 'Old',
+            data: { url: '/f/dns.zone.edit', func: 'dns.zone.edit', lastActive: 1 },
+          },
+        ],
+        active: '/f/dns.zone.edit',
+        lists: {},
+      }),
+    );
+    const { harness } = await start();
+
+    await harness.navigateByUrl('/f/dns.zone.list');
+    await settle(harness);
+
+    const ids = TestBed.inject(PhxTabsService)
+      .tabs()
+      .map((tab) => tab.id);
+    expect(ids).toEqual(['/f/dns.zone.list']);
   });
 });

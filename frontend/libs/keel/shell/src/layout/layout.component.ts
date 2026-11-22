@@ -1,9 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { KeelBoot, KeelI18n, KeelProblems } from '@globalart/keel/client';
 import { unreachable } from '@globalart/keel/forms';
 import type { BootBrand } from '@globalart/keel/meta';
-import { describeError } from '@globalart/keel/renderer';
+import { SCREEN_PATH, describeError } from '@globalart/keel/renderer';
 import {
   PhxBannerComponent,
   PhxBrandLogoComponent,
@@ -13,13 +14,16 @@ import {
   PhxSidebarGroupComponent,
   PhxSidebarItemComponent,
   PhxTabBarComponent,
+  PhxTabComponent,
+  PhxTabGroupComponent,
   PhxTextButtonComponent,
   PhxToastService,
 } from '@globalart/phoenix-ui';
+import { filter, map } from 'rxjs';
 import { KeelRailComponent } from '../rail/rail.component';
 import { KeelSu } from '../rail/su';
 import { KeelWorkspace } from '../workspace/workspace';
-import { brandOf, sidebarOf, type MenuEntry } from './sidebar';
+import { brandOf, screenFunc, sectionEntryOf, sidebarOf, type MenuEntry } from './sidebar';
 
 export const MENU_KEY = 'menu.system';
 export const ACTING_AS_KEY = 'keel.shell.acting_as.banner';
@@ -53,6 +57,8 @@ export function plainClick(event: MouseEvent): boolean {
     PhxBannerComponent,
     PhxIconButtonComponent,
     PhxTabBarComponent,
+    PhxTabComponent,
+    PhxTabGroupComponent,
     PhxTextButtonComponent,
     KeelRailComponent,
   ],
@@ -128,6 +134,23 @@ export function plainClick(event: MouseEvent): boolean {
           </button>
         </phx-banner>
       }
+      @if (section(); as entry) {
+        <phx-tab-group
+          class="section-tabs"
+          [label]="entry.label"
+          [selectedIndex]="selectedTab()"
+          (change)="openTab($event.index)"
+        >
+          @for (tab of entry.tabs; track tab.func) {
+            <phx-tab
+              [label]="tab.label"
+              [icon]="tab.icon"
+              [badge]="problems.badge(tab.problem)"
+              [attr.data-func]="tab.func"
+            />
+          }
+        </phx-tab-group>
+      }
       <router-outlet />
     </phx-layout>
   `,
@@ -188,6 +211,22 @@ export class KeelLayoutComponent {
     brandOf(this.boot.brand() ?? NO_BRAND, (key) => this.i18n.t(key)),
   );
   readonly actor = computed(() => this.boot.principal()?.actor ?? null);
+  private readonly url = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+  protected readonly func = computed(() => screenFunc(this.router.parseUrl(this.url())));
+  protected readonly section = computed(() => {
+    const entry = sectionEntryOf(this.sections(), this.func());
+    return entry !== null && entry.tabs.length > 1 ? entry : null;
+  });
+  protected readonly selectedTab = computed(() => {
+    const func = this.func();
+    return this.section()?.tabs.findIndex((tab) => tab.func === func) ?? -1;
+  });
 
   protected readonly menuLabel = computed(() => this.i18n.t(MENU_KEY));
   protected readonly actingText = computed(() =>
@@ -198,12 +237,14 @@ export class KeelLayoutComponent {
   protected readonly refreshLabel = computed(() => this.i18n.t(REFRESH_LABEL_KEY));
 
   isActive(entry: MenuEntry): boolean {
-    return this.router.isActive(entry.url, {
-      paths: 'exact',
-      queryParams: 'ignored',
-      fragment: 'ignored',
-      matrixParams: 'ignored',
-    });
+    return [entry, ...entry.tabs].some((item) =>
+      this.router.isActive(item.url, {
+        paths: 'exact',
+        queryParams: 'ignored',
+        fragment: 'ignored',
+        matrixParams: 'ignored',
+      }),
+    );
   }
 
   open(event: MouseEvent, entry: MenuEntry): void {
@@ -212,6 +253,13 @@ export class KeelLayoutComponent {
     }
     event.preventDefault();
     void this.workspace.openFunc(entry);
+  }
+
+  openTab(index: number): void {
+    const tab = this.section()?.tabs[index];
+    if (tab !== undefined) {
+      void this.router.navigate([`/${SCREEN_PATH}`, tab.func], { replaceUrl: true });
+    }
   }
 
   async exit(): Promise<void> {

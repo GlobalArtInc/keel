@@ -165,7 +165,8 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 }
 
 interface SavedList {
-  id: string;
+  tab: string;
+  func: string;
   state: WorkspaceListState;
 }
 
@@ -187,10 +188,10 @@ function fakeWorkspace(
     expectChild: () => undefined,
     retitle: () => undefined,
     refreshes: refreshed.asObservable(),
-    listState: (id) => lists[id] ?? null,
-    saveListState: (id, state) => {
-      saves.push({ id, state });
-      lists[id] = state;
+    listState: (tabId, func) => lists[`${tabId}|${func}`] ?? null,
+    saveListState: (tabId, func, state) => {
+      saves.push({ tab: tabId, func, state });
+      lists[`${tabId}|${func}`] = state;
     },
   };
   return { host, saves, refreshed };
@@ -367,7 +368,7 @@ describe('the list renderer', () => {
       mock,
       LIST,
       undefined,
-      rootOf(fakeWorkspace('tab-1', { 'tab-1': SAVED })),
+      rootOf(fakeWorkspace('tab-1', { 'tab-1|dns.zone.list': SAVED })),
     );
     await settle(fixture);
     const list = fixture.componentInstance;
@@ -387,7 +388,7 @@ describe('the list renderer', () => {
       mock,
       LIST,
       { search: 'a.org' },
-      rootOf(fakeWorkspace('tab-1', { 'tab-1': SAVED })),
+      rootOf(fakeWorkspace('tab-1', { 'tab-1|dns.zone.list': SAVED })),
     );
     await settle(fixture);
     const list = fixture.componentInstance;
@@ -405,7 +406,8 @@ describe('the list renderer', () => {
     fixture.componentInstance['searchTable']('b.org');
     await settle(fixture);
     expect(workspace.saves.at(-1)).toEqual({
-      id: 'tab-1',
+      tab: 'tab-1',
+      func: 'dns.zone.list',
       state: { search: 'b.org', sort: null, filters: [], page: 1 },
     });
     fixture.componentInstance['sortTable']([{ key: 'name', dir: 'desc' }]);
@@ -413,7 +415,8 @@ describe('the list renderer', () => {
     fixture.componentInstance['table']()?.goTo(2);
     await settle(fixture);
     expect(workspace.saves.at(-1)).toEqual({
-      id: 'tab-1',
+      tab: 'tab-1',
+      func: 'dns.zone.list',
       state: { search: 'b.org', sort: { key: 'name', dir: 'desc' }, filters: [], page: 2 },
     });
   });
@@ -429,7 +432,7 @@ describe('the list renderer', () => {
   });
 
   it('a list nested under a screen neither restores nor saves the state of the tab', async () => {
-    const workspace = fakeWorkspace('tab-1', { 'tab-1': SAVED });
+    const workspace = fakeWorkspace('tab-1', { 'tab-1|dns.zone.list': SAVED });
     const fixture = await render(longList(), LIST, undefined, rootOf(workspace, 1));
     await settle(fixture);
     expect(fixture.componentInstance.tableSearch()).toBe('');
@@ -444,7 +447,11 @@ describe('the list renderer', () => {
       mock,
       LIST,
       undefined,
-      rootOf(fakeWorkspace('tab-1', { 'tab-1': { ...SAVED, search: '', sort: null, page: 1 } })),
+      rootOf(
+        fakeWorkspace('tab-1', {
+          'tab-1|dns.zone.list': { ...SAVED, search: '', sort: null, page: 1 },
+        }),
+      ),
     );
     const element: HTMLElement = fixture.nativeElement;
     expect(fixture.componentInstance.chips().map((chip) => chip.key)).toEqual(['status']);
@@ -466,7 +473,9 @@ describe('the list renderer', () => {
       LIST,
       undefined,
       rootOf(
-        fakeWorkspace('tab-1', { 'tab-1': { ...SAVED, search: '', sort: null, page: 1, filters } }),
+        fakeWorkspace('tab-1', {
+          'tab-1|dns.zone.list': { ...SAVED, search: '', sort: null, page: 1, filters },
+        }),
       ),
     );
     const element: HTMLElement = fixture.nativeElement;

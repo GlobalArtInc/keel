@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Router } from '@angular/router';
 import { KeelBoot, KeelClient, KeelI18n } from '@globalart/keel/client';
-import type { Boot, Level } from '@globalart/keel/meta';
+import type { Boot, BootMenuItem, Level } from '@globalart/keel/meta';
 import {
   KeelLayoutComponent,
   KeelRailComponent,
@@ -26,7 +27,7 @@ const MESSAGES = {
   },
   dns: { zone: { list: { title: 'Zones' } } },
   hosting: { site: { list: { title: 'Sites' } } },
-  mail: { box: { list: { title: 'Mailboxes' } } },
+  mail: { section: { title: 'Mail' }, box: { list: { title: 'Mailboxes' } } },
   keel: {
     brand: 'Keel',
     level: { reseller: 'Reseller', owner: 'Owner' },
@@ -146,6 +147,55 @@ function levelShown(fixture: ComponentFixture<unknown>): string | null {
   const rail = fixture.debugElement.query(By.directive(KeelRailComponent))
     .componentInstance as KeelRailComponent;
   return rail.level();
+}
+
+const LIST_TAB: BootMenuItem = {
+  path: 'mail/boxes/list',
+  label: 'mail.box.list.title',
+  func: 'mail.box.list',
+  kind: 'list',
+};
+const LOG_TAB: BootMenuItem = {
+  path: 'mail/boxes/log',
+  label: 'keel.logs.stream.title',
+  func: 'keel.logs.stream',
+  kind: 'list',
+  icon: 'history',
+};
+
+function withSection(tabs: BootMenuItem[]): Boot {
+  const boot = twoProducts();
+  boot.menu.push({
+    id: 'mail',
+    product: 'panel',
+    label: 'menu.mail',
+    icon: 'mail',
+    items: [
+      {
+        path: 'mail/boxes',
+        label: 'mail.section.title',
+        func: tabs[0].func,
+        kind: 'list',
+        icon: 'mail',
+        children: tabs,
+      },
+    ],
+  });
+  return boot;
+}
+
+function tabStrip(fixture: ComponentFixture<unknown>): HTMLElement | null {
+  const element: HTMLElement = fixture.nativeElement;
+  return element.querySelector<HTMLElement>('phx-tab-group.section-tabs');
+}
+
+function activeFuncs(fixture: ComponentFixture<unknown>): string[] {
+  const sidebar: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+    'phx-sidebar',
+  );
+  return [...(sidebar?.querySelectorAll<HTMLElement>('phx-sidebar-item.active') ?? [])].map(
+    (item) => item.dataset['func'] ?? '',
+  );
 }
 
 const SYSTEM: ShownGroup = {
@@ -283,5 +333,54 @@ describe('the sidebar rule', () => {
       logo: '/brand/logo.svg',
       mark: '',
     });
+  });
+});
+
+describe('the sections of the menu', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('a section shows as one item with its own label, linked to its first tab', async () => {
+    const fixture = await render(withSection([LIST_TAB, LOG_TAB]));
+    const panel = sectionsOf(fixture).find((section) => section.product === 'panel');
+    expect(panel?.groups.find((group) => group.id === 'mail')?.items).toEqual([
+      'Mail /f/mail.box.list',
+    ]);
+  });
+
+  it('a section is active on the function of any of its tabs', async () => {
+    const fixture = await render(withSection([LIST_TAB, LOG_TAB]));
+    await TestBed.inject(Router).navigateByUrl('/f/keel.logs.stream');
+    fixture.detectChanges();
+    expect(activeFuncs(fixture)).toEqual(['mail.box.list']);
+  });
+
+  it('two or more tabs show a tab strip above the screen with the open tab selected', async () => {
+    const fixture = await render(withSection([LIST_TAB, LOG_TAB]));
+    await TestBed.inject(Router).navigateByUrl('/f/keel.logs.stream');
+    fixture.detectChanges();
+    const strip = tabStrip(fixture);
+    const labels = [...(strip?.querySelectorAll('button[role="tab"]') ?? [])].map(
+      (tab) => tab.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual(['Mailboxes', 'Log']);
+    expect(strip?.querySelector('.tab_active')?.textContent?.trim()).toBe('Log');
+  });
+
+  it('a single tab shows no strip', async () => {
+    const fixture = await render(withSection([LIST_TAB]));
+    await TestBed.inject(Router).navigateByUrl('/f/mail.box.list');
+    fixture.detectChanges();
+    expect(tabStrip(fixture)).toBeNull();
+  });
+
+  it('a click on a tab navigates to its screen with replaceUrl', async () => {
+    const fixture = await render(withSection([LIST_TAB, LOG_TAB]));
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/f/mail.box.list');
+    fixture.detectChanges();
+    const navigate = jest.spyOn(router, 'navigate').mockResolvedValue(true);
+    const tabs = tabStrip(fixture)?.querySelectorAll<HTMLButtonElement>('button[role="tab"]');
+    tabs?.[1]?.click();
+    expect(navigate).toHaveBeenCalledWith(['/f', 'keel.logs.stream'], { replaceUrl: true });
   });
 });

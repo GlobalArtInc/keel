@@ -15,8 +15,8 @@ export interface KeelWorkspaceHost {
   expectChild(openerId: string | null, label?: string): void;
   retitle(id: string, title: string): void;
   readonly refreshes: Observable<void>;
-  listState(id: string): WorkspaceListState | null;
-  saveListState(id: string, state: WorkspaceListState): void;
+  listState(tab: string, func: string): WorkspaceListState | null;
+  saveListState(tab: string, func: string, state: WorkspaceListState): void;
 }
 
 export const KEEL_WORKSPACE = new InjectionToken<KeelWorkspaceHost>('KEEL_WORKSPACE');

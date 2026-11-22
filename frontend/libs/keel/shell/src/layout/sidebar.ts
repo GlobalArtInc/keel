@@ -1,3 +1,4 @@
+import { PRIMARY_OUTLET, type UrlTree } from '@angular/router';
 import { isIconName } from '@globalart/keel/forms';
 import {
   lookup,
@@ -23,6 +24,7 @@ export interface MenuEntry {
   label: string;
   icon: PhxIconName | null;
   problem: string | null;
+  tabs: MenuEntry[];
 }
 
 export interface SidebarGroup {
@@ -51,7 +53,40 @@ export function menuEntries(items: readonly BootMenuItem[], label: Translate): M
     label: label(item.label),
     icon: isIconName(item.icon) ? item.icon : null,
     problem: item.badge?.problem ?? null,
+    tabs: menuEntries(item.children ?? [], label),
   }));
+}
+
+function ownsFunc(tabs: readonly { func: string }[], func: string): boolean {
+  return tabs.some((tab) => tab.func === func);
+}
+
+export function sectionOf(menu: readonly BootMenuGroup[], func: string): BootMenuItem | null {
+  return (
+    menu.flatMap((group) => group.items).find((item) => ownsFunc(item.children ?? [], func)) ?? null
+  );
+}
+
+export function sectionEntryOf(
+  sections: readonly SidebarSection[],
+  func: string | null,
+): MenuEntry | null {
+  if (func === null) {
+    return null;
+  }
+  return (
+    sections
+      .flatMap((section) => section.groups)
+      .flatMap((group) => group.items)
+      .find((entry) => ownsFunc(entry.tabs, func)) ?? null
+  );
+}
+
+export function screenFunc(tree: UrlTree): string | null {
+  const segments =
+    tree.root.children[PRIMARY_OUTLET]?.segments.map((segment) => segment.path) ?? [];
+  const [first, func, ...rest] = segments;
+  return first === SCREEN_PATH && func !== undefined && rest.length === 0 ? func : null;
 }
 
 export function productGroups(menu: readonly BootMenuGroup[], product: string): BootMenuGroup[] {

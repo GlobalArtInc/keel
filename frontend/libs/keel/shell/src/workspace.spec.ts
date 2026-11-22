@@ -6,12 +6,13 @@ import { KeelBoot, KeelI18n } from '@globalart/keel/client';
 import type { Boot, BootMenuGroup } from '@globalart/keel/meta';
 import { KEEL_WORKSPACE, KeelNavigation } from '@globalart/keel/renderer';
 import { KeelWorkspace } from '@globalart/keel/shell';
+import { menuEntries } from './layout/sidebar';
 import { KEEL_BOOT } from '@globalart/keel/testing';
 import { PhxTabsService, type PhxTab } from '@globalart/phoenix-ui';
 
 const ADMIN = 'p-admin';
 const OTHER = 'p-other';
-const KEY = (id: string): string => `keel.workspace.v1.${id}`;
+const KEY = (id: string): string => `keel.workspace.v2.${id}`;
 const WIDGETS = KEEL_BOOT.one.dashboard;
 const WINDOW_WIDTH = window.innerWidth;
 
@@ -20,6 +21,7 @@ const MESSAGES: Record<string, string> = {
   'dns.zone.list.title': 'Zones',
   'dns.zone.edit.title': 'Edit zone',
   'dns.record.list.title': 'Records',
+  'dns.zones.section': 'Zone section',
 };
 
 const MENU: BootMenuGroup[] = [
@@ -31,6 +33,26 @@ const MENU: BootMenuGroup[] = [
       { path: 'zones', label: 'dns.zone.list.title', func: 'dns.zone.list' },
       { path: 'edit', label: 'dns.zone.edit.title', func: 'dns.zone.edit' },
       { path: 'records', label: 'dns.record.list.title', func: 'dns.record.list' },
+    ],
+  },
+];
+
+const SECTIONED: BootMenuGroup[] = [
+  {
+    id: 'dns',
+    label: 'dns.group',
+    icon: 'globe',
+    items: [
+      {
+        path: 'dns/zones',
+        label: 'dns.zones.section',
+        func: 'dns.zone.list',
+        children: [
+          { path: 'dns/zones/list', label: 'dns.zone.list.title', func: 'dns.zone.list' },
+          { path: 'dns/zones/edit', label: 'dns.zone.edit.title', func: 'dns.zone.edit' },
+          { path: 'dns/zones/records', label: 'dns.record.list.title', func: 'dns.record.list' },
+        ],
+      },
     ],
   },
 ];
@@ -49,8 +71,8 @@ function principalAs(id: string): Boot['principal'] {
   return principal === null || principal === undefined ? null : { ...principal, id };
 }
 
-function bootAs(id: string, dashboard: Boot['dashboard'] = []): Boot {
-  return { ...KEEL_BOOT.one, principal: principalAs(id), menu: MENU, dashboard };
+function bootAs(id: string, dashboard: Boot['dashboard'] = [], menu: BootMenuGroup[] = MENU): Boot {
+  return { ...KEEL_BOOT.one, principal: principalAs(id), menu, dashboard };
 }
 
 const payload = signal<Boot | null>(null);
@@ -166,6 +188,7 @@ describe('the open pages workspace', () => {
       label: 'Records',
       icon: null,
       problem: null,
+      tabs: [],
     });
     await settle();
     expect(tab('/f/dns.record.list').parent).toBeUndefined();
@@ -206,13 +229,13 @@ describe('the open pages workspace', () => {
     for (let page = 1; page <= 20; page++) {
       await go(`/f/dns.zone.list?page=${page}`);
     }
-    keel.saveListState('/f/dns.zone.list?page=2', LIST);
+    keel.saveListState('/f/dns.zone.list?page=2', 'dns.zone.list', LIST);
     await go('/f/dns.zone.list?page=1');
     await go('/f/dns.zone.list?page=21');
     expect(ids()).toHaveLength(20);
     expect(ids()).toContain('/f/dns.zone.list?page=1');
     expect(ids()).not.toContain('/f/dns.zone.list?page=2');
-    expect(keel.listState('/f/dns.zone.list?page=2')).toBeNull();
+    expect(keel.listState('/f/dns.zone.list?page=2', 'dns.zone.list')).toBeNull();
   });
 
   it('the state is stored under the key of the principal id', async () => {
@@ -292,5 +315,63 @@ describe('the open pages workspace', () => {
     window.innerWidth = 641;
     window.dispatchEvent(new Event('resize'));
     expect(keel.visible()).toBe(true);
+  });
+
+  it('a function of a section opens the tab of the section with its label, and its sibling tabs stay in it', async () => {
+    payload.set(bootAs(ADMIN, [], SECTIONED));
+    workspace();
+    await go('/f/dns.zone.list');
+    await go('/f/dns.zone.edit');
+    expect(ids()).toEqual(['/dns/zones']);
+    expect(tab('/dns/zones')).toMatchObject({
+      label: 'Zone section',
+      data: { url: '/f/dns.zone.edit', func: 'dns.zone.edit' },
+    });
+    expect(tabs().activeId()).toBe('/dns/zones');
+  });
+
+  it('the id of a section tab is the section path whatever the query of its screens', async () => {
+    payload.set(bootAs(ADMIN, [], SECTIONED));
+    workspace();
+    await go('/f/dns.zone.list?b=2&a=1&selected=z9');
+    await go('/f/dns.zone.edit?id=z1');
+    expect(ids()).toEqual(['/dns/zones']);
+    expect(tabs().activeId()).toBe('/dns/zones');
+  });
+
+  it('two screens of one section keep their list states apart, and closing the section tab clears both', async () => {
+    payload.set(bootAs(ADMIN, [], SECTIONED));
+    const keel = workspace();
+    const id = '/dns/zones';
+    await go('/f/dns.zone.list');
+    keel.saveListState(id, 'dns.zone.list', { ...LIST, search: 'bob' });
+    await go('/f/dns.zone.edit');
+    keel.saveListState(id, 'dns.zone.edit', { ...LIST, search: 'ann' });
+    expect(keel.listState(id, 'dns.zone.list')?.search).toBe('bob');
+    expect(keel.listState(id, 'dns.zone.edit')?.search).toBe('ann');
+
+    keel.close(tab(id));
+    expect(keel.listState(id, 'dns.zone.list')).toBeNull();
+    expect(keel.listState(id, 'dns.zone.edit')).toBeNull();
+  });
+
+  it('a click on a section in the menu returns to its open tab on the screen that tab shows', async () => {
+    payload.set(bootAs(ADMIN, [], SECTIONED));
+    const keel = workspace();
+    await go('/f/dns.zone.list');
+    await go('/f/dns.zone.edit');
+    await go('/f/dns.record.list');
+    const [section] = menuEntries(
+      SECTIONED.flatMap((group) => group.items),
+      (key) => key,
+    );
+    if (section === undefined) {
+      throw new Error('no section entry');
+    }
+    await keel.openFunc(section);
+    await settle();
+    expect(ids()).toEqual(['/dns/zones']);
+    expect(tabs().activeId()).toBe('/dns/zones');
+    expect(url()).toBe('/f/dns.record.list');
   });
 });

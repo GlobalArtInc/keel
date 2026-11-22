@@ -25,13 +25,13 @@ import {
 } from '@globalart/phoenix-ui';
 import { Subject, filter, fromEvent, type Observable } from 'rxjs';
 import { HOME_URL, hasDashboard } from '../guard';
-import { menuEntries, type MenuEntry } from '../layout/sidebar';
+import { menuEntries, screenFunc, sectionOf, type MenuEntry } from '../layout/sidebar';
 
 const WORKSPACE_VERSION = 1;
 const WORKSPACE_LIMIT = 20;
 const HOME_TAB_ID = 'home';
 const HOME_TITLE_KEY = 'keel.shell.home.title';
-const WORKSPACE_STORAGE_PREFIX = 'keel.workspace.v1.';
+const WORKSPACE_STORAGE_PREFIX = 'keel.workspace.v2.';
 const HOME_ICON: PhxIconName = 'layout-dashboard';
 const SELECTED_PARAM = 'selected';
 const MOBILE_MAX_WIDTH = 640;
@@ -161,6 +161,14 @@ function attempt(action: () => void): void {
   }
 }
 
+function listKey(tab: string, func: string): string {
+  return `${tab}|${func}`;
+}
+
+function tabOfListKey(key: string): string {
+  return key.slice(0, key.lastIndexOf('|'));
+}
+
 function tabData(url: string, func: string | null, lastActive: number): WorkspaceTabData {
   return { url, func, lastActive };
 }
@@ -226,7 +234,11 @@ export class KeelWorkspace implements KeelWorkspaceHost {
   }
 
   openFunc(entry: MenuEntry): Promise<boolean> {
-    const open = this.tabs.tabs().find((tab) => !tab.parent && funcOf(tab) === entry.func);
+    const funcs = [entry.func, ...entry.tabs.map((tab) => tab.func)];
+    const open = this.tabs.tabs().find((tab) => {
+      const func = funcOf(tab);
+      return !tab.parent && func !== null && funcs.includes(func);
+    });
     return this.router.navigateByUrl(open === undefined ? entry.url : (urlOf(open) ?? entry.url));
   }
 
@@ -283,12 +295,12 @@ export class KeelWorkspace implements KeelWorkspaceHost {
     this.expected = { parent: opener?.label ?? null, label: label ?? null };
   }
 
-  listState(id: string): WorkspaceListState | null {
-    return this.lists()[id] ?? null;
+  listState(tab: string, func: string): WorkspaceListState | null {
+    return this.lists()[listKey(tab, func)] ?? null;
   }
 
-  saveListState(id: string, state: WorkspaceListState): void {
-    this.lists.update((lists) => ({ ...lists, [id]: state }));
+  saveListState(tab: string, func: string, state: WorkspaceListState): void {
+    this.lists.update((lists) => ({ ...lists, [listKey(tab, func)]: state }));
   }
 
   private takeExpectation(): PendingChild | null {
@@ -362,31 +374,37 @@ export class KeelWorkspace implements KeelWorkspaceHost {
 
   private locate(url: string): Place | null {
     const tree = this.router.parseUrl(url);
-    const segments =
-      tree.root.children[PRIMARY_OUTLET]?.segments.map((segment) => segment.path) ?? [];
+    const segments = tree.root.children[PRIMARY_OUTLET]?.segments ?? [];
     if (segments.length === 0) {
       return { id: HOME_TAB_ID, func: null };
     }
-    const [first, func, ...rest] = segments;
-    if (first !== SCREEN_PATH || func === undefined || rest.length > 0) {
+    const func = screenFunc(tree);
+    if (func === null) {
       return null;
     }
-    return { id: this.screenId(func, tree.queryParams), func };
+    const section = sectionOf(this.boot.menu(), func);
+    const id =
+      section === null
+        ? this.tabId([`/${SCREEN_PATH}`, func], tree.queryParams)
+        : `/${section.path}`;
+    return { id, func };
   }
 
-  private screenId(func: string, params: Params): string {
+  private tabId(commands: string[], params: Params): string {
     const kept: Params = Object.fromEntries(
       Object.keys(params)
         .filter((key) => key !== SELECTED_PARAM)
         .sort()
         .map((key) => [key, params[key]]),
     );
-    return this.router.serializeUrl(
-      this.router.createUrlTree([`/${SCREEN_PATH}`, func], { queryParams: kept }),
-    );
+    return this.router.serializeUrl(this.router.createUrlTree(commands, { queryParams: kept }));
   }
 
   private labelOf(func: string): string {
+    const section = sectionOf(this.boot.menu(), func);
+    if (section !== null) {
+      return this.i18n.t(section.label);
+    }
     const items = this.boot.menu().flatMap((group) => group.items);
     const entry = menuEntries(items, (key) => this.i18n.t(key)).find((item) => item.func === func);
     return entry?.label ?? func;
@@ -395,7 +413,7 @@ export class KeelWorkspace implements KeelWorkspaceHost {
   private prune(): void {
     const ids = new Set(this.tabs.tabs().map((tab) => tab.id));
     this.lists.update((lists) =>
-      Object.fromEntries(Object.entries(lists).filter(([id]) => ids.has(id))),
+      Object.fromEntries(Object.entries(lists).filter(([key]) => ids.has(tabOfListKey(key)))),
     );
   }
 
