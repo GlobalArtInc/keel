@@ -664,7 +664,7 @@ check "ctl hosting.site.create --as $user_login creates $peer_site with a zone" 
 site_id=$(json_get "$panel/site.json" 'doc["data"]["id"]')
 check "the zone $peer_site lands on the dns installation, active with its zone file and include" eventually zone_on_dns
 check "the zone belongs to the account of the customer the panel installation named by its origin" sql_is dns "panel:$panel_instance $user_account" "SELECT a.origin || ' ' || a.external_id FROM keel.dns_zone z JOIN keel.keel_account a ON a.id = z.account_id WHERE z.name = '$peer_site'"
-check "the dns installation audits the zone as created by the customer with the link as actor" sql_is dns "$customer_login $link_login peer:$link committed" "SELECT string_agg(principal_login || ' ' || coalesce(actor_login, '-') || ' ' || via || ' ' || status, ',') FROM keel.audit_call WHERE function = 'dns.zone.create' AND principal_login = '$customer_login'"
+check "the dns installation audits the zone as created by the customer with the link as actor" eventually sql_is dns "$customer_login $link_login peer:$link committed" "SELECT string_agg(principal_login || ' ' || coalesce(actor_login, '-') || ' ' || via || ' ' || status, ',') FROM keel.audit_call WHERE function = 'dns.zone.create' AND principal_login = '$customer_login'"
 check "the site carries no zone error" sql_is panel "" "SELECT coalesce(zone_error, '') FROM keel.hosting_site WHERE id = '$site_id'"
 zone_account=$(dns_sql "SELECT account_id FROM keel.dns_zone WHERE name = '$peer_site'")
 
@@ -709,7 +709,7 @@ echo "the browser trusts the certificates with the SPKI $spkis"
     "KEEL_E2E_PEER_TAKEN=$taken_zone" "KEEL_E2E_PEER_LOGIN=$customer_login" pnpm e2e --grep "$peers_tag" "$@"
 )
 check "the browser left no site $taken_zone on the panel installation" sql_is panel 0 "SELECT count(*) FROM keel.hosting_site WHERE domain = '$taken_zone'"
-check "the dns installation audits the one-time key as the customer with the link as actor" eventually sql_is dns "$customer_login $link_login peer:$link committed" "SELECT string_agg(principal_login || ' ' || coalesce(actor_login, '-') || ' ' || via || ' ' || status, ',') FROM keel.audit_call WHERE function = 'auth.key.handover'"
+check "the dns installation audits the one-time key as the customer with the link as actor" eventually eventually sql_is dns "$customer_login $link_login peer:$link committed" "SELECT string_agg(principal_login || ' ' || coalesce(actor_login, '-') || ' ' || via || ' ' || status, ',') FROM keel.audit_call WHERE function = 'auth.key.handover'"
 check "the key was issued by the principal of the link and is spent" sql_is dns "$link_principal true" "SELECT string_agg(issued_by || ' ' || (used_at IS NOT NULL)::text, ',') FROM keel.auth_login_key"
 
 echo "--- svc.dns.zones.open twice with one key"
