@@ -372,7 +372,10 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   choice, not another page); the full last URL, `selected` included, is the tab's `url`. The root
   `/` with widgets is a pinned `home` tab, and the login, logout and unknown routes, the modals and
   the drawers create none. A tab is titled by its menu entry (the function name when the menu has
-  none), and an object tab by the label `KeelNavigation.object` gives it; a title the screen
+  none); a function that is a tab of a menu section lives in one workspace tab whose id is the
+  section's path alone and whose title is the section's label, so moving between the section's
+  tabs replaces the route of that workspace tab, and the saved list state of such a screen is kept
+  per function; an object tab is titled by the label `KeelNavigation.object` gives it; a title the screen
   resolves later is not applied yet. A page opened from another page
   (`KeelNavigation.screen` or `.object`: a child action, a link, a row action) carries one level of
   breadcrumb, the opener's title, announced through `expectChild` just before the navigation; a
@@ -380,13 +383,17 @@ and menus are checked by the server at start against the icon set of phoenix-ui,
   activates its neighbour, and the last one leads to `/`; "close others" and "close all" keep the
   pinned tab. At most 20 unpinned tabs stay open: the 21st evicts the unpinned inactive tab used
   longest ago, with its saved list state. The state lives in
-  `localStorage['keel.workspace.v1.' + principal.id]` (a principal acting as another has its own),
+  `localStorage['keel.workspace.v2.' + principal.id]` (a principal acting as another has its own),
   survives a logout, and is read defensively: a value that is not JSON, of another version or of
   another shape is an empty workspace. On restore the tab of the current URL becomes the active
   one. Nothing is synchronised between browser tabs and nothing is sent to the server. Below 640 px
   the strip is hidden and the page header detaches from it (`workspace.visible()` is false); the
   navigation goes through the menu. Only the list renderer is refreshed by the strip's refresh
   button for now; `tree`, `report` and `object` follow later.
+- A menu section is one sidebar item, active while the open function is its own or one of its
+  tabs'; opened from the sidebar it leads back to the section's open workspace tab, or to its first
+  tab when none is open. Over the screen of a section with two or more tabs the shell draws a strip
+  of tabs, `phx-tab-group` used as navigation with empty tabs; with one tab there is no strip.
 - The sidebar is compact (`density="compact"`, 200 px wide, the rail 56 px). In an installation of
   one product the group captions are not printed (the groups keep their accessible names); with
   several products each product keeps its heading.
