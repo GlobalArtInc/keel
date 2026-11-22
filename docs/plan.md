@@ -9229,10 +9229,14 @@ named for M7 at the end.
   panel `hack/panel-vm.sh install`, `db`, `mail` (a mail delivered to a mailbox), `ftp`, `config`,
   `services` and `backup`, `hack/backup-vm.sh take` with the secret key and `restore` on a machine purged
   and installed again.
-- [ ] `hack/panel-vm.sh run` and `files` end green with the kernel's retry of a busy user deletion
-  (`a_busy_user_deletion_is_retried_until_the_agent_lets_it_go`): the last full run failed one check each
-  on the race of the deletion of an account between `hosting-web` and `hosting-users`; the retry came
-  after that run and is to be proven on the machine.
+- [x] `hack/panel-vm.sh run` (39 checks) and `files` (22 checks) end green twice in a row on a clean
+  Debian 13 machine installed from the signed rehearsal channel with the binary of the commit that
+  closed the deletion of an account: the kernel's retry of a busy user deletion
+  (`a_busy_user_deletion_is_retried_until_the_agent_lets_it_go`) and the `on_delete` of `auth`,
+  `settings`, `notify` and `webhooks` (`deleting_an_account_removes_every_row_of_its_principals_and_leaves_the_others`),
+  which the last full run of `files` lacked: the download token of its proof held the user row. On the same
+  installation `db` (25), `mail` (25), `ftp` (20), `config` (17), `services` (17), `backup` (33) and
+  `hack/doctor-vm.sh` end green.
 - [ ] `hack/update-vm.sh kernel`: the check `/api/v1/boot answers <version>` cannot pass while the
   rehearsal repackages the running binary under the next version number; the rest of the script passes.
 - [ ] A site with a Let's Encrypt certificate on a real domain: `hack/panel-vm.sh ssl <domain>`
