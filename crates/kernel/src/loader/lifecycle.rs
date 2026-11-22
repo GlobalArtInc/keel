@@ -447,10 +447,20 @@ mod tests {
         Ok(())
     }
 
+    fn failing_attach_outside(r: &mut Registrar) -> Result<()> {
+        r.attach(|ctx| async move {
+            note(format!("{}:attach", ctx.module()));
+            Err(KeelError::unavailable("only_b.error.no_socket"))
+        });
+        Ok(())
+    }
+
     module!(SERVE_A, "serve_a", [], plain);
     module!(SERVE_B, "serve_b", ["serve_a"], plain);
     module!(ROLL_A, "roll_a", [], plain);
     module!(ROLL_B, "roll_b", ["roll_a"], failing_attach);
+    module!(ONLY_A, "only_a", [], plain);
+    module!(ONLY_B, "only_b", ["only_a"], failing_attach_outside);
 
     #[tokio::test]
     async fn a_start_runs_the_attach_hook_of_every_module_right_before_its_own_start_hook() {
@@ -490,8 +500,8 @@ mod tests {
     #[tokio::test]
     async fn a_failing_attach_hook_outside_a_start_is_named_as_an_attach_failure() {
         let mut frozen = Composition::new()
-            .module(&ROLL_B)
-            .module(&ROLL_A)
+            .module(&ONLY_B)
+            .module(&ONLY_A)
             .resolve()
             .expect("the composition resolves")
             .init()
@@ -502,10 +512,10 @@ mod tests {
             .attach(DatabaseConnection::Disconnected)
             .await
             .unwrap_err();
-        assert_eq!(error.module, "roll_b");
+        assert_eq!(error.module, "only_b");
         assert_eq!(
             error.to_string(),
-            "module roll_b: attach failed: unavailable: roll_b.error.no_socket"
+            "module only_b: attach failed: unavailable: only_b.error.no_socket"
         );
     }
 
