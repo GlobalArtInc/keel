@@ -621,6 +621,7 @@ if prepare_panel_under "$prepared"; then
   done
   check "install.sh points postfix at the virtual mailboxes over LMTP" recorded "$prepared" "postconf -e virtual_mailbox_domains = hash:$prepared/mail/keel-panel-domains virtual_mailbox_maps = hash:$prepared/mail/keel-panel-mailboxes virtual_alias_maps = hash:$prepared/mail/keel-panel-aliases virtual_transport = lmtp:unix:private/dovecot-lmtp"
   check "install.sh points dovecot at the passwd-file of the panel" grep -qxF "  passwd_file_path = $prepared/dovecot/keel-panel-passwd" "$prepared/90-keel-panel.conf"
+  check "install.sh points the INBOX of the panel mailboxes at the maildir root" grep -qxF "mail_inbox_path = ~/Maildir" "$prepared/90-keel-panel.conf"
   check "install.sh keeps the domain of the address for the lmtp lookups of the panel mailboxes" test "$(sed -n '/^protocol lmtp {$/,/^}$/p' "$prepared/90-keel-panel.conf")" = "$(printf 'protocol lmtp {\n  auth_username_format = %%{user | lower}\n}')"
   check "install.sh checks dovecot and postfix before it starts them" recorded_before "$prepared" "doveconf -n" "systemctl restart ${panel_units[*]}"
   check "install.sh points vsftpd at the per-account files of the panel" grep -qxF "user_config_dir=$prepared/ftp-users" "$prepared/vsftpd.conf"

@@ -910,6 +910,7 @@ prepare_panel_mail() {
   cat >"$PANEL_MAIL_DROP_IN" <<CONF
 mail_driver = maildir
 mail_path = ~/Maildir
+mail_inbox_path = ~/Maildir
 mail_uid = $PANEL_MAIL_USER
 mail_gid = $PANEL_MAIL_USER
 passdb passwd-file {
