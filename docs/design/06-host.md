@@ -195,7 +195,7 @@ and a policy that constrains it. There is no "run this command" operation with f
 
 | Family | What it does | Constraint |
 |--------|--------------|------------|
-| `host.user.*` | operating-system users: create, delete, and since M5 `modify`, which runs `usermod` with a fixed vector to set one of the shells the policy admits, to lock (`--lock --expiredate 1`, so no key opens the account either) or to unlock | names under `user_prefix`; uid from the range allotted to the installation at install, named under the calling product's `user_prefix` |
+| `host.user.*` | operating-system users: create, delete, which first ends every process the user's real uid owns (SIGTERM, then SIGKILL after 3 seconds, never pid 1, the agent or a uid outside the range) so `userdel` does not fail on a worker that outlives its reload, and since M5 `modify`, which runs `usermod` with a fixed vector to set one of the shells the policy admits, to lock (`--lock --expiredate 1`, so no key opens the account either) or to unlock | names under `user_prefix`; uid from the range allotted to the installation at install, named under the calling product's `user_prefix` |
 | `host.group.*` | groups | as for users |
 | `host.fs.*` | files and directories | path policy from `file_roots`; writes go through a temporary file and rename |
 | `host.template.apply` | render a configuration file from a `ConfigTemplate` | render → swap → validate → reload → rollback, the check running with the file in place; see "Configuration templates" |

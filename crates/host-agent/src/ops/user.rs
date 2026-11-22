@@ -5,8 +5,10 @@ use std::io;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{Call, Dest};
+use super::reap::{self, Stopped};
+use super::{Call, Dest, OP_USER_DELETE};
 use crate::accounts::User;
+use crate::journal::{self, Stop};
 use crate::policy::{UidRange, tool};
 use crate::process;
 use crate::protocol::{ERROR_EXEC_FAILED, ERROR_NOT_FOUND, Failure};
@@ -15,6 +17,7 @@ const DEFAULT_SHELL: &str = "/usr/sbin/nologin";
 const NO_HOME: &str = "/nonexistent";
 const EXPIRED_SINCE_EPOCH_DAY: &str = "1";
 const NEVER_EXPIRES: &str = "";
+const USER_BUSY: &str = "currently used by process";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -167,7 +170,12 @@ fn allowed_shell(call: &Call<'_>, shell: &str) -> Result<(), Failure> {
     }
 }
 
-pub(super) fn delete(call: &Call<'_>, args: Delete) -> Result<Value, Failure> {
+pub(super) struct Who<'a> {
+    pub(super) actor: &'a str,
+    pub(super) request_id: &'a str,
+}
+
+pub(super) fn delete(call: &Call<'_>, who: Who<'_>, args: Delete) -> Result<Value, Failure> {
     call.account_name(&args.name)?;
     let range = call.uid_range()?;
     let accounts = call.accounts();
@@ -181,7 +189,14 @@ pub(super) fn delete(call: &Call<'_>, args: Delete) -> Result<Value, Failure> {
         argv.push("--remove");
     }
     argv.push(&args.name);
-    process::succeed(&tools.userdel, &argv, call.policy.timeout(tool::USERDEL))?;
+    let timeout = call.policy.timeout(tool::USERDEL);
+    let mut stopped = Stopped::default();
+    let outcome = stop_then_delete(
+        || reap::stop_user(range, user.uid, &args.name, &mut stopped),
+        || process::succeed(&tools.userdel, &argv, timeout).map(drop),
+    );
+    report(call, &who, &user, stopped);
+    outcome?;
     if let Some(group) = accounts.group(&args.name)?
         && range.contains(group.gid)
         && group.members.is_empty()
@@ -193,6 +208,39 @@ pub(super) fn delete(call: &Call<'_>, args: Delete) -> Result<Value, Failure> {
         )?;
     }
     Ok(json!({ "removed": true }))
+}
+
+fn stop_then_delete<S, D>(mut stop: S, mut userdel: D) -> Result<(), Failure>
+where
+    S: FnMut() -> Result<(), Failure>,
+    D: FnMut() -> Result<(), Failure>,
+{
+    let mut attempt = || {
+        stop()?;
+        userdel()
+    };
+    match attempt() {
+        Err(failure) if failure.key == ERROR_EXEC_FAILED && failure.detail.contains(USER_BUSY) => {
+            attempt()
+        }
+        outcome => outcome,
+    }
+}
+
+fn report(call: &Call<'_>, who: &Who<'_>, user: &User, stopped: Stopped) {
+    if stopped != Stopped::default() {
+        journal::processes_stopped(&Stop {
+            op: OP_USER_DELETE,
+            actor: who.actor,
+            request_id: who.request_id,
+            product: call.product_id,
+            peer_uid: call.admitted,
+            user: &user.name,
+            uid: user.uid,
+            sigterm: stopped.terminated,
+            sigkill: stopped.killed,
+        });
+    }
 }
 
 pub(super) fn modify(call: &Call<'_>, args: Modify) -> Result<Value, Failure> {
@@ -318,5 +366,31 @@ mod tests {
         let failure = inside(range, 1000, "hp_a").unwrap_err();
         assert_eq!(failure.key, crate::protocol::ERROR_POLICY);
         assert!(failure.detail.contains("1000"), "{}", failure.detail);
+    }
+
+    fn busy() -> Failure {
+        Failure::new(
+            ERROR_EXEC_FAILED,
+            "userdel: user hp_a is currently used by process 7",
+        )
+    }
+
+    #[test]
+    fn a_busy_user_has_its_processes_stopped_again_before_the_one_retry() {
+        let steps = std::cell::RefCell::new(Vec::new());
+        let mut round = 0;
+        let outcome = stop_then_delete(
+            || {
+                steps.borrow_mut().push("stop");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("userdel");
+                round += 1;
+                if round == 1 { Err(busy()) } else { Ok(()) }
+            },
+        );
+        assert!(outcome.is_ok());
+        assert_eq!(*steps.borrow(), ["stop", "userdel", "stop", "userdel"]);
     }
 }

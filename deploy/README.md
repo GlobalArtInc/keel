@@ -203,9 +203,16 @@ overwrite.
 `/run/keel/agent.sock`. The socket admits the account `keel` alone, checked by peer credentials
 (`--user` names another account for a rehearsal). Every operation of the catalogue is one line in
 `journalctl -u keel-privileged` with the actor, the request id and the outcome, and a request
-outside the policy is refused with `host.error.policy` and appears there too:
+outside the policy is refused with `host.error.policy` and appears there too. A
+`host.user.delete` that had to end processes adds one more line with the outcome
+`processes_stopped`, the same actor and request id, the user, its uid and the number of processes
+sent SIGTERM and SIGKILL:
 
 - `host.user.*` and `host.group.*` inside `uid_range`, under the product's `user_prefix`;
+  `host.user.delete` first ends the processes of the user (SIGTERM, then SIGKILL after 3 seconds,
+  re-sent for 2 more seconds to whatever is still there) and then runs `userdel`; when `userdel`
+  still finds the user busy the processes are ended once more and `userdel` is retried once, and
+  the deletion ends in `host.error.exec_failed` if processes survive or the retry fails;
   `host.user.modify` sets the login shell, `/usr/sbin/nologin` or one listed in `/etc/shells`,
   and locks or unlocks the account through `usermod`, a lock also expiring the account so that
   no key opens it either; an

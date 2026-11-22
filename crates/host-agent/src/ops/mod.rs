@@ -9,6 +9,7 @@ mod mariadb;
 mod pkg;
 pub(crate) mod plugin;
 mod quota;
+mod reap;
 mod seal;
 mod service;
 mod template;
@@ -184,7 +185,14 @@ pub(crate) fn execute(context: &Context, request: &Request) -> Result<Value, Fai
     let args = &request.args;
     match request.op.as_str() {
         OP_USER_CREATE => user::create(&call, parse(args)?),
-        OP_USER_DELETE => user::delete(&call, parse(args)?),
+        OP_USER_DELETE => user::delete(
+            &call,
+            user::Who {
+                actor: &request.actor.login,
+                request_id: &request.request_id,
+            },
+            parse(args)?,
+        ),
         OP_USER_GET => user::get(&call, parse(args)?),
         OP_USER_LIST => user::list(&call, parse::<Empty>(args).map(drop)?),
         OP_USER_MODIFY => user::modify(&call, parse(args)?),

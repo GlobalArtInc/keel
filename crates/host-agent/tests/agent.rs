@@ -112,7 +112,7 @@ impl Site {
         fs::write(root.join("shells"), "# login shells\n/bin/sh\n/bin/bash\n").expect("shells");
         write_stubs(root);
         let policy = format!(
-            "policy:\n  uid_range: {{ from: 100000, to: 100003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www, accounts: {root}/accounts, transfer: {root}/transfer }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [accounts] }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n    keel: {root}/bin/keel\n",
+            "policy:\n  uid_range: {{ from: 4000000000, to: 4000000003 }}\n  file_roots: {{ zones: {root}/zones, www: {root}/www, accounts: {root}/accounts, transfer: {root}/transfer }}\n  services: [named, php*-fpm]\n  checks: {{ named.check: [\"{root}/bin/named-checkconf\", \"-z\"] }}\n  exec_allow: [certbot]\n  products:\n    dns: {{ drop_in_prefix: keel-dns- }}\n    panel: {{ user_prefix: hp_, drop_in_prefix: keel-panel-, account_roots: [accounts] }}\n  tools:\n    systemctl: {root}/bin/systemctl\n    getent: {root}/bin/getent\n    useradd: {root}/bin/useradd\n    userdel: {root}/bin/userdel\n    usermod: {root}/bin/usermod\n    groupadd: {root}/bin/groupadd\n    groupdel: {root}/bin/groupdel\n    shells: {root}/shells\n    keel: {root}/bin/keel\n",
             root = root.display()
         );
         fs::write(root.join("agent.yaml"), policy).expect("the policy");
@@ -294,7 +294,7 @@ fn write_stubs(root: &Path) {
     stub(
         root,
         "userdel",
-        "echo \"userdel $*\" >> LOG\nfor last; do :; done\nawk -F: -v k=\"$last\" '$1 != k' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd\n",
+        "echo \"userdel $*\" >> LOG\nfor last; do :; done\nif [ -e ROOT/busy-userdel ]; then echo \"userdel: user $last is currently used by process 4242\" >&2; exit 8; fi\nif [ -e ROOT/fail-userdel ]; then rm -f ROOT/fail-userdel; echo \"userdel: user $last is currently used by process 4242\" >&2; exit 8; fi\nif [ -e ROOT/fail-userdel-lock ]; then rm -f ROOT/fail-userdel-lock; echo \"userdel: cannot lock /etc/passwd; try again later.\" >&2; exit 1; fi\nawk -F: -v k=\"$last\" '$1 != k' ROOT/passwd > ROOT/passwd.new && mv ROOT/passwd.new ROOT/passwd\n",
     );
     stub(
         root,
@@ -772,18 +772,18 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
     let answer = site.call("host.user.create", "panel", json!({ "name": "hp_site" }));
     assert_eq!(
         answer["data"],
-        json!({ "name": "hp_site", "uid": 100000, "gid": 100000, "home": "/nonexistent", "shell": "/usr/sbin/nologin", "created": true })
+        json!({ "name": "hp_site", "uid": 4000000000u32, "gid": 4000000000u32, "home": "/nonexistent", "shell": "/usr/sbin/nologin", "created": true })
     );
     assert_eq!(
         site.calls(),
         [
-            "groupadd --gid 100000 hp_site",
-            "useradd --uid 100000 --gid 100000 --shell /usr/sbin/nologin --home-dir /nonexistent --no-create-home hp_site"
+            "groupadd --gid 4000000000 hp_site",
+            "useradd --uid 4000000000 --gid 4000000000 --shell /usr/sbin/nologin --home-dir /nonexistent --no-create-home hp_site"
         ]
     );
     let again = site.call("host.user.create", "panel", json!({ "name": "hp_site" }));
     assert_eq!(again["data"]["created"], false);
-    assert_eq!(again["data"]["uid"], 100000);
+    assert_eq!(again["data"]["uid"], 4000000000u32);
     assert_eq!(site.calls().len(), 2);
 
     let home = site.call(
@@ -791,7 +791,7 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
         "panel",
         json!({ "name": "hp_web", "shell": "/bin/sh", "home": { "root": "www", "name": "keel-panel-web" } }),
     );
-    assert_eq!(home["data"]["uid"], 100001);
+    assert_eq!(home["data"]["uid"], 4000000001u32);
     assert_eq!(home["data"]["shell"], "/bin/sh");
     assert_eq!(
         home["data"]["home"],
@@ -807,14 +807,14 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
     let group = site.call("host.group.create", "panel", json!({ "name": "hp_shared" }));
     assert_eq!(
         group["data"],
-        json!({ "name": "hp_shared", "gid": 100002, "members": [], "created": true })
+        json!({ "name": "hp_shared", "gid": 4000000002u32, "members": [], "created": true })
     );
     assert_eq!(
         site.calls().last().unwrap(),
-        "groupadd --gid 100002 hp_shared"
+        "groupadd --gid 4000000002 hp_shared"
     );
     let full = site.call("host.user.create", "panel", json!({ "name": "hp_last" }));
-    assert_eq!(full["data"]["uid"], 100003);
+    assert_eq!(full["data"]["uid"], 4000000003u32);
     let none = site.call("host.user.create", "panel", json!({ "name": "hp_more" }));
     let detail = refused(&none, "host.error.policy");
     assert!(detail.contains("no free id"), "{detail}");
@@ -828,7 +828,7 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
         .collect();
     assert_eq!(names, ["hp_site", "hp_web", "hp_last"]);
     let got = site.call("host.user.get", "panel", json!({ "name": "hp_web" }));
-    assert_eq!(got["data"]["uid"], 100001);
+    assert_eq!(got["data"]["uid"], 4000000001u32);
     refused(
         &site.call("host.user.get", "panel", json!({ "name": "hp_absent" })),
         "host.error.not_found",
@@ -836,7 +836,7 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
     let groups = site.call("host.group.list", "panel", json!({}));
     assert_eq!(groups["data"]["groups"].as_array().unwrap().len(), 4);
     let got = site.call("host.group.get", "panel", json!({ "name": "hp_shared" }));
-    assert_eq!(got["data"]["gid"], 100002);
+    assert_eq!(got["data"]["gid"], 4000000002u32);
 
     refused(
         &site.call("host.user.create", "panel", json!({ "name": "site" })),
@@ -931,6 +931,92 @@ fn users_and_groups_are_created_inside_the_uid_range_under_the_product_prefix() 
     let outside = site.call("host.group.create", "panel", json!({ "name": "hp_out" }));
     let detail = refused(&outside, "host.error.policy");
     assert!(detail.contains("hp_out"), "{detail}");
+}
+
+#[test]
+fn a_userdel_that_finds_the_user_busy_is_retried_once_after_stopping_its_processes_again() {
+    let mut site = Site::start("busy");
+    let created = site.call("host.user.create", "panel", json!({ "name": "hp_busy" }));
+    assert_eq!(created["data"]["created"], true, "{created}");
+    site.fail_next("userdel");
+    let removed = site.call(
+        "host.user.delete",
+        "panel",
+        json!({ "name": "hp_busy", "remove_home": true }),
+    );
+    assert_eq!(removed["data"], json!({ "removed": true }), "{removed}");
+    let deletions: Vec<String> = site
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("userdel"))
+        .collect();
+    assert_eq!(deletions, ["userdel --remove hp_busy"; 2]);
+    assert!(!site.passwd().contains("hp_busy:"));
+}
+
+#[test]
+fn a_userdel_that_stays_busy_ends_after_one_retry_and_fails() {
+    let mut site = Site::start("stuck");
+    site.call("host.user.create", "panel", json!({ "name": "hp_stuck" }));
+    fs::write(site.root().join("busy-userdel"), b"").unwrap();
+    let failed = site.call("host.user.delete", "panel", json!({ "name": "hp_stuck" }));
+    let detail = refused(&failed, "host.error.exec_failed");
+    assert!(detail.contains("currently used by process"), "{detail}");
+    let deletions = site
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("userdel"))
+        .count();
+    assert_eq!(deletions, 2);
+    assert!(site.passwd().contains("hp_stuck:"));
+}
+
+#[test]
+fn a_userdel_failure_that_is_not_busy_is_not_retried() {
+    let mut site = Site::start("lock");
+    site.call("host.user.create", "panel", json!({ "name": "hp_lock" }));
+    site.fail_next("userdel-lock");
+    let failed = site.call("host.user.delete", "panel", json!({ "name": "hp_lock" }));
+    let detail = refused(&failed, "host.error.exec_failed");
+    assert!(detail.contains("cannot lock"), "{detail}");
+    let deletions = site
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("userdel"))
+        .count();
+    assert_eq!(deletions, 1);
+}
+
+#[test]
+fn a_user_outside_the_uid_range_never_has_its_processes_signalled() {
+    let mut site = Site::start("range");
+    let mut bystander = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("a process of the test's own uid");
+    let uid = own_uid();
+    assert!(!(4_000_000_000..=4_000_000_003).contains(&uid));
+    fs::write(
+        site.root().join("passwd"),
+        format!(
+            "{}hp_mine:x:{uid}:{uid}::/nonexistent:/bin/sh\n",
+            site.passwd()
+        ),
+    )
+    .unwrap();
+    let detail = refused(
+        &site.call("host.user.delete", "panel", json!({ "name": "hp_mine" })),
+        "host.error.policy",
+    );
+    assert!(detail.contains("outside the uid_range"), "{detail}");
+    assert!(site.calls().iter().all(|call| !call.starts_with("userdel")));
+    let alive = bystander.try_wait().expect("the process state").is_none();
+    bystander.kill().expect("the process is ended");
+    bystander.wait().expect("the process is reaped");
+    assert!(
+        alive,
+        "the delete signalled a process of a uid outside the range"
+    );
 }
 
 #[test]
@@ -1573,7 +1659,7 @@ fn a_user_inside_the_range_is_locked_unlocked_and_given_a_shell() {
         json!({ "name": "hp_site", "locked": true }),
     );
     assert_eq!(locked["data"]["locked"], true, "{locked}");
-    assert_eq!(locked["data"]["uid"], 100000);
+    assert_eq!(locked["data"]["uid"], 4000000000u32);
     let shell = site.call(
         "host.user.modify",
         "panel",
@@ -1651,7 +1737,7 @@ fn a_home_operation_runs_the_worker_as_the_account_and_never_leaves_its_home() {
     std::os::unix::fs::symlink(root.join("outside"), home.join("escape")).expect("the link");
     let mut passwd = site.passwd();
     passwd.push_str(&format!(
-        "hp_files:x:100001:100001::{}:/usr/sbin/nologin\n",
+        "hp_files:x:4000000001:4000000001::{}:/usr/sbin/nologin\n",
         home.display()
     ));
     fs::write(root.join("passwd"), passwd).expect("passwd");
@@ -1670,7 +1756,7 @@ fn a_home_operation_runs_the_worker_as_the_account_and_never_leaves_its_home() {
         site.calls().last().map(String::as_str),
         Some(
             format!(
-                "keel agent-exec --uid 100001 --policy {policy} {keel} agent-home --home {home} list {home}/site",
+                "keel agent-exec --uid 4000000001 --policy {policy} {keel} agent-home --home {home} list {home}/site",
                 policy = root.join("agent.yaml").display(),
                 keel = root.join("bin/keel").display(),
                 home = home.display(),
