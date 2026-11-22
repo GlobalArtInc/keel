@@ -99,6 +99,10 @@ export const SAVE_KEY = 'keel.action.save';
     .once {
       margin-bottom: var(--phx-form-row-gap, 28px);
     }
+    phx-tab keel-page {
+      display: block;
+      padding-top: 16px;
+    }
   `,
   host: {
     '[attr.data-form]': 'form().name',
