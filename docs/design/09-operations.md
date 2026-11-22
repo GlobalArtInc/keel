@@ -745,7 +745,8 @@ tail of the audit log, open problems and metrics, into
 `<data_dir>/support/keel-support-<version>-<instant>.tar.zst` or `--out`, written through a
 temporary created exclusively and renamed. The audit tail and the problems are read from the
 tables, so the bundle works with the service stopped; the password-like keys of a section no
-loaded module claims are redacted too, so a disabled product's section cannot leak. Redaction uses the same `secret` flag of the
+loaded module claims are redacted too, so a disabled product's section cannot leak. Every session, API token, one-time login key and
+peer token found in the text of any member is replaced by `<prefix>_<redacted>`. Redaction uses the same `secret` flag of the
 field schema that masks values in logs and audit ([02-functions.md](02-functions.md)), and CI runs
 a test that the bundle contains no secrets; the M5 acceptance criteria repeat that check.
 

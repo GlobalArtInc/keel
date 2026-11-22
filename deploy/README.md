@@ -594,6 +594,9 @@ database password, every `secret` field of a module section, and the password-li
 section no loaded module claims), `agent.yaml`, the last 10 000 log entries of the running service
 (`keel.logs.tail` over the control socket), the migration ledgers, the tail of the audit table,
 the open problems, the `/readyz` answer (the kernel exposes no metrics yet) and the doctor report.
+Whatever the member, every session (`ks_`), API token (`kat_`), one-time login key (`kok_`) and
+peer token (`kpt_`) found in its text is replaced by `<prefix>_<redacted>`, so the setup link in
+the log ring of a fresh installation cannot be used by whoever reads the bundle.
 
 ## Configuration keys
 
