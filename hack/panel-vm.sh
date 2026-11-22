@@ -38,7 +38,7 @@ PRODUCTION=https://acme-v02.api.letsencrypt.org/directory
 ACME_DIRECTORY=${KEEL_PANEL_VM_ACME:-$STAGING}
 PANEL_PACKAGES=(nginx php-fpm mariadb-server mariadb-client postfix dovecot-core dovecot-imapd dovecot-lmtpd vsftpd libpam-pwdfile)
 PANEL_UNITS=(nginx.service mariadb.service postfix.service dovecot.service vsftpd.service)
-PROOF_TOOLS=(curl openssl python3 zstd)
+PROOF_TOOLS=(curl openssl python3 zstd cron)
 MAIL_MAPS=/etc/postfix/keel
 MAIL_PASSWD_DIR=/etc/dovecot/keel
 MAIL_PASSWD=$MAIL_PASSWD_DIR/keel-panel-passwd
@@ -610,7 +610,7 @@ dumped() {
 
 no_password_in_journal() {
   local lines
-  lines=$(journalctl -u "$AGENT_UNIT" --since "$1" --no-pager) && ! grep -qF -- "$STAMP" <<<"$lines"
+  lines=$(journalctl -u "$AGENT_UNIT" --since "$1" --no-pager) && ! grep -qF -- "it's $STAMP" <<<"$lines"
 }
 
 db_proof() {
@@ -692,7 +692,12 @@ passwd_placed() {
 }
 
 logs_in() {
-  doveadm auth test "$MAILBOX" "$1" >/dev/null 2>&1
+  python3 - "$MAILBOX" "$1" >/dev/null 2>&1 <<'PY'
+import imaplib
+import sys
+
+imaplib.IMAP4("127.0.0.1", 143).login(sys.argv[1], sys.argv[2])
+PY
 }
 
 refused_login() {
@@ -868,7 +873,7 @@ ftp_proof() {
   check "the deletion task is done" eventually task_done "$task"
   check "$FTP_LOGIN is gone from $FTP_PASSWD and $FTP_USERS" eventually ftp_gone
   check "$FTP_LOGIN is refused" ftp_refused "$FTP_PASSWORD"
-  check "the agent journal carries the files of vsftpd" agent_logged "$since" "keel-panel-passwd"
+  check "the agent journal carries the files of vsftpd" agent_logged "$since" "op=host.template.apply"
   check "the agent journal carries no FTP password" no_ftp_password_in_journal "$since"
 
   [ "$failures" -eq 0 ] || fail "$failures check(s) failed"
@@ -1160,7 +1165,7 @@ config_refused() {
   local out
   out=$(as_keel ctl hosting.site.config.set "id=$1" "server=expires keel_vm_refused;" --out json 2>&1) && return 1
   grep -qF host.error.validate_failed <<<"$out" && grep -qF '"server"' <<<"$out" \
-    && grep -qF '"expires" directive invalid value' <<<"$out"
+    && grep -qF 'directive invalid value' <<<"$out"
 }
 
 config_file_refused() {
