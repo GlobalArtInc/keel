@@ -46,6 +46,9 @@ const ARCHIVE_MODE: u32 = 0o600;
 const ENTRY_MODE: u32 = 0o600;
 const LEVEL: i32 = 3;
 const TEMPORARY_SUFFIX: &str = ".partial";
+const CREDENTIAL_PREFIXES: [&str; 4] = ["ks_", "kat_", "kok_", "kpt_"];
+const CREDENTIAL_HEX_LEN: usize = 64;
+const CREDENTIAL_MASK: &str = "<redacted>";
 
 #[derive(Debug, thiserror::Error)]
 pub enum SupportError {
@@ -121,6 +124,38 @@ fn mask_every_value(value: &mut Value) {
         Value::Null => {}
         leaf => *leaf = Value::String(MASK.to_owned()),
     }
+}
+
+fn redact_credentials(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut at = 0;
+    while at < bytes.len() {
+        let prefix = CREDENTIAL_PREFIXES
+            .iter()
+            .find(|prefix| bytes[at..].starts_with(prefix.as_bytes()));
+        let Some(prefix) = prefix else {
+            at += 1;
+            continue;
+        };
+        let start = at + prefix.len();
+        let digits = bytes[start..]
+            .iter()
+            .take_while(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+            .count();
+        if digits < CREDENTIAL_HEX_LEN {
+            at = start;
+            continue;
+        }
+        out.push_str(&text[copied..at]);
+        out.push_str(prefix);
+        out.push_str(CREDENTIAL_MASK);
+        at = start + digits;
+        copied = at;
+    }
+    out.push_str(&text[copied..]);
+    out
 }
 
 fn redact_config(text: &str, masks: &Masks) -> Result<String, serde_yaml_ng::Error> {
@@ -305,6 +340,11 @@ impl Bundle {
             "notes": self.notes,
         });
         self.add_json(MANIFEST_FILE, &manifest)?;
+        for (_, bytes) in &mut self.entries {
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                *bytes = redact_credentials(text).into_bytes();
+            }
+        }
         if fs::symlink_metadata(out).is_ok() {
             return Err(SupportError::Exists {
                 path: out.to_owned(),
@@ -512,6 +552,78 @@ mod tests {
         );
         let mode = std::os::unix::fs::MetadataExt::mode(&fs::metadata(&out).unwrap()) & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    #[test]
+    fn a_bundle_hides_a_login_key_a_session_a_token_and_a_peer_token_in_every_member() {
+        let hex = |digit: char| digit.to_string().repeat(64);
+        let (key, session, token, peer) = (
+            format!("kok_{}", hex('a')),
+            format!("ks_{}", hex('b')),
+            format!("kat_{}", hex('c')),
+            format!("kpt_{}", hex('d')),
+        );
+        let short = format!("kok_{}", "e".repeat(63));
+        let lookalike = "tasks_done ks_ kat_zz";
+        let dir = tempfile::tempdir().unwrap();
+        let at: DateTime<Utc> = "2026-09-21T10:15:30Z".parse().unwrap();
+        let mut bundle = Bundle::new("0.1.0", at, None);
+        bundle.add_lines(
+            LOGS_FILE,
+            &[
+                json!({ "message": format!("setup link https://127.0.0.1:1500/setup?key={key}&next=1") }),
+                json!({ "message": format!("{session} then {lookalike} and {short}") }),
+                json!({ "message": format!("tail {peer}") }),
+            ],
+        );
+        bundle.add_lines(
+            AUDIT_FILE,
+            &[json!({ "params": { "token": token.clone() }, "by": token.clone() })],
+        );
+        bundle
+            .add_json(
+                PROBLEMS_FILE,
+                &json!([{ "detail": format!("{key} was refused") }]),
+            )
+            .unwrap();
+        bundle.add_text(
+            DOCTOR_FILE,
+            &format!("{peer} starts a line\nthe line ends with {session}\n{token}"),
+        );
+        bundle.note("logs", format!("the service said {key}"));
+        let out = dir.path().join(archive_name("0.1.0", at));
+        bundle.write(&out).unwrap();
+        let entries = read_entries(&out).unwrap();
+        let member = |name: &str| {
+            let (_, bytes) = entries.iter().find(|(entry, _)| entry == name).unwrap();
+            String::from_utf8(bytes.clone()).unwrap()
+        };
+        for (name, bytes) in &entries {
+            let text = String::from_utf8_lossy(bytes);
+            for original in [&key, &session, &token, &peer] {
+                assert!(!text.contains(original.as_str()), "{name}: {text}");
+            }
+        }
+        let logs = member(LOGS_FILE);
+        for line in logs.lines() {
+            serde_json::from_str::<Value>(line).unwrap();
+        }
+        assert!(logs.contains("/setup?key=kok_<redacted>&next=1"), "{logs}");
+        assert!(logs.contains("ks_<redacted> then"), "{logs}");
+        assert!(logs.contains("tail kpt_<redacted>\"}"), "{logs}");
+        assert!(logs.contains(lookalike), "{logs}");
+        assert!(logs.contains(&short), "{logs}");
+        let audit = member(AUDIT_FILE);
+        serde_json::from_str::<Value>(audit.trim_end()).unwrap();
+        assert!(audit.contains("\"token\":\"kat_<redacted>\""), "{audit}");
+        let problems: Value = serde_json::from_str(&member(PROBLEMS_FILE)).unwrap();
+        assert_eq!(problems[0]["detail"], "kok_<redacted> was refused");
+        assert_eq!(
+            member(DOCTOR_FILE),
+            "kpt_<redacted> starts a line\nthe line ends with ks_<redacted>\nkat_<redacted>"
+        );
+        let manifest: Value = serde_json::from_str(&member(MANIFEST_FILE)).unwrap();
+        assert_eq!(manifest["notes"]["logs"], "the service said kok_<redacted>");
     }
 
     #[test]
