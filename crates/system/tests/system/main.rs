@@ -45,8 +45,7 @@ mod license;
 #[cfg(all(feature = "license", feature = "auth"))]
 mod license_time;
 #[cfg(any(
-    feature = "auth",
-    feature = "audit",
+    all(feature = "auth", feature = "audit"),
     feature = "cron",
     feature = "tasks",
     feature = "webhooks"

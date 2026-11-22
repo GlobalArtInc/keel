@@ -136,8 +136,24 @@ const JOBS = [
   job('01J8A0000000000000000000J2', 'done', 3, 3),
 ];
 
+const PRINCIPAL_ROWS = [
+  {
+    id: '01J8A0000000000000000000B1',
+    accountId: ACCOUNT_ID,
+    login: 'root',
+    level: 'admin',
+    role: 'owner',
+    state: 'active',
+    lang: 'en',
+    aclGen: 1,
+    createdAt: '2026-09-01T00:00:00Z',
+  },
+];
+
 const CALLS: Record<string, CannedAnswer> = {
   'note.list': pageEnvelope(NOTES),
+  'keel.principal.list': pageEnvelope(PRINCIPAL_ROWS),
+  'settings.pref.get': okEnvelope({ key: 'columns', value: null }),
   'keel.account.list': pageEnvelope(ACCOUNT_ROWS),
   'keel.account.options': okEnvelope(ACCOUNTS),
   'task.list': pageEnvelope(JOBS),
@@ -256,7 +272,7 @@ export const NoProduct: Story = {
     await expect(brandTextOf(canvasElement)).toBe('Keel');
     await expect(canvasElement.querySelector('phx-brand-logo img')).toBeNull();
     await expect(sectionsOf(canvasElement)).toEqual([
-      { product: null, heading: null, groups: ['system'] },
+      { product: null, heading: null, groups: ['access', 'monitor', 'system'] },
     ]);
     await expect(canvas.getByRole('heading', { name: 'Accounts' })).toBeInTheDocument();
   },
@@ -272,7 +288,7 @@ export const OneProduct: Story = {
     await expect(logo).toHaveAttribute('src', '/brand/logo.svg');
     await expect(sectionsOf(canvasElement)).toEqual([
       { product: 'demo', heading: null, groups: ['demo'] },
-      { product: null, heading: null, groups: ['system'] },
+      { product: null, heading: null, groups: ['access', 'monitor', 'system'] },
     ]);
     await expect(canvas.getByRole('link', { name: /Notes/ })).toBeInTheDocument();
     await expect(canvas.getByRole('heading', { name: 'Notes' })).toBeInTheDocument();
@@ -296,7 +312,7 @@ export const TwoProducts: Story = {
     await expect(sectionsOf(canvasElement)).toEqual([
       { product: 'dns', heading: 'KeelDNS', groups: ['dns'] },
       { product: 'panel', heading: 'KeelPanel', groups: ['hosting'] },
-      { product: null, heading: null, groups: ['system'] },
+      { product: null, heading: null, groups: ['access', 'system'] },
     ]);
     await expect(canvas.getByRole('link', { name: /Zones/ })).toBeInTheDocument();
     await expect(canvas.getByRole('link', { name: /Sites/ })).toBeInTheDocument();
@@ -319,7 +335,7 @@ export const ActingAs: Story = {
     ).toBeInTheDocument();
     await expect(sectionsOf(canvasElement)).toEqual([
       { product: 'demo', heading: null, groups: ['demo'] },
-      { product: null, heading: null, groups: ['system'] },
+      { product: null, heading: null, groups: ['access', 'monitor', 'system'] },
     ]);
   },
 };
@@ -517,33 +533,13 @@ export const Workspace: Story = {
     await waitFor(() =>
       expect(canvasElement.querySelector('[role="tab"] .tab__parent')).not.toBeNull(),
     );
-    await userEvent.click(menuItem(canvasElement, 'keel.account.list'));
+    await userEvent.click(menuItem(canvasElement, 'keel.principal.list'));
     await waitFor(() =>
       expect(canvasElement.querySelectorAll('[role="tab"]').length).toBeGreaterThanOrEqual(3),
     );
     await expect(canvasElement.querySelectorAll('[role="tab"] .tab__parent')).toHaveLength(1);
   },
 };
-
-function sectioned(boot: Boot): Boot {
-  const items = boot.menu.flatMap((group) => group.items);
-  const notes = items.find((item) => item.func === 'note.list');
-  const accounts = items.find((item) => item.func === 'keel.account.list');
-  if (notes === undefined || accounts === undefined) {
-    throw new Error('the one-product boot has the notes and the accounts');
-  }
-  return {
-    ...boot,
-    menu: boot.menu.map((group) => ({
-      ...group,
-      items: group.items
-        .filter((item) => item !== accounts)
-        .map((item) =>
-          item === notes ? { ...notes, path: 'demo/notes', children: [notes, accounts] } : item,
-        ),
-    })),
-  };
-}
 
 function sectionTab(root: HTMLElement, label: string): HTMLElement {
   const tab = [
@@ -558,22 +554,22 @@ function sectionTab(root: HTMLElement, label: string): HTMLElement {
 export const Sections: Story = {
   decorators: [
     withKeel({
-      boot: sectioned(KEEL_BOOT.one),
-      calls: { ...CALLS, 'settings.pref.get': okEnvelope({ key: 'columns', value: null }) },
-      routes: routesTo('note.list'),
+      boot: KEEL_BOOT.one,
+      calls: CALLS,
+      routes: routesTo('keel.principal.list'),
     }),
   ],
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await canvas.findByRole('heading', { name: 'Notes' });
-    await expect(menuItem(canvasElement, 'note.list')).toBeInTheDocument();
-    await expect(
-      canvasElement.querySelector('phx-sidebar-item[data-func="keel.account.list"]'),
-    ).toBeNull();
-    await expect(sectionTab(canvasElement, 'Notes').getAttribute('aria-selected')).toBe('true');
+    await waitFor(() =>
+      expect(sectionTab(canvasElement, 'Users').getAttribute('aria-selected')).toBe('true'),
+    );
+    await expect(menuItem(canvasElement, 'keel.principal.list').classList.contains('active')).toBe(
+      true,
+    );
     await userEvent.click(sectionTab(canvasElement, 'Accounts'));
     await waitFor(() =>
       expect(sectionTab(canvasElement, 'Accounts').getAttribute('aria-selected')).toBe('true'),
     );
+    await expect(sectionTab(canvasElement, 'Users').getAttribute('aria-selected')).toBe('false');
   },
 };

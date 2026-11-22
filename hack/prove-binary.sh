@@ -697,7 +697,7 @@ check "POST /api/v1/call/auth.login as root is 200" http_is "$site/login-root.js
 root_cookie=$(session_cookie_of "$site/login-root.json.headers") || fail "auth.login sets the session cookie for root"
 check "GET /api/v1/boot as root is 200" http_is "$site/boot-root.json" 200 GET /api/v1/boot '' "$root_cookie"
 check "boot names root without an actor" json_is "$site/boot-root.json" 'doc["principal"]["login"] == "root" and doc["principal"]["level"] == "admin" and doc["principal"]["actor"] is None'
-check "boot as root lists the Updates screen in the system group" json_is "$site/boot-root.json" 'any(item["func"] == "update.check" and item["kind"] == "get" and item["icon"] == "package" for group in doc["menu"] for item in group["items"])'
+check "boot as root lists the Updates screen as a tab of the installation section" json_is "$site/boot-root.json" 'any(child["func"] == "update.check" and child["kind"] == "get" and child["icon"] == "package" for group in doc["menu"] for item in group["items"] for child in item.get("children", []))'
 check "POST /api/v1/call/keel.account.list as root is 200" http_is "$site/accounts-root.json" 200 POST /api/v1/call/keel.account.list '{}' "$root_cookie"
 check "keel.account.list as root lists every account" json_is "$site/accounts-root.json" "doc['ok'] is True and doc['data']['total'] >= 2 and doc['meta']['principal']['actor'] is None"
 check "POST /api/v1/call/auth.su into alice is 200" http_is "$site/su.json" 200 POST /api/v1/call/auth.su "{\"principal\":\"$principal_id\"}" "$root_cookie"
