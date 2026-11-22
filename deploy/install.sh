@@ -38,6 +38,8 @@ PANEL_CHALLENGES=/var/lib/keel-panel-acme
 PANEL_DUMPS=/var/lib/keel-panel-dumps
 PANEL_BACKUPS=/var/lib/keel-panel-backups
 PANEL_TRANSFER=/var/lib/keel-panel-transfer
+PANEL_UNIT_DROP_IN_DIR=$UNIT_DIR/keel.service.d
+PANEL_UNIT_DROP_IN=$PANEL_UNIT_DROP_IN_DIR/keel-panel.conf
 PANEL_MAIL_MAPS=/etc/postfix/keel
 PANEL_MAIL_MAP_NAMES=(domains mailboxes aliases)
 PANEL_MAIL_PASSWD_DIR=/etc/dovecot/keel
@@ -872,9 +874,17 @@ prepare_panel() {
   install -d -m 0711 -o root -g root "$PANEL_DUMPS" "$PANEL_BACKUPS"
   install -d -m 0700 -o root -g root "$PANEL_CERTS"
   install -d -m 0700 -o keel -g keel "$PANEL_TRANSFER"
+  prepare_panel_unit
   prepare_panel_mail
   prepare_panel_ftp
   start_panel_units
+}
+
+prepare_panel_unit() {
+  begin "letting keel.service write the transfer root of panel"
+  install -d -m 0755 -o root -g root "$PANEL_UNIT_DROP_IN_DIR"
+  install -m 0644 -o root -g root /dev/null "$PANEL_UNIT_DROP_IN"
+  printf '%s\n' "[Service]" "ReadWritePaths=$PANEL_TRANSFER" >"$PANEL_UNIT_DROP_IN"
 }
 
 prepare_panel_mail() {

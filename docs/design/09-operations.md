@@ -204,7 +204,12 @@ The kernel unit is hardened: `NoNewPrivileges`, `ProtectSystem=strict`, a capabi
 of `CAP_NET_BIND_SERVICE` only, `MemoryMax=50%` and `LimitNOFILE`. Unit files ship with the
 release under `deploy/systemd/` and are refreshed by the update; the installer enables
 `keel.service`, `keel-privileged.service` and `keel-update.path`, and the oneshot carries no
-install section, since it must never run at boot.
+install section, since it must never run at boot. A product that makes the kernel itself write
+outside `/var/lib/keel` and `/run/keel` extends `ReadWritePaths` with a drop-in of its own,
+`/etc/systemd/system/keel.service.d/keel-<product>.conf`, which an update leaves alone: `panel`
+adds its transfer root `/var/lib/keel-panel-transfer`, where the kernel stages the uploads and
+downloads of the file manager. Every other root of a product is written by the host agent as root
+and needs no drop-in.
 
 `keel.service`:
 
@@ -328,8 +333,9 @@ than in a hook of the release, since only `panel` needs one; `dns` installs no p
 Installing a second product later is `keel product enable <id>` followed by the restart it
 requests; the restart runs the same drain and pre-change logical dump as an update, and the new
 product's modules migrate before the port opens. Enabling `panel` this way prepares none of its
-daemons; the operator runs the installer's preparation or installs them by hand
-([deploy/README.md](../../deploy/README.md)). `uninstall.sh` leaves the packages of a product
+daemons; the operator runs the installer's preparation or installs them by hand, the transfer
+root and the `ReadWritePaths` drop-in of the unit included, followed by a `daemon-reload` before
+the restart ([deploy/README.md](../../deploy/README.md)). `uninstall.sh` leaves the packages of a product
 and their configuration in place.
 
 `uninstall.sh --purge` removes the installation together with its data.

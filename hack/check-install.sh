@@ -524,7 +524,7 @@ packages_of() {
 }
 
 prepare_panel_under() {
-  local dir=$1
+  local dir=$1 product=${2:-panel}
   bash -c '
 set -Eeuo pipefail
 source deploy/install.sh
@@ -538,6 +538,8 @@ PANEL_CHALLENGES=$dir/acme
 PANEL_DUMPS=$dir/dumps
 PANEL_BACKUPS=$dir/backups
 PANEL_TRANSFER=$dir/transfer
+PANEL_UNIT_DROP_IN_DIR=$dir/keel.service.d
+PANEL_UNIT_DROP_IN=$PANEL_UNIT_DROP_IN_DIR/keel-panel.conf
 PANEL_MAIL_MAPS=$dir/mail
 PANEL_MAIL_PASSWD_DIR=$dir/dovecot
 PANEL_MAIL_PASSWD=$PANEL_MAIL_PASSWD_DIR/keel-panel-passwd
@@ -582,9 +584,9 @@ install() {
     cp "${paths[0]}" "${paths[1]}"
   fi
 }
-product_ids=(panel)
+product_ids=("$2")
 prepare_products >/dev/null
-' bash "$dir"
+' bash "$dir" "$product"
 }
 
 recorded() {
@@ -625,9 +627,32 @@ if prepare_panel_under "$prepared"; then
   check "the PAM service reads the user file of the panel" grep -qxF "auth required pam_pwdfile.so pwdfile=$prepared/ftp/keel-panel-passwd" "$prepared/pam.d/keel-panel-ftp"
   check "install.sh keeps the previous vsftpd.conf" grep -qxF "listen=NO" "$prepared/vsftpd.conf.orig"
   check "install.sh checks vsftpd.conf before it starts vsftpd" recorded_before "$prepared" "vsftpd $prepared/vsftpd.conf -v" "systemctl restart ${panel_units[*]}"
+  drop_in=$prepared/keel.service.d/keel-panel.conf
+  check "install.sh creates the drop-in directory of keel.service for root" recorded "$prepared" "install -d -m 0755 -o root -g root $prepared/keel.service.d"
+  check "install.sh creates the drop-in of keel.service with mode 0644 for root" recorded "$prepared" "install -m 0644 -o root -g root /dev/null $drop_in"
+  check "the drop-in of keel.service is a Service section naming the transfer root alone" test "$(cat "$drop_in")" = "$(printf '[Service]\nReadWritePaths=%s/transfer' "$prepared")"
+  check "install.sh writes the drop-in of keel.service after the transfer root it names" recorded_before "$prepared" "install -d -m 0700 -o keel -g keel $prepared/transfer" "install -m 0644 -o root -g root /dev/null $drop_in"
 else
   problem "install.sh --product panel did not prepare the host against the recording stubs"
 fi
+dns_prepared=$(mktemp -d)
+if prepare_panel_under "$dns_prepared" dns; then
+  check "install.sh --product dns writes no drop-in of keel.service" test ! -e "$dns_prepared/keel.service.d"
+  check "install.sh --product dns runs no command at all in its preparation" test ! -s "$dns_prepared/calls"
+else
+  problem "install.sh --product dns did not prepare the host against the recording stubs"
+fi
+rm -rf "$dns_prepared"
+main_line() {
+  grep -nE "^  $1\$" deploy/install.sh | cut -d: -f1
+}
+check "install.sh writes the drop-in of keel.service before it installs the units and reloads systemd" test "$(main_line prepare_products)" -lt "$(main_line install_units)"
+check "install.sh starts keel.service after the units are installed and systemd is reloaded" test "$(main_line install_units)" -lt "$(main_line start_service)"
+check "install.sh reloads systemd in the step that installs the units" test -n "$(sed -n '/^install_units() {/,/^}/p' deploy/install.sh | grep -x '  systemctl daemon-reload')"
+check "install.sh starts keel.service in one place only" test "$(grep -c 'systemctl start keel.service' deploy/install.sh)" = "1"
+check "uninstall.sh removes the drop-in of keel.service" grep -qF 'UNIT_DROP_INS=(keel-panel.conf)' deploy/uninstall.sh
+check "the deploy README gives the operator the drop-in and the reload" test "$(grep -cF -e 'keel.service.d/keel-panel.conf' -e 'systemctl daemon-reload' deploy/README.md)" -ge 3
+check "panel-vm.sh install proves the transfer root among the ReadWritePaths of the unit" grep -qF 'among the ReadWritePaths of $UNIT' hack/panel-vm.sh
 
 if [ "$problems" -gt 0 ]; then
   echo "$problems problem(s)" >&2

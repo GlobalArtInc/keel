@@ -263,6 +263,7 @@ install_keel() {
   check "$WWW, $CHALLENGES, $DUMPS and $SITE_BACKUPS are root's" owned_dirs root "$WWW" "$CHALLENGES" "$DUMPS" "$SITE_BACKUPS"
   check "$CERTS is readable by root alone" test "$(stat -c '%U %a' "$CERTS")" = "root 700"
   check "$TRANSFER is keel's alone" test "$(stat -c '%U %a' "$TRANSFER")" = "keel 700"
+  check "systemctl show names $TRANSFER among the ReadWritePaths of $UNIT" unit_writes "$TRANSFER"
   check "postfix delivers the virtual mailboxes to dovecot" test "$(postconf -h virtual_transport)" = "lmtp:unix:private/dovecot-lmtp"
   check "postfix reads the domains of $MAIL_MAPS" test "$(postconf -h virtual_mailbox_domains)" = "hash:$MAIL_MAPS/keel-panel-domains"
   check "dovecot reads the passwd-file $MAIL_PASSWD" grep -qF "passwd_file_path = $MAIL_PASSWD" "$MAIL_DROP_IN"
@@ -276,6 +277,14 @@ install_keel() {
 
 package_installed() {
   [ "$(dpkg-query -W -f '${Status}' "$1" 2>/dev/null)" = "install ok installed" ]
+}
+
+unit_writes() {
+  local path
+  for path in $(systemctl show "$UNIT" --property=ReadWritePaths --value); do
+    [ "$path" = "$1" ] && return 0
+  done
+  return 1
 }
 
 php_unit() {

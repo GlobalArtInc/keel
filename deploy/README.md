@@ -336,13 +336,37 @@ installed, the installer answers the mailer question of postfix with `Internet S
 vsftpd libpam-pwdfile` from the distribution in one `apt-get install`, and prepares what the
 roots of `file_roots` in `/etc/keel/agent.yaml` need: `/var/www`, `/var/lib/keel-panel-acme`,
 `/var/lib/keel-panel-dumps` and `/var/lib/keel-panel-backups` for root, `/etc/ssl/keel` for root
-alone and `/var/lib/keel-panel-transfer` for `keel` alone. It points postfix and dovecot at the
+alone and `/var/lib/keel-panel-transfer` for `keel` alone. The kernel unit is sandboxed with
+`ProtectSystem=strict` and writes only `/var/lib/keel` and `/run/keel`, while the kernel itself
+stages every upload and download in the transfer root; so the installer also writes the drop-in
+`/etc/systemd/system/keel.service.d/keel-panel.conf`, which adds that root to `ReadWritePaths`,
+and systemd reads it with the `daemon-reload` that precedes the first start of `keel.service`. It
+points postfix and dovecot at the
 mailboxes and vsftpd at the FTP accounts as described below, checks each configuration with the
 check the policy names for it, then enables and restarts `nginx`, `mariadb`, `postfix`,
 `dovecot`, `vsftpd` and every `php*-fpm` unit and stops if one of them is not running. The
 dovecot drop-in is written for dovecot 2.4, the one of Debian 13. `hack/panel-vm.sh install`
-runs the installer on a clean machine and checks every package, unit and root. Enabling `panel`
-later on an installation of another product installs none of this.
+runs the installer on a clean machine and checks every package, unit and root, and that
+`systemctl show keel -p ReadWritePaths` names the transfer root. Enabling `panel` later on an
+installation of another product installs none of this.
+
+An operator who enables `panel` that way, with `keel product enable panel`, prepares by hand, as
+root and before the restart that command performs, the one root the kernel writes itself and the
+drop-in that lets the sandboxed unit write it; without them every upload and download of the file
+manager fails with `hosting.file.error.transfer` and `ReadOnlyFilesystem` in the journal:
+
+```
+install -d -m 0700 -o keel -g keel /var/lib/keel-panel-transfer
+install -d -m 0755 -o root -g root /etc/systemd/system/keel.service.d
+printf '%s\n' '[Service]' 'ReadWritePaths=/var/lib/keel-panel-transfer' >/etc/systemd/system/keel.service.d/keel-panel.conf
+chmod 0644 /etc/systemd/system/keel.service.d/keel-panel.conf
+systemctl daemon-reload
+```
+
+The transfer root has to exist before the unit starts, since a missing path in `ReadWritePaths`
+stops the unit at its namespace setup. The other roots of the policy are written by the host
+agent as root and need no drop-in. The drop-in survives an update, which refreshes the unit
+file alone, and `uninstall.sh` removes it.
 
 A hosting user is an operating-system account named
 `hp_<name>` inside `uid_range`, with its home `/var/www/keel-panel-<name>` under the `www` root

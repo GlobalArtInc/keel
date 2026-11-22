@@ -7,6 +7,8 @@ LIB=/var/lib/keel
 RUN=/run/keel
 UNIT_DIR=/etc/systemd/system
 UNITS=(keel.service keel-privileged.service keel-update.path keel-update.service)
+UNIT_DROP_IN_DIR=$UNIT_DIR/keel.service.d
+UNIT_DROP_INS=(keel-panel.conf)
 SOCKETS=("$RUN/agent.sock" "$RUN/core.sock")
 LINK=/usr/local/bin/keel
 PG_SOCKET_DIR=/run/postgresql
@@ -21,7 +23,8 @@ usage() {
 usage: uninstall.sh [--purge [--keep-backups]] [--yes]
 
 Without --purge: stops and disables keel.service, keel-privileged.service,
-keel-update.path and keel-update.service, removes the units, the sockets
+keel-update.path and keel-update.service, removes the units and the drop-in
+$UNIT_DROP_IN_DIR/keel-panel.conf of the panel, the sockets
 $RUN/agent.sock and $RUN/core.sock they left behind, $LINK and $OPT.
 The configuration in $ETC (config.yaml and the host agent policy agent.yaml),
 the data in $LIB, the unix user keel and the Postgres database keel stay in
@@ -129,6 +132,16 @@ remove_service() {
       say "removed $UNIT_DIR/$unit"
     fi
   done
+  local drop_in
+  for drop_in in "${UNIT_DROP_INS[@]}"; do
+    if [ -f "$UNIT_DROP_IN_DIR/$drop_in" ]; then
+      rm -f "$UNIT_DROP_IN_DIR/$drop_in"
+      say "removed $UNIT_DROP_IN_DIR/$drop_in"
+    fi
+  done
+  if [ -d "$UNIT_DROP_IN_DIR" ] && rmdir "$UNIT_DROP_IN_DIR" 2>/dev/null; then
+    say "removed $UNIT_DROP_IN_DIR"
+  fi
   if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
   fi
