@@ -237,7 +237,7 @@ ready() {
 }
 
 names_address() {
-  openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null | grep -qF "IP Address:$1"
+  openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null | grep -F "IP Address:$1" >/dev/null
 }
 
 install_bind() {
@@ -415,7 +415,7 @@ zone_active() {
 }
 
 authoritative() {
-  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -qE '^;; flags: [a-z ]*\baa\b'
+  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -E '^;; flags: [a-z ]*\baa\b' >/dev/null
 }
 
 trailed() {

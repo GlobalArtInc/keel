@@ -185,7 +185,7 @@ wait_state() {
 }
 
 authoritative() {
-  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -qE '^;; flags: [a-z ]*\baa\b'
+  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -E '^;; flags: [a-z ]*\baa\b' >/dev/null
 }
 
 serial_of() {
@@ -260,7 +260,7 @@ watch_named() {
 
 agent_logged() {
   local since=$1 text=$2
-  journalctl -u "$AGENT_UNIT" --since "$since" --no-pager | grep -qF -- "$text"
+  journalctl -u "$AGENT_UNIT" --since "$since" --no-pager | grep -F -- "$text" >/dev/null
 }
 
 answered_throughout() {

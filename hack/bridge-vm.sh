@@ -218,7 +218,7 @@ same_account() {
 }
 
 authoritative() {
-  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -qE '^;; flags: [a-z ]*\baa\b'
+  dig @127.0.0.1 "$1" SOA +norecurse +time=1 +tries=1 2>/dev/null | grep -E '^;; flags: [a-z ]*\baa\b' >/dev/null
 }
 
 no_site() {

@@ -181,7 +181,7 @@ carries_either() {
 }
 
 not_installed() {
-  ! dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | grep -q '^ii'
+  ! dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | grep '^ii' >/dev/null
 }
 
 digest_is() {

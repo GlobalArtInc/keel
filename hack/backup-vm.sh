@@ -149,7 +149,7 @@ restore() {
   since=$(date -u '+%Y-%m-%d %H:%M:%S')
   systemctl start keel.service
   check "/readyz answers within ${WAIT}s" wait_ready
-  check "the journal names the restore and the enabled set" bash -c "journalctl -u keel.service --since '$since' --no-pager | grep -q 'restored from a backup'"
+  check "the journal names the restore and the enabled set" bash -c "journalctl -u keel.service --since '$since' --no-pager | grep 'restored from a backup' >/dev/null"
   check "the restore note is consumed" test ! -e "$LIB/restore.note"
   check "keel product list as keel answers the restored bundles" as_keel product list
   say "log in on this machine with a user enrolled on the first machine and confirm the same authenticator code is accepted"

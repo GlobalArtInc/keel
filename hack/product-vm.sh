@@ -142,7 +142,7 @@ doctor_line() {
 
 doctor_status() {
   local id=$1 status=$2
-  doctor_line "$id" | grep -qE "^$status "
+  doctor_line "$id" | grep -E "^$status " >/dev/null
 }
 
 switch() {

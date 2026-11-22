@@ -376,7 +376,7 @@ gone() {
 }
 
 agent_logged() {
-  journalctl -u "$AGENT_UNIT" --since "$1" --no-pager | grep -qF -- "$2"
+  journalctl -u "$AGENT_UNIT" --since "$1" --no-pager | grep -F -- "$2" >/dev/null
 }
 
 php_version() {
@@ -593,11 +593,12 @@ sibling_closed_to_user() {
 dumped() {
   local archive
   archive=$(ls -t "$BACKUPS"/*.tar.zst 2>/dev/null | head -n 1)
-  [ -n "$archive" ] && tar --zstd -tf "$archive" | grep -qx "sources/hosting_database.dumps/$DATABASE.sql"
+  [ -n "$archive" ] && tar --zstd -tf "$archive" | grep -x "sources/hosting_database.dumps/$DATABASE.sql" >/dev/null
 }
 
 no_password_in_journal() {
-  ! journalctl -u "$AGENT_UNIT" --since "$1" --no-pager | grep -qF -- "$STAMP"
+  local lines
+  lines=$(journalctl -u "$AGENT_UNIT" --since "$1" --no-pager) && ! grep -qF -- "$STAMP" <<<"$lines"
 }
 
 db_proof() {
@@ -697,7 +698,7 @@ send_mail() {
 archived_maildir() {
   local archive
   archive=$(ls -t "$BACKUPS"/*.tar.zst 2>/dev/null | head -n 1)
-  [ -n "$archive" ] && tar --zstd -xOf "$archive" sources/hosting_mail.maildirs/maildirs.tar | tar -t | grep -q "^./keel-panel-$1/Maildir/new/"
+  [ -n "$archive" ] && tar --zstd -xOf "$archive" sources/hosting_mail.maildirs/maildirs.tar | tar -t | grep "^./keel-panel-$1/Maildir/new/" >/dev/null
 }
 
 mailbox_gone() {
@@ -906,11 +907,12 @@ sandboxed_client() {
 }
 
 archive_lists() {
-  tar --zstd -tvf "$(archive_of "$1")" | grep -qF -- "$2"
+  tar --zstd -tvf "$(archive_of "$1")" | grep -F -- "$2" >/dev/null
 }
 
 archive_holds_no_shadow() {
-  ! tar --zstd -xOf "$(archive_of "$1")" --wildcards 'files/*' 2>/dev/null | grep -qF -- "$(head -n 1 /etc/shadow)"
+  local lines
+  lines=$(tar --zstd -xOf "$(archive_of "$1")" --wildcards 'files/*' 2>/dev/null || true) && ! grep -qF -- "$(head -n 1 /etc/shadow)" <<<"$lines"
 }
 
 dumps_empty() {
@@ -1013,11 +1015,13 @@ backup_proof() {
 }
 
 no_ftp_password_in_journal() {
-  ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$FTP_PASSWORD"
+  local lines
+  lines=$(journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager) && ! grep -qF -- "$FTP_PASSWORD" <<<"$lines"
 }
 
 no_mail_password_in_journal() {
-  ! journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager | grep -qF -- "$MAIL_PASSWORD"
+  local lines
+  lines=$(journalctl -u "$AGENT_UNIT" -u "$UNIT" --since "$1" --no-pager) && ! grep -qF -- "$MAIL_PASSWORD" <<<"$lines"
 }
 
 listen_of() {
@@ -1156,7 +1160,7 @@ config_file_refused() {
 
 sends_header() {
   curl -sS -o /dev/null -D - -H "Host: $DOMAIN" http://127.0.0.1/ 2>/dev/null \
-    | grep -qiF "x-keel-panel: config-$STAMP"
+    | grep -iF "x-keel-panel: config-$STAMP" >/dev/null
 }
 
 answers_installed() {
