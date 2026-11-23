@@ -213,7 +213,16 @@ describe('submit', () => {
   });
 
   it('an edit posts the key parameter and the read-only name it keeps', async () => {
-    const client = new KeelMockClient({ answers: { 'dns.zone.edit': ENVELOPE_200 } });
+    const client = new KeelMockClient({
+      answers: {
+        'dns.zone.edit': ENVELOPE_200,
+        'keel.account.options': {
+          ok: true,
+          data: { data: [{ value: '01J8A0000000000000000000A1', label: 'Root' }], more: false },
+          meta: { requestId: 'req-account' },
+        },
+      },
+    });
     const form = buildForm(EDIT, {
       client,
       params: { id: ZONE_ID },
@@ -222,7 +231,7 @@ describe('submit', () => {
     expect(form.mode).toBe('edit');
     expect(form.group.controls['name'].disabled).toBe(true);
     await form.submit();
-    expect(client.calls[0].params).toEqual({
+    expect(client.callsOf('dns.zone.edit')[0]?.params).toEqual({
       id: ZONE_ID,
       name: 'a.org',
       kind: 'master',

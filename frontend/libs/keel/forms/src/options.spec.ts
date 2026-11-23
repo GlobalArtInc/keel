@@ -12,7 +12,7 @@ import {
   type FormField,
 } from '@globalart/keel/forms';
 import type { Choices, Descriptor, Envelope } from '@globalart/keel/meta';
-import { KeelMockClient } from '@globalart/keel/testing';
+import { KeelMockClient, errorEnvelope } from '@globalart/keel/testing';
 import { providePhoenixIcons } from '@globalart/phoenix-ui';
 import { Observable, type Subscriber } from 'rxjs';
 
@@ -256,5 +256,42 @@ describe('options', () => {
     expect(options.failure()?.code).toBe('forbidden');
     expect(options.choices()).toEqual([{ value: 'r', label: 'R' }]);
     options.destroy();
+  });
+});
+
+describe('a value the options do not hold yet', () => {
+  it('is looked up once by its own value and labelled from the answer', () => {
+    const client = new KeelMockClient({
+      answers: { 'keel.account.options': page(['acme-1'], false) },
+    });
+    const options = new RemoteOptions(client, 'keel.account.options', SCOPE);
+    options.resolve('acme-1');
+    options.resolve('acme-1');
+    const calls = client.callsOf('keel.account.options');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toEqual({ limit: OPTIONS_LIMIT, search: 'acme-1', scope: SCOPE });
+    expect(options.options()).toEqual([{ value: 'acme-1', label: 'ACME-1' }]);
+  });
+
+  it('a value the options already hold costs no request', () => {
+    const client = new KeelMockClient();
+    const options = new RemoteOptions(client, 'keel.account.options', SCOPE);
+    options.replace([{ value: 'acme-1', label: 'Acme' }]);
+    options.resolve('acme-1');
+    expect(client.callsOf('keel.account.options')).toHaveLength(0);
+    expect(options.options()).toEqual([{ value: 'acme-1', label: 'Acme' }]);
+  });
+
+  it('a failed lookup leaves the value without a label and the options usable', () => {
+    const client = new KeelMockClient({
+      answers: {
+        'keel.account.options': errorEnvelope({ code: 'forbidden', key: 'keel.error.forbidden' }),
+      },
+    });
+    const options = new RemoteOptions(client, 'keel.account.options', SCOPE);
+    expect(() => options.resolve('acme-1')).not.toThrow();
+    expect(options.options()).toEqual([]);
+    options.replace([{ value: 'r', label: 'R' }]);
+    expect(options.options()).toEqual([{ value: 'r', label: 'R' }]);
   });
 });

@@ -45,20 +45,28 @@ export function toSelectOption(choice: Choice): PhxSelectOption<string> {
   return option;
 }
 
+function withPicked(held: readonly Choice[], picked: readonly Choice[]): Choice[] {
+  const values = new Set(held.map((choice) => choice.value));
+  return [...held, ...picked.filter((choice) => !values.has(choice.value))];
+}
+
 export class RemoteOptions {
   private readonly held = signal<readonly Choice[]>([]);
+  private readonly picked = signal<readonly Choice[]>([]);
   private readonly busy = signal(false);
   private readonly rest = signal(false);
   private readonly failed = signal<CallError | null>(null);
+  private readonly asked = new Set<string>();
   private query = '';
   private pending: Subscription | null = null;
+  private lookups: Subscription[] = [];
 
   readonly choices = this.held.asReadonly();
   readonly loading = this.busy.asReadonly();
   readonly more = this.rest.asReadonly();
   readonly failure = this.failed.asReadonly();
   readonly options: Signal<PhxSelectOption<string>[]> = computed(() =>
-    this.held().map(toSelectOption),
+    withPicked(this.held(), this.picked()).map(toSelectOption),
   );
 
   constructor(
@@ -86,8 +94,32 @@ export class RemoteOptions {
     this.rest.set(false);
   }
 
+  resolve(value: string): void {
+    if (this.asked.has(value) || this.held().some((choice) => choice.value === value)) {
+      return;
+    }
+    this.asked.add(value);
+    this.lookups.push(
+      this.client.call<Choices>(this.func, optionsQuery(value, this.scope)).subscribe({
+        next: (envelope) => {
+          const found = envelope.ok
+            ? envelope.data.data.find((choice) => choice.value === value)
+            : undefined;
+          if (found !== undefined) {
+            this.picked.update((picked) => [...picked, found]);
+          }
+        },
+        error: () => undefined,
+      }),
+    );
+  }
+
   destroy(): void {
     this.cancel();
+    for (const lookup of this.lookups) {
+      lookup.unsubscribe();
+    }
+    this.lookups = [];
   }
 
   private fetch(cursor: string | null): void {

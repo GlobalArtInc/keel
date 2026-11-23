@@ -43,6 +43,14 @@ function rowsOf(page: HTMLElement): HTMLElement[] {
   return [...page.querySelectorAll<HTMLElement>(':scope > keel-field')];
 }
 
+function rowOf(field: HTMLElement): HTMLElement {
+  const row = field.querySelector<HTMLElement>('phx-form-row');
+  if (row === null) {
+    throw new Error('no form row');
+  }
+  return row;
+}
+
 function tabStrip(root: HTMLElement): HTMLElement {
   const strip = root.querySelector<HTMLElement>('phx-tab-group [role="tablist"]');
   if (strip === null) {
@@ -57,7 +65,11 @@ const meta: Meta = {
   parameters: { layout: 'padded' },
   render: () => ({
     props: {
-      form: buildForm(descriptorOf(keelDump('admin'), 'note.edit'), { values: {} }),
+      form: buildForm(descriptorOf(keelDump('admin'), 'dns.template.create'), {
+        values: {
+          records: [{ type: 'A', name: 'www', value: '192.0.2.10', ttl: 3600 }],
+        },
+      }),
     },
     template: '<div style="width: 1200px"><keel-form [form]="form" /></div>',
   }),
@@ -91,8 +103,11 @@ export const TabsLayout: Story = {
       throw new Error('no form sheet');
     }
     await expect(sheet.getBoundingClientRect().width).toBeGreaterThan(CONTROL_MAX);
-    await expect(page.getBoundingClientRect().width).toBeLessThanOrEqual(
+    const simple = rowOf(first);
+    const wide = rowOf(second);
+    await expect(simple.getBoundingClientRect().width).toBeLessThanOrEqual(
       CONTROL_MAX + WIDTH_TOLERANCE,
     );
+    await expect(wide.getBoundingClientRect().width).toBeGreaterThan(CONTROL_MAX);
   },
 };

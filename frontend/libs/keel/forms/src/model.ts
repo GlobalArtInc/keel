@@ -271,6 +271,10 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
     }),
   });
   const labelKey = `${site.prefix}.${name}`;
+  const options = remoteOptionsOf(shape, site);
+  if (options !== null && typeof control.value === 'string') {
+    options.resolve(control.value);
+  }
   return {
     name,
     labelKey,
@@ -284,7 +288,7 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
     conditions: own,
     mapping: mapControl(shape),
     control,
-    options: remoteOptionsOf(shape, site),
+    options,
     choices: signal<readonly Choice[] | null>(null),
     visible: computed(() => pageVisible() && holds(own.show_if, site.context(), true)),
     required,

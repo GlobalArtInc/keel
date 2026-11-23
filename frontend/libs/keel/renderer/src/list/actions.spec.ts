@@ -48,6 +48,15 @@ describe('the params of a screen action', () => {
     });
   });
 
+  it('a $screen.params token whose value is null is dropped like a missing one', () => {
+    const action: Action = {
+      id: 'records',
+      role: 'child',
+      params: { zone_id: '$screen.params.zone_id', view: 'all' },
+    };
+    expect(screenParamsOf(LIST, action, { zone_id: null })).toEqual({ view: 'all' });
+  });
+
   it('a row token takes the field of the row, and a row without that field drops the key', () => {
     const renew: Action = {
       id: 'renew',

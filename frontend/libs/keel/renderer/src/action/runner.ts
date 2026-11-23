@@ -121,7 +121,8 @@ function tokenValue(value: unknown, scope: TokenScope): unknown {
     return current === null ? undefined : current;
   }
   const field = value === ROW_PLACEHOLDER ? scope.key : value.slice(1);
-  return scope.row?.[field];
+  const current = scope.row?.[field];
+  return current === null ? undefined : current;
 }
 
 export function bodyOf(request: ActionRequest): Record<string, unknown> {

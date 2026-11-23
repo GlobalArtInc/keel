@@ -574,4 +574,41 @@ describe('the action body', () => {
     );
     expect(bodyOf({ descriptor: LIST, action: renew, rows: [{ id: 'z1' }] })).toEqual({ id: 'z1' });
   });
+
+  it('a row token drops null and undefined, passes objects and arrays as they are, and keeps literals', () => {
+    const tokens = {
+      id: 'renew',
+      role: 'button' as const,
+      function: 'dns.zone.renew',
+      params: {
+        none: '$none',
+        missing: '$missing',
+        tags: '$tags',
+        meta: '$meta',
+        count: '$count',
+        flag: '$flag',
+        text: '$text',
+        literalNull: null,
+        literalList: [1, 2],
+      },
+    };
+    const row = {
+      id: 'z1',
+      none: null,
+      tags: ['a', 'b'],
+      meta: { owner: 'acme' },
+      count: 0,
+      flag: false,
+      text: 'x',
+    };
+    expect(bodyOf({ descriptor: LIST, action: tokens, rows: [row] })).toEqual({
+      tags: ['a', 'b'],
+      meta: { owner: 'acme' },
+      count: 0,
+      flag: false,
+      text: 'x',
+      literalNull: null,
+      literalList: [1, 2],
+    });
+  });
 });

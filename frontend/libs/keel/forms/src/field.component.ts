@@ -59,6 +59,14 @@ interface ControlState {
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+const WIDE_COMPONENTS: readonly string[] = [
+  'phx-list-field',
+  'phx-key-value-field',
+  'phx-transfer-list',
+  'phx-code-editor',
+  'phx-file-field',
+];
+
 const EMPTY_SUFFIX = '.empty';
 const UNLIMITED_KEY = 'phx.unlimited';
 
@@ -271,7 +279,13 @@ const UNLIMITED_KEY = 'phx.unlimited';
     :host {
       display: block;
     }
+    :host(.narrow) phx-form-row {
+      max-width: var(--keel-form-control-max, 640px);
+    }
   `,
+  host: {
+    '[class.narrow]': 'narrow()',
+  },
   providers: [
     {
       provide: PHX_LABELS,
@@ -303,6 +317,7 @@ export class KeelFieldComponent {
   protected readonly control = computed(() => this.field().control);
   protected readonly mapping = computed(() => this.field().mapping);
   protected readonly component = computed(() => this.mapping().component);
+  readonly narrow = computed(() => !WIDE_COMPONENTS.includes(this.component()));
   protected readonly required = computed(() => this.field().required());
   protected readonly label = computed(() => this.i18n.t(this.field().labelKey));
   protected readonly hint = computed(() => {
