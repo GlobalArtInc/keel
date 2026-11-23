@@ -146,9 +146,13 @@ Turns the parameter schema and the `ui` block of a descriptor into an Angular re
 `phx-form-sheet`, `phx-form-section` and `phx-form-row` with phoenix fields: input, password with
 `generate`, select with remote options from a function, toggle, switcher, slider with `unlimited`,
 date, time, file, list field, code field, tags. The `control` value from `x-ui` is a closed enum and
-maps to a component; `x-ui` attributes (`control`, `placeholder`, `help`, `order`) are presentation
-only and may be ignored without breaking anything, while the `x-keel` attributes (`level`, `secret`,
+maps to a component; `x-ui` attributes (`control`, `placeholder`, `help`, `order`, `unlimited`) are
+presentation only and may be ignored without breaking anything, while the `x-keel` attributes (`level`, `secret`,
 `once`, `check`, `options`) carry protocol semantics that the server enforces.
+
+An optional number is offered with the switch that sets it to unlimited, null; `x-ui.unlimited: false`
+says that the number is plain and the field draws no switch (the priority, weight and port of a
+record).
 
 A form opened to create something takes the initial value of every field whose name is a parameter
 of its screen, not only the key, unless the form already has a value for it, so a link such as

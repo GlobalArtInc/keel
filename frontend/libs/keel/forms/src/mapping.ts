@@ -81,7 +81,7 @@ export function mapControl(field: FieldSchema): ControlMapping {
         min: numberOf(field.schema, 'minimum') ?? 0,
         max: numberOf(field.schema, 'maximum') ?? 100,
         step: 1,
-        unlimited: field.nullable,
+        unlimited: field.nullable && field.ui.unlimited !== false,
         preset,
       };
     case 'date':
@@ -116,7 +116,7 @@ export function mapControl(field: FieldSchema): ControlMapping {
         min: numberOf(field.schema, 'minimum'),
         max: numberOf(field.schema, 'maximum'),
         step: 1,
-        unlimited: field.nullable,
+        unlimited: field.nullable && field.ui.unlimited !== false,
         preset,
       };
   }

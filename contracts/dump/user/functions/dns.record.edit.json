@@ -59,7 +59,10 @@
         ],
         "format": "uint16",
         "minimum": 0,
-        "maximum": 65535
+        "maximum": 65535,
+        "x-ui": {
+          "unlimited": false
+        }
       },
       "weight": {
         "type": [
@@ -68,7 +71,10 @@
         ],
         "format": "uint16",
         "minimum": 0,
-        "maximum": 65535
+        "maximum": 65535,
+        "x-ui": {
+          "unlimited": false
+        }
       },
       "port": {
         "type": [
@@ -77,7 +83,10 @@
         ],
         "format": "uint16",
         "minimum": 0,
-        "maximum": 65535
+        "maximum": 65535,
+        "x-ui": {
+          "unlimited": false
+        }
       }
     },
     "required": [

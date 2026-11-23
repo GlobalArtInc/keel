@@ -2557,6 +2557,12 @@
         },
         "generate": {
           "type": "boolean"
+        },
+        "unlimited": {
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       }
     },

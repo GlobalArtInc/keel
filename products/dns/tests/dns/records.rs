@@ -477,3 +477,36 @@ async fn the_zone_list_shows_the_records_of_the_selected_zone_beside_it() {
     assert_eq!(crate::support::names(&detail), ["mail", "www"]);
     harness.finish().await;
 }
+
+#[tokio::test]
+async fn record_numbers_admit_no_unlimited_and_priority_starts_at_ten() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    for function in ["dns.record.create", "dns.record.edit"] {
+        let descriptor = harness
+            .registry()
+            .function(function)
+            .expect("the record function is registered")
+            .descriptor()
+            .clone();
+        let properties = &descriptor.params.as_value()["properties"];
+        for field in ["priority", "weight", "port"] {
+            assert_eq!(
+                properties[field]["x-ui"]["unlimited"],
+                json!(false),
+                "{function} {field}"
+            );
+        }
+    }
+    let descriptor = harness
+        .registry()
+        .function("dns.record.create")
+        .expect("dns.record.create is registered")
+        .descriptor()
+        .clone();
+    let properties = &descriptor.params.as_value()["properties"];
+    assert_eq!(properties["priority"]["default"], json!(10));
+    assert_eq!(properties["weight"]["default"], json!(0));
+    assert_eq!(properties["port"]["default"], Value::Null);
+    harness.finish().await;
+}

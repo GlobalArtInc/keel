@@ -559,4 +559,5 @@ export interface UiAttrs {
   help?: string | null;
   order?: number | null;
   generate?: boolean;
+  unlimited?: boolean | null;
 }

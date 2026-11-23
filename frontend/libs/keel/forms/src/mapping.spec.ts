@@ -161,6 +161,39 @@ describe('mapControl', () => {
     ).toEqual({ component: 'phx-password', generate: false, preset: null });
   });
 
+  it('a nullable number offers unlimited unless x-ui says a plain number, on a slider too', () => {
+    const bounds = { type: ['integer', 'null'], minimum: 0, maximum: 65_535 };
+    expect(mappingOf({ ...bounds, 'x-ui': { unlimited: false } })).toEqual({
+      component: 'phx-number-field',
+      min: 0,
+      max: 65_535,
+      step: 1,
+      unlimited: false,
+      preset: null,
+    });
+    expect(mappingOf(bounds)).toEqual({
+      component: 'phx-number-field',
+      min: 0,
+      max: 65_535,
+      step: 1,
+      unlimited: true,
+      preset: null,
+    });
+    expect(
+      mappingOf({
+        anyOf: [{ type: 'integer', minimum: 1, maximum: 64 }, { type: 'null' }],
+        'x-ui': { control: 'slider', unlimited: false },
+      }),
+    ).toEqual({
+      component: 'phx-slider',
+      min: 1,
+      max: 64,
+      step: 1,
+      unlimited: false,
+      preset: null,
+    });
+  });
+
   it('a slider takes its bounds from the schema and unlimited from nullability', () => {
     expect(
       mappingOf({

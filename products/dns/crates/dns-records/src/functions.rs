@@ -58,8 +58,11 @@ struct RecordCreate {
     #[serde(default = "ttl")]
     #[schemars(range(min = 60, max = 604_800))]
     ttl: u32,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false }), "default" = json!(10)))]
     priority: Option<u16>,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false }), "default" = json!(0)))]
     weight: Option<u16>,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false })))]
     port: Option<u16>,
 }
 
@@ -79,8 +82,11 @@ struct RecordEdit {
     value: String,
     #[schemars(range(min = 60, max = 604_800))]
     ttl: u32,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false })))]
     priority: Option<u16>,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false })))]
     weight: Option<u16>,
+    #[schemars(extend("x-ui" = json!({ "unlimited": false })))]
     port: Option<u16>,
 }
 

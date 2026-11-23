@@ -185,6 +185,8 @@ pub struct UiAttrs {
     pub order: Option<i32>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub generate: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlimited: Option<bool>,
 }
 
 impl KeelAttrs {
