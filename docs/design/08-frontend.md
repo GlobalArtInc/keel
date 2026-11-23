@@ -150,6 +150,16 @@ maps to a component; `x-ui` attributes (`control`, `placeholder`, `help`, `order
 only and may be ignored without breaking anything, while the `x-keel` attributes (`level`, `secret`,
 `once`, `check`, `options`) carry protocol semantics that the server enforces.
 
+A form opened to create something takes the initial value of every field whose name is a parameter
+of its screen, not only the key, unless the form already has a value for it, so a link such as
+`/f/dns.record.create?zone=<id>` opens the form with the zone set; the field may be read-only by
+`readonly_if("$screen.params.zone")` and the server checks every value as it would a typed one. A
+select with remote options that starts with a value its loaded options do not hold asks the
+function once for that value, which the function finds by its exact key, so a preset or read-only
+select shows the label of its value. A form of one page is drawn without the collapsible header of
+that page, and the simple controls of a page stop at 640 px (`--keel-form-control-max`) while the
+list, key-value and transfer controls keep the width of the sheet.
+
 The control mapping is one table in `mapping.ts`, from the closed `control` enum onto phoenix
 components, with the schema deciding what the descriptor leaves open:
 
@@ -674,6 +684,7 @@ a manual list.
 | `<module>.<entity>.column.<key>`      | column header; derived for every column, with `<key>` the wire name (`createdAt`) |
 | `<module>.<entity>.<column>.<value>`  | label of a filter option or status value of a column; derived for every value in `filter.options` and `map` |
 | `<module>.<entity>.<field>.hint`, `.placeholder` | field hint and placeholder; the schema names them explicitly in `x-ui.help` and `x-ui.placeholder`, and only a named key is checked |
+| `<module>.<entity>.<field>.hint.<value>` | hint of a field that depends on another by `checkBy`, chosen by the current value of that field (`dns.record.value.hint.MX` follows the type of the record); a missing key falls back to the general hint, and a dictionary writes it as a flat key beside the label of the field |
 | `<module>.<entity>.<field>.empty`   | the label a nullable number field shows for its null in place of `phx.unlimited`; optional, read by the field component, which provides a scoped `PHX_LABELS` with `unlimited` replaced when the catalogue has the key |
 | `<patching module>.<entity>.<field>`  | label of a field another module added by a descriptor patch (`storing.item.sync` for a patch of `base.item.edit` by `storing`); a module never writes keys under another module's prefix |
 | `menu.<group>`                        | menu group label, declared by a bundle or the platform; `menu.access`, `menu.monitor` and `menu.system` are the kernel's |

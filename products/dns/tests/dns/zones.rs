@@ -664,3 +664,32 @@ async fn zone_options_find_a_zone_by_a_part_of_its_name_and_by_its_exact_id() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn zone_options_page_by_limit_and_cursor_and_say_when_more_remain() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let mut ids = Vec::new();
+    for name in ["a.example", "b.example", "c.example"] {
+        ids.push(create(&harness, Who::A1, name).await);
+    }
+    ids.sort();
+
+    let first = harness
+        .call(Who::A1, "dns.zone.options", json!({ "limit": 2 }))
+        .await;
+    assert_eq!(data(&first)["data"].as_array().expect("choices").len(), 2);
+    assert_eq!(data(&first)["more"], json!(true));
+    assert_eq!(data(&first)["data"][1]["value"], json!(ids[1]));
+
+    let rest = harness
+        .call(
+            Who::A1,
+            "dns.zone.options",
+            json!({ "limit": 2, "cursor": ids[1] }),
+        )
+        .await;
+    assert_eq!(data(&rest)["data"].as_array().expect("choices").len(), 1);
+    assert_eq!(data(&rest)["data"][0]["value"], json!(ids[2]));
+    assert_eq!(data(&rest)["more"], json!(false));
+}

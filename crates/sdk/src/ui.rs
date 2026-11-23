@@ -54,12 +54,13 @@ pub enum UiError {
         field: String,
     },
     #[error(
-        "{target}: {source_text:?} refers to an unknown variable {variable:?}; the system variables are $mode, $principal.level and $screen.params.<name>"
+        "{target}: {source_text:?} refers to an unknown variable {variable:?}; the variables allowed here are {allowed}"
     )]
     UnknownVariable {
         target: String,
         source_text: String,
         variable: String,
+        allowed: &'static str,
     },
     #[error("{target}: {source_text:?} has no {target_kind} to attach to")]
     Detached {
@@ -129,11 +130,12 @@ impl UiDef {
             .collect()
     }
 
-    pub fn compile(&self, known: &BTreeSet<String>) -> Result<ScreenUi, UiError> {
+    #[cfg(test)]
+    pub(crate) fn compile(&self, known: &BTreeSet<String>) -> Result<ScreenUi, UiError> {
         self.compile_in(known, &BTreeSet::new())
     }
 
-    pub fn compile_in(
+    pub(crate) fn compile_in(
         &self,
         known: &BTreeSet<String>,
         row_fields: &BTreeSet<String>,
@@ -143,17 +145,41 @@ impl UiDef {
         }
         let mut screen = self.screen.clone();
         for action in &screen.actions {
+            let by_screen = action.screen.is_some();
+            let allowed = if by_screen {
+                ACTION_SCREEN_VARIABLES
+            } else {
+                ACTION_FUNCTION_VARIABLES
+            };
             for (key, value) in &action.params {
-                let Some(text) = value.as_str() else {
-                    continue;
-                };
-                if text.starts_with('$') && !is_action_param_variable(text, row_fields) {
-                    return Err(UiError::UnknownVariable {
-                        target: format!("action {} param {key}", action.id),
-                        source_text: text.to_owned(),
-                        variable: text.to_owned(),
-                    });
+                check_token(
+                    &format!("action {} param {key}", action.id),
+                    value,
+                    allowed,
+                    |token| row_token(token, row_fields) || (by_screen && screen_token(token)),
+                )?;
+            }
+        }
+        for column in &screen.columns {
+            if let Some(link) = &column.to {
+                for (key, value) in &link.params {
+                    check_token(
+                        &format!("column {} link param {key}", column.key),
+                        value,
+                        LINK_VARIABLES,
+                        |token| token == "$id",
+                    )?;
                 }
+            }
+        }
+        if let Some(link) = &screen.detail {
+            for (key, value) in &link.params {
+                check_token(
+                    &format!("detail param {key}"),
+                    value,
+                    LINK_VARIABLES,
+                    |token| token == "$id",
+                )?;
             }
         }
         for (target, expr) in attached(&screen) {
@@ -208,6 +234,7 @@ fn check(
                     target: target.to_owned(),
                     source_text: source_text.to_owned(),
                     variable: variable.to_owned(),
+                    allowed: CONDITION_VARIABLES,
                 });
             }
         } else if !known.contains(variable) {
@@ -309,16 +336,42 @@ fn is_system_variable(variable: &str) -> bool {
     }
 }
 
-fn is_action_param_variable(value: &str, row_fields: &BTreeSet<String>) -> bool {
-    if value == "$id" {
-        return true;
+const CONDITION_VARIABLES: &str = "$mode, $principal.level and $screen.params.<name>";
+const ACTION_SCREEN_VARIABLES: &str = "$id, $<row field> and $screen.params.<name>";
+const ACTION_FUNCTION_VARIABLES: &str = "$id and $<row field>";
+const LINK_VARIABLES: &str = "$id";
+
+fn check_token(
+    target: &str,
+    value: &Value,
+    allowed: &'static str,
+    admits: impl Fn(&str) -> bool,
+) -> Result<(), UiError> {
+    let Some(text) = value.as_str() else {
+        return Ok(());
+    };
+    if text.starts_with('$') && !admits(text) {
+        return Err(UiError::UnknownVariable {
+            target: target.to_owned(),
+            source_text: text.to_owned(),
+            variable: text.to_owned(),
+            allowed,
+        });
     }
-    if let Some(name) = value.strip_prefix("$screen.params.") {
-        return !name.is_empty();
-    }
-    value
-        .strip_prefix('$')
-        .is_some_and(|name| row_fields.contains(name))
+    Ok(())
+}
+
+fn row_token(token: &str, row_fields: &BTreeSet<String>) -> bool {
+    token == "$id"
+        || token
+            .strip_prefix('$')
+            .is_some_and(|name| row_fields.contains(name))
+}
+
+fn screen_token(token: &str) -> bool {
+    token
+        .strip_prefix("$screen.params.")
+        .is_some_and(|name| !name.is_empty())
 }
 
 fn root_segment(variable: &str) -> &str {
@@ -1221,6 +1274,62 @@ mod tests {
             def.compile(&def.column_keys()),
             Err(UiError::UnknownVariable { .. })
         ));
+    }
+
+    #[test]
+    fn a_screen_param_is_taken_by_a_screen_action_and_refused_for_a_function_action() {
+        let list = |action: Action| -> UiDef {
+            List::new("t")
+                .column(Column::new("name", ColumnType::Text))
+                .action(action.params([("zone", "$screen.params.zone_id")]))
+                .into()
+        };
+        let by_screen = list(Action::new("open", ActionRole::Child).screen("m.r.list"));
+        assert!(by_screen.compile(&by_screen.column_keys()).is_ok());
+        let by_function = list(Action::new("run", ActionRole::Button).function("m.r.run"));
+        match by_function.compile(&by_function.column_keys()) {
+            Err(error @ UiError::UnknownVariable { .. }) => {
+                let text = error.to_string();
+                assert!(text.contains("action run param zone"), "{text}");
+                assert!(text.contains("$id and $<row field>"), "{text}");
+                assert!(!text.contains("$mode"), "{text}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_column_link_and_a_detail_link_take_only_the_row_id() {
+        let column = |value: &str| -> UiDef {
+            List::new("t")
+                .column(Column::new("name", ColumnType::Link).to("m.r.edit", [("id", value)]))
+                .into()
+        };
+        let detail = |value: &str| -> UiDef {
+            List::new("t")
+                .column(Column::new("name", ColumnType::Text))
+                .master_detail("m.r.list", [("zone_id", value)])
+                .into()
+        };
+        let makers: [&dyn Fn(&str) -> UiDef; 2] = [&column, &detail];
+        for make in makers {
+            for value in ["$id", "literal"] {
+                let def = make(value);
+                assert!(def.compile(&def.column_keys()).is_ok(), "{value}");
+            }
+            for value in ["$name", "$screen.params.zone_id"] {
+                let def = make(value);
+                match def.compile(&def.column_keys()) {
+                    Err(UiError::UnknownVariable {
+                        variable, allowed, ..
+                    }) => {
+                        assert_eq!(variable, value);
+                        assert_eq!(allowed, "$id");
+                    }
+                    other => panic!("{value}: {other:?}"),
+                }
+            }
+        }
     }
 
     #[test]

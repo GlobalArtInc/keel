@@ -189,7 +189,16 @@ source string.
 | `ui.invalidate_on` | event masks; a matching `data.invalidate` on the event stream refreshes the list |
 
 Values written as `$id` in `to.params` and `action.params` refer to the row's key column of the
-current row. `filter.remote` names a `kind: options` function (see form dynamics below).
+current row; in `master_detail` params `$id` likewise names the selected row. The `params` of an
+action that opens a screen may also name a field of the row by `$<field>` (the camelCase name the
+row carries on the wire, such as `$siteId`, taken from the row schema of the list) and a parameter
+of the screen the list is shown on by `$screen.params.<name>`, which is how a list that is the
+detail of a master passes its parent into the form of a new row: the records of a zone open the
+new record with `zone` set to `$screen.params.zone_id`. The client substitutes the tokens, and a
+token with no value drops its key rather than being sent as text. The freeze refuses every other
+variable in `action.params`, accepts only `$id` in `to.params` and `master_detail` params, and
+refuses `$screen.params` in the `params` of a function action, which the client does not fill.
+`filter.remote` names a `kind: options` function (see form dynamics below).
 
 ## Metadata version and caching
 
