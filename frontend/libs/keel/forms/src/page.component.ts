@@ -17,6 +17,7 @@ import type { FormPage } from './model';
       display: flex;
       flex-direction: column;
       gap: var(--phx-form-row-gap, 28px);
+      max-width: var(--keel-form-control-max, 640px);
     }
   `,
   host: {

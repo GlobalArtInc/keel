@@ -104,7 +104,7 @@ keelTest.describe('dns', () => {
 
       const record = page.locator('keel-form[data-form="dns.record.create"][data-mode="create"]');
       await expect(record).toBeVisible();
-      await field(record, 'Zone').getByRole('textbox').fill(zone);
+      await expect(field(record, 'Zone')).toContainText(BROWSER_ZONE);
       await field(record, 'Type').getByRole('combobox').click();
       await page.getByRole('option', { name: RECORD.type, exact: true }).click();
       await expect(field(record, 'Priority')).toHaveCount(0);

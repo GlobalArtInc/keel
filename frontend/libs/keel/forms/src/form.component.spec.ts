@@ -121,4 +121,14 @@ describe('keel-form', () => {
     fixture.detectChanges();
     expect(element.querySelector('phx-form-sheet .header__close')).toBeNull();
   });
+
+  it('a form that declares one page draws its fields without a section', async () => {
+    const single = JSON.parse(JSON.stringify(EDIT)) as Descriptor;
+    single.ui?.pages?.splice(1);
+    const fixture = await render(buildForm(single, { values: { kind: 'master' } }));
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('phx-form-section')).toBeNull();
+    expect(element.querySelectorAll('keel-page')).toHaveLength(1);
+    expect(fieldNames(fixture)).toEqual(['Zone name', 'Kind', 'TTL', 'Account']);
+  });
 });

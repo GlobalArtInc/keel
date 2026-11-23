@@ -62,6 +62,10 @@ export const SAVE_KEY = 'keel.action.save';
             </phx-tab>
           }
         </phx-tab-group>
+      } @else if (form().pages.length === 1) {
+        @for (page of form().visiblePages(); track page.id) {
+          <keel-page [page]="page" />
+        }
       } @else {
         @for (page of form().visiblePages(); track page.id) {
           <phx-form-section [title]="labelOf(page)">

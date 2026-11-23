@@ -51,6 +51,7 @@ export interface FormField {
   readonly name: string;
   readonly labelKey: string;
   readonly hintKey: string | null;
+  readonly checkHintKey: Signal<string | null>;
   readonly placeholderKey: string | null;
   readonly schema: JsonObject;
   readonly nullable: boolean;
@@ -107,8 +108,9 @@ export function buildForm(descriptor: Descriptor, options: FormOptions = {}): Ke
   const requiredNames = requiredOf(params);
   const key = descriptor.key ?? null;
   const screenParams = options.params ?? {};
-  const initial = options.values ?? {};
-  const mode = options.mode ?? modeOf(key, screenParams, initial);
+  const given = options.values ?? {};
+  const mode = options.mode ?? modeOf(key, screenParams, given);
+  const initial = mode === 'create' ? { ...carriedOf(screenParams, given), ...given } : given;
   const scope: ConditionScope = {
     mode,
     principal: options.principal ?? null,
@@ -268,10 +270,12 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
       siblings: () => untracked(site.values),
     }),
   });
+  const labelKey = `${site.prefix}.${name}`;
   return {
     name,
-    labelKey: `${site.prefix}.${name}`,
+    labelKey,
     hintKey: shape.ui.help ?? null,
+    checkHintKey: computed(() => checkHintKeyOf(labelKey, shape.keel, site)),
     placeholderKey: shape.ui.placeholder ?? null,
     schema: shape.schema,
     nullable: shape.nullable,
@@ -286,6 +290,12 @@ function buildField(name: string, pageVisible: Signal<boolean>, site: Site): For
     required,
     readonly: computed(() => holds(own.readonly_if, site.context(), false)),
   };
+}
+
+function checkHintKeyOf(labelKey: string, keel: KeelAttrs, site: Site): string | null {
+  const source = keel.checkBy?.field;
+  const value = source === undefined ? undefined : site.values()[source];
+  return typeof value === 'string' ? `${labelKey}.hint.${value}` : null;
 }
 
 function revalidateChoices(fields: readonly FormField[]): void {
@@ -315,6 +325,17 @@ function shapeOf(name: string, site: Site): FieldSchema {
     ui: attrsOf<UiAttrs>(resolved.schema['x-ui']),
     defs: site.defs,
   };
+}
+
+function carriedOf(
+  params: Record<string, unknown>,
+  given: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(params).filter(
+      ([name, value]) => given[name] === undefined && value !== undefined,
+    ),
+  );
 }
 
 function modeOf(

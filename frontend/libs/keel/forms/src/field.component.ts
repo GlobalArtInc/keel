@@ -305,7 +305,13 @@ export class KeelFieldComponent {
   protected readonly component = computed(() => this.mapping().component);
   protected readonly required = computed(() => this.field().required());
   protected readonly label = computed(() => this.i18n.t(this.field().labelKey));
-  protected readonly hint = computed(() => this.translate(this.field().hintKey));
+  protected readonly hint = computed(() => {
+    const check = this.field().checkHintKey();
+    if (check !== null && this.i18n.has(check)) {
+      return this.i18n.t(check);
+    }
+    return this.translate(this.field().hintKey);
+  });
   protected readonly placeholder = computed(() => this.translate(this.field().placeholderKey));
   protected readonly state = computed<ControlState>(() => {
     this.version();

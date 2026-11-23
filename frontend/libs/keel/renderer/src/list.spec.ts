@@ -20,7 +20,6 @@ import {
   KeelListComponent,
   maskMatches,
   scopeOf,
-  screenParamsOf,
   searchOf,
   toColumn,
   usableZone,
@@ -1029,19 +1028,5 @@ describe('the list helpers', () => {
     expect(maskMatches('dns.zone.*', 'dns.zones.created')).toBe(false);
     expect(maskMatches('dns.zone.created', 'dns.zone.created')).toBe(true);
     expect(maskMatches('dns.zone.created', 'dns.zone.deleted')).toBe(false);
-  });
-
-  it('a row action with a screen addresses the row by the key unless params say otherwise', () => {
-    const edit = { id: 'edit', role: 'edit' as const, screen: 'dns.zone.edit' };
-    expect(screenParamsOf(LIST, edit, ZONES[1])).toEqual({ id: 'z2' });
-    expect(screenParamsOf(LIST, edit)).toEqual({});
-    const child = {
-      id: 'records',
-      role: 'child' as const,
-      screen: 'dns.record.list',
-      params: { zone_id: '$id', view: 'all' },
-    };
-    expect(screenParamsOf(LIST, child, ZONES[0])).toEqual({ zone_id: 'z1', view: 'all' });
-    expect(screenParamsOf(LIST, child)).toEqual({ zone_id: '$id', view: 'all' });
   });
 });

@@ -17,6 +17,7 @@ import { KeelDownloads } from '../tasks/download';
 import { KeelTasks } from '../tasks/follow';
 
 export const ROW_PLACEHOLDER = '$id';
+export const SCREEN_PARAM_PREFIX = '$screen.params.';
 export const DEFAULT_KEY = 'id';
 
 export type Row = Record<string, unknown>;
@@ -91,14 +92,49 @@ export function substitute(
   return body;
 }
 
+export interface TokenScope {
+  row?: Row;
+  key: string;
+  screen: Record<string, unknown>;
+}
+
+export function resolveTokens(
+  params: Record<string, unknown>,
+  scope: TokenScope,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(params)) {
+    const resolved = tokenValue(value, scope);
+    if (resolved !== undefined) {
+      body[name] = resolved;
+    }
+  }
+  return body;
+}
+
+function tokenValue(value: unknown, scope: TokenScope): unknown {
+  if (typeof value !== 'string' || !value.startsWith('$')) {
+    return value;
+  }
+  if (value.startsWith(SCREEN_PARAM_PREFIX)) {
+    const current = scope.screen[value.slice(SCREEN_PARAM_PREFIX.length)];
+    return current === null ? undefined : current;
+  }
+  const field = value === ROW_PLACEHOLDER ? scope.key : value.slice(1);
+  return scope.row?.[field];
+}
+
 export function bodyOf(request: ActionRequest): Record<string, unknown> {
   const rows = request.rows ?? [];
   const role = request.action.role;
   if (role === 'delete' || role === 'group') {
     return { ids: idsOf(request.descriptor, rows) };
   }
-  const [first] = idsOf(request.descriptor, rows);
-  return substitute(request.action.params ?? {}, first);
+  return resolveTokens(request.action.params ?? {}, {
+    row: rows[0],
+    key: keyOf(request.descriptor),
+    screen: {},
+  });
 }
 
 @Injectable({ providedIn: 'root' })

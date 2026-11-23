@@ -264,7 +264,7 @@ export class KeelTreeComponent {
     if (screen !== null) {
       void this.navigation.screen({
         screen,
-        params: screenParamsOf(this.descriptor(), action, rows[0]),
+        params: screenParamsOf(this.descriptor(), action, this.params(), rows[0]),
       });
       return;
     }

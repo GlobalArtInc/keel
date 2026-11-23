@@ -28,6 +28,8 @@ const CALLS: Record<string, CannedAnswer> = {
 const ROW_GAP = '28px';
 const MIN_ROW_GAP = 20;
 const MIN_TAB_OFFSET = 16;
+const CONTROL_MAX = 640;
+const WIDTH_TOLERANCE = 4;
 
 function tabPage(root: HTMLElement): HTMLElement {
   const page = root.querySelector<HTMLElement>('phx-tab:not([hidden]) keel-page');
@@ -83,5 +85,14 @@ export const TabsLayout: Story = {
     const offset =
       first.getBoundingClientRect().top - tabStrip(canvasElement).getBoundingClientRect().bottom;
     await expect(offset).toBeGreaterThanOrEqual(MIN_TAB_OFFSET);
+
+    const sheet = canvasElement.querySelector<HTMLElement>('phx-form-sheet');
+    if (sheet === null) {
+      throw new Error('no form sheet');
+    }
+    await expect(sheet.getBoundingClientRect().width).toBeGreaterThan(CONTROL_MAX);
+    await expect(page.getBoundingClientRect().width).toBeLessThanOrEqual(
+      CONTROL_MAX + WIDTH_TOLERANCE,
+    );
   },
 };

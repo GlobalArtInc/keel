@@ -10,6 +10,7 @@ const MESSAGES = {
     note: {
       value: 'Value',
       'value.hint': 'How the value is used',
+      'value.hint.A': 'IPv4 address only',
       'value.placeholder': 'Type here',
       'value.on': 'Switched on',
       'value.off': 'Switched off',
@@ -184,6 +185,34 @@ describe('keel-field', () => {
     expect(element(fixture).querySelector('phx-input input')?.getAttribute('placeholder')).toBe(
       'Type here',
     );
+  });
+
+  it('a hint with checkBy follows the value of its source field and falls back to the general hint', async () => {
+    const descriptor: Descriptor = {
+      ...descriptorWith({}),
+      params: {
+        type: 'object',
+        properties: {
+          type: { type: 'string' },
+          value: {
+            type: 'string',
+            'x-keel': { checkBy: { field: 'type', cases: { A: 'ipv4' } } },
+            'x-ui': { help: 'demo.note.value.hint' },
+          },
+        },
+        required: [],
+      },
+    };
+    const form = buildForm(descriptor, { values: { type: 'A' } });
+    const field = form.field('value');
+    if (field === undefined) {
+      throw new Error('the synthetic descriptor has no field value');
+    }
+    const fixture = await render(field);
+    expect(fixture.componentInstance['hint']()).toBe('IPv4 address only');
+    form.group.controls['type'].setValue('MX');
+    fixture.detectChanges();
+    expect(fixture.componentInstance['hint']()).toBe('How the value is used');
   });
 
   it('a required field marks its row and a plain one does not', async () => {

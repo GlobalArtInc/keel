@@ -561,4 +561,17 @@ describe('the action body', () => {
     });
     expect(substitute({ id: '$id' }, undefined)).toEqual({ id: '$id' });
   });
+
+  it('takes a row token from the field of the first row and drops the key the row lacks', () => {
+    const renew = {
+      id: 'renew',
+      role: 'button' as const,
+      function: 'dns.zone.renew',
+      params: { siteId: '$siteId', id: '$id' },
+    };
+    expect(bodyOf({ descriptor: LIST, action: renew, rows: [{ id: 'z1', siteId: 's7' }] })).toEqual(
+      { siteId: 's7', id: 'z1' },
+    );
+    expect(bodyOf({ descriptor: LIST, action: renew, rows: [{ id: 'z1' }] })).toEqual({ id: 'z1' });
+  });
 });

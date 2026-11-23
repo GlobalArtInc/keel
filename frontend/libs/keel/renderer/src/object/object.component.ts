@@ -165,7 +165,7 @@ export class KeelObjectComponent {
     if (screen !== null) {
       void this.navigation.screen({
         screen,
-        params: screenParamsOf(this.descriptor(), action),
+        params: screenParamsOf(this.descriptor(), action, this.params()),
       });
       return;
     }

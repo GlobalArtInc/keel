@@ -7,7 +7,7 @@ import type {
   Descriptor,
 } from '@globalart/keel/meta';
 import type { PhxButtonAppearance, PhxIconName } from '@globalart/phoenix-ui';
-import { ROW_PLACEHOLDER, keyOf, substitute, type Row } from '../action/runner';
+import { ROW_PLACEHOLDER, keyOf, resolveTokens, type Row } from '../action/runner';
 
 export const BULK_ROLES: readonly ActionRole[] = ['delete', 'group'];
 export const SELECTION_ROLES: readonly ActionRole[] = [
@@ -107,13 +107,12 @@ export function isHidden(action: Action, row: Row, scope: RowScope): boolean {
 export function screenParamsOf(
   descriptor: Descriptor,
   action: Action,
+  screen: Record<string, unknown>,
   row?: Row,
 ): Record<string, unknown> {
-  if (row === undefined) {
-    return { ...(action.params ?? {}) };
-  }
-  const params = action.params ?? { [keyOf(descriptor)]: ROW_PLACEHOLDER };
-  return substitute(params, String(row[keyOf(descriptor)]));
+  const params =
+    action.params ?? (row === undefined ? {} : { [keyOf(descriptor)]: ROW_PLACEHOLDER });
+  return resolveTokens(params, { row, key: keyOf(descriptor), screen });
 }
 
 export function iconOf(action: Action): PhxIconName | null {
