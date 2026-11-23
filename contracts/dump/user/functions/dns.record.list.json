@@ -170,7 +170,10 @@
         "id": "create",
         "role": "new",
         "screen": "dns.record.create",
-        "icon": "plus"
+        "icon": "plus",
+        "params": {
+          "zone": "$screen.params.zone_id"
+        }
       },
       {
         "id": "edit",

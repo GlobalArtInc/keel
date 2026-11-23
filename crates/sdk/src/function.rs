@@ -534,6 +534,13 @@ impl FunctionDef {
         known
     }
 
+    fn row_fields(&self) -> BTreeSet<String> {
+        if self.kind != Kind::List {
+            return BTreeSet::new();
+        }
+        row_fields_of(&self.result)
+    }
+
     pub fn descriptor(&self) -> Result<Descriptor, UiError> {
         if let Some(list) = &self.list {
             list.validate()?;
@@ -541,7 +548,7 @@ impl FunctionDef {
         let ui = self
             .ui
             .as_ref()
-            .map(|ui| ui.compile(&self.known_fields()))
+            .map(|ui| ui.compile_in(&self.known_fields(), &self.row_fields()))
             .transpose()?;
         Ok(Descriptor {
             keel: DESCRIPTOR_VERSION,
@@ -562,6 +569,26 @@ impl FunctionDef {
 fn embedded(mut schema: Schema) -> Schema {
     schema.remove("$schema");
     schema
+}
+
+fn row_fields_of(result: &Schema) -> BTreeSet<String> {
+    let Some(items) = result
+        .get("properties")
+        .and_then(|properties| properties.get("data"))
+        .and_then(|data| data.get("items"))
+    else {
+        return BTreeSet::new();
+    };
+    let row = match items.get("$ref").and_then(Value::as_str) {
+        Some(reference) => reference
+            .strip_prefix("#/$defs/")
+            .and_then(|name| result.get("$defs")?.get(name)),
+        None => Some(items),
+    };
+    row.and_then(|row| row.get("properties"))
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 pub fn property_names(schema: &Schema) -> BTreeSet<String> {
@@ -594,6 +621,8 @@ impl fmt::Debug for FunctionDef {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::{Action, Column, List};
+    use keel_types::{ActionRole, ColumnType};
     use serde::Deserialize;
     use serde_json::json;
 
@@ -842,6 +871,27 @@ mod tests {
             def.result().as_value()["properties"]["data"]["items"],
             json!({ "$ref": "#/$defs/Pong" })
         );
+    }
+
+    #[test]
+    fn a_list_action_may_take_a_row_field_that_is_no_column() {
+        let list = |token: &str| {
+            function::<ListQuery, Page<Pong>>("m.e.list")
+                .kind(Kind::List)
+                .ui(List::new("m.e.list.title")
+                    .column(Column::new("id", ColumnType::Text))
+                    .action(
+                        Action::new("again", ActionRole::Button)
+                            .function("m.e.again")
+                            .params([("text", token)]),
+                    ))
+                .handler(|_: Call<ListQuery>| async { Ok(Page::new(Vec::new(), 0)) })
+        };
+        assert!(list("$text").descriptor().is_ok());
+        assert!(matches!(
+            list("$missing").descriptor(),
+            Err(UiError::UnknownVariable { .. })
+        ));
     }
 
     struct Nothing;

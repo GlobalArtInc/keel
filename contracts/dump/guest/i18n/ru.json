@@ -1477,6 +1477,14 @@
           "TXT": "TXT, текст"
         },
         "value": "Значение",
+        "value.hint.A": "Адрес IPv4, например 203.0.113.10",
+        "value.hint.AAAA": "Адрес IPv6, например 2001:db8::10",
+        "value.hint.CAA": "Флаги, тег и значение в кавычках, например 0 issue \"letsencrypt.org\"",
+        "value.hint.CNAME": "Имя хоста, псевдонимом которого служит запись, например www.example.com.",
+        "value.hint.MX": "Имя хоста почтового сервера, например mail.example.com.",
+        "value.hint.NS": "Имя хоста сервера имён, например ns1.example.com.",
+        "value.hint.SRV": "Имя хоста сервера, предоставляющего службу, например sip.example.com.",
+        "value.hint.TXT": "Текст в кавычках, например \"v=spf1 -all\"",
         "weight": "Вес",
         "zone": "Зона"
       },

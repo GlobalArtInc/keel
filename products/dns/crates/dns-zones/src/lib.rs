@@ -59,6 +59,7 @@ fn init(r: &mut Registrar) -> Result<()> {
         .provide::<dyn Zones>(Arc::new(changes))
         .function(functions::list())
         .function(functions::get())
+        .function(functions::options())
         .function(functions::claim())
         .function(functions::check())
         .function(functions::dnssec())

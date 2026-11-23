@@ -14,6 +14,10 @@ const MANAGE: &str = "dns.zone.manage";
 const FEATURE: &str = "dns.zones";
 const SUBJECT: &str = "dns.record";
 const PARENT: &str = "zone_id";
+const ZONES: &str = "dns.zone.options";
+const ZONE_PARAM: &str = "zone";
+const ZONE_CONTEXT: &str = "$screen.params.zone";
+const ZONE_FROM_LIST: &str = "$screen.params.zone_id";
 const DEFAULT_TTL: u32 = 3_600;
 const OWNER: &str = r"^(@|\*|(\*\.)?[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?(\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*)$";
 
@@ -40,6 +44,7 @@ struct Pick {
 #[serde(crate = "keel::sdk::serde")]
 #[schemars(crate = "keel::sdk::schemars")]
 struct RecordCreate {
+    #[schemars(extend("x-keel" = json!({ "options": ZONES }), "x-ui" = json!({ "control": "select" })))]
     zone: Id,
     #[serde(rename = "type")]
     kind: RecordType,
@@ -138,6 +143,7 @@ pub(crate) fn list() -> FunctionDef {
             .action(
                 Action::new("create", ActionRole::New)
                     .screen("dns.record.create")
+                    .params([(ZONE_PARAM, ZONE_FROM_LIST)])
                     .icon("plus"),
             )
             .action(
@@ -176,12 +182,17 @@ pub(crate) fn create() -> FunctionDef {
         .access(Level::User, MANAGE)
         .feature(FEATURE)
         .owned::<record::Entity>()
-        .ui(conditions(Form::new("dns.record.create.title").page(
-            "main",
-            [
-                "zone", "type", "name", "value", "ttl", "priority", "weight", "port",
-            ],
-        )))
+        .ui(conditions(
+            Form::new("dns.record.create.title")
+                .page(
+                    "main",
+                    [
+                        "zone", "name", "type", "priority", "weight", "port", "value", "ttl",
+                    ],
+                )
+                .field("zone")
+                .readonly_if(ZONE_CONTEXT),
+        ))
         .handler(|call: Call<RecordCreate>| async move {
             let params = call.params();
             let entry = Entry::checked(
@@ -237,7 +248,7 @@ pub(crate) fn edit() -> FunctionDef {
                 .read("dns.record.get")
                 .page(
                     "main",
-                    ["type", "name", "value", "ttl", "priority", "weight", "port"],
+                    ["name", "type", "priority", "weight", "port", "value", "ttl"],
                 ),
         )
         .multi(["ttl"]))

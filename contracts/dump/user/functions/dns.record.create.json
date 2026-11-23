@@ -15,7 +15,13 @@
     "type": "object",
     "properties": {
       "zone": {
-        "$ref": "#/$defs/Id"
+        "$ref": "#/$defs/Id",
+        "x-keel": {
+          "options": "dns.zone.options"
+        },
+        "x-ui": {
+          "control": "select"
+        }
       },
       "type": {
         "$ref": "#/$defs/RecordType"
@@ -184,13 +190,13 @@
         "id": "main",
         "fields": [
           "zone",
-          "type",
           "name",
-          "value",
-          "ttl",
+          "type",
           "priority",
           "weight",
-          "port"
+          "port",
+          "value",
+          "ttl"
         ]
       }
     ],
@@ -241,6 +247,11 @@
             "type",
             "SRV"
           ]
+        }
+      },
+      "zone": {
+        "readonly_if": {
+          "truthy": "$screen.params.zone"
         }
       }
     }

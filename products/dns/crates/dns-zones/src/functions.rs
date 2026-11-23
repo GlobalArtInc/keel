@@ -1,7 +1,10 @@
 use keel::prelude::*;
+use keel::sdk::escape_like;
+use keel::sdk::sea_orm::sea_query::Expr;
+use keel::sdk::sea_orm::sea_query::extension::postgres::PgExpr;
 use keel::sdk::sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, Set, Statement,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use keel::sdk::system::AccountSource;
 use keel::types::ErrorCode;
@@ -27,6 +30,7 @@ const TEMPLATE_STORED: &str = "dns.account.error.template";
 const CLAIM: &str = "dns.zone.claim";
 const CHECK: &str = "dns.zone.check";
 const NAME_MAX: u32 = 253;
+const MAX_OPTIONS: u32 = 100;
 const OWNERS: &str = "SELECT DISTINCT account_id FROM dns_zone WHERE name = ANY($1)";
 const OUTSIDE_TREE: &str = "SELECT 1 FROM dns_zone z WHERE z.name = ANY($1) AND z.account_id <> $2 \
     AND NOT EXISTS (SELECT 1 FROM keel_account me JOIN keel_account up ON me.path LIKE up.path || '%' \
@@ -337,6 +341,44 @@ pub(crate) fn get() -> FunctionDef {
         .feature(FEATURE)
         .owned::<zone::Entity>()
         .handler(|call: Call<Pick>| async move { load(call.db(), &call.params().id).await })
+}
+
+pub(crate) fn options() -> FunctionDef {
+    function::<OptionsQuery, Choices>("dns.zone.options")
+        .kind(Kind::Options)
+        .access(Level::User, READ)
+        .feature(FEATURE)
+        .unowned()
+        .handler(|call: Call<OptionsQuery>| async move {
+            let query = call.params();
+            let limit = query.limit.clamp(1, MAX_OPTIONS);
+            let mut select = call.account_scope().apply(zone::Entity::find());
+            if !query.search.is_empty() {
+                let pattern = format!("%{}%", escape_like(&query.search));
+                select = select.filter(
+                    Condition::any()
+                        .add(Expr::col(zone::Column::Name).ilike(pattern.as_str()))
+                        .add(zone::Column::Id.eq(query.search.as_str())),
+                );
+            }
+            if let Some(cursor) = &query.cursor {
+                select = select.filter(zone::Column::Id.gt(cursor.as_str()));
+            }
+            let mut rows = select
+                .order_by_asc(zone::Column::Id)
+                .limit(u64::from(limit) + 1)
+                .all(call.db())
+                .await?;
+            let more = rows.len() > limit as usize;
+            rows.truncate(limit as usize);
+            Ok(Choices {
+                data: rows
+                    .into_iter()
+                    .map(|row| Choice::new(row.id, row.name))
+                    .collect(),
+                more,
+            })
+        })
 }
 
 pub(crate) fn dnssec() -> FunctionDef {

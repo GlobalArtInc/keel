@@ -130,10 +130,32 @@ impl UiDef {
     }
 
     pub fn compile(&self, known: &BTreeSet<String>) -> Result<ScreenUi, UiError> {
+        self.compile_in(known, &BTreeSet::new())
+    }
+
+    pub fn compile_in(
+        &self,
+        known: &BTreeSet<String>,
+        row_fields: &BTreeSet<String>,
+    ) -> Result<ScreenUi, UiError> {
         if let Some(mistake) = self.mistakes.first() {
             return Err(UiError::Misuse(mistake.clone()));
         }
         let mut screen = self.screen.clone();
+        for action in &screen.actions {
+            for (key, value) in &action.params {
+                let Some(text) = value.as_str() else {
+                    continue;
+                };
+                if text.starts_with('$') && !is_action_param_variable(text, row_fields) {
+                    return Err(UiError::UnknownVariable {
+                        target: format!("action {} param {key}", action.id),
+                        source_text: text.to_owned(),
+                        variable: text.to_owned(),
+                    });
+                }
+            }
+        }
         for (target, expr) in attached(&screen) {
             let source_text = serde_json::to_string(expr).unwrap_or_default();
             check(known, &target.to_string(), &source_text, expr)?;
@@ -285,6 +307,18 @@ fn is_system_variable(variable: &str) -> bool {
             .strip_prefix("$screen.params.")
             .is_some_and(|name| !name.is_empty()),
     }
+}
+
+fn is_action_param_variable(value: &str, row_fields: &BTreeSet<String>) -> bool {
+    if value == "$id" {
+        return true;
+    }
+    if let Some(name) = value.strip_prefix("$screen.params.") {
+        return !name.is_empty();
+    }
+    value
+        .strip_prefix('$')
+        .is_some_and(|name| row_fields.contains(name))
 }
 
 fn root_segment(variable: &str) -> &str {
@@ -1145,6 +1179,48 @@ mod tests {
                 other => panic!("{source}: {other}"),
             }
         }
+    }
+
+    #[test]
+    fn action_params_take_the_row_id_a_row_field_or_a_screen_param() {
+        let list = |value: &str| -> UiDef {
+            List::new("t")
+                .column(Column::new("name", ColumnType::Text))
+                .action(
+                    Action::new("records", ActionRole::Child)
+                        .screen("m.r.list")
+                        .params([("zone", value)]),
+                )
+                .into()
+        };
+        let row = known(["id", "name", "siteId"]);
+        for value in [
+            "$id",
+            "$screen.params.zone_id",
+            "$siteId",
+            "$name",
+            "literal",
+        ] {
+            let def = list(value);
+            assert!(def.compile_in(&def.column_keys(), &row).is_ok(), "{value}");
+        }
+        for value in ["$foo", "$screen.params.", "$scope.x", "$siteid", "$"] {
+            let def = list(value);
+            match def.compile_in(&def.column_keys(), &row).unwrap_err() {
+                UiError::UnknownVariable {
+                    variable, target, ..
+                } => {
+                    assert_eq!(variable, value);
+                    assert_eq!(target, "action records param zone");
+                }
+                other => panic!("{value}: {other}"),
+            }
+        }
+        let def = list("$siteId");
+        assert!(matches!(
+            def.compile(&def.column_keys()),
+            Err(UiError::UnknownVariable { .. })
+        ));
     }
 
     #[test]

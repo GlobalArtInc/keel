@@ -3409,7 +3409,13 @@
                 "type": "object",
                 "properties": {
                   "zone": {
-                    "$ref": "#/components/schemas/Id"
+                    "$ref": "#/components/schemas/Id",
+                    "x-keel": {
+                      "options": "dns.zone.options"
+                    },
+                    "x-ui": {
+                      "control": "select"
+                    }
                   },
                   "type": {
                     "$ref": "#/components/schemas/RecordType"
@@ -5851,6 +5857,102 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/call/dns.zone.options": {
+      "post": {
+        "operationId": "dns.zone.options",
+        "tags": [
+          "dns"
+        ],
+        "x-keel": {
+          "kind": "options",
+          "mode": "read",
+          "access": {
+            "level": "user",
+            "permission": "dns.zone.read",
+            "feature": "dns.zones"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "OptionsQuery",
+                "type": "object",
+                "properties": {
+                  "search": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0,
+                    "default": 20
+                  },
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The call completed; data is shaped by the result schema of the function.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "data": {
+                      "title": "Choices",
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Choice"
+                          }
+                        },
+                        "more": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "data",
+                        "more"
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "data",
+                    "meta"
+                  ]
                 }
               }
             }

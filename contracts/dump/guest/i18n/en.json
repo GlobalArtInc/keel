@@ -1477,6 +1477,14 @@
           "TXT": "TXT, text"
         },
         "value": "Value",
+        "value.hint.A": "IPv4 address, for example 203.0.113.10",
+        "value.hint.AAAA": "IPv6 address, for example 2001:db8::10",
+        "value.hint.CAA": "Flags, tag and quoted value, for example 0 issue \"letsencrypt.org\"",
+        "value.hint.CNAME": "Host name this name is an alias of, for example www.example.com.",
+        "value.hint.MX": "Mail server host name, for example mail.example.com.",
+        "value.hint.NS": "Name server host name, for example ns1.example.com.",
+        "value.hint.SRV": "Host name of the server providing the service, for example sip.example.com.",
+        "value.hint.TXT": "Text in quotes, for example \"v=spf1 -all\"",
         "weight": "Weight",
         "zone": "Zone"
       },

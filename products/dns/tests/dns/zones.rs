@@ -4,7 +4,7 @@ use keel::prelude::*;
 use keel::sdk::sea_orm::{ConnectionTrait, DbBackend, Statement};
 use keel::types::{ErrorCode, TaskState};
 use keel_system::tasks::api::Drain;
-use keel_testkit::{Who, tokio};
+use keel_testkit::{Harness, Who, tokio};
 
 use crate::support::{
     FAILED, NAMESERVER, PATIENCE, Site, create, data, dns, eventually, names, rows, run_poll,
@@ -588,4 +588,79 @@ async fn a_reseller_creates_for_its_customer_inside_the_customers_own_zone() {
         )
         .await;
     assert_eq!(data(&created)["accountId"], json!(a1.to_string()));
+}
+
+async fn offered(harness: &Harness, who: Who, params: Value) -> Vec<(String, String)> {
+    let reply = harness.call(who, "dns.zone.options", params).await;
+    data(&reply)["data"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .map(|choice| {
+            (
+                choice["value"].as_str().expect("a value").to_owned(),
+                choice["label"].as_str().expect("a label").to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn zone_options_offer_only_the_zones_inside_the_callers_scope() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let mine = create(&harness, Who::A1, "mine.example").await;
+    let theirs = create(&harness, Who::A2, "theirs.example").await;
+    let foreign = create(&harness, Who::Unrelated, "foreign.example").await;
+
+    assert_eq!(
+        offered(&harness, Who::A1, json!({})).await,
+        [(mine.clone(), "mine.example".to_owned())]
+    );
+    let reseller = offered(&harness, Who::Reseller, json!({})).await;
+    assert_eq!(
+        reseller,
+        [
+            (mine.clone(), "mine.example".to_owned()),
+            (theirs.clone(), "theirs.example".to_owned())
+        ]
+    );
+    assert!(!reseller.iter().any(|(id, _)| *id == foreign));
+    assert!(
+        offered(&harness, Who::A1, json!({ "search": foreign }))
+            .await
+            .is_empty()
+    );
+    assert!(
+        offered(&harness, Who::Reseller, json!({ "search": foreign }))
+            .await
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn zone_options_find_a_zone_by_a_part_of_its_name_and_by_its_exact_id() {
+    let site = Site::new();
+    let harness = dns(&site).await;
+    let shop = create(&harness, Who::A1, "shop.example").await;
+    create(&harness, Who::A1, "blog.example").await;
+
+    assert_eq!(
+        offered(&harness, Who::A1, json!({ "search": "SHO" })).await,
+        [(shop.clone(), "shop.example".to_owned())]
+    );
+    assert_eq!(
+        offered(&harness, Who::A1, json!({ "search": shop })).await,
+        [(shop.clone(), "shop.example".to_owned())]
+    );
+    assert!(
+        offered(&harness, Who::A1, json!({ "search": "%" }))
+            .await
+            .is_empty()
+    );
+    assert!(
+        offered(&harness, Who::A1, json!({ "search": &shop[..10] }))
+            .await
+            .is_empty()
+    );
 }
